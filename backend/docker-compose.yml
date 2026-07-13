@@ -1,0 +1,20 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: elderflow
+      POSTGRES_USER: elderflow
+      POSTGRES_PASSWORD: elderflow
+    ports:
+      - "5432:5432"
+    volumes:
+      - elderflow-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U elderflow -d elderflow"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  elderflow-postgres-data:
+
