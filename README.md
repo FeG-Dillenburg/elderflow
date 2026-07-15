@@ -28,7 +28,7 @@ Start the complete development environment:
 pnpm dev
 ```
 
-The command creates missing `backend/.env` and `frontend/.env` files from their examples, finds a free backend port beginning at 3000, starts PostgreSQL with Docker Compose when it is not reachable, runs pending migrations, and starts both applications in hot-reload mode. The frontend is given the selected backend URL automatically.
+The command creates missing `backend/.env` and `frontend/.env` files from their examples, adds newly introduced example keys to existing local env files, finds a free backend port beginning at 3000, starts PostgreSQL with Docker Compose when it is not reachable, waits for the database, and starts both applications in hot-reload mode. The frontend is given the selected backend URL automatically.
 
 To stop the local PostgreSQL service:
 
@@ -54,10 +54,37 @@ Backend and frontend build commands are also available as `pnpm build:backend` a
 
 Local PostgreSQL is defined in `backend/docker-compose.yml` and persists its data in a Docker volume. Docker is only required for the bundled local database; a reachable PostgreSQL instance configured through `DATABASE_URL` can be used instead.
 
-Run pending TypeORM migrations manually with:
+The backend automatically runs pending TypeORM migrations during startup. This applies to local development and deployed application starts, so the database schema is updated before the API begins serving requests.
+
+Migrations can still be run manually for operational use with:
 
 ```sh
 pnpm db:migrate
 ```
 
+Development seed data is never created automatically. Add or refresh the development users manually when required:
+
+```sh
+pnpm db:seed:dev
+```
+
 Create local environment files by copying `backend/.env.example` and `frontend/.env.example` if you are not using the root development command.
+
+## Development identity
+
+OAuth2 is intentionally deferred. Until it is implemented, API access is closed outside development and test environments. In development, `DEV_USER_EMAIL` selects the signed-in user. The development seed provides:
+
+- `alex@example.com` - admin
+- `maria@example.com` - leadership
+- `sam@example.com` - read-only viewer
+
+Change `DEV_USER_EMAIL` in `backend/.env` and restart the backend to exercise a different role. This mechanism cannot authenticate requests when `NODE_ENV=production`.
+
+## Application model
+
+- Topics persist across meetings and keep an update/minute feed.
+- Meetings receive recurring topics when they are created.
+- Agenda ordering is stored per meeting and section; display numbering is calculated as `TOP 1`, `TOP 1.1`, and so on.
+- Tasks can be linked to topics and meetings and tracked by assignee, due date, and status.
+- Agenda sections are seeded by the database migration and can be administered by an admin.
+- PrimeVue Editor stores rich text as HTML; displayed rich text is sanitized in the frontend.

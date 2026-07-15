@@ -1,4 +1,4 @@
-import { copyFile, access, readFile } from 'node:fs/promises';
+import { appendFile, copyFile, access, readFile } from 'node:fs/promises';
 import net from 'node:net';
 import path from 'node:path';
 import process from 'node:process';
@@ -12,11 +12,23 @@ const pnpmCommand = process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm';
 
 async function ensureEnvironmentFile(directory) {
   const environmentPath = path.join(directory, '.env');
+  const examplePath = path.join(directory, '.env.example');
   try {
     await access(environmentPath);
   } catch {
-    await copyFile(path.join(directory, '.env.example'), environmentPath);
+    await copyFile(examplePath, environmentPath);
     console.log(`Created ${path.relative(rootDirectory, environmentPath)}`);
+    return;
+  }
+
+  const [current, example] = await Promise.all([readFile(environmentPath, 'utf8'), readFile(examplePath, 'utf8')]);
+  const currentKeys = new Set(current.split(/\r?\n/).map((line) => line.split('=', 1)[0].trim()));
+  const missingLines = example
+    .split(/\r?\n/)
+    .filter((line) => line.includes('=') && !currentKeys.has(line.split('=', 1)[0].trim()));
+  if (missingLines.length) {
+    await appendFile(environmentPath, `\n${missingLines.join('\n')}\n`);
+    console.log(`Added new defaults to ${path.relative(rootDirectory, environmentPath)}`);
   }
 }
 
@@ -101,12 +113,6 @@ if (!(await canConnect(databaseHost, databasePort))) {
 }
 
 await waitForDatabase(databaseHost, databasePort);
-console.log('Running pending database migrations...');
-await waitForExit(
-  run(pnpmCommand, ['--filter', '@elderflow/backend', 'db:migrate'], {
-    env: { ...process.env, ...backendEnvironment, PORT: String(backendPort) },
-  }),
-);
 
 const apiBaseUrl = `http://localhost:${backendPort}`;
 console.log(`Starting backend at ${apiBaseUrl}`);
@@ -143,4 +149,3 @@ const result = await Promise.race(
 );
 stopChildren();
 process.exitCode = result.code ?? (result.signal ? 1 : 0);
-
