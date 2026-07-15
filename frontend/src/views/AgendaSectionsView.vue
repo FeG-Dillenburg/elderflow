@@ -37,7 +37,7 @@ const remove = async (id: string) => {
     await api.deleteSection(id);
     await load()
   } catch (e) {
-    error.value = e instanceof Error ? e.message : 'This section may still be in use'
+    error.value = e instanceof Error && e.message ? e.message : 'This section may still be in use'
   }
 };
 onMounted(load);
