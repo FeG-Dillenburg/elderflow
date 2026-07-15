@@ -1,47 +1,151 @@
-import { flushPromises, mount } from '@vue/test-utils';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import UsersView from './UsersView.vue';
+import { flushPromises, mount } from "@vue/test-utils";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import UsersView from "./UsersView.vue";
 
-describe('UsersView', () => {
+describe("UsersView", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
   });
 
-  it('loads and displays users from the API', async () => {
+  it("loads and displays users from the API", async () => {
     vi.stubGlobal(
-      'fetch',
+      "fetch",
       vi.fn().mockResolvedValue({
         ok: true,
-        json: () => Promise.resolve([
-          {
-            id: '7b404cf4-1df2-4ada-b163-df8734df2d4f',
-            email: 'alex@example.com',
-            firstName: 'Alex',
-            lastName: 'Smith',
-            createdAt: '2026-01-01T00:00:00.000Z',
-          },
-        ]),
+        json: () =>
+          Promise.resolve([
+            {
+              id: "7b404cf4-1df2-4ada-b163-df8734df2d4f",
+              email: "alex@example.com",
+              firstName: "Alex",
+              lastName: "Smith",
+              createdAt: "2026-01-01T00:00:00.000Z",
+            },
+          ]),
       }),
     );
 
     const wrapper = mount(UsersView, {
       global: {
         stubs: {
-          DataTable: { template: '<div><slot /></div>' },
-          Column: { props: ['field', 'header'], template: '<span />' },
-          Dialog: { template: '<div><slot /></div>' },
-          Button: { props: ['label'], template: '<button>{{ label }}</button>' },
-          InputText: { template: '<input />' },
-          Message: { template: '<div><slot /></div>' },
+          DataTable: { template: "<div><slot /></div>" },
+          Column: { props: ["field", "header"], template: "<span />" },
+          Dialog: { template: "<div><slot /></div>" },
+          Button: {
+            props: ["label"],
+            template: "<button>{{ label }}</button>",
+          },
+          InputText: { template: "<input />" },
+          Message: { template: "<div><slot /></div>" },
         },
       },
     });
 
     await flushPromises();
 
-    expect(fetch).toHaveBeenCalledWith('http://localhost:3000/api/users', expect.any(Object));
-    expect(wrapper.text()).toContain('Users');
+    expect(fetch).toHaveBeenCalledWith(
+      "http://localhost:3000/api/users",
+      expect.any(Object),
+    );
+    expect(wrapper.text()).toContain("Users");
     const view = wrapper.vm as unknown as { users: Array<{ email: string }> };
-    expect(view.users).toEqual(expect.arrayContaining([expect.objectContaining({ email: 'alex@example.com' })]));
+    expect(view.users).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ email: "alex@example.com" }),
+      ]),
+    );
+  });
+
+  it("resets the dialog, creates a user, refreshes, and restores saving state", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve([]) })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ id: "user-id" }),
+      })
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve([]) });
+    vi.stubGlobal("fetch", fetchMock);
+    const wrapper = mount(UsersView, {
+      global: {
+        stubs: {
+          DataTable: true,
+          Column: true,
+          Dialog: true,
+          Button: true,
+          InputText: true,
+          Message: true,
+        },
+      },
+    });
+    await flushPromises();
+    const vm = wrapper.vm as unknown as {
+      form: { email: string; firstName: string; lastName: string };
+      openCreateDialog: () => void;
+      submitUser: () => Promise<void>;
+      dialogVisible: boolean;
+      saving: boolean;
+    };
+    vm.form.email = "stale@example.com";
+    vm.openCreateDialog();
+    expect(vm.form).toEqual({ email: "", firstName: "", lastName: "" });
+    Object.assign(vm.form, {
+      email: "ada@example.com",
+      firstName: "Ada",
+      lastName: "Lovelace",
+    });
+    await vm.submitUser();
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "http://localhost:3000/api/user",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify(vm.form),
+      }),
+    );
+    expect(vm.dialogVisible).toBe(false);
+    expect(vm.saving).toBe(false);
+  });
+
+  it("keeps list errors outside the dialog and create errors inside it", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValueOnce({
+          ok: false,
+          json: () => Promise.resolve({ message: "List failed" }),
+        })
+        .mockResolvedValueOnce({
+          ok: false,
+          json: () => Promise.resolve({ message: "Create failed" }),
+        }),
+    );
+    const wrapper = mount(UsersView, {
+      global: {
+        stubs: {
+          DataTable: true,
+          Column: true,
+          Dialog: true,
+          Button: true,
+          InputText: true,
+          Message: true,
+        },
+      },
+    });
+    await flushPromises();
+    const vm = wrapper.vm as unknown as {
+      openCreateDialog: () => void;
+      submitUser: () => Promise<void>;
+      errorMessage: string;
+      loading: boolean;
+      saving: boolean;
+    };
+    expect(vm.errorMessage).toBe("List failed");
+    expect(vm.loading).toBe(false);
+    vm.openCreateDialog();
+    await vm.submitUser();
+    expect(vm.errorMessage).toBe("Create failed");
+    expect(vm.saving).toBe(false);
   });
 });
