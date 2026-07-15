@@ -28,7 +28,7 @@ Start the complete development environment:
 pnpm dev
 ```
 
-The command creates missing `backend/.env` and `frontend/.env` files from their examples, adds newly introduced example keys to existing local env files, finds a free backend port beginning at 3000, starts PostgreSQL with Docker Compose when it is not reachable, runs pending migrations and the development seed, and starts both applications in hot-reload mode. The frontend is given the selected backend URL automatically.
+The command creates missing `backend/.env` and `frontend/.env` files from their examples, adds newly introduced example keys to existing local env files, finds a free backend port beginning at 3000, starts PostgreSQL with Docker Compose when it is not reachable, waits for the database, and starts both applications in hot-reload mode. The frontend is given the selected backend URL automatically.
 
 To stop the local PostgreSQL service:
 
@@ -54,10 +54,18 @@ Backend and frontend build commands are also available as `pnpm build:backend` a
 
 Local PostgreSQL is defined in `backend/docker-compose.yml` and persists its data in a Docker volume. Docker is only required for the bundled local database; a reachable PostgreSQL instance configured through `DATABASE_URL` can be used instead.
 
-Run pending TypeORM migrations manually with:
+The backend automatically runs pending TypeORM migrations during startup. This applies to local development and deployed application starts, so the database schema is updated before the API begins serving requests.
+
+Migrations can still be run manually for operational use with:
 
 ```sh
 pnpm db:migrate
+```
+
+Development seed data is never created automatically. Add or refresh the development users manually when required:
+
+```sh
+pnpm db:seed:dev
 ```
 
 Create local environment files by copying `backend/.env.example` and `frontend/.env.example` if you are not using the root development command.

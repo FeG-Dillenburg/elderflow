@@ -12,6 +12,7 @@
     "dev:backend": "pnpm --filter @elderflow/backend start:dev",
     "dev:frontend": "pnpm --filter @elderflow/frontend dev",
     "db:migrate": "pnpm --filter @elderflow/backend db:migrate",
+    "db:seed:dev": "pnpm --filter @elderflow/backend db:seed:dev",
     "test": "pnpm -r test",
     "test:backend": "pnpm --filter @elderflow/backend test",
     "test:backend:e2e": "pnpm --filter @elderflow/backend test:e2e",
@@ -21,4 +22,3 @@
     "build:frontend": "pnpm --filter @elderflow/frontend build"
   }
 }
-

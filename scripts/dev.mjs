@@ -113,18 +113,6 @@ if (!(await canConnect(databaseHost, databasePort))) {
 }
 
 await waitForDatabase(databaseHost, databasePort);
-console.log('Running pending database migrations...');
-await waitForExit(
-  run(pnpmCommand, ['--filter', '@elderflow/backend', 'db:migrate'], {
-    env: { ...process.env, ...backendEnvironment, PORT: String(backendPort) },
-  }),
-);
-console.log('Ensuring development users exist...');
-await waitForExit(
-  run(pnpmCommand, ['--filter', '@elderflow/backend', 'db:seed:dev'], {
-    env: { ...process.env, ...backendEnvironment, PORT: String(backendPort) },
-  }),
-);
 
 const apiBaseUrl = `http://localhost:${backendPort}`;
 console.log(`Starting backend at ${apiBaseUrl}`);

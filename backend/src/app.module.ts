@@ -11,6 +11,7 @@ import { DashboardModule } from './dashboard/dashboard.module';
 import { MeetingsModule } from './meetings/meetings.module';
 import { TasksModule } from './tasks/tasks.module';
 import { TopicsModule } from './topics/topics.module';
+import { migrations } from './database/migrations';
 
 @Module({
   imports: [
@@ -33,6 +34,8 @@ import { TopicsModule } from './topics/topics.module';
         type: 'postgres',
         url: config.getOrThrow<string>('DATABASE_URL'),
         autoLoadEntities: true,
+        migrations,
+        migrationsRun: true,
         synchronize: false,
       }),
     }),

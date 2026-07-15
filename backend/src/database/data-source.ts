@@ -8,6 +8,7 @@ import { MeetingUser } from '../meetings/meeting-user.entity';
 import { Task } from '../tasks/task.entity';
 import { Topic } from '../topics/topic.entity';
 import { TopicUpdate } from '../topics/topic-update.entity';
+import { migrations } from './migrations';
 
 const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl) {
@@ -18,6 +19,6 @@ export default new DataSource({
   type: 'postgres',
   url: databaseUrl,
   entities: [User, AgendaSection, Topic, TopicUpdate, Meeting, MeetingUser, MeetingTopic, Task],
-  migrations: [`${__dirname}/migrations/*{.ts,.js}`],
+  migrations,
   synchronize: false,
 });
