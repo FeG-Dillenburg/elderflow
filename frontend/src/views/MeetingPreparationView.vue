@@ -215,18 +215,20 @@ onMounted(load);
                       <template v-if="item.topic?.followUpDate"> · follow-up {{ item.topic.followUpDate }}</template>
                     </small>
                   </div>
-                  <div>
-                    <InputNumber
-                      :model-value="item.plannedDuration"
-                      aria-label="Planned duration in minutes"
-                      :disabled="pending"
-                      :min="1"
-                      :step="5"
-                      suffix=" min."
-                      show-buttons
-                      size="small"
-                      @update:model-value="saveDuration(item, $event)"
-                    />
+                  <div class="item-actions">
+                    <div class="duration-control">
+                      <InputNumber
+                        :model-value="item.plannedDuration"
+                        aria-label="Planned duration in minutes"
+                        :disabled="pending"
+                        :min="1"
+                        :step="5"
+                        suffix=" min."
+                        show-buttons
+                        size="small"
+                        @update:model-value="saveDuration(item, $event)"
+                      />
+                    </div>
                     <Button :disabled="pending" aria-label="Remove" icon="pi pi-times" rounded severity="danger" text @click="remove(item)" />
                   </div>
                 </article>
@@ -303,10 +305,11 @@ onMounted(load);
 .section h2 { display: flex; align-items: center; justify-content: space-between; padding-bottom: .65rem; border-bottom: 1px solid #e9edf2; }
 .section-meta { display: flex; align-items: center; gap: .55rem; color: #718096; font-size: .8rem; font-weight: 600; }
 .agenda-drop-zone { min-height: 3.25rem; }
-.section article { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: .7rem; padding: .7rem 0; border-bottom: 1px solid #edf0f4; }
+.section article { display: grid; grid-template-columns: auto minmax(0, 1fr) max-content; align-items: center; gap: .7rem; padding: .7rem 0; border-bottom: 1px solid #edf0f4; }
 .section article:last-child { border: 0; }
-.section article > :last-child { display: flex; align-items: center; gap: .25rem; }
-.section article :deep(.p-inputnumber) { width: 6.5rem; }
+.item-actions { display: flex; align-items: center; gap: .25rem; width: max-content; }
+.duration-control { flex: 0 0 6rem; width: 6rem; }
+.duration-control :deep(.p-inputnumber) { display: inline-flex; width: 100% !important; max-width: 100%; }
 .section small, .suggestion small { display: block; margin-top: .2rem; color: #718096; font-size: .75rem; }
 .drag-handle { display: grid; grid-template-columns: repeat(2, 3px); gap: 3px; width: 20px; padding: 4px; border: 0; border-radius: 4px; background: transparent; cursor: grab; touch-action: none; }
 .drag-handle:active { cursor: grabbing; }
