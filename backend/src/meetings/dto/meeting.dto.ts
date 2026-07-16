@@ -1,4 +1,5 @@
-import { IsIn, IsInt, IsNotEmpty, IsOptional, IsString, IsUUID, Min } from 'class-validator';
+import { Type } from 'class-transformer';
+import { ArrayNotEmpty, IsArray, IsIn, IsInt, IsNotEmpty, IsOptional, IsString, IsUUID, Min, ValidateNested } from 'class-validator';
 
 export class MeetingDto {
   @IsOptional() @IsString() title?: string | null;
@@ -30,4 +31,15 @@ export class UpdateMeetingTopicDto {
   @IsOptional() @IsString() agendaNote?: string | null;
   @IsOptional() @IsInt() @Min(1) plannedDuration?: number | null;
   @IsIn(['planned', 'discussed', 'skipped', 'moved', 'done']) status: string;
+}
+
+export class MeetingTopicOrderItemDto {
+  @IsUUID() id: string;
+  @IsUUID() sectionId: string;
+  @IsInt() @Min(1) position: number;
+}
+
+export class ReorderMeetingTopicsDto {
+  @IsArray() @ArrayNotEmpty() @ValidateNested({ each: true }) @Type(() => MeetingTopicOrderItemDto)
+  items: MeetingTopicOrderItemDto[];
 }

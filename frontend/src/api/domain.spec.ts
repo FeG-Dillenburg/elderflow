@@ -94,6 +94,24 @@ describe("domain API client", () => {
       status: "planned",
     });
   });
+  it("serializes an optional insertion position and complete transactional reorder payload", async () => {
+    const fetch = vi.fn().mockResolvedValue(response({}));
+    vi.stubGlobal("fetch", fetch);
+    await api.addMeetingTopic("meeting", { topicId: "topic", sectionId: "section", position: 2 });
+    await api.reorderMeetingTopics("meeting", [
+      { id: "item-1", sectionId: "section", position: 1 },
+      { id: "item-2", sectionId: "section", position: 2 },
+    ]);
+    expect(fetch.mock.calls.map((call) => [call[0], call[1]?.method, JSON.parse(call[1]?.body)])).toEqual([
+      ["http://localhost:3000/api/meetings/meeting/topics", "POST", { topicId: "topic", sectionId: "section", position: 2 }],
+      ["http://localhost:3000/api/meetings/meeting/topics/order", "PUT", {
+        items: [
+          { id: "item-1", sectionId: "section", position: 1 },
+          { id: "item-2", sectionId: "section", position: 2 },
+        ],
+      }],
+    ]);
+  });
   it("formats users and meetings and retains the local calendar date", () => {
     expect(formatUser()).toBe("Unassigned");
     expect(formatUser({ firstName: "Ada", lastName: "Lovelace" } as any)).toBe(

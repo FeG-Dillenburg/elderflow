@@ -1,5 +1,5 @@
 import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Post, Put } from '@nestjs/common';
-import { MeetingDto, MeetingParticipantDto, MeetingTopicDto, UpdateMeetingTopicDto } from './dto/meeting.dto';
+import { MeetingDto, MeetingParticipantDto, MeetingTopicDto, ReorderMeetingTopicsDto, UpdateMeetingTopicDto } from './dto/meeting.dto';
 import { MeetingTopic } from './meeting-topic.entity';
 import { MeetingUser } from './meeting-user.entity';
 import { Meeting } from './meeting.entity';
@@ -17,6 +17,7 @@ export class MeetingsController {
   @Post(':id/participants') addParticipant(@Param('id', ParseUUIDPipe) id: string, @Body() input: MeetingParticipantDto): Promise<MeetingUser> { return this.service.addParticipant(id, input); }
   @Delete(':id/participants/:userId') removeParticipant(@Param('id', ParseUUIDPipe) id: string, @Param('userId', ParseUUIDPipe) userId: string): Promise<void> { return this.service.removeParticipant(id, userId); }
   @Post(':id/topics') addTopic(@Param('id', ParseUUIDPipe) id: string, @Body() input: MeetingTopicDto): Promise<MeetingTopic> { return this.service.addTopic(id, input); }
+  @Put(':id/topics/order') reorderTopics(@Param('id', ParseUUIDPipe) id: string, @Body() input: ReorderMeetingTopicsDto): Promise<MeetingTopic[]> { return this.service.reorderTopics(id, input.items); }
   @Put(':id/topics/:itemId') updateTopic(@Param('id', ParseUUIDPipe) id: string, @Param('itemId', ParseUUIDPipe) itemId: string, @Body() input: UpdateMeetingTopicDto): Promise<MeetingTopic> { return this.service.updateTopic(id, itemId, input); }
   @Delete(':id/topics/:itemId') removeTopic(@Param('id', ParseUUIDPipe) id: string, @Param('itemId', ParseUUIDPipe) itemId: string): Promise<void> { return this.service.removeTopic(id, itemId); }
 }

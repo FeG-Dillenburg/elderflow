@@ -55,6 +55,8 @@ const load = async () => {
   }
 };
 const grouped = computed(() => buildNumberedAgenda(sections.value, meeting.value?.agenda ?? []));
+const sectionDuration = (items: MeetingTopic[]) =>
+  items.reduce((total, item) => total + (item.plannedDuration ?? 0), 0);
 const recent = (item: MeetingTopic) => {
   const cutoff = Date.now() - 14 * 86400000;
   const timestamp = (date: string) => new Date(date).getTime();
@@ -195,8 +197,14 @@ onMounted(load);
         </div>
       </section>
       <main class="document">
-        <section v-for="(group,sectionIndex) in grouped" :key="group.section.id" class="agenda-section"><h2>
-          <span>TOP {{ sectionIndex + 1 }}</span>{{ group.section.name }}</h2>
+        <section v-for="(group,sectionIndex) in grouped" :key="group.section.id" class="agenda-section">
+          <h2>
+            <span class="section-title">
+              <span>TOP {{ sectionIndex + 1 }}</span>
+              {{ group.section.name }}
+            </span>
+            <span class="section-duration">{{ sectionDuration(group.items) }} min.</span>
+          </h2>
           <p v-if="!group.items.length" class="empty">No topics in this section.</p>
           <article v-for="(item,itemIndex) in group.items" :key="item.id" class="agenda-topic">
             <div class="topic-heading"><span class="number">TOP {{ sectionIndex + 1 }}.{{ itemIndex + 1 }}</span>
@@ -427,6 +435,8 @@ onMounted(load);
 
 .agenda-section > h2 {
   display: flex;
+  align-items: center;
+  justify-content: space-between;
   gap: .8rem;
   margin: 0 0 .7rem;
   padding-bottom: .6rem;
@@ -438,6 +448,19 @@ onMounted(load);
   color: #607dae;
   font-size: inherit;
   letter-spacing: .02em
+}
+
+.agenda-section > h2 .section-title {
+  display: flex;
+  align-items: center;
+  gap: .8rem;
+  color: inherit
+}
+
+.agenda-section > h2 .section-duration {
+  flex: 0 0 auto;
+  font-size: .85rem;
+  font-weight: 650
 }
 
 .agenda-topic {
