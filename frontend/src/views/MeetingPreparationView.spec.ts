@@ -100,6 +100,7 @@ describe("MeetingPreparationView", () => {
     expect(wrapper.text()).toContain("25 min.");
     const durations = wrapper.findAll("input-number-stub");
     expect(durations).toHaveLength(2);
+    expect(durations[0].attributes("size")).toBe("small");
     expect(durations[0].attributes("step")).toBe("5");
     expect(durations[0].attributes("suffix")).toBe(" min.");
   });
