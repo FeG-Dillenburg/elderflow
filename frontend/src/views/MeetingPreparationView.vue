@@ -147,25 +147,6 @@ const remove = async (item: MeetingTopic) => {
   await withReload(() => api.removeMeetingTopic(id, item.id));
 };
 
-const saveItem = async (item: MeetingTopic) => {
-  const source = grouped.value.find((group) => group.items.includes(item));
-  const target = grouped.value.find((group) => group.section.id === item.sectionId);
-  if (source && target && source !== target) {
-    source.items.splice(source.items.indexOf(item), 1);
-    target.items.push(item);
-    await persistOrder();
-    return;
-  }
-  await withReload(() => api.updateMeetingTopic(id, item));
-};
-
-const move = async (items: MeetingTopic[], index: number, direction: -1 | 1) => {
-  const otherIndex = index + direction;
-  if (!items[otherIndex]) return;
-  [items[index], items[otherIndex]] = [items[otherIndex], items[index]];
-  await persistOrder();
-};
-
 const createAndAdd = async () => {
   await withReload(async () => {
     const topic = await api.createTopic(form as TopicInput);
@@ -210,7 +191,7 @@ onMounted(load);
               chosen-class="drag-chosen"
               @change="onAgendaChange(group, $event)"
             >
-              <template #item="{ element: item, index }">
+              <template #item="{ element: item }">
                 <article>
                   <button class="drag-handle" type="button" aria-label="Drag topic" title="Drag topic">
                     <span v-for="dot in 6" :key="dot" />
@@ -222,18 +203,7 @@ onMounted(load);
                       <template v-if="item.topic?.followUpDate"> · follow-up {{ item.topic.followUpDate }}</template>
                     </small>
                   </div>
-                  <Select
-                    v-model="item.sectionId"
-                    :options="sections"
-                    aria-label="Agenda section"
-                    option-label="name"
-                    option-value="id"
-                    :disabled="pending"
-                    @change="saveItem(item)"
-                  />
                   <div>
-                    <Button :disabled="pending || index === 0" aria-label="Move up" icon="pi pi-chevron-up" rounded text @click="move(group.items, index, -1)" />
-                    <Button :disabled="pending || index === group.items.length - 1" aria-label="Move down" icon="pi pi-chevron-down" rounded text @click="move(group.items, index, 1)" />
                     <Button :disabled="pending" aria-label="Remove" icon="pi pi-times" rounded severity="danger" text @click="remove(item)" />
                   </div>
                 </article>
@@ -309,7 +279,7 @@ onMounted(load);
 .section h2, .suggestions-heading h2 { margin: 0; font-size: 1rem; }
 .section h2 { display: flex; align-items: center; justify-content: space-between; padding-bottom: .65rem; border-bottom: 1px solid #e9edf2; }
 .agenda-drop-zone { min-height: 3.25rem; }
-.section article { display: grid; grid-template-columns: auto minmax(0, 1fr) 240px auto; align-items: center; gap: .7rem; padding: .7rem 0; border-bottom: 1px solid #edf0f4; }
+.section article { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: .7rem; padding: .7rem 0; border-bottom: 1px solid #edf0f4; }
 .section article:last-child { border: 0; }
 .section small, .suggestion small { display: block; margin-top: .2rem; color: #718096; font-size: .75rem; }
 .drag-handle { display: grid; grid-template-columns: repeat(2, 3px); gap: 3px; width: 20px; padding: 4px; border: 0; border-radius: 4px; background: transparent; cursor: grab; touch-action: none; }
@@ -331,5 +301,5 @@ onMounted(load);
 .form :deep(input), .form :deep(.p-select) { width: 100%; }
 .row { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
 @media (max-width: 900px) { .layout { grid-template-columns: 1fr; } .layout aside { position: static; } }
-@media (max-width: 650px) { .page-header { align-items: stretch; flex-direction: column; } .section article { grid-template-columns: auto 1fr; } .section article > :nth-child(3), .section article > :nth-child(4) { grid-column: 2; } .row { grid-template-columns: 1fr; } }
+@media (max-width: 650px) { .page-header { align-items: stretch; flex-direction: column; } .section article { grid-template-columns: auto minmax(0, 1fr) auto; } .row { grid-template-columns: 1fr; } }
 </style>

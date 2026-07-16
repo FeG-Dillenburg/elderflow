@@ -90,6 +90,10 @@ describe("MeetingPreparationView", () => {
     expect(vm.suggestionGroup).toMatchObject({ name: "agenda-topics", pull: "clone", put: false });
     expect(wrapper.findAll('button[aria-label="Drag topic"]')).toHaveLength(3);
     expect(wrapper.text()).toContain("No topics yet.");
+    expect(wrapper.find('[aria-label="Agenda section"]').exists()).toBe(false);
+    expect(wrapper.find('[aria-label="Move up"]').exists()).toBe(false);
+    expect(wrapper.find('[aria-label="Move down"]').exists()).toBe(false);
+    expect(wrapper.findAll('[aria-label="Remove"]')).toHaveLength(2);
   });
   it("selects explicit, topic-default, then first available section and does nothing without one", async () => {
     const wrapper = await view();
@@ -134,28 +138,15 @@ describe("MeetingPreparationView", () => {
     expect(target.items).toHaveLength(0);
     expect(vm.suggestions).toHaveLength(1);
   });
-  it("removes, saves, moves, and creates an agenda topic safely", async () => {
+  it("removes and creates an agenda topic safely", async () => {
     const wrapper = await view();
     const vm: any = wrapper.vm;
     vi.spyOn(api, "removeMeetingTopic").mockResolvedValue(undefined);
-    vi.spyOn(api, "updateMeetingTopic").mockResolvedValue({} as any);
-    vi.spyOn(api, "reorderMeetingTopics").mockResolvedValue([]);
     vi.spyOn(api, "createTopic").mockResolvedValue({ id: "new-topic" } as any);
     vi.spyOn(api, "addMeetingTopic").mockResolvedValue({} as any);
     const item = vm.meeting.agenda[0];
     await vm.remove(item);
     expect(api.removeMeetingTopic).toHaveBeenCalledWith("meeting-1", item.id);
-    await vm.saveItem(item);
-    expect(api.updateMeetingTopic).toHaveBeenCalledWith("meeting-1", item);
-    const other = vm.meeting.agenda[1];
-    await vm.move([item, other], 0, 1);
-    expect(api.reorderMeetingTopics).toHaveBeenCalledWith("meeting-1", [
-      { id: "item-1", sectionId: "second", position: 1 },
-      { id: "item-2", sectionId: "second", position: 2 },
-    ]);
-    const before = (api.reorderMeetingTopics as any).mock.calls.length;
-    await vm.move([item], 0, 1);
-    expect((api.reorderMeetingTopics as any).mock.calls).toHaveLength(before);
     vm.form.name = "New topic";
     vm.form.defaultSectionId = null;
     await vm.createAndAdd();
