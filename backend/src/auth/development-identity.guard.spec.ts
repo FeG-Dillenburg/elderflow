@@ -1,4 +1,5 @@
 import { ForbiddenException, UnauthorizedException } from "@nestjs/common";
+import { IsNull } from "typeorm";
 import { DevelopmentIdentityGuard } from "./development-identity.guard";
 
 describe("DevelopmentIdentityGuard", () => {
@@ -68,7 +69,7 @@ describe("DevelopmentIdentityGuard", () => {
       users.findOne.mockResolvedValue(user);
       await expect(guard.canActivate(requestContext)).resolves.toBe(true);
       expect(users.findOne).toHaveBeenCalledWith({
-        where: { email: "admin@example.com" },
+        where: { email: "admin@example.com", archivedAt: IsNull() },
       });
       expect(requestContext.request.user).toBe(user);
     },

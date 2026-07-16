@@ -148,4 +148,131 @@ describe("UsersView", () => {
     expect(vm.errorMessage).toBe("Create failed");
     expect(vm.saving).toBe(false);
   });
+
+  it("toggles archived users, confirms removal, and restores archived users", async () => {
+    const activeUser = {
+      id: "active-user",
+      email: "active@example.com",
+      firstName: "Active",
+      lastName: "User",
+      createdAt: "2026-01-01T00:00:00.000Z",
+      archivedAt: null,
+    };
+    const archivedUser = {
+      ...activeUser,
+      id: "archived-user",
+      email: "archived@example.com",
+      firstName: "Archived",
+      archivedAt: "2026-02-01T00:00:00.000Z",
+    };
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve([activeUser]) })
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve([activeUser, archivedUser]) })
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ action: "archived" }) })
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve([archivedUser]) })
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(activeUser) })
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve([activeUser]) });
+    vi.stubGlobal("fetch", fetchMock);
+    const wrapper = mount(UsersView, {
+      global: {
+        stubs: {
+          DataTable: true,
+          Column: true,
+          Dialog: { template: "<div><slot /><slot name='footer' /></div>" },
+          Button: true,
+          InputText: true,
+          Message: { template: "<div><slot /></div>" },
+        },
+      },
+    });
+    await flushPromises();
+    const vm = wrapper.vm as unknown as {
+      showArchived: boolean;
+      users: Array<typeof activeUser | typeof archivedUser>;
+      selectedUser: typeof activeUser | null;
+      removalDialogVisible: boolean;
+      processingUserId: string | null;
+      toggleArchivedUsers: () => Promise<void>;
+      requestRemoval: (user: typeof activeUser) => void;
+      confirmRemoval: () => Promise<void>;
+      restore: (user: typeof archivedUser) => Promise<void>;
+    };
+
+    await vm.toggleArchivedUsers();
+    expect(vm.showArchived).toBe(true);
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "http://localhost:3000/api/users?includeArchived=true",
+      expect.any(Object),
+    );
+
+    vm.requestRemoval(activeUser);
+    expect(vm.removalDialogVisible).toBe(true);
+    expect(vm.selectedUser).toEqual(activeUser);
+    expect(wrapper.text()).toContain("permanently deleted if no data is attached");
+    await vm.confirmRemoval();
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      3,
+      "http://localhost:3000/api/users/active-user",
+      expect.objectContaining({ method: "DELETE" }),
+    );
+    expect(vm.removalDialogVisible).toBe(false);
+
+    await vm.restore(archivedUser);
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      5,
+      "http://localhost:3000/api/users/archived-user/restore",
+      expect.objectContaining({ method: "PATCH" }),
+    );
+    expect(vm.processingUserId).toBeNull();
+  });
+
+  it("reports remove and restore failures and clears processing state", async () => {
+    const user = {
+      id: "user-id",
+      email: "user@example.com",
+      firstName: "Test",
+      lastName: "User",
+      createdAt: "2026-01-01T00:00:00.000Z",
+      archivedAt: null,
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve([user]) })
+        .mockResolvedValueOnce({ ok: false, json: () => Promise.resolve({ message: "Remove failed" }) })
+        .mockResolvedValueOnce({ ok: false, json: () => Promise.resolve({ message: "Restore failed" }) }),
+    );
+    const wrapper = mount(UsersView, {
+      global: {
+        stubs: {
+          DataTable: true,
+          Column: true,
+          Dialog: true,
+          Button: true,
+          InputText: true,
+          Message: true,
+        },
+      },
+    });
+    await flushPromises();
+    const vm = wrapper.vm as unknown as {
+      errorMessage: string;
+      processingUserId: string | null;
+      requestRemoval: (value: typeof user) => void;
+      confirmRemoval: () => Promise<void>;
+      restore: (value: typeof user) => Promise<void>;
+    };
+
+    vm.requestRemoval(user);
+    await vm.confirmRemoval();
+    expect(vm.errorMessage).toBe("Remove failed");
+    expect(vm.processingUserId).toBeNull();
+
+    await vm.restore(user);
+    expect(vm.errorMessage).toBe("Restore failed");
+    expect(vm.processingUserId).toBeNull();
+  });
 });

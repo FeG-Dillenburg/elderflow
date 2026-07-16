@@ -4,6 +4,7 @@ export interface User {
   firstName: string;
   lastName: string;
   createdAt: string;
+  archivedAt: string | null;
 }
 
 export interface CreateUserInput {
@@ -32,8 +33,8 @@ async function apiRequest<T>(path: string, options?: RequestInit): Promise<T> {
   return response.json() as Promise<T>;
 }
 
-export function getUsers(): Promise<User[]> {
-  return apiRequest<User[]>('/api/users');
+export function getUsers(includeArchived = false): Promise<User[]> {
+  return apiRequest<User[]>(includeArchived ? '/api/users?includeArchived=true' : '/api/users');
 }
 
 export function createUser(input: CreateUserInput): Promise<User> {
@@ -43,3 +44,14 @@ export function createUser(input: CreateUserInput): Promise<User> {
   });
 }
 
+export function removeUser(id: string): Promise<{ action: 'deleted' | 'archived' }> {
+  return apiRequest<{ action: 'deleted' | 'archived' }>(`/api/users/${id}`, {
+    method: 'DELETE',
+  });
+}
+
+export function restoreUser(id: string): Promise<User> {
+  return apiRequest<User>(`/api/users/${id}/restore`, {
+    method: 'PATCH',
+  });
+}

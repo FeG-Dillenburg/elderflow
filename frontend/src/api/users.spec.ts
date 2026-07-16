@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createUser, getUsers } from "./users";
+import { createUser, getUsers, removeUser, restoreUser } from "./users";
 
 const response = (body: unknown, ok = true) =>
   ({ ok, json: vi.fn().mockResolvedValue(body) }) as unknown as Response;
@@ -27,6 +27,20 @@ describe("users API client", () => {
           lastName: "Lovelace",
         }),
       ],
+    ]);
+  });
+  it("includes archived users and sends remove and restore requests", async () => {
+    const fetch = vi.fn().mockResolvedValue(response([]));
+    vi.stubGlobal("fetch", fetch);
+
+    await getUsers(true);
+    await removeUser("user-id");
+    await restoreUser("user-id");
+
+    expect(fetch.mock.calls.map((call) => [call[0], call[1]?.method])).toEqual([
+      ["http://localhost:3000/api/users?includeArchived=true", undefined],
+      ["http://localhost:3000/api/users/user-id", "DELETE"],
+      ["http://localhost:3000/api/users/user-id/restore", "PATCH"],
     ]);
   });
   it("reports string, array, and fallback failures", async () => {

@@ -19,6 +19,9 @@ export class User {
   @Column({ type: 'text', default: 'leadership' })
   role: UserRole;
 
+  @Column({ name: 'archived_at', type: 'timestamptz', nullable: true })
+  archivedAt: Date | null;
+
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;
 }
