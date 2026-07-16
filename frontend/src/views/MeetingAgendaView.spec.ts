@@ -40,7 +40,7 @@ const meeting: any = {
       sectionId: "section-1",
       position: 1,
       agendaNote: "<script>alert(1)</script><p>Agenda</p>",
-      plannedDuration: null,
+      plannedDuration: 10,
       status: "planned",
       topic: {
         id: "topic-1",
@@ -83,6 +83,7 @@ describe("MeetingAgendaView", () => {
     const wrapper = await view();
     expect(api.meeting).toHaveBeenCalledWith("meeting-1");
     expect(wrapper.text()).toContain("Council");
+    expect(wrapper.find(".section-duration").text()).toBe("10 min.");
     expect(wrapper.html()).not.toContain("onerror=");
     expect(wrapper.html()).not.toContain("<script");
     vi.spyOn(api, "meeting").mockRejectedValueOnce(new Error("Unavailable"));
