@@ -216,7 +216,7 @@ onMounted(load);
                     </small>
                   </div>
                   <div class="item-actions">
-                    <div class="duration-control">
+                    <div class="duration-control" style="width: 5.75rem; flex: 0 0 5.75rem;">
                       <InputNumber
                         :model-value="item.plannedDuration"
                         aria-label="Planned duration in minutes"
@@ -226,6 +226,7 @@ onMounted(load);
                         suffix=" min."
                         show-buttons
                         size="small"
+                        style="width: 100%;"
                         @update:model-value="saveDuration(item, $event)"
                       />
                     </div>
@@ -308,7 +309,7 @@ onMounted(load);
 .section article { display: grid; grid-template-columns: auto minmax(0, 1fr) max-content; align-items: center; gap: .7rem; padding: .7rem 0; border-bottom: 1px solid #edf0f4; }
 .section article:last-child { border: 0; }
 .item-actions { display: flex; align-items: center; gap: .25rem; width: max-content; }
-.duration-control { flex: 0 0 6rem; width: 6rem; }
+.duration-control { min-width: 0; }
 .duration-control :deep(.p-inputnumber) { display: inline-flex; width: 100% !important; max-width: 100%; }
 .section small, .suggestion small { display: block; margin-top: .2rem; color: #718096; font-size: .75rem; }
 .drag-handle { display: grid; grid-template-columns: repeat(2, 3px); gap: 3px; width: 20px; padding: 4px; border: 0; border-radius: 4px; background: transparent; cursor: grab; touch-action: none; }
