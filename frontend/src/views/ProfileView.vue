@@ -32,7 +32,7 @@ async function submit(): Promise<void> {
   <section class="profile-page">
     <p class="eyebrow">Account</p>
     <h1>Your profile</h1>
-    <p class="description">Update your personal details or choose a new password. Your role can only be changed by an administrator.</p>
+    <p class="description">Update your personal details or choose a new password.</p>
     <form class="profile-card" @submit.prevent="submit">
       <Message v-if="message" :severity="message.severity" :closable="false">{{ message.text }}</Message>
       <div class="role-field"><span>Role</span><strong>{{ auth.state.user?.role }}</strong></div>

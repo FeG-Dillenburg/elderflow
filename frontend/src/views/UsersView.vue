@@ -357,6 +357,11 @@ h1 {
   width: 100%;
 }
 
+:deep(.p-password),
+:deep(.p-password-input) {
+  width: 100%;
+}
+
 @media (max-width: 600px) {
   .page-header {
     align-items: stretch;
