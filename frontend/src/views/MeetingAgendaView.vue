@@ -11,6 +11,7 @@ import Select from 'primevue/select';
 import Tag from 'primevue/tag';
 import RichTextEditor from '../components/RichTextEditor.vue';
 import {auth} from '../auth/auth';
+import {assignableUsers} from '../auth/roles';
 import {buildNumberedAgenda} from '../utils/agenda';
 import {
   api,
@@ -50,7 +51,10 @@ const statusOptions = [{label: 'Planned', value: 'planned'}, {
 const load = async () => {
   loading.value = true;
   try {
-    [meeting.value, sections.value, users.value] = await Promise.all([api.meeting(id), api.sections(), api.users()])
+    const [loadedMeeting, loadedSections, loadedUsers] = await Promise.all([api.meeting(id), api.sections(), api.users()]);
+    meeting.value = loadedMeeting;
+    sections.value = loadedSections;
+    users.value = assignableUsers(loadedUsers);
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Unable to load meeting'
   } finally {

@@ -23,11 +23,13 @@ import {
   type User
 } from '../api/domain';
 import {auth} from '../auth/auth';
+import {assignableUsers} from '../auth/roles';
 
 const canManage = computed(() => !auth.state.user || auth.canManage('tasks'));
 
 const tasks = ref<Task[]>([]), users = ref<User[]>([]), topics = ref<Topic[]>([]), meetings = ref<Meeting[]>([]),
     loading = ref(true), visible = ref(false), saving = ref(false), error = ref('');
+const assigneeOptions = computed(() => assignableUsers(users.value));
 const filters = reactive({
   assignedToId: '',
   topicId: '',
@@ -151,7 +153,7 @@ onMounted(load);
         <RichTextEditor v-model="form.description" height="110px"/>
       </label><label><span>Topic</span><Select v-model="form.topicId" :options="topics" option-label="name"
                                                option-value="id" show-clear/></label>
-        <div class="row"><label><span>Assigned to</span><Select v-model="form.assignedToId" :options="users"
+        <div class="row"><label><span>Assigned to</span><Select v-model="form.assignedToId" :options="assigneeOptions"
                                                                 option-label="firstName" option-value="id" show-clear>
           <template #option="{option}">{{ formatUser(option) }}</template>
         </Select></label><label><span>Due date</span>

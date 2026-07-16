@@ -16,3 +16,7 @@ export const userRoleOptions = roleOrder.map((value) => ({
 }));
 
 export const roleLabel = (role: UserRole): string => roleLabels[role];
+
+export const isAssignableUser = (user: { role: UserRole }): boolean => user.role !== 'it-admin';
+
+export const assignableUsers = <T extends { role: UserRole }>(users: T[]): T[] => users.filter(isAssignableUser);

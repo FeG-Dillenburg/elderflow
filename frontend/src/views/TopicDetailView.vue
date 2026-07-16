@@ -12,6 +12,7 @@ import Tag from 'primevue/tag';
 import RichTextEditor from '../components/RichTextEditor.vue';
 import TopicEditDialog from '../components/TopicEditDialog.vue';
 import {auth} from '../auth/auth';
+import {assignableUsers} from '../auth/roles';
 import {
   api,
   formatUser,
@@ -33,6 +34,7 @@ const id = route.params.id as string;
 const topic = ref<Topic | null>(null), updates = ref<TopicUpdate[]>([]), tasks = ref<Task[]>([]),
     appearances = ref<MeetingTopic[]>([]), users = ref<User[]>([]), sections = ref<AgendaSection[]>([]),
     error = ref(''), updateText = ref(''), taskVisible = ref(false), editVisible = ref(false);
+const assigneeOptions = computed(() => assignableUsers(users.value));
 const task = reactive({title: '', description: '', assignedToId: null as string | null, dueDate: null as Date | null});
 const load = async () => {
   try {
@@ -152,7 +154,7 @@ onMounted(load);
       </label><label><span>Description</span>
         <RichTextEditor v-model="task.description" height="100px"/>
       </label>
-        <div class="row"><label><span>Assigned to</span><Select v-model="task.assignedToId" :options="users"
+        <div class="row"><label><span>Assigned to</span><Select v-model="task.assignedToId" :options="assigneeOptions"
                                                                 option-label="firstName" option-value="id" show-clear>
           <template #option="{option}">{{ formatUser(option) }}</template>
         </Select></label><label><span>Due date</span>

@@ -12,6 +12,7 @@ import Select from 'primevue/select';
 import Tag from 'primevue/tag';
 import {api, formatUser, meetingLabel, toLocalDate, type Meeting, type MeetingInput, type User} from '../api/domain';
 import {auth} from '../auth/auth';
+import {assignableUsers} from '../auth/roles';
 
 const canManage = computed(() => !auth.state.user || auth.canManage('meetings'));
 const router = useRouter();
@@ -32,7 +33,9 @@ const form = reactive({
 const load = async () => {
   loading.value = true;
   try {
-    [meetings.value, users.value] = await Promise.all([api.meetings(), api.users()]);
+    const [loadedMeetings, loadedUsers] = await Promise.all([api.meetings(), api.users()]);
+    meetings.value = loadedMeetings;
+    users.value = assignableUsers(loadedUsers);
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Unable to load meetings';
   } finally {

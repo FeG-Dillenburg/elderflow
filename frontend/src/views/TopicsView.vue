@@ -14,6 +14,7 @@ import Tag from 'primevue/tag';
 import RichTextEditor from '../components/RichTextEditor.vue';
 import {api, formatUser, toLocalDate, type AgendaSection, type Topic, type TopicInput, type User} from '../api/domain';
 import {auth} from '../auth/auth';
+import {assignableUsers} from '../auth/roles';
 
 const canManage = computed(() => !auth.state.user || auth.canManage('topics'));
 const topicTypes = [{label: 'Recurring agenda', value: 'recurring_agenda'}, {
@@ -31,6 +32,7 @@ const topicTypes = [{label: 'Recurring agenda', value: 'recurring_agenda'}, {
 }, {label: 'General', value: 'general'}];
 const topics = ref<Topic[]>([]), users = ref<User[]>([]), sections = ref<AgendaSection[]>([]), loading = ref(true),
     visible = ref(false), saving = ref(false), error = ref('');
+const responsibleUserOptions = computed(() => assignableUsers(users.value));
 const filters = reactive({
   status: 'active',
   type: '',
@@ -138,7 +140,7 @@ onMounted(load);
       </label>
         <div class="row"><label><span>Type</span><Select v-model="form.type" :options="topicTypes" option-label="label"
                                                          option-value="value"/></label><label><span>Responsible</span><Select
-            v-model="form.responsibleUserId" :options="users" option-label="firstName" option-value="id" show-clear>
+            v-model="form.responsibleUserId" :options="responsibleUserOptions" option-label="firstName" option-value="id" show-clear>
           <template #option="{option}">{{ formatUser(option) }}</template>
         </Select></label></div>
         <div class="row"><label><span>Follow-up date</span>
