@@ -15,6 +15,10 @@ const stubs = {
   Select: true,
   Tag: true,
   RichTextEditor: true,
+  Draggable: {
+    props: ["list", "group", "itemKey", "handle", "sort"],
+    template: '<div class="draggable"><slot v-for="(element, index) in list" name="item" :element="element" :index="index" /><slot name="footer" /></div>',
+  },
 };
 const meeting: any = {
   id: "meeting-1",
@@ -78,6 +82,15 @@ describe("MeetingPreparationView", () => {
     await flushPromises();
     expect((failed.vm as any).error).toBe("No meeting");
   });
+  it("configures writable agenda and clone-only suggestion drag lists with handles", async () => {
+    const wrapper = await view();
+    const vm: any = wrapper.vm;
+    expect(wrapper.findAll(".draggable")).toHaveLength(3);
+    expect(vm.agendaGroup).toMatchObject({ name: "agenda-topics", pull: true, put: true });
+    expect(vm.suggestionGroup).toMatchObject({ name: "agenda-topics", pull: "clone", put: false });
+    expect(wrapper.findAll('button[aria-label="Drag topic"]')).toHaveLength(3);
+    expect(wrapper.text()).toContain("No topics yet.");
+  });
   it("selects explicit, topic-default, then first available section and does nothing without one", async () => {
     const wrapper = await view();
     const vm: any = wrapper.vm;
@@ -105,11 +118,28 @@ describe("MeetingPreparationView", () => {
     await vm.add({ id: "none", defaultSectionId: null });
     expect((api.addMeetingTopic as any).mock.calls).toHaveLength(calls);
   });
+  it("adds a dragged suggestion at the target section and exact one-based position", async () => {
+    const wrapper = await view();
+    const vm: any = wrapper.vm;
+    vi.spyOn(api, "addMeetingTopic").mockResolvedValue({} as any);
+    const target = vm.grouped[0];
+    const clone = vm.cloneSuggestion(vm.suggestions[0]);
+    target.items.push(clone);
+    await vm.onAgendaChange(target, { added: { element: clone, newIndex: 0 } });
+    expect(api.addMeetingTopic).toHaveBeenCalledWith("meeting-1", {
+      topicId: "topic-3",
+      sectionId: "first",
+      position: 1,
+    });
+    expect(target.items).toHaveLength(0);
+    expect(vm.suggestions).toHaveLength(1);
+  });
   it("removes, saves, moves, and creates an agenda topic safely", async () => {
     const wrapper = await view();
     const vm: any = wrapper.vm;
     vi.spyOn(api, "removeMeetingTopic").mockResolvedValue(undefined);
     vi.spyOn(api, "updateMeetingTopic").mockResolvedValue({} as any);
+    vi.spyOn(api, "reorderMeetingTopics").mockResolvedValue([]);
     vi.spyOn(api, "createTopic").mockResolvedValue({ id: "new-topic" } as any);
     vi.spyOn(api, "addMeetingTopic").mockResolvedValue({} as any);
     const item = vm.meeting.agenda[0];
@@ -119,10 +149,13 @@ describe("MeetingPreparationView", () => {
     expect(api.updateMeetingTopic).toHaveBeenCalledWith("meeting-1", item);
     const other = vm.meeting.agenda[1];
     await vm.move([item, other], 0, 1);
-    expect(api.updateMeetingTopic).toHaveBeenCalledTimes(3);
-    const before = (api.updateMeetingTopic as any).mock.calls.length;
+    expect(api.reorderMeetingTopics).toHaveBeenCalledWith("meeting-1", [
+      { id: "item-1", sectionId: "second", position: 1 },
+      { id: "item-2", sectionId: "second", position: 2 },
+    ]);
+    const before = (api.reorderMeetingTopics as any).mock.calls.length;
     await vm.move([item], 0, 1);
-    expect((api.updateMeetingTopic as any).mock.calls).toHaveLength(before);
+    expect((api.reorderMeetingTopics as any).mock.calls).toHaveLength(before);
     vm.form.name = "New topic";
     vm.form.defaultSectionId = null;
     await vm.createAndAdd();

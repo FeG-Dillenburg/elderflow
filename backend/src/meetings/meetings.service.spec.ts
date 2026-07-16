@@ -1,4 +1,4 @@
-import { ConflictException, NotFoundException } from "@nestjs/common";
+import { BadRequestException, ConflictException, NotFoundException } from "@nestjs/common";
 import { In, LessThanOrEqual } from "typeorm";
 import { MeetingsService } from "./meetings.service";
 
@@ -8,6 +8,7 @@ describe("MeetingsService", () => {
     create: jest.fn(),
     find: jest.fn(),
     findOne: jest.fn(),
+    findOneBy: jest.fn(),
   };
   const dataSource = { transaction: jest.fn((fn) => fn(manager)) };
   const meetings = {
@@ -47,6 +48,11 @@ describe("MeetingsService", () => {
   );
   beforeEach(() => {
     jest.clearAllMocks();
+    manager.save.mockReset();
+    manager.create.mockReset();
+    manager.find.mockReset();
+    manager.findOne.mockReset();
+    manager.findOneBy.mockReset();
     manager.save.mockImplementation(async (_type, value) => value);
     manager.create.mockImplementation((_type, value) => value);
   });
@@ -213,13 +219,6 @@ describe("MeetingsService", () => {
         sectionId: "section",
       } as any),
     ).resolves.toMatchObject({ position: 1 });
-    await expect(
-      service.addTopic("meeting", {
-        topicId: "topic-three",
-        sectionId: "section",
-        position: 9,
-      } as any),
-    ).resolves.toMatchObject({ position: 9 });
     meetingTopics.findOneBy.mockResolvedValue({});
     await expect(
       service.addTopic("meeting", {
@@ -227,6 +226,62 @@ describe("MeetingsService", () => {
         sectionId: "section",
       } as any),
     ).rejects.toThrow(ConflictException);
+  });
+  it("inserts an explicitly positioned topic transactionally and shifts later rows", async () => {
+    meetingTopics.findOneBy.mockResolvedValue(null);
+    manager.findOneBy.mockImplementation(async (type: any) => {
+      if (type.name === "Meeting") return { id: "meeting" };
+      if (type.name === "AgendaSection") return { id: "section" };
+      return null;
+    });
+    const later = { id: "later", meetingId: "meeting", sectionId: "section", position: 2, status: "planned" };
+    manager.find.mockResolvedValue([later]);
+    manager.save.mockImplementation(async (_type: any, value: any) => value);
+    manager.create.mockImplementation((_type: any, value: any) => value);
+    await expect(service.addTopic("meeting", { topicId: "new", sectionId: "section", position: 2 } as any))
+      .resolves.toMatchObject({ position: 2, status: "planned" });
+    expect(later.position).toBe(3);
+    expect(manager.save).toHaveBeenCalledWith(expect.anything(), [later]);
+  });
+  it("rejects invalid explicit positions and preserves duplicate-topic conflicts", async () => {
+    meetingTopics.findOneBy.mockResolvedValue(null);
+    manager.findOneBy.mockImplementation(async (type: any) => {
+      if (type.name === "Meeting") return { id: "meeting" };
+      if (type.name === "AgendaSection") return { id: "section" };
+      return null;
+    });
+    manager.find.mockResolvedValue([]);
+    await expect(service.addTopic("meeting", { topicId: "new", sectionId: "section", position: 2 } as any))
+      .rejects.toThrow(BadRequestException);
+    meetingTopics.findOneBy.mockResolvedValue({ id: "present" });
+    await expect(service.addTopic("meeting", { topicId: "new", sectionId: "section", position: 1 } as any))
+      .rejects.toThrow(ConflictException);
+  });
+  it("reorders a complete agenda transactionally while preserving unrelated fields", async () => {
+    const one: any = { id: "one", meetingId: "meeting", sectionId: "first", position: 1, topicId: "topic-one", status: "done", agendaNote: "keep" };
+    const two: any = { id: "two", meetingId: "meeting", sectionId: "second", position: 1, topicId: "topic-two", plannedDuration: 15 };
+    manager.findOneBy.mockResolvedValue({ id: "meeting" });
+    manager.find.mockResolvedValueOnce([one, two]).mockResolvedValueOnce([{ id: "second" }]);
+    manager.save.mockImplementation(async (_type: any, value: any) => value);
+    await expect(service.reorderTopics("meeting", [
+      { id: "one", sectionId: "second", position: 1 },
+      { id: "two", sectionId: "second", position: 2 },
+    ])).resolves.toHaveLength(2);
+    expect(one).toMatchObject({ sectionId: "second", position: 1, status: "done", agendaNote: "keep" });
+    expect(two).toMatchObject({ sectionId: "second", position: 2, plannedDuration: 15 });
+  });
+  it("rejects duplicate, incomplete, and non-consecutive reorder payloads", async () => {
+    manager.findOneBy.mockResolvedValue({ id: "meeting" });
+    await expect(service.reorderTopics("meeting", [
+      { id: "same", sectionId: "section", position: 1 },
+      { id: "same", sectionId: "section", position: 2 },
+    ])).rejects.toThrow(BadRequestException);
+    manager.find.mockResolvedValue([{ id: "one", meetingId: "meeting" }, { id: "two", meetingId: "meeting" }]);
+    await expect(service.reorderTopics("meeting", [{ id: "one", sectionId: "section", position: 1 }]))
+      .rejects.toThrow(ConflictException);
+    manager.find.mockResolvedValue([{ id: "one", meetingId: "meeting" }]);
+    await expect(service.reorderTopics("meeting", [{ id: "one", sectionId: "section", position: 2 }]))
+      .rejects.toThrow(BadRequestException);
   });
   it("updates/removes meeting-scoped agenda items and suggests eligible topics", async () => {
     meetingTopics.findOneBy.mockResolvedValue({ id: "item" });

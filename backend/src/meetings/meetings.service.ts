@@ -1,11 +1,11 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, In, LessThanOrEqual, Repository } from 'typeorm';
 import { AgendaSection } from '../agenda-sections/agenda-section.entity';
 import { Task } from '../tasks/task.entity';
 import { Topic } from '../topics/topic.entity';
 import { TopicUpdate } from '../topics/topic-update.entity';
-import { MeetingDto, MeetingParticipantDto, MeetingTopicDto, UpdateMeetingTopicDto } from './dto/meeting.dto';
+import { MeetingDto, MeetingParticipantDto, MeetingTopicDto, MeetingTopicOrderItemDto, UpdateMeetingTopicDto } from './dto/meeting.dto';
 import { MeetingTopic } from './meeting-topic.entity';
 import { MeetingUser } from './meeting-user.entity';
 import { Meeting } from './meeting.entity';
@@ -109,6 +109,7 @@ export class MeetingsService {
   async addTopic(meetingId: string, input: MeetingTopicDto): Promise<MeetingTopic> {
     const existing = await this.meetingTopics.findOneBy({ meetingId, topicId: input.topicId });
     if (existing) throw new ConflictException('Topic is already on this agenda');
+    if (input.position !== undefined) return this.insertTopicAtPosition(meetingId, input);
     const last = await this.meetingTopics.findOne({ where: { meetingId, sectionId: input.sectionId }, order: { position: 'DESC' } });
     return this.meetingTopics.save(this.meetingTopics.create({
       ...input,
@@ -116,6 +117,54 @@ export class MeetingsService {
       position: input.position ?? (last?.position ?? 0) + 1,
       status: 'planned',
     }));
+  }
+
+  private async insertTopicAtPosition(meetingId: string, input: MeetingTopicDto): Promise<MeetingTopic> {
+    return this.dataSource.transaction(async (manager) => {
+      const meeting = await manager.findOneBy(Meeting, { id: meetingId });
+      if (!meeting) throw new NotFoundException('Meeting not found');
+      const section = await manager.findOneBy(AgendaSection, { id: input.sectionId });
+      if (!section) throw new NotFoundException('Agenda section not found');
+      const existing = await manager.findOneBy(MeetingTopic, { meetingId, topicId: input.topicId });
+      if (existing) throw new ConflictException('Topic is already on this agenda');
+      const items = await manager.find(MeetingTopic, {
+        where: { meetingId, sectionId: input.sectionId }, order: { position: 'ASC' },
+      });
+      if (input.position! > items.length + 1) throw new BadRequestException('Position must be within the agenda section');
+      for (const item of items.filter((item) => item.position >= input.position!)) item.position += 1;
+      if (items.length) await manager.save(MeetingTopic, items);
+      return manager.save(MeetingTopic, manager.create(MeetingTopic, {
+        ...input, meetingId, position: input.position, status: 'planned',
+      }));
+    });
+  }
+
+  async reorderTopics(meetingId: string, input: MeetingTopicOrderItemDto[]): Promise<MeetingTopic[]> {
+    return this.dataSource.transaction(async (manager) => {
+      const meeting = await manager.findOneBy(Meeting, { id: meetingId });
+      if (!meeting) throw new NotFoundException('Meeting not found');
+      const ids = input.map((item) => item.id);
+      if (new Set(ids).size !== ids.length) throw new BadRequestException('Agenda topic IDs must be unique');
+      const current = await manager.find(MeetingTopic, { where: { meetingId } });
+      if (current.length !== input.length || current.some((item) => !ids.includes(item.id))) {
+        throw new ConflictException('Agenda changed; reload before reordering');
+      }
+      const sectionIds = [...new Set(input.map((item) => item.sectionId))];
+      const availableSections = await manager.find(AgendaSection, { where: { id: In(sectionIds) } });
+      if (availableSections.length !== sectionIds.length) throw new BadRequestException('An agenda section does not exist');
+      const bySection = new Map<string, number[]>();
+      for (const item of input) bySection.set(item.sectionId, [...(bySection.get(item.sectionId) ?? []), item.position]);
+      for (const positions of bySection.values()) {
+        const sorted = [...positions].sort((a, b) => a - b);
+        if (sorted.some((position, index) => position !== index + 1)) {
+          throw new BadRequestException('Positions must be consecutive and start at 1 in every section');
+        }
+      }
+      const requested = new Map(input.map((item) => [item.id, item]));
+      const ordered = current.map((item) => Object.assign(item, requested.get(item.id)!));
+      await manager.save(MeetingTopic, ordered);
+      return ordered.sort((left, right) => left.sectionId.localeCompare(right.sectionId) || left.position - right.position);
+    });
   }
 
   async updateTopic(meetingId: string, id: string, input: UpdateMeetingTopicDto): Promise<MeetingTopic> {
