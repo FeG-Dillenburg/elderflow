@@ -2,7 +2,9 @@ import { ConflictException, Injectable, NotFoundException } from '@nestjs/common
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, IsNull, QueryFailedError, Repository } from 'typeorm';
 import { CreateUserDto } from './dto/create-user.dto';
+import { UpdateUserDto } from './dto/create-user.dto';
 import { User } from './user.entity';
+import { hash } from 'bcryptjs';
 
 @Injectable()
 export class UsersService {
@@ -20,9 +22,26 @@ export class UsersService {
   }
 
   async create(input: CreateUserDto): Promise<User> {
-    const user = this.usersRepository.create(input);
+    const { password, ...fields } = input;
+    const user = this.usersRepository.create({ ...fields, passwordHash: await hash(password, 12) });
     try {
-      return await this.usersRepository.save(user);
+      return this.withoutPassword(await this.usersRepository.save(user));
+    } catch (error) {
+      if (error instanceof QueryFailedError && (error as QueryFailedError & { driverError?: { code?: string } }).driverError?.code === '23505') {
+        throw new ConflictException('A user with this email already exists');
+      }
+      throw error;
+    }
+  }
+
+  async update(id: string, input: UpdateUserDto): Promise<User> {
+    const user = await this.usersRepository.findOneBy({ id });
+    if (!user) throw new NotFoundException('User not found');
+    const { password, ...fields } = input;
+    Object.assign(user, fields);
+    if (password) user.passwordHash = await hash(password, 12);
+    try {
+      return this.withoutPassword(await this.usersRepository.save(user));
     } catch (error) {
       if (error instanceof QueryFailedError && (error as QueryFailedError & { driverError?: { code?: string } }).driverError?.code === '23505') {
         throw new ConflictException('A user with this email already exists');
@@ -66,5 +85,10 @@ export class UsersService {
     if (!user) throw new NotFoundException('User not found');
     user.archivedAt = null;
     return this.usersRepository.save(user);
+  }
+
+  private withoutPassword(user: User): User {
+    delete (user as Partial<User>).passwordHash;
+    return user;
   }
 }

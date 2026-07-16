@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import {onMounted, reactive, ref} from 'vue';
+import {computed, onMounted, reactive, ref} from 'vue';
 import {RouterLink} from 'vue-router';
 import Button from 'primevue/button';
 import Checkbox from 'primevue/checkbox';
@@ -13,7 +13,9 @@ import Select from 'primevue/select';
 import Tag from 'primevue/tag';
 import RichTextEditor from '../components/RichTextEditor.vue';
 import {api, formatUser, toLocalDate, type AgendaSection, type Topic, type TopicInput, type User} from '../api/domain';
+import {auth} from '../auth/auth';
 
+const canManage = computed(() => !auth.state.user || auth.canManage('topics'));
 const topicTypes = [{label: 'Recurring agenda', value: 'recurring_agenda'}, {
   label: 'Person-related',
   value: 'person_related'
@@ -89,7 +91,7 @@ onMounted(load);
       <div><p class="eyebrow">Discussion history</p>
         <h1>Open topics</h1>
         <p>Long-lived matters that can appear across several meetings.</p></div>
-      <Button label="New topic" icon="pi pi-plus" @click="open"/>
+      <Button v-if="canManage" label="New topic" icon="pi pi-plus" @click="open"/>
     </header>
     <div class="filters"><Select v-model="filters.status"
                                  :options="[{label:'Open & deferred',value:'active'},{label:'Open',value:'open'},{label:'Deferred',value:'deferred'},{label:'Done',value:'done'},{label:'Archived',value:'archived'}]"

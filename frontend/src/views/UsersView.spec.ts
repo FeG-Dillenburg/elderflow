@@ -80,7 +80,7 @@ describe("UsersView", () => {
     });
     await flushPromises();
     const vm = wrapper.vm as unknown as {
-      form: { email: string; firstName: string; lastName: string };
+      form: { email: string; firstName: string; lastName: string; role: string; password: string };
       openCreateDialog: () => void;
       submitUser: () => Promise<void>;
       dialogVisible: boolean;
@@ -88,11 +88,13 @@ describe("UsersView", () => {
     };
     vm.form.email = "stale@example.com";
     vm.openCreateDialog();
-    expect(vm.form).toEqual({ email: "", firstName: "", lastName: "" });
+    expect(vm.form).toEqual({ email: "", firstName: "", lastName: "", role: "user", password: "" });
     Object.assign(vm.form, {
       email: "ada@example.com",
       firstName: "Ada",
       lastName: "Lovelace",
+      role: "admin",
+      password: "password123!",
     });
     await vm.submitUser();
     expect(fetchMock).toHaveBeenNthCalledWith(

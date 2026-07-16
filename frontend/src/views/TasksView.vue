@@ -1,5 +1,5 @@
 <script lang="ts" setup>
-import {onMounted, reactive, ref} from 'vue';
+import {computed, onMounted, reactive, ref} from 'vue';
 import {RouterLink} from 'vue-router';
 import Button from 'primevue/button';
 import Column from 'primevue/column';
@@ -22,6 +22,9 @@ import {
   type Topic,
   type User
 } from '../api/domain';
+import {auth} from '../auth/auth';
+
+const canManage = computed(() => !auth.state.user || auth.canManage('tasks'));
 
 const tasks = ref<Task[]>([]), users = ref<User[]>([]), topics = ref<Topic[]>([]), meetings = ref<Meeting[]>([]),
     loading = ref(true), visible = ref(false), saving = ref(false), error = ref('');
@@ -100,7 +103,7 @@ onMounted(load);
       <div><p class="eyebrow">Follow-up</p>
         <h1>Open tasks</h1>
         <p>Actions created from topics and meeting discussions.</p></div>
-      <Button icon="pi pi-plus" label="New task" @click="visible=true"/>
+      <Button v-if="canManage" icon="pi pi-plus" label="New task" @click="visible=true"/>
     </header>
     <div class="filters"><Select v-model="filters.assignedToId" :options="users" option-label="firstName"
                                  option-value="id" placeholder="All assignees" show-clear @change="load">
@@ -136,7 +139,7 @@ onMounted(load);
         </Column>
         <Column>
           <template #body="{data}">
-            <Button icon="pi pi-check" label="Done" text @click="complete(data)"/>
+            <Button v-if="canManage" icon="pi pi-check" label="Done" text @click="complete(data)"/>
           </template>
         </Column>
       </DataTable>

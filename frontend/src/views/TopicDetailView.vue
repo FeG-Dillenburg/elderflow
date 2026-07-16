@@ -1,5 +1,5 @@
 <script lang="ts" setup>
-import {onMounted, reactive, ref} from 'vue';
+import {computed, onMounted, reactive, ref} from 'vue';
 import {RouterLink, useRoute} from 'vue-router';
 import DOMPurify from 'dompurify';
 import Button from 'primevue/button';
@@ -11,6 +11,7 @@ import Select from 'primevue/select';
 import Tag from 'primevue/tag';
 import RichTextEditor from '../components/RichTextEditor.vue';
 import TopicEditDialog from '../components/TopicEditDialog.vue';
+import {auth} from '../auth/auth';
 import {
   api,
   formatUser,
@@ -24,6 +25,8 @@ import {
   type TopicUpdate,
   type User
 } from '../api/domain';
+
+const canManage = computed(() => !auth.state.user || auth.canManage('topics'));
 
 const route = useRoute();
 const id = route.params.id as string;
@@ -76,7 +79,7 @@ onMounted(load);
             <Tag :value="topic.status" severity="secondary"/>
             <span>{{ topic.type.replaceAll('_', ' ') }}</span></p>
         </div>
-        <div>
+        <div v-if="canManage">
           <Button icon="pi pi-pencil" label="Edit topic" text @click="editVisible=true"/>
           <Button icon="pi pi-plus" label="Add task" outlined @click="taskVisible=true"/>
         </div>
@@ -88,7 +91,7 @@ onMounted(load);
           </section>
           <section>
             <div class="section-heading"><h2>Updates and minutes</h2><span>{{ updates.length }} entries</span></div>
-            <div class="new-update">
+            <div v-if="canManage" class="new-update">
               <RichTextEditor v-model="updateText" height="120px"/>
               <Button :disabled="!updateText" icon="pi pi-plus" label="Add update" @click="addUpdate"/>
             </div>
@@ -124,7 +127,7 @@ onMounted(load);
           </section>
           <section>
             <div class="aside-heading"><h2>Open tasks</h2>
-              <Button aria-label="Add task" icon="pi pi-plus" rounded text @click="taskVisible=true"/>
+              <Button v-if="canManage" aria-label="Add task" icon="pi pi-plus" rounded text @click="taskVisible=true"/>
             </div>
             <article v-for="item in tasks" :key="item.id" class="task">
               <strong>{{ item.title }}</strong><small>{{ formatUser(item.assignedTo) }}
@@ -140,9 +143,9 @@ onMounted(load);
         </aside>
       </div>
     </template>
-    <TopicEditDialog v-if="topic" v-model:visible="editVisible" :sections="sections" :topic="topic" :users="users"
+    <TopicEditDialog v-if="topic && canManage" v-model:visible="editVisible" :sections="sections" :topic="topic" :users="users"
                      @saved="load"/>
-    <Dialog v-model:visible="taskVisible" :style="{width:'38rem',maxWidth:'calc(100vw - 2rem)'}" header="Add follow-up task"
+    <Dialog v-if="canManage" v-model:visible="taskVisible" :style="{width:'38rem',maxWidth:'calc(100vw - 2rem)'}" header="Add follow-up task"
             modal>
       <form id="topic-task" class="form" @submit.prevent="addTask"><label><span>Title</span>
         <InputText v-model="task.title" required/>

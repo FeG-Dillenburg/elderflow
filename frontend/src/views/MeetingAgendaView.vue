@@ -10,6 +10,8 @@ import Message from 'primevue/message';
 import Select from 'primevue/select';
 import Tag from 'primevue/tag';
 import RichTextEditor from '../components/RichTextEditor.vue';
+import {auth} from '../auth/auth';
+import {buildNumberedAgenda} from '../utils/agenda';
 import {
   api,
   formatUser,
@@ -21,7 +23,8 @@ import {
   type TopicInput,
   type User
 } from '../api/domain';
-import {buildNumberedAgenda} from '../utils/agenda';
+
+const canManage = computed(() => !auth.state.user || auth.canManage('meetings'));
 
 const route = useRoute();
 const id = route.params.id as string;
@@ -169,7 +172,7 @@ onMounted(load);
             <Tag :value="meeting.status" severity="secondary"/>
           </p>
         </div>
-        <div class="header-actions">
+        <div v-if="canManage" class="header-actions">
           <Button icon="pi pi-cog" label="Edit details" text @click="openEdit"/>
           <RouterLink :to="`/meetings/${id}/prepare`">
             <Button icon="pi pi-pencil" label="Prepare agenda" outlined/>
@@ -179,8 +182,8 @@ onMounted(load);
       <div class="metadata">
         <span><small>Meeting leader</small>{{ formatUser(meeting.meetingLeader) }}</span><span><small>Minute taker</small>{{ formatUser(meeting.minuteTaker) }}</span><span><small>Participants</small><span
           class="participant-list"><Tag v-for="person in meeting.participants" :key="person.id"
-                                        :value="formatUser(person.user)" removable severity="secondary"
-                                        @remove="removeParticipant(person.userId)"/><Button aria-label="Add participant" icon="pi pi-plus"
+                                        :value="formatUser(person.user)" :removable="canManage" severity="secondary"
+                                        @remove="removeParticipant(person.userId)"/><Button v-if="canManage" aria-label="Add participant" icon="pi pi-plus"
                                                                                             rounded
                                                                                             text
                                                                                             @click="participantVisible=true"/></span></span>
@@ -214,7 +217,7 @@ onMounted(load);
                   <template v-if="item.plannedDuration"> · {{ item.plannedDuration }} min</template>
                 </p>
               </div>
-              <div class="topic-actions">
+              <div v-if="canManage" class="topic-actions">
                 <Button :disabled="itemIndex===0" aria-label="Move up" icon="pi pi-chevron-up" rounded text
                         @click="move(group.items,itemIndex,-1)"/>
                 <Button :disabled="itemIndex===group.items.length-1" aria-label="Move down" icon="pi pi-chevron-down" rounded
@@ -233,14 +236,14 @@ onMounted(load);
                   <template v-if="task.dueDate"> · {{ task.dueDate }}</template>
                 </small></p>
             </div>
-            <div v-if="openEditors[item.id]" class="quick-update">
+            <div v-if="canManage && openEditors[item.id]" class="quick-update">
               <RichTextEditor v-model="updateEditors[item.id]" height="100px"/>
               <div class="quick-update-actions">
                 <Button label="Cancel" severity="secondary" text @click="openEditors[item.id]=false"/>
                 <Button icon="pi pi-check" label="Save minute" @click="addUpdate(item)"/>
               </div>
             </div>
-            <div v-else class="topic-footer">
+            <div v-else-if="canManage" class="topic-footer">
               <Button icon="pi pi-plus" label="Add minute / update" text @click="openUpdateEditor(item.id)"/>
               <span><Button :aria-pressed="item.topic?.status === 'deferred'"
                   :label="item.topic?.status === 'deferred' ? 'Deferred' : 'Defer'"
@@ -252,7 +255,7 @@ onMounted(load);
       </main>
     </template>
     <p v-else-if="loading">Loading agenda...</p>
-    <Dialog v-model:visible="participantVisible" header="Add participant" modal>
+    <Dialog v-if="canManage" v-model:visible="participantVisible" header="Add participant" modal>
       <form id="participant-form" class="participant-form" @submit.prevent="addParticipant"><Select
           v-model="participant.userId" :options="users" option-label="firstName" option-value="id"
           placeholder="Select user">
@@ -263,7 +266,7 @@ onMounted(load);
         <Button form="participant-form" label="Add" type="submit"/>
       </template>
     </Dialog>
-    <Dialog v-model:visible="editVisible" :style="{width:'48rem',maxWidth:'calc(100vw - 2rem)'}" header="Edit meeting details"
+    <Dialog v-if="canManage" v-model:visible="editVisible" :style="{width:'48rem',maxWidth:'calc(100vw - 2rem)'}" header="Edit meeting details"
             modal>
       <form id="edit-meeting" class="edit-form" @submit.prevent="saveMeeting">
         <section aria-labelledby="schedule-heading" class="form-section">

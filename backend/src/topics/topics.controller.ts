@@ -6,8 +6,10 @@ import { Topic } from './topic.entity';
 import { TopicUpdate } from './topic-update.entity';
 import { TopicsService } from './topics.service';
 import { MeetingTopic } from '../meetings/meeting-topic.entity';
+import { Permission } from '../auth/permissions';
 
 @Controller('api/topics')
+@Permission('topics')
 export class TopicsController {
   constructor(private readonly service: TopicsService) {}
 

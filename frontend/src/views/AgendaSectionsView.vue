@@ -1,12 +1,14 @@
 <script setup lang="ts">
-import {onMounted, reactive, ref} from 'vue';
+import {computed, onMounted, reactive, ref} from 'vue';
 import Button from 'primevue/button';
 import Checkbox from 'primevue/checkbox';
 import InputNumber from 'primevue/inputnumber';
 import InputText from 'primevue/inputtext';
 import Message from 'primevue/message';
 import {api, type AgendaSection} from '../api/domain';
+import {auth} from '../auth/auth';
 
+const canManage = computed(() => !auth.state.user || auth.canManage('contentSettings'));
 const sections = ref<AgendaSection[]>([]), error = ref(''), saving = ref(false);
 const draft = reactive({name: '', position: 1, isDefault: true});
 const load = async () => {
@@ -55,10 +57,10 @@ onMounted(load);
         <label>
           <Checkbox v-model="section.isDefault" binary/>
           Default</label>
-        <Button icon="pi pi-save" text aria-label="Save" :loading="saving" @click="save(section)"/>
-        <Button icon="pi pi-trash" severity="danger" text aria-label="Delete" @click="remove(section.id)"/>
+        <Button v-if="canManage" icon="pi pi-save" text aria-label="Save" :loading="saving" @click="save(section)"/>
+        <Button v-if="canManage" icon="pi pi-trash" severity="danger" text aria-label="Delete" @click="remove(section.id)"/>
       </article>
-      <form class="new-section" @submit.prevent="create">
+      <form v-if="canManage" class="new-section" @submit.prevent="create">
         <InputNumber v-model="draft.position" class="position-input" :min="1"/>
         <InputText v-model="draft.name" placeholder="New section name" required/>
         <label>

@@ -73,13 +73,21 @@ describe("UsersService", () => {
       email: "alex@example.com",
       firstName: "Alex",
       lastName: "Smith",
+      role: "user" as const,
+      password: "password123!",
     };
-    const user = { id: "user-id", ...input } as User;
+    const user = { id: "user-id", email: input.email, firstName: input.firstName, lastName: input.lastName, role: input.role } as User;
     repository.create.mockReturnValue(user);
     repository.save.mockResolvedValue(user);
 
     await expect(service.create(input)).resolves.toEqual(user);
-    expect(repository.create).toHaveBeenCalledWith(input);
+    expect(repository.create).toHaveBeenCalledWith(expect.objectContaining({
+      email: input.email,
+      firstName: input.firstName,
+      lastName: input.lastName,
+      role: input.role,
+      passwordHash: expect.any(String),
+    }));
     expect(repository.save).toHaveBeenCalledWith(user);
   });
 
@@ -88,8 +96,10 @@ describe("UsersService", () => {
       email: "alex@example.com",
       firstName: "Alex",
       lastName: "Smith",
+      role: "user" as const,
+      password: "password123!",
     };
-    repository.create.mockReturnValue(input as User);
+    repository.create.mockReturnValue(input as unknown as User);
     const error = new QueryFailedError(
       "INSERT",
       [],
@@ -106,8 +116,10 @@ describe("UsersService", () => {
       email: "alex@example.com",
       firstName: "Alex",
       lastName: "Smith",
+      role: "user" as const,
+      password: "password123!",
     };
-    repository.create.mockReturnValue(input as User);
+    repository.create.mockReturnValue(input as unknown as User);
     for (const error of [
       new QueryFailedError(
         "INSERT",
