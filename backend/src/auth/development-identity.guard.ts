@@ -2,7 +2,7 @@ import { CanActivate, ExecutionContext, ForbiddenException, Injectable, Unauthor
 import { ConfigService } from '@nestjs/config';
 import { Reflector } from '@nestjs/core';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { IsNull, Repository } from 'typeorm';
 import { User } from '../users/user.entity';
 import { IS_PUBLIC_KEY } from './public.decorator';
 import { ROLES_KEY } from './roles.decorator';
@@ -31,7 +31,7 @@ export class DevelopmentIdentityGuard implements CanActivate {
       throw new UnauthorizedException('DEV_USER_EMAIL must select a development user');
     }
 
-    const user = await this.users.findOne({ where: { email: email.toLowerCase() } });
+    const user = await this.users.findOne({ where: { email: email.toLowerCase(), archivedAt: IsNull() } });
     if (!user) {
       throw new UnauthorizedException(`Development user ${email} does not exist`);
     }

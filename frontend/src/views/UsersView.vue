@@ -6,12 +6,23 @@ import DataTable from 'primevue/datatable';
 import Dialog from 'primevue/dialog';
 import InputText from 'primevue/inputtext';
 import Message from 'primevue/message';
-import { createUser, getUsers, type CreateUserInput, type User } from '../api/users';
+import {
+  createUser,
+  getUsers,
+  removeUser,
+  restoreUser,
+  type CreateUserInput,
+  type User,
+} from '../api/users';
 
 const users = ref<User[]>([]);
 const loading = ref(true);
 const saving = ref(false);
 const dialogVisible = ref(false);
+const removalDialogVisible = ref(false);
+const showArchived = ref(false);
+const processingUserId = ref<string | null>(null);
+const selectedUser = ref<User | null>(null);
 const errorMessage = ref('');
 const form = reactive<CreateUserInput>({ email: '', firstName: '', lastName: '' });
 
@@ -19,12 +30,56 @@ async function loadUsers(): Promise<void> {
   loading.value = true;
   errorMessage.value = '';
   try {
-    users.value = await getUsers();
+    users.value = await getUsers(showArchived.value);
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : 'Unable to load users';
   } finally {
     loading.value = false;
   }
+}
+
+async function toggleArchivedUsers(): Promise<void> {
+  showArchived.value = !showArchived.value;
+  await loadUsers();
+}
+
+function requestRemoval(user: User): void {
+  selectedUser.value = user;
+  errorMessage.value = '';
+  removalDialogVisible.value = true;
+}
+
+async function confirmRemoval(): Promise<void> {
+  if (!selectedUser.value) return;
+  processingUserId.value = selectedUser.value.id;
+  errorMessage.value = '';
+  try {
+    await removeUser(selectedUser.value.id);
+    removalDialogVisible.value = false;
+    selectedUser.value = null;
+    await loadUsers();
+  } catch (error) {
+    errorMessage.value = error instanceof Error ? error.message : 'Unable to remove user';
+  } finally {
+    processingUserId.value = null;
+  }
+}
+
+async function restore(user: User): Promise<void> {
+  processingUserId.value = user.id;
+  errorMessage.value = '';
+  try {
+    await restoreUser(user.id);
+    await loadUsers();
+  } catch (error) {
+    errorMessage.value = error instanceof Error ? error.message : 'Unable to restore user';
+  } finally {
+    processingUserId.value = null;
+  }
+}
+
+function userRowClass(user: User): string {
+  return user.archivedAt ? 'archived-user' : '';
 }
 
 function openCreateDialog(): void {
@@ -61,7 +116,7 @@ onMounted(loadUsers);
       <Button label="Add user" icon="pi pi-plus" @click="openCreateDialog" />
     </header>
 
-    <Message v-if="errorMessage && !dialogVisible" severity="error" :closable="false">
+    <Message v-if="errorMessage && !dialogVisible && !removalDialogVisible" severity="error" :closable="false">
       {{ errorMessage }}
     </Message>
 
@@ -72,13 +127,49 @@ onMounted(loadUsers);
         data-key="id"
         striped-rows
         responsive-layout="scroll"
+        :row-class="userRowClass"
         :empty-message="loading ? 'Loading users...' : 'No users yet.'"
       >
         <Column field="firstName" header="First name" />
         <Column field="lastName" header="Last name" />
         <Column field="email" header="Email" />
+        <Column header="" class="actions-column">
+          <template #body="{ data }">
+            <Button
+              v-if="data.archivedAt"
+              icon="pi pi-replay"
+              severity="secondary"
+              text
+              rounded
+              :loading="processingUserId === data.id"
+              :aria-label="`Restore ${data.firstName} ${data.lastName}`"
+              title="Restore user"
+              @click="restore(data)"
+            />
+            <Button
+              v-else
+              icon="pi pi-trash"
+              severity="danger"
+              text
+              rounded
+              :loading="processingUserId === data.id"
+              :aria-label="`Delete or archive ${data.firstName} ${data.lastName}`"
+              title="Delete or archive user"
+              @click="requestRemoval(data)"
+            />
+          </template>
+        </Column>
       </DataTable>
     </div>
+
+    <Button
+      class="archived-toggle"
+      :label="showArchived ? 'Hide archived users' : 'Show archived users'"
+      :icon="showArchived ? 'pi pi-eye-slash' : 'pi pi-eye'"
+      severity="secondary"
+      text
+      @click="toggleArchivedUsers"
+    />
 
     <Dialog v-model:visible="dialogVisible" modal header="Add user" :style="{ width: '30rem', maxWidth: 'calc(100vw - 2rem)' }">
       <form id="create-user-form" class="user-form" @submit.prevent="submitUser">
@@ -99,6 +190,36 @@ onMounted(loadUsers);
       <template #footer>
         <Button label="Cancel" severity="secondary" text @click="dialogVisible = false" />
         <Button label="Create user" type="submit" form="create-user-form" :loading="saving" />
+      </template>
+    </Dialog>
+
+    <Dialog
+      v-model:visible="removalDialogVisible"
+      modal
+      header="Delete or archive user?"
+      :style="{ width: '32rem', maxWidth: 'calc(100vw - 2rem)' }"
+    >
+      <div class="removal-confirmation">
+        <Message v-if="errorMessage" severity="error" :closable="false">
+          {{ errorMessage }}
+        </Message>
+        <p>
+          <strong v-if="selectedUser">
+            {{ selectedUser.firstName }} {{ selectedUser.lastName }}
+          </strong>
+          will be permanently deleted if no data is attached. If the user is linked to any record,
+          the user will be archived instead and can be restored later.
+        </p>
+      </div>
+      <template #footer>
+        <Button label="Cancel" severity="secondary" text @click="removalDialogVisible = false" />
+        <Button
+          label="Delete or archive"
+          icon="pi pi-trash"
+          severity="danger"
+          :loading="processingUserId === selectedUser?.id"
+          @click="confirmRemoval"
+        />
       </template>
     </Dialog>
   </section>
@@ -146,6 +267,31 @@ h1 {
   box-shadow: 0 8px 24px rgb(31 41 55 / 5%);
 }
 
+.archived-toggle {
+  margin-top: 0.65rem;
+}
+
+.removal-confirmation {
+  display: grid;
+  gap: 1rem;
+}
+
+.removal-confirmation p {
+  margin: 0;
+  color: #475569;
+  line-height: 1.6;
+}
+
+:deep(.actions-column) {
+  width: 4rem;
+  text-align: right;
+}
+
+:deep(.archived-user) {
+  color: #64748b;
+  opacity: 0.72;
+}
+
 .user-form {
   display: grid;
   gap: 1rem;
@@ -171,4 +317,3 @@ h1 {
   }
 }
 </style>
-

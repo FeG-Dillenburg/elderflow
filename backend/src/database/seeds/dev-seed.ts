@@ -14,7 +14,8 @@ async function seed(): Promise<void> {
     ON CONFLICT ("email") DO UPDATE SET
       "first_name" = EXCLUDED."first_name",
       "last_name" = EXCLUDED."last_name",
-      "role" = EXCLUDED."role";
+      "role" = EXCLUDED."role",
+      "archived_at" = NULL;
   `);
   await dataSource.destroy();
 }
