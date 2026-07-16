@@ -18,7 +18,7 @@ import {
   type User,
 } from '../api/users';
 import { auth } from '../auth/auth';
-import type { UserRole } from '../api/domain';
+import { roleLabel, userRoleOptions } from '../auth/roles';
 
 const users = ref<User[]>([]);
 const loading = ref(true);
@@ -30,13 +30,6 @@ const processingUserId = ref<string | null>(null);
 const selectedUser = ref<User | null>(null);
 const errorMessage = ref('');
 const editingUserId = ref<string | null>(null);
-const roles: Array<{ label: string; value: UserRole }> = [
-  { label: 'Superadmin', value: 'superadmin' },
-  { label: 'IT admin', value: 'it-admin' },
-  { label: 'Admin', value: 'admin' },
-  { label: 'User', value: 'user' },
-  { label: 'Guest', value: 'guest' },
-];
 const form = reactive<CreateUserInput>({ email: '', firstName: '', lastName: '', role: 'user', password: '' });
 
 async function loadUsers(): Promise<void> {
@@ -159,7 +152,7 @@ onMounted(loadUsers);
         <Column field="lastName" header="Last name" />
         <Column field="email" header="Email" />
         <Column field="role" header="Role">
-          <template #body="{ data }">{{ roles.find((role) => role.value === data.role)?.label }}</template>
+          <template #body="{ data }">{{ roleLabel(data.role) }}</template>
         </Column>
         <Column header="" class="actions-column">
           <template #body="{ data }">
@@ -219,7 +212,7 @@ onMounted(loadUsers);
         </label>
         <label>
           <span>Role</span>
-          <Select v-model="form.role" :options="roles" option-label="label" option-value="value" />
+          <Select v-model="form.role" :options="userRoleOptions" option-label="label" option-value="value" />
         </label>
         <label>
           <span>{{ editingUserId ? 'New password (optional)' : 'Password' }}</span>

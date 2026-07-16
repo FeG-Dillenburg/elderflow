@@ -6,6 +6,7 @@ import Message from 'primevue/message';
 import Password from 'primevue/password';
 import { api } from '../api/domain';
 import { auth } from '../auth/auth';
+import { roleLabel } from '../auth/roles';
 
 const user = auth.state.user!;
 const form = reactive({ email: user.email, firstName: user.firstName, lastName: user.lastName, password: '' });
@@ -35,7 +36,7 @@ async function submit(): Promise<void> {
     <p class="description">Update your personal details or choose a new password.</p>
     <form class="profile-card" @submit.prevent="submit">
       <Message v-if="message" :severity="message.severity" :closable="false">{{ message.text }}</Message>
-      <div class="role-field"><span>Role</span><strong>{{ auth.state.user?.role }}</strong></div>
+      <div class="role-field"><span>Role</span><strong>{{ roleLabel(user.role) }}</strong></div>
       <label><span>First name</span><InputText v-model="form.firstName" required maxlength="100" /></label>
       <label><span>Last name</span><InputText v-model="form.lastName" required maxlength="100" /></label>
       <label><span>Email</span><InputText v-model="form.email" type="email" required maxlength="320" /></label>

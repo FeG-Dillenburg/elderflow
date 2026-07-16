@@ -3,6 +3,7 @@ import { computed } from 'vue';
 import {RouterLink, RouterView} from 'vue-router';
 import { formatUser, type PermissionCategory } from './api/domain';
 import { auth } from './auth/auth';
+import { roleLabel } from './auth/roles';
 import router from './router';
 
 const navigation: Array<{ to: string; icon: string; label: string; permission: PermissionCategory }> = [
@@ -33,7 +34,7 @@ async function logout(): Promise<void> {
       <div class="current-user">
         <RouterLink to="/profile" class="profile-link">
           <span class="avatar">{{ auth.state.user.firstName[0] }}{{ auth.state.user.lastName[0] }}</span>
-          <span><strong>{{ formatUser(auth.state.user) }}</strong><small>{{ auth.state.user.role }}</small></span>
+          <span><strong>{{ formatUser(auth.state.user) }}</strong><small>{{ roleLabel(auth.state.user.role) }}</small></span>
         </RouterLink>
         <button class="logout-button" type="button" title="Sign out" aria-label="Sign out" @click="logout">
           <i class="pi pi-sign-out" aria-hidden="true" />

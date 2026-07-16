@@ -20,6 +20,7 @@ describe('App', () => {
     };
     const wrapper = mount(App, { global: { stubs } });
     expect(wrapper.text()).toContain('Ada Lovelace');
+    expect(wrapper.text()).toContain('Admin');
     for (const path of ['/', '/meetings', '/topics', '/tasks', '/users', '/agenda-sections', '/profile']) {
       expect(wrapper.html()).toContain(`href="${path}"`);
     }
@@ -31,6 +32,7 @@ describe('App', () => {
       permissions: { ...permissions, dashboard: 'hide', users: 'view', meetings: 'hide', topics: 'hide', tasks: 'hide', contentSettings: 'hide', authSettings: 'manage' },
     };
     const wrapper = mount(App, { global: { stubs } });
+    expect(wrapper.text()).toContain('IT admin');
     expect(wrapper.html()).toContain('href="/users"');
     expect(wrapper.html()).not.toContain('href="/meetings"');
   });
