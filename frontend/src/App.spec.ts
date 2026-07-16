@@ -28,7 +28,7 @@ describe('App', () => {
   it('hides forbidden content navigation for an IT admin', () => {
     auth.state.user = {
       id: 'it', email: 'it@example.com', firstName: 'Ivy', lastName: 'Tech', role: 'it-admin',
-      permissions: { ...permissions, dashboard: 'hide', meetings: 'hide', topics: 'hide', tasks: 'hide', contentSettings: 'hide', authSettings: 'manage' },
+      permissions: { ...permissions, dashboard: 'hide', users: 'view', meetings: 'hide', topics: 'hide', tasks: 'hide', contentSettings: 'hide', authSettings: 'manage' },
     };
     const wrapper = mount(App, { global: { stubs } });
     expect(wrapper.html()).toContain('href="/users"');

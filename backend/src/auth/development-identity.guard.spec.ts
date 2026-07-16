@@ -61,6 +61,7 @@ describe('DevelopmentIdentityGuard', () => {
 
   it.each([
     ['it-admin', 'meetings', 'GET'],
+    ['it-admin', 'users', 'PATCH'],
     ['guest', 'topics', 'POST'],
     ['user', 'authSettings', 'GET'],
   ])('rejects %s access to %s %s', async (role, category, method) => {
@@ -80,5 +81,12 @@ describe('DevelopmentIdentityGuard', () => {
     sessions.verify.mockReturnValue({ sub: 'admin' });
     users.findOne.mockResolvedValue({ id: 'admin', role: 'admin' });
     await expect(guard.canActivate(context('PATCH', 'Bearer token'))).resolves.toBe(true);
+  });
+
+  it('allows IT admins to view users without granting user-management access', async () => {
+    reflector.getAllAndOverride.mockReturnValueOnce(false).mockReturnValueOnce('users');
+    sessions.verify.mockReturnValue({ sub: 'it-admin' });
+    users.findOne.mockResolvedValue({ id: 'it-admin', role: 'it-admin' });
+    await expect(guard.canActivate(context('GET', 'Bearer token'))).resolves.toBe(true);
   });
 });

@@ -1,10 +1,46 @@
 import { flushPromises, mount } from "@vue/test-utils";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import UsersView from "./UsersView.vue";
+import { auth } from "../auth/auth";
 
 describe("UsersView", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    auth.state.user = null;
+  });
+
+  it("hides user-management controls for an IT admin", async () => {
+    auth.state.user = {
+      id: "it-admin",
+      email: "it@example.com",
+      firstName: "Ivy",
+      lastName: "Tech",
+      role: "it-admin",
+      permissions: {
+        dashboard: "hide",
+        users: "view",
+        meetings: "hide",
+        topics: "hide",
+        tasks: "hide",
+        contentSettings: "hide",
+        authSettings: "manage",
+      },
+    };
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve([]) }));
+    const wrapper = mount(UsersView, {
+      global: {
+        stubs: {
+          DataTable: { template: "<div><slot /></div>" },
+          Column: { template: "<span><slot name='body' :data='{}' /></span>" },
+          Dialog: true,
+          Button: { props: ["label"], template: "<button>{{ label }}</button>" },
+          Message: true,
+        },
+      },
+    });
+    await flushPromises();
+    expect(wrapper.text()).not.toContain("Add user");
+    expect(wrapper.text()).not.toContain("Show archived users");
   });
 
   it("loads and displays users from the API", async () => {

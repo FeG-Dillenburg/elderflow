@@ -31,7 +31,7 @@ export const permissionsByRole: Record<UserRole, UserPermissions> = {
   },
   'it-admin': {
     dashboard: 'hide',
-    users: 'manage',
+    users: 'view',
     meetings: 'hide',
     topics: 'hide',
     tasks: 'hide',
