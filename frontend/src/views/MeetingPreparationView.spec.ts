@@ -10,6 +10,7 @@ vi.mock("vue-router", () => ({
 const stubs = {
   Button: true,
   Dialog: true,
+  InputNumber: true,
   InputText: true,
   Message: true,
   Select: true,
@@ -29,6 +30,7 @@ const meeting: any = {
       topicId: "topic-2",
       sectionId: "second",
       position: 2,
+      plannedDuration: 10,
       topic: { name: "Later" },
     },
     {
@@ -36,6 +38,7 @@ const meeting: any = {
       topicId: "topic-1",
       sectionId: "second",
       position: 1,
+      plannedDuration: 15,
       topic: { name: "First" },
     },
   ],
@@ -94,6 +97,11 @@ describe("MeetingPreparationView", () => {
     expect(wrapper.find('[aria-label="Move up"]').exists()).toBe(false);
     expect(wrapper.find('[aria-label="Move down"]').exists()).toBe(false);
     expect(wrapper.findAll('[aria-label="Remove"]')).toHaveLength(2);
+    expect(wrapper.text()).toContain("25 min.");
+    const durations = wrapper.findAll("input-number-stub");
+    expect(durations).toHaveLength(2);
+    expect(durations[0].attributes("step")).toBe("5");
+    expect(durations[0].attributes("suffix")).toBe(" min.");
   });
   it("selects explicit, topic-default, then first available section and does nothing without one", async () => {
     const wrapper = await view();
@@ -160,5 +168,16 @@ describe("MeetingPreparationView", () => {
     vm.sections = [];
     await vm.createAndAdd();
     expect(vm.newVisible).toBe(false);
+  });
+  it("saves an agenda topic duration", async () => {
+    const wrapper = await view();
+    const vm: any = wrapper.vm;
+    vi.spyOn(api, "updateMeetingTopic").mockResolvedValue({} as any);
+    const item = vm.grouped[1].items[0];
+    await vm.saveDuration(item, 20);
+    expect(api.updateMeetingTopic).toHaveBeenCalledWith("meeting-1", expect.objectContaining({
+      id: "item-1",
+      plannedDuration: 20,
+    }));
   });
 });

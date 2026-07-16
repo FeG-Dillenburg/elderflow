@@ -4,6 +4,7 @@ import { RouterLink, useRoute } from 'vue-router';
 import Draggable from 'vuedraggable';
 import Button from 'primevue/button';
 import Dialog from 'primevue/dialog';
+import InputNumber from 'primevue/inputnumber';
 import InputText from 'primevue/inputtext';
 import Message from 'primevue/message';
 import Select from 'primevue/select';
@@ -147,6 +148,14 @@ const remove = async (item: MeetingTopic) => {
   await withReload(() => api.removeMeetingTopic(id, item.id));
 };
 
+const saveDuration = async (item: MeetingTopic, duration: number | null) => {
+  item.plannedDuration = duration;
+  await withReload(() => api.updateMeetingTopic(id, item));
+};
+
+const sectionDuration = (items: MeetingTopic[]) =>
+  items.reduce((total, item) => total + (item.plannedDuration ?? 0), 0);
+
 const createAndAdd = async () => {
   await withReload(async () => {
     const topic = await api.createTopic(form as TopicInput);
@@ -178,7 +187,10 @@ onMounted(load);
           <section v-for="group in grouped" :key="group.section.id" class="section">
             <h2>
               {{ group.section.name }}
-              <Tag :value="String(group.items.length)" severity="secondary" />
+              <span class="section-meta">
+                <span>{{ sectionDuration(group.items) }} min.</span>
+                <Tag :value="String(group.items.length)" severity="secondary" />
+              </span>
             </h2>
             <Draggable
               :list="group.items"
@@ -204,6 +216,16 @@ onMounted(load);
                     </small>
                   </div>
                   <div>
+                    <InputNumber
+                      :model-value="item.plannedDuration"
+                      aria-label="Planned duration in minutes"
+                      :disabled="pending"
+                      :min="1"
+                      :step="5"
+                      suffix=" min."
+                      show-buttons
+                      @update:model-value="saveDuration(item, $event)"
+                    />
                     <Button :disabled="pending" aria-label="Remove" icon="pi pi-times" rounded severity="danger" text @click="remove(item)" />
                   </div>
                 </article>
@@ -278,9 +300,12 @@ onMounted(load);
 .section { margin-bottom: 1rem; padding: 1rem; border: 1px solid #e1e6ed; border-radius: .75rem; background: #fff; }
 .section h2, .suggestions-heading h2 { margin: 0; font-size: 1rem; }
 .section h2 { display: flex; align-items: center; justify-content: space-between; padding-bottom: .65rem; border-bottom: 1px solid #e9edf2; }
+.section-meta { display: flex; align-items: center; gap: .55rem; color: #718096; font-size: .8rem; font-weight: 600; }
 .agenda-drop-zone { min-height: 3.25rem; }
 .section article { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: .7rem; padding: .7rem 0; border-bottom: 1px solid #edf0f4; }
 .section article:last-child { border: 0; }
+.section article > :last-child { display: flex; align-items: center; gap: .25rem; }
+.section article :deep(.p-inputnumber) { width: 8.25rem; }
 .section small, .suggestion small { display: block; margin-top: .2rem; color: #718096; font-size: .75rem; }
 .drag-handle { display: grid; grid-template-columns: repeat(2, 3px); gap: 3px; width: 20px; padding: 4px; border: 0; border-radius: 4px; background: transparent; cursor: grab; touch-action: none; }
 .drag-handle:active { cursor: grabbing; }
