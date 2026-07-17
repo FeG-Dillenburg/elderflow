@@ -26,6 +26,12 @@ import { migrations } from './database/migrations';
           then: Joi.required(),
           otherwise: Joi.optional(),
         }),
+        DEV_AUTH_BYPASS: Joi.boolean().default(false),
+        AUTH_SESSION_SECRET: Joi.string().min(32).when('NODE_ENV', {
+          is: 'production',
+          then: Joi.required(),
+          otherwise: Joi.string().default('elderflow-development-session-secret'),
+        }),
       }),
     }),
     TypeOrmModule.forRootAsync({

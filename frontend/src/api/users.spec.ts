@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createUser, getUsers, removeUser, restoreUser } from "./users";
+import { createUser, getUsers, removeUser, restoreUser, updateUser } from "./users";
 
 const response = (body: unknown, ok = true) =>
   ({ ok, json: vi.fn().mockResolvedValue(body) }) as unknown as Response;
@@ -13,6 +13,8 @@ describe("users API client", () => {
       email: "ada@example.com",
       firstName: "Ada",
       lastName: "Lovelace",
+      role: "admin",
+      password: "password123!",
     });
     expect(
       fetch.mock.calls.map((call) => [call[0], call[1]?.method, call[1]?.body]),
@@ -25,9 +27,20 @@ describe("users API client", () => {
           email: "ada@example.com",
           firstName: "Ada",
           lastName: "Lovelace",
+          role: "admin",
+          password: "password123!",
         }),
       ],
     ]);
+  });
+  it("updates a user's personal fields, role, and optional password", async () => {
+    const fetch = vi.fn().mockResolvedValue(response({ id: "user-id" }));
+    vi.stubGlobal("fetch", fetch);
+    await updateUser("user-id", { role: "guest", firstName: "Grace" });
+    expect(fetch).toHaveBeenCalledWith(
+      "http://localhost:3000/api/users/user-id",
+      expect.objectContaining({ method: "PATCH", body: JSON.stringify({ role: "guest", firstName: "Grace" }) }),
+    );
   });
   it("includes archived users and sends remove and restore requests", async () => {
     const fetch = vi.fn().mockResolvedValue(response([]));

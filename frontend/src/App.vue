@@ -1,41 +1,51 @@
 <script lang="ts" setup>
-import {onMounted, ref} from 'vue';
+import { computed } from 'vue';
 import {RouterLink, RouterView} from 'vue-router';
-import {api, formatUser, type User} from './api/domain';
+import { formatUser, type PermissionCategory } from './api/domain';
+import { auth } from './auth/auth';
+import { roleLabel } from './auth/roles';
+import router from './router';
 
-const currentUser = ref<User | null>(null);
-onMounted(async () => {
-  currentUser.value = await api.me().catch(() => null);
-});
-
-const navigation = [
-  {to: '/', icon: 'pi-home', label: 'Dashboard'},
-  {to: '/meetings', icon: 'pi-calendar', label: 'Meetings'},
-  {to: '/topics', icon: 'pi-comments', label: 'Topics'},
-  {to: '/tasks', icon: 'pi-check-square', label: 'Open tasks'},
-  {to: '/users', icon: 'pi-users', label: 'Users'},
-  {to: '/agenda-sections', icon: 'pi-list', label: 'Agenda sections'},
+const navigation: Array<{ to: string; icon: string; label: string; permission: PermissionCategory }> = [
+  {to: '/', icon: 'pi-home', label: 'Dashboard', permission: 'dashboard'},
+  {to: '/meetings', icon: 'pi-calendar', label: 'Meetings', permission: 'meetings'},
+  {to: '/topics', icon: 'pi-comments', label: 'Topics', permission: 'topics'},
+  {to: '/tasks', icon: 'pi-check-square', label: 'Open tasks', permission: 'tasks'},
+  {to: '/users', icon: 'pi-users', label: 'Users', permission: 'users'},
+  {to: '/agenda-sections', icon: 'pi-list', label: 'Agenda sections', permission: 'contentSettings'},
 ];
+const visibleNavigation = computed(() => navigation.filter((item) => auth.canView(item.permission)));
+
+async function logout(): Promise<void> {
+  auth.logout();
+  await router.push('/login');
+}
 </script>
 
 <template>
-  <div class="app-shell">
+  <div v-if="auth.state.user" class="app-shell">
     <aside class="sidebar">
       <div class="brand"><span class="brand-mark">E</span><span>ElderFlow</span></div>
       <nav aria-label="Main navigation">
-        <RouterLink v-for="item in navigation" :key="item.to" :to="item.to" class="nav-link">
+        <RouterLink v-for="item in visibleNavigation" :key="item.to" :to="item.to" class="nav-link">
           <i :class="item.icon" aria-hidden="true" class="pi"/>{{ item.label }}
         </RouterLink>
       </nav>
-      <div v-if="currentUser" class="current-user">
-        <span class="avatar">{{ currentUser.firstName[0] }}{{ currentUser.lastName[0] }}</span>
-        <span><strong>{{ formatUser(currentUser) }}</strong><small>{{ currentUser.role }} · development</small></span>
+      <div class="current-user">
+        <RouterLink to="/profile" class="profile-link">
+          <span class="avatar">{{ auth.state.user.firstName[0] }}{{ auth.state.user.lastName[0] }}</span>
+          <span><strong>{{ formatUser(auth.state.user) }}</strong><small>{{ roleLabel(auth.state.user.role) }}</small></span>
+        </RouterLink>
+        <button class="logout-button" type="button" title="Sign out" aria-label="Sign out" @click="logout">
+          <i class="pi pi-sign-out" aria-hidden="true" />
+        </button>
       </div>
     </aside>
     <main class="main-content">
       <RouterView/>
     </main>
   </div>
+  <RouterView v-else />
 </template>
 
 <style scoped>
@@ -118,6 +128,26 @@ nav {
   padding: .9rem .55rem 0;
   border-top: 1px solid rgb(255 255 255 / 12%);
 }
+
+.profile-link {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  align-items: center;
+  gap: .7rem;
+  color: inherit;
+  text-decoration: none;
+}
+
+.logout-button {
+  padding: .4rem;
+  border: 0;
+  background: transparent;
+  color: #aebbd0;
+  cursor: pointer;
+}
+
+.logout-button:hover { color: #fff; }
 
 .current-user strong, .current-user small {
   display: block;

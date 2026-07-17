@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { reactive, watch } from 'vue';
+import { computed, reactive, watch } from 'vue';
 import Button from 'primevue/button';
 import Checkbox from 'primevue/checkbox';
 import DatePicker from 'primevue/datepicker';
@@ -8,10 +8,12 @@ import InputText from 'primevue/inputtext';
 import Select from 'primevue/select';
 import { api, formatUser, toLocalDate, type AgendaSection, type Topic, type TopicInput, type User } from '../api/domain';
 import RichTextEditor from './RichTextEditor.vue';
+import { assignableUsers } from '../auth/roles';
 
 const props = defineProps<{ topic: Topic; users: User[]; sections: AgendaSection[] }>();
 const emit = defineEmits<{ saved: [] }>();
 const visible = defineModel<boolean>('visible', { required: true });
+const responsibleUserOptions = computed(() => assignableUsers(props.users));
 const form = reactive({
   name: '', description: '', type: 'general', status: 'open', followUpDate: null as Date | null,
   responsibleUserId: null as string | null, isRecurring: false, defaultSectionId: null as string | null,
@@ -49,7 +51,7 @@ async function save(): Promise<void> {
         <label><span>Status</span><Select v-model="form.status" :options="['open', 'done', 'deferred', 'archived']" /></label>
       </div>
       <div class="row">
-        <label><span>Responsible</span><Select v-model="form.responsibleUserId" :options="users" option-label="firstName" option-value="id" show-clear><template #option="{ option }">{{ formatUser(option) }}</template></Select></label>
+        <label><span>Responsible</span><Select v-model="form.responsibleUserId" :options="responsibleUserOptions" option-label="firstName" option-value="id" show-clear><template #option="{ option }">{{ formatUser(option) }}</template></Select></label>
         <label><span>Follow-up date</span><DatePicker v-model="form.followUpDate" date-format="yy-mm-dd" show-button-bar /></label>
       </div>
       <label><span>Default section</span><Select v-model="form.defaultSectionId" :options="sections" option-label="name" option-value="id" show-clear /></label>

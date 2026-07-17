@@ -1,9 +1,11 @@
 import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common';
-import { CreateUserDto } from './dto/create-user.dto';
+import { CreateUserDto, UpdateUserDto } from './dto/create-user.dto';
 import { User } from './user.entity';
 import { UsersService } from './users.service';
+import { Permission } from '../auth/permissions';
 
 @Controller('api')
+@Permission('users')
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
@@ -12,9 +14,20 @@ export class UsersController {
     return this.usersService.findAll(includeArchived === 'true');
   }
 
+  @Get('user-directory')
+  @Permission('references')
+  findDirectory(): Promise<User[]> {
+    return this.usersService.findAll();
+  }
+
   @Post('user')
   create(@Body() input: CreateUserDto): Promise<User> {
     return this.usersService.create(input);
+  }
+
+  @Patch('users/:id')
+  update(@Param('id', ParseUUIDPipe) id: string, @Body() input: UpdateUserDto): Promise<User> {
+    return this.usersService.update(id, input);
   }
 
   @Delete('users/:id')

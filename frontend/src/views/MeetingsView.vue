@@ -1,5 +1,5 @@
 <script lang="ts" setup>
-import {onMounted, reactive, ref} from 'vue';
+import {computed, onMounted, reactive, ref} from 'vue';
 import {useRouter, RouterLink} from 'vue-router';
 import Button from 'primevue/button';
 import Column from 'primevue/column';
@@ -11,7 +11,10 @@ import Message from 'primevue/message';
 import Select from 'primevue/select';
 import Tag from 'primevue/tag';
 import {api, formatUser, meetingLabel, toLocalDate, type Meeting, type MeetingInput, type User} from '../api/domain';
+import {auth} from '../auth/auth';
+import {assignableUsers} from '../auth/roles';
 
+const canManage = computed(() => !auth.state.user || auth.canManage('meetings'));
 const router = useRouter();
 const meetings = ref<Meeting[]>([]);
 const users = ref<User[]>([]);
@@ -30,7 +33,9 @@ const form = reactive({
 const load = async () => {
   loading.value = true;
   try {
-    [meetings.value, users.value] = await Promise.all([api.meetings(), api.users()]);
+    const [loadedMeetings, loadedUsers] = await Promise.all([api.meetings(), api.userDirectory()]);
+    meetings.value = loadedMeetings;
+    users.value = assignableUsers(loadedUsers);
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Unable to load meetings';
   } finally {
@@ -69,7 +74,7 @@ const date = (value: string) => new Date(`${value}T12:00:00`).toLocaleDateString
       <div><p class="eyebrow">Gatherings</p>
         <h1>Meetings</h1>
         <p>Prepare agendas, run meetings, and preserve their history.</p></div>
-      <Button icon="pi pi-plus" label="New meeting" @click="visible = true"/>
+      <Button v-if="canManage" icon="pi pi-plus" label="New meeting" @click="visible = true"/>
     </header>
     <Message v-if="error" severity="error">{{ error }}</Message>
     <div class="table-card">
@@ -92,8 +97,11 @@ const date = (value: string) => new Date(`${value}T12:00:00`).toLocaleDateString
         </Column>
         <Column>
           <template #body="{ data }">
-            <RouterLink :to="`/meetings/${data.id}/prepare`">
+            <RouterLink v-if="canManage" :to="`/meetings/${data.id}/prepare`">
               <Button icon="pi pi-pencil" label="Prepare" text/>
+            </RouterLink>
+            <RouterLink v-else :to="`/meetings/${data.id}`">
+              <Button icon="pi pi-eye" label="Open agenda" text/>
             </RouterLink>
           </template>
         </Column>

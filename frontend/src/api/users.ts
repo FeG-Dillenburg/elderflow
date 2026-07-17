@@ -5,33 +5,17 @@ export interface User {
   lastName: string;
   createdAt: string;
   archivedAt: string | null;
+  role: import('./domain').UserRole;
 }
 
 export interface CreateUserInput {
   email: string;
   firstName: string;
   lastName: string;
+  role: import('./domain').UserRole;
+  password: string;
 }
-
-const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000';
-
-async function apiRequest<T>(path: string, options?: RequestInit): Promise<T> {
-  const response = await fetch(`${apiBaseUrl}${path}`, {
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      ...options?.headers,
-    },
-  });
-
-  if (!response.ok) {
-    const payload = (await response.json().catch(() => null)) as { message?: string | string[] } | null;
-    const message = Array.isArray(payload?.message) ? payload.message.join(', ') : payload?.message;
-    throw new Error(message || 'The request could not be completed');
-  }
-
-  return response.json() as Promise<T>;
-}
+import { request as apiRequest } from './domain';
 
 export function getUsers(includeArchived = false): Promise<User[]> {
   return apiRequest<User[]>(includeArchived ? '/api/users?includeArchived=true' : '/api/users');
@@ -40,6 +24,13 @@ export function getUsers(includeArchived = false): Promise<User[]> {
 export function createUser(input: CreateUserInput): Promise<User> {
   return apiRequest<User>('/api/user', {
     method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+export function updateUser(id: string, input: Partial<CreateUserInput>): Promise<User> {
+  return apiRequest<User>(`/api/users/${id}`, {
+    method: 'PATCH',
     body: JSON.stringify(input),
   });
 }

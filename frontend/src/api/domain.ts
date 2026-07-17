@@ -3,8 +3,14 @@ export interface User {
   email: string;
   firstName: string;
   lastName: string;
-  role: 'admin' | 'leadership' | 'viewer';
+  role: UserRole;
 }
+
+export type UserRole = 'superadmin' | 'it-admin' | 'admin' | 'user' | 'guest';
+export type PermissionLevel = 'manage' | 'view' | 'hide';
+export type PermissionCategory = 'dashboard' | 'users' | 'references' | 'meetings' | 'topics' | 'tasks' | 'contentSettings' | 'authSettings';
+export type UserPermissions = Record<PermissionCategory, PermissionLevel>;
+export interface AuthUser extends User { permissions: UserPermissions }
 
 export interface AgendaSection {
   id: string;
@@ -121,18 +127,20 @@ export interface DashboardData {
 }
 
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000';
+import { getSessionToken } from '../auth/session';
 
 export async function request<T>(path: string, options?: RequestInit): Promise<T> {
+  const token = getSessionToken();
   const response = await fetch(`${apiBaseUrl}${path}`, {
     ...options,
-    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}), ...options?.headers },
   });
   if (!response.ok) {
     const payload = (await response.json().catch(() => null)) as { message?: string | string[] } | null;
     const message = Array.isArray(payload?.message) ? payload.message.join(', ') : payload?.message;
     throw new Error(message || 'The request could not be completed');
   }
-  if (response.status === 204 || response.headers.get('content-length') === '0') return undefined as T;
+  if (response.status === 204 || response.headers?.get('content-length') === '0') return undefined as T;
   return response.json() as Promise<T>;
 }
 
@@ -146,8 +154,11 @@ const query = (values: Record<string, string | boolean | null | undefined>): str
 };
 
 export const api = {
-  me: () => request<User>('/api/me'),
+  login: (input: { email: string; password: string }) => request<{ token: string; user: AuthUser }>('/api/auth/login', { method: 'POST', body: JSON.stringify(input) }),
+  me: () => request<AuthUser>('/api/auth/me'),
+  updateProfile: (input: { email: string; firstName: string; lastName: string; password?: string }) => request<AuthUser>('/api/auth/profile', { method: 'PATCH', body: JSON.stringify(input) }),
   users: () => request<User[]>('/api/users'),
+  userDirectory: () => request<User[]>('/api/user-directory'),
   dashboard: () => request<DashboardData>('/api/dashboard'),
   sections: () => request<AgendaSection[]>('/api/agenda-sections'),
   createSection: (input: Omit<AgendaSection, 'id'>) => request<AgendaSection>('/api/agenda-sections', { method: 'POST', body: JSON.stringify(input) }),

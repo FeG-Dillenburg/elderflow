@@ -70,15 +70,17 @@ pnpm db:seed:dev
 
 Create local environment files by copying `backend/.env.example` and `frontend/.env.example` if you are not using the root development command.
 
-## Development identity
+## Local authentication
 
-OAuth2 is intentionally deferred. Until it is implemented, API access is closed outside development and test environments. In development, `DEV_USER_EMAIL` selects the signed-in user. The development seed provides:
+Sign in with one of the development seed users below. Their shared development password is `password123!`:
 
-- `alex@example.com` - admin
-- `maria@example.com` - leadership
-- `sam@example.com` - read-only viewer
+- `alex@example.com` - superadmin
+- `ivan@example.com` - IT admin
+- `anna@example.com` - admin
+- `maria@example.com` - user
+- `sam@example.com` - read-only guest
 
-Change `DEV_USER_EMAIL` in `backend/.env` and restart the backend to exercise a different role. This mechanism cannot authenticate requests when `NODE_ENV=production`.
+Set a unique `AUTH_SESSION_SECRET` of at least 32 characters in production. Set `DEV_AUTH_BYPASS=true` to opt into the `DEV_USER_EMAIL` development/test-only impersonation fallback for API development; it is never accepted in production.
 
 ## Application model
 

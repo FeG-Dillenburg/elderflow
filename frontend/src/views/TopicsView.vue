@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import {onMounted, reactive, ref} from 'vue';
+import {computed, onMounted, reactive, ref} from 'vue';
 import {RouterLink} from 'vue-router';
 import Button from 'primevue/button';
 import Checkbox from 'primevue/checkbox';
@@ -13,7 +13,10 @@ import Select from 'primevue/select';
 import Tag from 'primevue/tag';
 import RichTextEditor from '../components/RichTextEditor.vue';
 import {api, formatUser, toLocalDate, type AgendaSection, type Topic, type TopicInput, type User} from '../api/domain';
+import {auth} from '../auth/auth';
+import {assignableUsers} from '../auth/roles';
 
+const canManage = computed(() => !auth.state.user || auth.canManage('topics'));
 const topicTypes = [{label: 'Recurring agenda', value: 'recurring_agenda'}, {
   label: 'Person-related',
   value: 'person_related'
@@ -29,6 +32,7 @@ const topicTypes = [{label: 'Recurring agenda', value: 'recurring_agenda'}, {
 }, {label: 'General', value: 'general'}];
 const topics = ref<Topic[]>([]), users = ref<User[]>([]), sections = ref<AgendaSection[]>([]), loading = ref(true),
     visible = ref(false), saving = ref(false), error = ref('');
+const responsibleUserOptions = computed(() => assignableUsers(users.value));
 const filters = reactive({
   status: 'active',
   type: '',
@@ -57,7 +61,7 @@ const load = async () => {
       responsibleUserId: filters.responsibleUserId,
       defaultSectionId: filters.defaultSectionId,
       dueOn: toLocalDate(filters.dueOn) ?? undefined
-    }), api.users(), api.sections()])
+    }), api.userDirectory(), api.sections()])
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Unable to load topics'
   } finally {
@@ -89,7 +93,7 @@ onMounted(load);
       <div><p class="eyebrow">Discussion history</p>
         <h1>Open topics</h1>
         <p>Long-lived matters that can appear across several meetings.</p></div>
-      <Button label="New topic" icon="pi pi-plus" @click="open"/>
+      <Button v-if="canManage" label="New topic" icon="pi pi-plus" @click="open"/>
     </header>
     <div class="filters"><Select v-model="filters.status"
                                  :options="[{label:'Open & deferred',value:'active'},{label:'Open',value:'open'},{label:'Deferred',value:'deferred'},{label:'Done',value:'done'},{label:'Archived',value:'archived'}]"
@@ -136,7 +140,7 @@ onMounted(load);
       </label>
         <div class="row"><label><span>Type</span><Select v-model="form.type" :options="topicTypes" option-label="label"
                                                          option-value="value"/></label><label><span>Responsible</span><Select
-            v-model="form.responsibleUserId" :options="users" option-label="firstName" option-value="id" show-clear>
+            v-model="form.responsibleUserId" :options="responsibleUserOptions" option-label="firstName" option-value="id" show-clear>
           <template #option="{option}">{{ formatUser(option) }}</template>
         </Select></label></div>
         <div class="row"><label><span>Follow-up date</span>

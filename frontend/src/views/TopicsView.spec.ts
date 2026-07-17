@@ -20,7 +20,7 @@ describe("TopicsView", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     vi.spyOn(api, "topics").mockResolvedValue([]);
-    vi.spyOn(api, "users").mockResolvedValue([]);
+    vi.spyOn(api, "userDirectory").mockResolvedValue([]);
     vi.spyOn(api, "sections").mockResolvedValue([]);
   });
   const view = async () => {

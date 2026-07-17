@@ -36,7 +36,7 @@ describe("TopicDetailView", () => {
     vi.spyOn(api, "topicUpdates").mockResolvedValue([]);
     vi.spyOn(api, "tasks").mockResolvedValue([]);
     vi.spyOn(api, "topicAppearances").mockResolvedValue([]);
-    vi.spyOn(api, "users").mockResolvedValue([]);
+    vi.spyOn(api, "userDirectory").mockResolvedValue([]);
     vi.spyOn(api, "sections").mockResolvedValue([]);
   });
   const view = async () => {

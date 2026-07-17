@@ -6,14 +6,19 @@ import DataTable from 'primevue/datatable';
 import Dialog from 'primevue/dialog';
 import InputText from 'primevue/inputtext';
 import Message from 'primevue/message';
+import Password from 'primevue/password';
+import Select from 'primevue/select';
 import {
   createUser,
   getUsers,
   removeUser,
   restoreUser,
+  updateUser,
   type CreateUserInput,
   type User,
 } from '../api/users';
+import { auth } from '../auth/auth';
+import { roleLabel, userRoleOptions } from '../auth/roles';
 
 const users = ref<User[]>([]);
 const loading = ref(true);
@@ -24,7 +29,8 @@ const showArchived = ref(false);
 const processingUserId = ref<string | null>(null);
 const selectedUser = ref<User | null>(null);
 const errorMessage = ref('');
-const form = reactive<CreateUserInput>({ email: '', firstName: '', lastName: '' });
+const editingUserId = ref<string | null>(null);
+const form = reactive<CreateUserInput>({ email: '', firstName: '', lastName: '', role: 'user', password: '' });
 
 async function loadUsers(): Promise<void> {
   loading.value = true;
@@ -83,7 +89,15 @@ function userRowClass(user: User): string {
 }
 
 function openCreateDialog(): void {
-  Object.assign(form, { email: '', firstName: '', lastName: '' });
+  editingUserId.value = null;
+  Object.assign(form, { email: '', firstName: '', lastName: '', role: 'user', password: '' });
+  errorMessage.value = '';
+  dialogVisible.value = true;
+}
+
+function openEditDialog(user: User): void {
+  editingUserId.value = user.id;
+  Object.assign(form, { email: user.email, firstName: user.firstName, lastName: user.lastName, role: user.role, password: '' });
   errorMessage.value = '';
   dialogVisible.value = true;
 }
@@ -92,7 +106,11 @@ async function submitUser(): Promise<void> {
   saving.value = true;
   errorMessage.value = '';
   try {
-    await createUser(form);
+    if (editingUserId.value) {
+      await updateUser(editingUserId.value, { ...form, password: form.password || undefined } as Partial<CreateUserInput>);
+    } else {
+      await createUser(form);
+    }
     dialogVisible.value = false;
     await loadUsers();
   } catch (error) {
@@ -113,7 +131,7 @@ onMounted(loadUsers);
         <h1>Users</h1>
         <p class="description">Manage the people who use Elderflow.</p>
       </div>
-      <Button label="Add user" icon="pi pi-plus" @click="openCreateDialog" />
+      <Button v-if="auth.canManage('users')" label="Add user" icon="pi pi-plus" @click="openCreateDialog" />
     </header>
 
     <Message v-if="errorMessage && !dialogVisible && !removalDialogVisible" severity="error" :closable="false">
@@ -133,10 +151,13 @@ onMounted(loadUsers);
         <Column field="firstName" header="First name" />
         <Column field="lastName" header="Last name" />
         <Column field="email" header="Email" />
+        <Column field="role" header="Role">
+          <template #body="{ data }">{{ roleLabel(data.role) }}</template>
+        </Column>
         <Column header="" class="actions-column">
           <template #body="{ data }">
             <Button
-              v-if="data.archivedAt"
+              v-if="auth.canManage('users') && data.archivedAt"
               icon="pi pi-replay"
               severity="secondary"
               text
@@ -147,7 +168,17 @@ onMounted(loadUsers);
               @click="restore(data)"
             />
             <Button
-              v-else
+              v-else-if="auth.canManage('users')"
+              icon="pi pi-pencil"
+              severity="secondary"
+              text
+              rounded
+              :aria-label="`Edit ${data.firstName} ${data.lastName}`"
+              title="Edit user"
+              @click="openEditDialog(data)"
+            />
+            <Button
+              v-if="auth.canManage('users') && !data.archivedAt"
               icon="pi pi-trash"
               severity="danger"
               text
@@ -163,6 +194,7 @@ onMounted(loadUsers);
     </div>
 
     <Button
+      v-if="auth.canManage('users')"
       class="archived-toggle"
       :label="showArchived ? 'Hide archived users' : 'Show archived users'"
       :icon="showArchived ? 'pi pi-eye-slash' : 'pi pi-eye'"
@@ -171,12 +203,20 @@ onMounted(loadUsers);
       @click="toggleArchivedUsers"
     />
 
-    <Dialog v-model:visible="dialogVisible" modal header="Add user" :style="{ width: '30rem', maxWidth: 'calc(100vw - 2rem)' }">
-      <form id="create-user-form" class="user-form" @submit.prevent="submitUser">
+    <Dialog v-model:visible="dialogVisible" modal :header="editingUserId ? 'Edit user' : 'Add user'" :style="{ width: '30rem', maxWidth: 'calc(100vw - 2rem)' }">
+      <form v-if="dialogVisible" id="create-user-form" class="user-form" @submit.prevent="submitUser">
         <Message v-if="errorMessage" severity="error" :closable="false">{{ errorMessage }}</Message>
         <label>
           <span>First name</span>
           <InputText v-model="form.firstName" autocomplete="given-name" required maxlength="100" />
+        </label>
+        <label>
+          <span>Role</span>
+          <Select v-model="form.role" :options="userRoleOptions" option-label="label" option-value="value" />
+        </label>
+        <label>
+          <span>{{ editingUserId ? 'New password (optional)' : 'Password' }}</span>
+          <Password v-model="form.password" :feedback="false" toggle-mask :required="!editingUserId" minlength="10" autocomplete="new-password" />
         </label>
         <label>
           <span>Last name</span>
@@ -189,7 +229,7 @@ onMounted(loadUsers);
       </form>
       <template #footer>
         <Button label="Cancel" severity="secondary" text @click="dialogVisible = false" />
-        <Button label="Create user" type="submit" form="create-user-form" :loading="saving" />
+        <Button :label="editingUserId ? 'Save user' : 'Create user'" type="submit" form="create-user-form" :loading="saving" />
       </template>
     </Dialog>
 
@@ -283,7 +323,7 @@ h1 {
 }
 
 :deep(.actions-column) {
-  width: 4rem;
+  width: 7rem;
   text-align: right;
 }
 
@@ -307,6 +347,11 @@ h1 {
 }
 
 .user-form input {
+  width: 100%;
+}
+
+:deep(.p-password),
+:deep(.p-password-input) {
   width: 100%;
 }
 

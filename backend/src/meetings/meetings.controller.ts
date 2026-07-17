@@ -5,8 +5,10 @@ import { MeetingUser } from './meeting-user.entity';
 import { Meeting } from './meeting.entity';
 import { MeetingDetail, MeetingsService } from './meetings.service';
 import { Topic } from '../topics/topic.entity';
+import { Permission } from '../auth/permissions';
 
 @Controller('api/meetings')
+@Permission('meetings')
 export class MeetingsController {
   constructor(private readonly service: MeetingsService) {}
   @Get() findAll(): Promise<Meeting[]> { return this.service.findAll(); }

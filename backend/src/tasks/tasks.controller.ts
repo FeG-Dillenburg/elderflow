@@ -2,8 +2,10 @@ import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Put, Query } from '@
 import { TaskDto } from './dto/task.dto';
 import { Task } from './task.entity';
 import { TasksService } from './tasks.service';
+import { Permission } from '../auth/permissions';
 
 @Controller('api/tasks')
+@Permission('tasks')
 export class TasksController {
   constructor(private readonly service: TasksService) {}
 

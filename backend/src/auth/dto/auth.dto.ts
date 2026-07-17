@@ -1,8 +1,19 @@
 import { Transform } from 'class-transformer';
-import { IsEmail, IsIn, IsNotEmpty, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
-import { UserRole, userRoles } from '../user.entity';
+import { IsEmail, IsNotEmpty, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
 
-export class CreateUserDto {
+export class LoginDto {
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim().toLowerCase() : value))
+  @IsEmail()
+  @MaxLength(320)
+  email: string;
+
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(200)
+  password: string;
+}
+
+export class UpdateProfileDto {
   @Transform(({ value }) => (typeof value === 'string' ? value.trim().toLowerCase() : value))
   @IsEmail()
   @MaxLength(320)
@@ -19,40 +30,6 @@ export class CreateUserDto {
   @IsNotEmpty()
   @MaxLength(100)
   lastName: string;
-
-  @IsIn(userRoles)
-  role: UserRole;
-
-  @IsString()
-  @MinLength(10)
-  @MaxLength(200)
-  password: string;
-}
-
-export class UpdateUserDto {
-  @IsOptional()
-  @Transform(({ value }) => (typeof value === 'string' ? value.trim().toLowerCase() : value))
-  @IsEmail()
-  @MaxLength(320)
-  email?: string;
-
-  @IsOptional()
-  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
-  @IsString()
-  @IsNotEmpty()
-  @MaxLength(100)
-  firstName?: string;
-
-  @IsOptional()
-  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
-  @IsString()
-  @IsNotEmpty()
-  @MaxLength(100)
-  lastName?: string;
-
-  @IsOptional()
-  @IsIn(userRoles)
-  role?: UserRole;
 
   @IsOptional()
   @IsString()

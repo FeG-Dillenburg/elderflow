@@ -66,7 +66,7 @@ describe("MeetingAgendaView", () => {
     vi.spyOn(api, "sections").mockResolvedValue([
       { id: "section-1", name: "Main", position: 1, isDefault: true },
     ]);
-    vi.spyOn(api, "users").mockResolvedValue([]);
+    vi.spyOn(api, "userDirectory").mockResolvedValue([]);
   });
   afterEach(() => {
     vi.useRealTimers();

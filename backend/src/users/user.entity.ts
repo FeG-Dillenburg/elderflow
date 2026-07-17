@@ -1,6 +1,7 @@
 import { Column, CreateDateColumn, Entity, PrimaryGeneratedColumn } from 'typeorm';
 
-export type UserRole = 'admin' | 'leadership' | 'viewer';
+export const userRoles = ['superadmin', 'it-admin', 'admin', 'user', 'guest'] as const;
+export type UserRole = typeof userRoles[number];
 
 @Entity({ name: 'users' })
 export class User {
@@ -16,8 +17,11 @@ export class User {
   @Column({ name: 'last_name', type: 'text' })
   lastName: string;
 
-  @Column({ type: 'text', default: 'leadership' })
+  @Column({ type: 'text', default: 'user' })
   role: UserRole;
+
+  @Column({ name: 'password_hash', type: 'text', nullable: true, select: false })
+  passwordHash: string | null;
 
   @Column({ name: 'archived_at', type: 'timestamptz', nullable: true })
   archivedAt: Date | null;

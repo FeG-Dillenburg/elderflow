@@ -5,8 +5,8 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { IsNull, Repository } from 'typeorm';
 import { User } from '../users/user.entity';
 import { IS_PUBLIC_KEY } from './public.decorator';
-import { ROLES_KEY } from './roles.decorator';
-import { UserRole } from '../users/user.entity';
+import { PERMISSION_CATEGORY_KEY, PermissionCategory, permissionsByRole } from './permissions';
+import { SessionService } from './session.service';
 
 @Injectable()
 export class DevelopmentIdentityGuard implements CanActivate {
@@ -14,6 +14,7 @@ export class DevelopmentIdentityGuard implements CanActivate {
     private readonly config: ConfigService,
     private readonly reflector: Reflector,
     @InjectRepository(User) private readonly users: Repository<User>,
+    private readonly sessions: SessionService,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -21,29 +22,33 @@ export class DevelopmentIdentityGuard implements CanActivate {
       return true;
     }
 
-    const environment = this.config.get<string>('NODE_ENV');
-    if (!['development', 'test'].includes(environment ?? '')) {
-      throw new UnauthorizedException('OAuth2 authentication is not configured yet');
+    const request = context.switchToHttp().getRequest<{ method: string; headers: { authorization?: string }; user: User }>();
+    const authorization = request.headers?.authorization;
+    let user: User | null = null;
+    if (authorization?.startsWith('Bearer ')) {
+      const session = this.sessions.verify(authorization.slice(7));
+      user = await this.users.findOne({ where: { id: session.sub, archivedAt: IsNull() } });
+      if (!user) throw new UnauthorizedException('Session user does not exist');
+    } else {
+      const environment = this.config.get<string>('NODE_ENV');
+      const developmentBypass = this.config.get<boolean>('DEV_AUTH_BYPASS');
+      if (!['development', 'test'].includes(environment ?? '') || !developmentBypass) {
+        throw new UnauthorizedException('Authentication is required');
+      }
+
+      const email = this.config.get<string>('DEV_USER_EMAIL');
+      if (!email) throw new UnauthorizedException('Authentication is required');
+      user = await this.users.findOne({ where: { email: email.toLowerCase(), archivedAt: IsNull() } });
+      if (!user) throw new UnauthorizedException(`Development user ${email} does not exist`);
     }
 
-    const email = this.config.get<string>('DEV_USER_EMAIL');
-    if (!email) {
-      throw new UnauthorizedException('DEV_USER_EMAIL must select a development user');
-    }
-
-    const user = await this.users.findOne({ where: { email: email.toLowerCase(), archivedAt: IsNull() } });
-    if (!user) {
-      throw new UnauthorizedException(`Development user ${email} does not exist`);
-    }
-
-    context.switchToHttp().getRequest<{ user: User }>().user = user;
-    const request = context.switchToHttp().getRequest<{ method: string }>();
-    if (user.role === 'viewer' && request.method !== 'GET') {
-      throw new ForbiddenException('Viewer access is read-only');
-    }
-    const roles = this.reflector.getAllAndOverride<UserRole[]>(ROLES_KEY, [context.getHandler(), context.getClass()]);
-    if (roles && !roles.includes(user.role)) {
-      throw new ForbiddenException('Your role does not allow this action');
+    request.user = user;
+    const category = this.reflector.getAllAndOverride<PermissionCategory>(PERMISSION_CATEGORY_KEY, [context.getHandler(), context.getClass()]);
+    if (category) {
+      const permission = permissionsByRole[user.role][category];
+      if (permission === 'hide' || (permission === 'view' && !['GET', 'HEAD'].includes(request.method))) {
+        throw new ForbiddenException('Your role does not allow this action');
+      }
     }
     return true;
   }
