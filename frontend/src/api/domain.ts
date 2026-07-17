@@ -12,6 +12,14 @@ export type PermissionCategory = 'dashboard' | 'users' | 'references' | 'meeting
 export type UserPermissions = Record<PermissionCategory, PermissionLevel>;
 export interface AuthUser extends User { permissions: UserPermissions }
 
+export interface InitialUserInput {
+  setupPassword: string;
+  email: string;
+  firstName: string;
+  lastName: string;
+  password: string;
+}
+
 export interface AgendaSection {
   id: string;
   name: string;
@@ -154,6 +162,9 @@ const query = (values: Record<string, string | boolean | null | undefined>): str
 };
 
 export const api = {
+  setupStatus: () => request<{ setupRequired: boolean }>('/api/setup/status'),
+  verifySetupPassword: (setupPassword: string) => request<{ valid: true }>('/api/setup/verify', { method: 'POST', body: JSON.stringify({ setupPassword }) }),
+  createInitialUser: (input: InitialUserInput) => request<User>('/api/setup', { method: 'POST', body: JSON.stringify(input) }),
   login: (input: { email: string; password: string }) => request<{ token: string; user: AuthUser }>('/api/auth/login', { method: 'POST', body: JSON.stringify(input) }),
   me: () => request<AuthUser>('/api/auth/me'),
   updateProfile: (input: { email: string; firstName: string; lastName: string; password?: string }) => request<AuthUser>('/api/auth/profile', { method: 'PATCH', body: JSON.stringify(input) }),
