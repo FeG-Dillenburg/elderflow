@@ -19,6 +19,7 @@ describe("UsersView", () => {
       permissions: {
         dashboard: "hide",
         users: "view",
+        references: "hide",
         meetings: "hide",
         topics: "hide",
         tasks: "hide",

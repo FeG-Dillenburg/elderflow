@@ -33,7 +33,7 @@ const form = reactive({
 const load = async () => {
   loading.value = true;
   try {
-    const [loadedMeetings, loadedUsers] = await Promise.all([api.meetings(), api.users()]);
+    const [loadedMeetings, loadedUsers] = await Promise.all([api.meetings(), api.userDirectory()]);
     meetings.value = loadedMeetings;
     users.value = assignableUsers(loadedUsers);
   } catch (e) {
@@ -99,6 +99,9 @@ const date = (value: string) => new Date(`${value}T12:00:00`).toLocaleDateString
           <template #body="{ data }">
             <RouterLink v-if="canManage" :to="`/meetings/${data.id}/prepare`">
               <Button icon="pi pi-pencil" label="Prepare" text/>
+            </RouterLink>
+            <RouterLink v-else :to="`/meetings/${data.id}`">
+              <Button icon="pi pi-eye" label="Open agenda" text/>
             </RouterLink>
           </template>
         </Column>

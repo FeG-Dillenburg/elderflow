@@ -2,7 +2,7 @@ import { SetMetadata } from '@nestjs/common';
 import { UserRole } from '../users/user.entity';
 
 export type PermissionLevel = 'manage' | 'view' | 'hide';
-export type PermissionCategory = 'dashboard' | 'users' | 'meetings' | 'topics' | 'tasks' | 'contentSettings' | 'authSettings';
+export type PermissionCategory = 'dashboard' | 'users' | 'references' | 'meetings' | 'topics' | 'tasks' | 'contentSettings' | 'authSettings';
 export type UserPermissions = Record<PermissionCategory, PermissionLevel>;
 
 export const PERMISSION_CATEGORY_KEY = 'permissionCategory';
@@ -12,6 +12,7 @@ export const Permission = (category: PermissionCategory): ClassDecorator & Metho
 const contentManager: UserPermissions = {
   dashboard: 'view',
   users: 'manage',
+  references: 'view',
   meetings: 'manage',
   topics: 'manage',
   tasks: 'manage',
@@ -23,6 +24,7 @@ export const permissionsByRole: Record<UserRole, UserPermissions> = {
   superadmin: {
     dashboard: 'manage',
     users: 'manage',
+    references: 'view',
     meetings: 'manage',
     topics: 'manage',
     tasks: 'manage',
@@ -32,6 +34,7 @@ export const permissionsByRole: Record<UserRole, UserPermissions> = {
   'it-admin': {
     dashboard: 'hide',
     users: 'view',
+    references: 'hide',
     meetings: 'hide',
     topics: 'hide',
     tasks: 'hide',
@@ -42,6 +45,7 @@ export const permissionsByRole: Record<UserRole, UserPermissions> = {
   user: {
     dashboard: 'view',
     users: 'view',
+    references: 'view',
     meetings: 'manage',
     topics: 'manage',
     tasks: 'manage',
@@ -50,7 +54,8 @@ export const permissionsByRole: Record<UserRole, UserPermissions> = {
   },
   guest: {
     dashboard: 'view',
-    users: 'view',
+    users: 'hide',
+    references: 'view',
     meetings: 'view',
     topics: 'view',
     tasks: 'view',

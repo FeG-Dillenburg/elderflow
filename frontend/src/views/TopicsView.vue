@@ -61,7 +61,7 @@ const load = async () => {
       responsibleUserId: filters.responsibleUserId,
       defaultSectionId: filters.defaultSectionId,
       dueOn: toLocalDate(filters.dueOn) ?? undefined
-    }), api.users(), api.sections()])
+    }), api.userDirectory(), api.sections()])
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Unable to load topics'
   } finally {

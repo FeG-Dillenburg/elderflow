@@ -62,6 +62,7 @@ describe('DevelopmentIdentityGuard', () => {
   it.each([
     ['it-admin', 'meetings', 'GET'],
     ['it-admin', 'users', 'PATCH'],
+    ['guest', 'users', 'GET'],
     ['guest', 'topics', 'POST'],
     ['user', 'authSettings', 'GET'],
   ])('rejects %s access to %s %s', async (role, category, method) => {
@@ -81,6 +82,14 @@ describe('DevelopmentIdentityGuard', () => {
     sessions.verify.mockReturnValue({ sub: 'admin' });
     users.findOne.mockResolvedValue({ id: 'admin', role: 'admin' });
     await expect(guard.canActivate(context('PATCH', 'Bearer token'))).resolves.toBe(true);
+  });
+
+  it('allows guests to load shared content references', async () => {
+    sessions.verify.mockReturnValue({ sub: 'guest' });
+    users.findOne.mockResolvedValue({ id: 'guest', role: 'guest' });
+
+    reflector.getAllAndOverride.mockReturnValueOnce(false).mockReturnValueOnce('references');
+    await expect(guard.canActivate(context('GET', 'Bearer token'))).resolves.toBe(true);
   });
 
   it('allows IT admins to view users without granting user-management access', async () => {

@@ -51,7 +51,7 @@ const statusOptions = [{label: 'Planned', value: 'planned'}, {
 const load = async () => {
   loading.value = true;
   try {
-    const [loadedMeeting, loadedSections, loadedUsers] = await Promise.all([api.meeting(id), api.sections(), api.users()]);
+    const [loadedMeeting, loadedSections, loadedUsers] = await Promise.all([api.meeting(id), api.sections(), api.userDirectory()]);
     meeting.value = loadedMeeting;
     sections.value = loadedSections;
     users.value = assignableUsers(loadedUsers);

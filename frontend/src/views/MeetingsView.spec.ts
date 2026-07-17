@@ -23,7 +23,7 @@ describe("MeetingsView", () => {
     vi.restoreAllMocks();
     push.mockReset();
     vi.spyOn(api, "meetings").mockResolvedValue([]);
-    vi.spyOn(api, "users").mockResolvedValue([]);
+    vi.spyOn(api, "userDirectory").mockResolvedValue([]);
   });
   const view = async () => {
     const wrapper = mount(MeetingsView, { shallow: true, global: { stubs } });

@@ -19,7 +19,7 @@ describe("TasksView", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     vi.spyOn(api, "tasks").mockResolvedValue([]);
-    vi.spyOn(api, "users").mockResolvedValue([]);
+    vi.spyOn(api, "userDirectory").mockResolvedValue([]);
     vi.spyOn(api, "topics").mockResolvedValue([]);
     vi.spyOn(api, "meetings").mockResolvedValue([]);
   });

@@ -10,6 +10,7 @@ export class AgendaSectionsController {
   constructor(private readonly service: AgendaSectionsService) {}
 
   @Get()
+  @Permission('references')
   findAll(): Promise<AgendaSection[]> { return this.service.findAll(); }
 
   @Post()

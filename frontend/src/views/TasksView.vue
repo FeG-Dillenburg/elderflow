@@ -56,7 +56,7 @@ const load = async () => {
       status: filters.status,
       dueOn: toLocalDate(filters.dueOn) ?? undefined,
       overdue: filters.overdue || undefined
-    }), api.users(), api.topics({status: 'active'}), api.meetings()])
+    }), api.userDirectory(), api.topics({status: 'active'}), api.meetings()])
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Unable to load tasks'
   } finally {

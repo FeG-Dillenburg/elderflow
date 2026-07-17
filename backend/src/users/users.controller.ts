@@ -14,6 +14,12 @@ export class UsersController {
     return this.usersService.findAll(includeArchived === 'true');
   }
 
+  @Get('user-directory')
+  @Permission('references')
+  findDirectory(): Promise<User[]> {
+    return this.usersService.findAll();
+  }
+
   @Post('user')
   create(@Body() input: CreateUserDto): Promise<User> {
     return this.usersService.create(input);

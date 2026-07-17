@@ -65,6 +65,15 @@ describe("domain API client", () => {
       "http://localhost:3000/api/tasks?status=open&overdue=false",
     );
   });
+  it("loads referenced users from the non-administrative directory endpoint", async () => {
+    const fetch = vi.fn().mockResolvedValue(response([]));
+    vi.stubGlobal("fetch", fetch);
+    await api.userDirectory();
+    expect(fetch).toHaveBeenCalledWith(
+      "http://localhost:3000/api/user-directory",
+      expect.any(Object),
+    );
+  });
   it("sends representative GET/POST/PUT/DELETE requests and a mutable meeting-topic payload", async () => {
     const fetch = vi.fn().mockResolvedValue(response({}));
     vi.stubGlobal("fetch", fetch);

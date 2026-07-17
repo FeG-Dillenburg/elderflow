@@ -41,7 +41,7 @@ const load = async () => {
     [topic.value, updates.value, tasks.value, appearances.value, users.value, sections.value] = await Promise.all([api.topic(id), api.topicUpdates(id), api.tasks({
       topicId: id,
       status: 'open'
-    }), api.topicAppearances(id), api.users(), api.sections()])
+    }), api.topicAppearances(id), api.userDirectory(), api.sections()])
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Unable to load topic'
   }

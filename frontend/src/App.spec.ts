@@ -8,7 +8,7 @@ const stubs = {
   RouterView: true,
 };
 const permissions = {
-  dashboard: 'manage', users: 'manage', meetings: 'manage', topics: 'manage', tasks: 'manage', contentSettings: 'manage', authSettings: 'hide',
+  dashboard: 'manage', users: 'manage', references: 'view', meetings: 'manage', topics: 'manage', tasks: 'manage', contentSettings: 'manage', authSettings: 'hide',
 } as const;
 
 describe('App', () => {
@@ -35,6 +35,17 @@ describe('App', () => {
     expect(wrapper.text()).toContain('IT admin');
     expect(wrapper.html()).toContain('href="/users"');
     expect(wrapper.html()).not.toContain('href="/meetings"');
+  });
+
+  it('hides the user directory navigation for a guest', () => {
+    auth.state.user = {
+      id: 'guest', email: 'guest@example.com', firstName: 'Grace', lastName: 'Guest', role: 'guest',
+      permissions: { ...permissions, dashboard: 'view', users: 'hide', meetings: 'view', topics: 'view', tasks: 'view', contentSettings: 'hide' },
+    };
+    const wrapper = mount(App, { global: { stubs } });
+    expect(wrapper.html()).not.toContain('href="/users"');
+    expect(wrapper.html()).toContain('href="/meetings"');
+    expect(wrapper.html()).toContain('href="/topics"');
   });
 
   it('renders only the route outlet while signed out', () => {
