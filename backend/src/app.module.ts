@@ -12,6 +12,7 @@ import { MeetingsModule } from './meetings/meetings.module';
 import { TasksModule } from './tasks/tasks.module';
 import { TopicsModule } from './topics/topics.module';
 import { migrations } from './database/migrations';
+import { SetupModule } from './setup/setup.module';
 
 @Module({
   imports: [
@@ -52,6 +53,7 @@ import { migrations } from './database/migrations';
     MeetingsModule,
     TasksModule,
     DashboardModule,
+    SetupModule,
   ],
   controllers: [AppController],
   providers: [DatabaseService],

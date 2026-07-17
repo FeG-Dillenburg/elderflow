@@ -15,6 +15,7 @@ const navigation: Array<{ to: string; icon: string; label: string; permission: P
   {to: '/agenda-sections', icon: 'pi-list', label: 'Agenda sections', permission: 'contentSettings'},
 ];
 const visibleNavigation = computed(() => navigation.filter((item) => auth.canView(item.permission)));
+const isSetupRoute = computed(() => router.currentRoute.value.name === 'setup');
 
 async function logout(): Promise<void> {
   auth.logout();
@@ -23,7 +24,7 @@ async function logout(): Promise<void> {
 </script>
 
 <template>
-  <div v-if="auth.state.user" class="app-shell">
+  <div v-if="auth.state.user && !isSetupRoute" class="app-shell">
     <aside class="sidebar">
       <div class="brand"><span class="brand-mark">E</span><span>ElderFlow</span></div>
       <nav aria-label="Main navigation">

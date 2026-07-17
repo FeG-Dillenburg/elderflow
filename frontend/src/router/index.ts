@@ -6,6 +6,7 @@ import type { PermissionCategory } from '../api/domain';
 const router = createRouter({
   history: createWebHistory(),
   routes: [
+    { path: '/setup/', alias: '/setup', name: 'setup', component: () => import('../views/SetupView.vue'), meta: { public: true } },
     { path: '/login', name: 'login', component: () => import('../views/LoginView.vue'), meta: { public: true } },
     { path: '/', name: 'dashboard', component: DashboardView, meta: { permission: 'dashboard' } },
     { path: '/meetings', name: 'meetings', component: () => import('../views/MeetingsView.vue'), meta: { permission: 'meetings' } },
@@ -21,6 +22,7 @@ const router = createRouter({
 });
 
 router.beforeEach(async (to) => {
+  if (to.name === 'setup') return true;
   await auth.initialize();
   if (to.meta.public) return auth.state.user ? { path: '/' } : true;
   if (!auth.state.user) return { path: '/login', query: { redirect: to.fullPath } };
