@@ -74,12 +74,12 @@ async function createUser(): Promise<void> {
       <p v-if="stage === 'loading'" class="description">Checking system status…</p>
 
       <template v-else-if="stage === 'already-setup'">
-        <Message severity="info" :closable="false">System already setup</Message>
+        <Message class="result-message" severity="info" :closable="false">System already setup</Message>
         <RouterLink class="login-link" to="/login">Go to sign in</RouterLink>
       </template>
 
       <template v-else-if="stage === 'complete'">
-        <Message severity="success" :closable="false">Setup complete. Your superadmin account is ready.</Message>
+        <Message class="result-message" severity="success" :closable="false">Setup complete. Your superadmin account is ready.</Message>
         <RouterLink class="login-link" to="/login">Sign in</RouterLink>
       </template>
 
@@ -198,6 +198,10 @@ h1 {
   margin-top: 1.25rem;
   color: #315a9b;
   font-weight: 700;
+}
+
+.result-message {
+  margin-top: 1rem;
 }
 
 :deep(input),
