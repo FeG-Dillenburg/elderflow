@@ -19,6 +19,7 @@ describe('AuthService', () => {
   it('logs in an active user and returns frontend permissions without its password hash', async () => {
     const user = {
       id: 'user-id', email: 'user@example.com', firstName: 'Ada', lastName: 'Lovelace', role: 'admin',
+      language: null,
       passwordHash: await hash('password123!', 4),
     } as any;
     queryBuilder.getOne.mockResolvedValue(user);
@@ -26,7 +27,7 @@ describe('AuthService', () => {
       token: 'signed-token',
       user: {
         id: user.id, email: user.email, firstName: user.firstName, lastName: user.lastName,
-        role: 'admin', permissions: permissionsByRole.admin,
+        role: 'admin', language: null, permissions: permissionsByRole.admin,
       },
     });
     expect(queryBuilder.andWhere).toHaveBeenCalledWith('user.archived_at IS NULL');
@@ -42,8 +43,8 @@ describe('AuthService', () => {
   it('updates personal fields without permitting a role change', async () => {
     const user = { id: 'user-id', email: 'old@example.com', firstName: 'Old', lastName: 'Name', role: 'guest' } as any;
     users.save.mockImplementation(async (value) => value);
-    const result = await service.updateProfile(user, { email: 'new@example.com', firstName: 'New', lastName: 'Name' });
-    expect(result).toEqual(expect.objectContaining({ email: 'new@example.com', firstName: 'New', role: 'guest' }));
+    const result = await service.updateProfile(user, { email: 'new@example.com', firstName: 'New', lastName: 'Name', language: 'de' });
+    expect(result).toEqual(expect.objectContaining({ email: 'new@example.com', firstName: 'New', role: 'guest', language: 'de' }));
     expect(user.role).toBe('guest');
   });
 });

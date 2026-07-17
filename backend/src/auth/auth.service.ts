@@ -13,6 +13,7 @@ export interface AuthUser {
   firstName: string;
   lastName: string;
   role: User['role'];
+  language: User['language'];
   permissions: UserPermissions;
 }
 
@@ -42,6 +43,7 @@ export class AuthService {
       firstName: user.firstName,
       lastName: user.lastName,
       role: user.role,
+      language: user.language,
       permissions: permissionsByRole[user.role],
     };
   }
@@ -50,6 +52,7 @@ export class AuthService {
     user.email = input.email;
     user.firstName = input.firstName;
     user.lastName = input.lastName;
+    if (input.language !== undefined) user.language = input.language;
     if (input.password) user.passwordHash = await hash(input.password, 12);
     try {
       return this.present(await this.users.save(user));

@@ -7,15 +7,17 @@ import InputText from 'primevue/inputtext';
 import Message from 'primevue/message';
 import {api, type AgendaSection} from '../api/domain';
 import {auth} from '../auth/auth';
+import {useI18n} from 'vue-i18n';
 
 const canManage = computed(() => !auth.state.user || auth.canManage('contentSettings'));
 const sections = ref<AgendaSection[]>([]), error = ref(''), saving = ref(false);
 const draft = reactive({name: '', position: 1, isDefault: true});
+const {t} = useI18n();
 const load = async () => {
   try {
     sections.value = await api.sections()
   } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Unable to load sections'
+    error.value = e instanceof Error ? e.message : t('agendaSections.loadFailed')
   }
 };
 const save = async (section: AgendaSection) => {
@@ -24,7 +26,7 @@ const save = async (section: AgendaSection) => {
     await api.updateSection(section.id, {name: section.name, position: section.position, isDefault: section.isDefault});
     await load()
   } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Unable to save section'
+    error.value = e instanceof Error ? e.message : t('agendaSections.saveFailed')
   } finally {
     saving.value = false
   }
@@ -39,16 +41,16 @@ const remove = async (id: string) => {
     await api.deleteSection(id);
     await load()
   } catch (e) {
-    error.value = e instanceof Error && e.message ? e.message : 'This section may still be in use'
+    error.value = e instanceof Error && e.message ? e.message : t('agendaSections.deleteFailed')
   }
 };
 onMounted(load);
 </script>
 <template>
   <section class="page">
-    <header><p class="eyebrow">Administration</p>
-      <h1>Agenda sections</h1>
-      <p>These headings define the vertical structure and TOP numbering of every agenda.</p></header>
+    <header><p class="eyebrow">{{ t('agendaSections.eyebrow') }}</p>
+      <h1>{{ t('agendaSections.title') }}</h1>
+      <p>{{ t('agendaSections.description') }}</p></header>
     <Message v-if="error" severity="error">{{ error }}</Message>
     <div class="section-list">
       <article v-for="section in sections" :key="section.id">
@@ -56,17 +58,17 @@ onMounted(load);
         <InputText v-model="section.name"/>
         <label>
           <Checkbox v-model="section.isDefault" binary/>
-          Default</label>
-        <Button v-if="canManage" icon="pi pi-save" text aria-label="Save" :loading="saving" @click="save(section)"/>
-        <Button v-if="canManage" icon="pi pi-trash" severity="danger" text aria-label="Delete" @click="remove(section.id)"/>
+          {{ t('common.default') }}</label>
+        <Button v-if="canManage" icon="pi pi-save" text :aria-label="t('common.save')" :loading="saving" @click="save(section)"/>
+        <Button v-if="canManage" icon="pi pi-trash" severity="danger" text :aria-label="t('common.delete')" @click="remove(section.id)"/>
       </article>
       <form v-if="canManage" class="new-section" @submit.prevent="create">
         <InputNumber v-model="draft.position" class="position-input" :min="1"/>
-        <InputText v-model="draft.name" placeholder="New section name" required/>
+        <InputText v-model="draft.name" :placeholder="t('agendaSections.newName')" required/>
         <label>
           <Checkbox v-model="draft.isDefault" binary/>
-          Default</label>
-        <Button label="Add section" icon="pi pi-plus" type="submit"/>
+          {{ t('common.default') }}</label>
+        <Button :label="t('agendaSections.add')" icon="pi pi-plus" type="submit"/>
       </form>
     </div>
   </section>

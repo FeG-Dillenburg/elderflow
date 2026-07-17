@@ -1,4 +1,5 @@
 import { Column, CreateDateColumn, Entity, PrimaryGeneratedColumn } from 'typeorm';
+import { SupportedLanguage } from '../installation/language';
 
 export const userRoles = ['superadmin', 'it-admin', 'admin', 'user', 'guest'] as const;
 export type UserRole = typeof userRoles[number];
@@ -19,6 +20,9 @@ export class User {
 
   @Column({ type: 'text', default: 'user' })
   role: UserRole;
+
+  @Column({ type: 'text', nullable: true })
+  language: SupportedLanguage | null;
 
   @Column({ name: 'password_hash', type: 'text', nullable: true, select: false })
   passwordHash: string | null;

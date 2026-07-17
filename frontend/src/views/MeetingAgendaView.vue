@@ -24,8 +24,11 @@ import {
   type TopicInput,
   type User
 } from '../api/domain';
+import {useI18n} from 'vue-i18n';
+import {formatDate} from '../i18n';
 
 const canManage = computed(() => !auth.state.user || auth.canManage('meetings'));
+const {t} = useI18n();
 
 const route = useRoute();
 const id = route.params.id as string;
@@ -44,10 +47,8 @@ const editForm = reactive({
   generalNotes: '',
   openingInput: ''
 });
-const statusOptions = [{label: 'Planned', value: 'planned'}, {
-  label: 'In progress',
-  value: 'in_progress'
-}, {label: 'Completed', value: 'completed'}];
+const statusOptions = computed(() => ['planned', 'in_progress', 'completed'].map((value) => ({value, label: t(`labels.${value}`)})));
+const attendanceOptions = computed(() => ['present', 'absent', 'excused', 'unknown'].map((value) => ({value, label: t(`labels.${value}`)})));
 const load = async () => {
   loading.value = true;
   try {
@@ -56,7 +57,7 @@ const load = async () => {
     sections.value = loadedSections;
     users.value = assignableUsers(loadedUsers);
   } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Unable to load meeting'
+    error.value = e instanceof Error ? e.message : t('meetingAgenda.loadFailed')
   } finally {
     loading.value = false
   }
@@ -170,36 +171,36 @@ onMounted(load);
     <Message v-if="error" severity="error">{{ error }}</Message>
     <template v-if="meeting">
       <header class="meeting-header">
-        <div><p class="eyebrow">Meeting agenda</p>
+        <div><p class="eyebrow">{{ t('meetingAgenda.eyebrow') }}</p>
           <h1>{{ meetingLabel(meeting) }}</h1>
-          <p>{{ new Date(`${meeting.date}T12:00:00`).toLocaleDateString() }} · {{ meeting.beginTime.slice(0, 5) }} ·
-            <Tag :value="meeting.status" severity="secondary"/>
+          <p>{{ formatDate(`${meeting.date}T12:00:00`) }} · {{ meeting.beginTime.slice(0, 5) }} ·
+            <Tag :value="t(`labels.${meeting.status}`)" severity="secondary"/>
           </p>
         </div>
         <div v-if="canManage" class="header-actions">
-          <Button icon="pi pi-cog" label="Edit details" text @click="openEdit"/>
+          <Button icon="pi pi-cog" :label="t('meetingAgenda.editDetails')" text @click="openEdit"/>
           <RouterLink :to="`/meetings/${id}/prepare`">
-            <Button icon="pi pi-pencil" label="Prepare agenda" outlined/>
+            <Button icon="pi pi-pencil" :label="t('meetingAgenda.prepare')" outlined/>
           </RouterLink>
         </div>
       </header>
       <div class="metadata">
-        <span><small>Meeting leader</small>{{ formatUser(meeting.meetingLeader) }}</span><span><small>Minute taker</small>{{ formatUser(meeting.minuteTaker) }}</span><span><small>Participants</small><span
+        <span><small>{{ t('meetingAgenda.leader') }}</small>{{ formatUser(meeting.meetingLeader) }}</span><span><small>{{ t('meetingAgenda.minuteTaker') }}</small>{{ formatUser(meeting.minuteTaker) }}</span><span><small>{{ t('meetingAgenda.participants') }}</small><span
           class="participant-list"><Tag v-for="person in meeting.participants" :key="person.id"
                                         :value="formatUser(person.user)" :removable="canManage" severity="secondary"
-                                        @remove="removeParticipant(person.userId)"/><Button v-if="canManage" aria-label="Add participant" icon="pi pi-plus"
+                                        @remove="removeParticipant(person.userId)"/><Button v-if="canManage" :aria-label="t('meetingAgenda.addParticipant')" icon="pi pi-plus"
                                                                                             rounded
                                                                                             text
                                                                                             @click="participantVisible=true"/></span></span>
       </div>
-      <section v-if="hasRichText(meeting.openingInput)||hasRichText(meeting.generalNotes)" aria-label="Meeting notes"
+      <section v-if="hasRichText(meeting.openingInput)||hasRichText(meeting.generalNotes)" :aria-label="t('meetingAgenda.notes')"
                class="meeting-notes">
         <div v-if="hasRichText(meeting.openingInput)" class="meeting-note"><p class="meeting-note-label"><i
-            class="pi pi-play-circle"/>Opening / input</p>
+            class="pi pi-play-circle"/>{{ t('meetingAgenda.opening') }}</p>
           <div class="meeting-note-content" v-html="safe(meeting.openingInput)"/>
         </div>
         <div v-if="hasRichText(meeting.generalNotes)" class="meeting-note"><p class="meeting-note-label"><i
-            class="pi pi-file-edit"/>General notes</p>
+            class="pi pi-file-edit"/>{{ t('meetingAgenda.generalNotes') }}</p>
           <div class="meeting-note-content" v-html="safe(meeting.generalNotes)"/>
         </div>
       </section>
@@ -207,34 +208,34 @@ onMounted(load);
         <section v-for="(group,sectionIndex) in grouped" :key="group.section.id" class="agenda-section">
           <h2>
             <span class="section-title">
-              <span>TOP {{ sectionIndex + 1 }}</span>
+              <span>{{ t('meetingAgenda.agendaNumber') }} {{ sectionIndex + 1 }}</span>
               {{ group.section.name }}
             </span>
-            <span class="section-duration">{{ sectionDuration(group.items) }} min.</span>
+            <span class="section-duration">{{ sectionDuration(group.items) }} {{ t('common.minuteShort') }}</span>
           </h2>
-          <p v-if="!group.items.length" class="empty">No topics in this section.</p>
+          <p v-if="!group.items.length" class="empty">{{ t('meetingAgenda.noTopics') }}</p>
           <article v-for="(item,itemIndex) in group.items" :key="item.id" class="agenda-topic">
-            <div class="topic-heading"><span class="number">TOP {{ sectionIndex + 1 }}.{{ itemIndex + 1 }}</span>
+            <div class="topic-heading"><span class="number">{{ t('meetingAgenda.agendaNumber') }} {{ sectionIndex + 1 }}.{{ itemIndex + 1 }}</span>
               <div>
                 <RouterLink :to="`/topics/${item.topicId}`"><h3>{{ item.topic?.name }}</h3></RouterLink>
                 <p class="topic-meta">{{ formatUser(item.topic?.responsibleUser) }}
-                  <template v-if="item.plannedDuration"> · {{ item.plannedDuration }} min</template>
+                  <template v-if="item.plannedDuration"> · {{ item.plannedDuration }} {{ t('common.minuteShort') }}</template>
                 </p>
               </div>
               <div v-if="canManage" class="topic-actions">
-                <Button :disabled="itemIndex===0" aria-label="Move up" icon="pi pi-chevron-up" rounded text
+                <Button :disabled="itemIndex===0" :aria-label="t('meetingAgenda.moveUp')" icon="pi pi-chevron-up" rounded text
                         @click="move(group.items,itemIndex,-1)"/>
-                <Button :disabled="itemIndex===group.items.length-1" aria-label="Move down" icon="pi pi-chevron-down" rounded
+                <Button :disabled="itemIndex===group.items.length-1" :aria-label="t('meetingAgenda.moveDown')" icon="pi pi-chevron-down" rounded
                         text @click="move(group.items,itemIndex,1)"/>
               </div>
             </div>
             <div v-if="item.agendaNote" class="agenda-note" v-html="safe(item.agendaNote)"/>
-            <div v-if="recent(item).length" class="updates"><p class="section-label">Recent updates</p>
+            <div v-if="recent(item).length" class="updates"><p class="section-label">{{ t('meetingAgenda.recentUpdates') }}</p>
               <div v-for="update in recent(item)" :key="update.id" class="update">
                 <div v-html="safe(update.text)"/>
-                <small>{{ new Date(update.date).toLocaleString() }} · {{ formatUser(update.createdBy) }}</small></div>
+                <small>{{ formatDate(update.date, { dateStyle: 'short', timeStyle: 'short' }) }} · {{ formatUser(update.createdBy) }}</small></div>
             </div>
-            <div v-if="item.topic?.tasks?.length" class="tasks"><p class="section-label">Open tasks</p>
+            <div v-if="item.topic?.tasks?.length" class="tasks"><p class="section-label">{{ t('meetingAgenda.openTasks') }}</p>
               <p v-for="task in item.topic.tasks" :key="task.id"><i class="pi pi-check-square"/> {{ task.title }}
                 <small>{{ formatUser(task.assignedTo) }}
                   <template v-if="task.dueDate"> · {{ task.dueDate }}</template>
@@ -243,72 +244,72 @@ onMounted(load);
             <div v-if="canManage && openEditors[item.id]" class="quick-update">
               <RichTextEditor v-model="updateEditors[item.id]" height="100px"/>
               <div class="quick-update-actions">
-                <Button label="Cancel" severity="secondary" text @click="openEditors[item.id]=false"/>
-                <Button icon="pi pi-check" label="Save minute" @click="addUpdate(item)"/>
+                <Button :label="t('common.cancel')" severity="secondary" text @click="openEditors[item.id]=false"/>
+                <Button icon="pi pi-check" :label="t('meetingAgenda.saveMinute')" @click="addUpdate(item)"/>
               </div>
             </div>
             <div v-else-if="canManage" class="topic-footer">
-              <Button icon="pi pi-plus" label="Add minute / update" text @click="openUpdateEditor(item.id)"/>
+              <Button icon="pi pi-plus" :label="t('meetingAgenda.addMinute')" text @click="openUpdateEditor(item.id)"/>
               <span><Button :aria-pressed="item.topic?.status === 'deferred'"
-                  :label="item.topic?.status === 'deferred' ? 'Deferred' : 'Defer'"
+                  :label="item.topic?.status === 'deferred' ? t('meetingAgenda.deferred') : t('meetingAgenda.defer')"
                   :severity="item.topic?.status === 'deferred' ? 'danger' : 'secondary'" text
                   @click="toggleDeferred(item)"/><Button
-                  label="Mark done" severity="success" text @click="setTopicStatus(item,'done')"/></span></div>
+                  :label="t('meetingAgenda.markDone')" severity="success" text @click="setTopicStatus(item,'done')"/></span></div>
           </article>
         </section>
       </main>
     </template>
-    <p v-else-if="loading">Loading agenda...</p>
-    <Dialog v-if="canManage" v-model:visible="participantVisible" header="Add participant" modal>
+    <p v-else-if="loading">{{ t('meetingAgenda.loading') }}</p>
+    <Dialog v-if="canManage" v-model:visible="participantVisible" :header="t('meetingAgenda.participantTitle')" modal>
       <form id="participant-form" class="participant-form" @submit.prevent="addParticipant"><Select
           v-model="participant.userId" :options="users" option-label="firstName" option-value="id"
-          placeholder="Select user">
+          :placeholder="t('meetingAgenda.selectUser')">
         <template #option="{option}">{{ formatUser(option) }}</template>
-      </Select><Select v-model="participant.attendanceStatus" :options="['present','absent','excused','unknown']"/>
+      </Select><Select v-model="participant.attendanceStatus" :options="attendanceOptions" option-label="label" option-value="value"/>
       </form>
       <template #footer>
-        <Button form="participant-form" label="Add" type="submit"/>
+        <Button form="participant-form" :label="t('meetingAgenda.add')" type="submit"/>
       </template>
     </Dialog>
-    <Dialog v-if="canManage" v-model:visible="editVisible" :style="{width:'48rem',maxWidth:'calc(100vw - 2rem)'}" header="Edit meeting details"
+    <Dialog v-if="canManage" v-model:visible="editVisible" :style="{width:'48rem',maxWidth:'calc(100vw - 2rem)'}" :header="t('meetingAgenda.editTitle')"
             modal>
       <form id="edit-meeting" class="edit-form" @submit.prevent="saveMeeting">
         <section aria-labelledby="schedule-heading" class="form-section">
           <div class="form-section-heading">
             <span class="section-icon"><i class="pi pi-calendar"/></span>
-            <div><h3 id="schedule-heading">Schedule and status</h3>
-              <p>Basic information shown in the meeting overview.</p></div>
+            <div><h3 id="schedule-heading">{{ t('meetingAgenda.schedule') }}</h3>
+              <p>{{ t('meetingAgenda.scheduleHelp') }}</p></div>
           </div>
           <div class="schedule-row">
-            <label><span>Special title <small>Optional</small></span>
-              <InputText v-model="editForm.title" placeholder="For example: Annual planning meeting"/>
+            <label><span>{{ t('meetings.specialTitle') }} <small>{{ t('common.optional') }}</small></span>
+              <InputText v-model="editForm.title" :placeholder="t('meetingAgenda.exampleTitle')"/>
             </label>
-            <label><span>Date</span>
+            <label><span>{{ t('common.date') }}</span>
               <DatePicker v-model="editForm.date" date-format="yy-mm-dd" icon="pi pi-calendar" icon-display="input"
                           required show-icon/>
             </label>
-            <label><span>Begin time</span>
+            <label><span>{{ t('meetingAgenda.beginTime') }}</span>
               <DatePicker v-model="editForm.beginTime" :step-minute="15" hour-format="24" icon="pi pi-clock" icon-display="input"
                           required show-icon time-only/>
             </label>
-            <label><span>Status</span><Select v-model="editForm.status" :options="statusOptions" option-label="label"
+            <label><span>{{ t('common.status') }}</span><Select v-model="editForm.status" :options="statusOptions" option-label="label"
                                               option-value="value"/></label>
           </div>
         </section>
         <section aria-labelledby="roles-heading" class="form-section">
           <div class="form-section-heading">
             <span class="section-icon"><i class="pi pi-users"/></span>
-            <div><h3 id="roles-heading">Meeting roles</h3>
-              <p>Assign responsibility for leading and recording the meeting.</p></div>
+            <div><h3 id="roles-heading">{{ t('meetingAgenda.roles') }}</h3>
+              <p>{{ t('meetingAgenda.rolesHelp') }}</p></div>
           </div>
           <div class="roles-grid">
-            <label><span>Meeting leader</span><Select v-model="editForm.meetingLeaderId" :options="users"
-                                                      option-label="firstName" option-value="id" placeholder="Select a leader"
+            <label><span>{{ t('meetingAgenda.leader') }}</span><Select v-model="editForm.meetingLeaderId" :options="users"
+                                                      option-label="firstName" option-value="id" :placeholder="t('meetingAgenda.selectLeader')"
                                                       show-clear>
               <template #option="{option}">{{ formatUser(option) }}</template>
             </Select></label>
-            <label><span>Minute taker</span><Select v-model="editForm.minuteTakerId" :options="users"
-                                                    option-label="firstName" option-value="id" placeholder="Select a minute taker"
+            <label><span>{{ t('meetingAgenda.minuteTaker') }}</span><Select v-model="editForm.minuteTakerId" :options="users"
+                                                    option-label="firstName" option-value="id" :placeholder="t('meetingAgenda.selectMinuteTaker')"
                                                     show-clear>
               <template #option="{option}">{{ formatUser(option) }}</template>
             </Select></label>
@@ -317,20 +318,20 @@ onMounted(load);
         <section aria-labelledby="notes-heading" class="form-section notes-section">
           <div class="form-section-heading">
             <span class="section-icon"><i class="pi pi-align-left"/></span>
-            <div><h3 id="notes-heading">Notes</h3>
-              <p>Capture context that applies to the meeting as a whole.</p></div>
+            <div><h3 id="notes-heading">{{ t('meetingAgenda.notesTitle') }}</h3>
+              <p>{{ t('meetingAgenda.notesHelp') }}</p></div>
           </div>
-          <label><span>Opening / input</span>
+          <label><span>{{ t('meetingAgenda.opening') }}</span>
             <RichTextEditor v-model="editForm.openingInput" height="100px"/>
           </label>
-          <label><span>General notes</span>
+          <label><span>{{ t('meetingAgenda.generalNotes') }}</span>
             <RichTextEditor v-model="editForm.generalNotes" height="100px"/>
           </label>
         </section>
       </form>
       <template #footer>
-        <Button label="Cancel" severity="secondary" text @click="editVisible=false"/>
-        <Button form="edit-meeting" icon="pi pi-check" label="Save details" type="submit"/>
+        <Button :label="t('common.cancel')" severity="secondary" text @click="editVisible=false"/>
+        <Button form="edit-meeting" icon="pi pi-check" :label="t('meetingAgenda.saveDetails')" type="submit"/>
       </template>
     </Dialog>
   </section>

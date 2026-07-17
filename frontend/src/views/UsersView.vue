@@ -19,6 +19,9 @@ import {
 } from '../api/users';
 import { auth } from '../auth/auth';
 import { roleLabel, userRoleOptions } from '../auth/roles';
+import { useI18n } from 'vue-i18n';
+
+const { t } = useI18n();
 
 const users = ref<User[]>([]);
 const loading = ref(true);
@@ -38,7 +41,7 @@ async function loadUsers(): Promise<void> {
   try {
     users.value = await getUsers(showArchived.value);
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : 'Unable to load users';
+    errorMessage.value = error instanceof Error ? error.message : t('users.loadFailed');
   } finally {
     loading.value = false;
   }
@@ -65,7 +68,7 @@ async function confirmRemoval(): Promise<void> {
     selectedUser.value = null;
     await loadUsers();
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : 'Unable to remove user';
+    errorMessage.value = error instanceof Error ? error.message : t('users.removeFailed');
   } finally {
     processingUserId.value = null;
   }
@@ -78,7 +81,7 @@ async function restore(user: User): Promise<void> {
     await restoreUser(user.id);
     await loadUsers();
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : 'Unable to restore user';
+    errorMessage.value = error instanceof Error ? error.message : t('users.restoreFailed');
   } finally {
     processingUserId.value = null;
   }
@@ -114,7 +117,7 @@ async function submitUser(): Promise<void> {
     dialogVisible.value = false;
     await loadUsers();
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : 'Unable to create user';
+    errorMessage.value = error instanceof Error ? error.message : t('users.saveFailed');
   } finally {
     saving.value = false;
   }
@@ -127,11 +130,11 @@ onMounted(loadUsers);
   <section class="users-page">
     <header class="page-header">
       <div>
-        <p class="eyebrow">Directory</p>
-        <h1>Users</h1>
-        <p class="description">Manage the people who use Elderflow.</p>
+        <p class="eyebrow">{{ t('users.eyebrow') }}</p>
+        <h1>{{ t('users.title') }}</h1>
+        <p class="description">{{ t('users.description') }}</p>
       </div>
-      <Button v-if="auth.canManage('users')" label="Add user" icon="pi pi-plus" @click="openCreateDialog" />
+      <Button v-if="auth.canManage('users')" :label="t('users.add')" icon="pi pi-plus" @click="openCreateDialog" />
     </header>
 
     <Message v-if="errorMessage && !dialogVisible && !removalDialogVisible" severity="error" :closable="false">
@@ -146,12 +149,12 @@ onMounted(loadUsers);
         striped-rows
         responsive-layout="scroll"
         :row-class="userRowClass"
-        :empty-message="loading ? 'Loading users...' : 'No users yet.'"
+        :empty-message="loading ? t('users.loading') : t('users.empty')"
       >
-        <Column field="firstName" header="First name" />
-        <Column field="lastName" header="Last name" />
-        <Column field="email" header="Email" />
-        <Column field="role" header="Role">
+        <Column field="firstName" :header="t('users.firstName')" />
+        <Column field="lastName" :header="t('users.lastName')" />
+        <Column field="email" :header="t('common.email')" />
+        <Column field="role" :header="t('common.role')">
           <template #body="{ data }">{{ roleLabel(data.role) }}</template>
         </Column>
         <Column header="" class="actions-column">
@@ -163,8 +166,8 @@ onMounted(loadUsers);
               text
               rounded
               :loading="processingUserId === data.id"
-              :aria-label="`Restore ${data.firstName} ${data.lastName}`"
-              title="Restore user"
+              :aria-label="t('users.restore', { name: `${data.firstName} ${data.lastName}` })"
+              :title="t('users.restoreTitle')"
               @click="restore(data)"
             />
             <Button
@@ -173,8 +176,8 @@ onMounted(loadUsers);
               severity="secondary"
               text
               rounded
-              :aria-label="`Edit ${data.firstName} ${data.lastName}`"
-              title="Edit user"
+              :aria-label="t('users.edit', { name: `${data.firstName} ${data.lastName}` })"
+              :title="t('users.editTitle')"
               @click="openEditDialog(data)"
             />
             <Button
@@ -184,8 +187,8 @@ onMounted(loadUsers);
               text
               rounded
               :loading="processingUserId === data.id"
-              :aria-label="`Delete or archive ${data.firstName} ${data.lastName}`"
-              title="Delete or archive user"
+              :aria-label="t('users.remove', { name: `${data.firstName} ${data.lastName}` })"
+              :title="t('users.removeTitle')"
               @click="requestRemoval(data)"
             />
           </template>
@@ -196,65 +199,59 @@ onMounted(loadUsers);
     <Button
       v-if="auth.canManage('users')"
       class="archived-toggle"
-      :label="showArchived ? 'Hide archived users' : 'Show archived users'"
+      :label="showArchived ? t('users.hideArchived') : t('users.showArchived')"
       :icon="showArchived ? 'pi pi-eye-slash' : 'pi pi-eye'"
       severity="secondary"
       text
       @click="toggleArchivedUsers"
     />
 
-    <Dialog v-model:visible="dialogVisible" modal :header="editingUserId ? 'Edit user' : 'Add user'" :style="{ width: '30rem', maxWidth: 'calc(100vw - 2rem)' }">
+    <Dialog v-model:visible="dialogVisible" modal :header="editingUserId ? t('users.editTitle') : t('users.addTitle')" :style="{ width: '30rem', maxWidth: 'calc(100vw - 2rem)' }">
       <form v-if="dialogVisible" id="create-user-form" class="user-form" @submit.prevent="submitUser">
         <Message v-if="errorMessage" severity="error" :closable="false">{{ errorMessage }}</Message>
         <label>
-          <span>First name</span>
+          <span>{{ t('users.firstName') }}</span>
           <InputText v-model="form.firstName" autocomplete="given-name" required maxlength="100" />
         </label>
         <label>
-          <span>Role</span>
+          <span>{{ t('common.role') }}</span>
           <Select v-model="form.role" :options="userRoleOptions" option-label="label" option-value="value" />
         </label>
         <label>
-          <span>{{ editingUserId ? 'New password (optional)' : 'Password' }}</span>
+          <span>{{ editingUserId ? t('users.newPassword') : t('common.password') }}</span>
           <Password v-model="form.password" :feedback="false" toggle-mask :required="!editingUserId" minlength="10" autocomplete="new-password" />
         </label>
         <label>
-          <span>Last name</span>
+          <span>{{ t('users.lastName') }}</span>
           <InputText v-model="form.lastName" autocomplete="family-name" required maxlength="100" />
         </label>
         <label>
-          <span>Email</span>
+          <span>{{ t('common.email') }}</span>
           <InputText v-model="form.email" type="email" autocomplete="email" required maxlength="320" />
         </label>
       </form>
       <template #footer>
-        <Button label="Cancel" severity="secondary" text @click="dialogVisible = false" />
-        <Button :label="editingUserId ? 'Save user' : 'Create user'" type="submit" form="create-user-form" :loading="saving" />
+        <Button :label="t('common.cancel')" severity="secondary" text @click="dialogVisible = false" />
+        <Button :label="editingUserId ? t('users.save') : t('users.create')" type="submit" form="create-user-form" :loading="saving" />
       </template>
     </Dialog>
 
     <Dialog
       v-model:visible="removalDialogVisible"
       modal
-      header="Delete or archive user?"
+      :header="t('users.removeQuestion')"
       :style="{ width: '32rem', maxWidth: 'calc(100vw - 2rem)' }"
     >
       <div class="removal-confirmation">
         <Message v-if="errorMessage" severity="error" :closable="false">
           {{ errorMessage }}
         </Message>
-        <p>
-          <strong v-if="selectedUser">
-            {{ selectedUser.firstName }} {{ selectedUser.lastName }}
-          </strong>
-          will be permanently deleted if no data is attached. If the user is linked to any record,
-          the user will be archived instead and can be restored later.
-        </p>
+        <p>{{ t('users.removalHelp', { name: selectedUser ? `${selectedUser.firstName} ${selectedUser.lastName}` : '' }) }}</p>
       </div>
       <template #footer>
-        <Button label="Cancel" severity="secondary" text @click="removalDialogVisible = false" />
+        <Button :label="t('common.cancel')" severity="secondary" text @click="removalDialogVisible = false" />
         <Button
-          label="Delete or archive"
+          :label="t('users.removeAction')"
           icon="pi pi-trash"
           severity="danger"
           :loading="processingUserId === selectedUser?.id"

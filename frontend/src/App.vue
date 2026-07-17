@@ -5,14 +5,16 @@ import { formatUser, type PermissionCategory } from './api/domain';
 import { auth } from './auth/auth';
 import { roleLabel } from './auth/roles';
 import router from './router';
+import { useI18n } from 'vue-i18n';
 
-const navigation: Array<{ to: string; icon: string; label: string; permission: PermissionCategory }> = [
-  {to: '/', icon: 'pi-home', label: 'Dashboard', permission: 'dashboard'},
-  {to: '/meetings', icon: 'pi-calendar', label: 'Meetings', permission: 'meetings'},
-  {to: '/topics', icon: 'pi-comments', label: 'Topics', permission: 'topics'},
-  {to: '/tasks', icon: 'pi-check-square', label: 'Open tasks', permission: 'tasks'},
-  {to: '/users', icon: 'pi-users', label: 'Users', permission: 'users'},
-  {to: '/agenda-sections', icon: 'pi-list', label: 'Agenda sections', permission: 'contentSettings'},
+const { t } = useI18n();
+const navigation: Array<{ to: string; icon: string; labelKey: string; permission: PermissionCategory }> = [
+  {to: '/', icon: 'pi-home', labelKey: 'nav.dashboard', permission: 'dashboard'},
+  {to: '/meetings', icon: 'pi-calendar', labelKey: 'nav.meetings', permission: 'meetings'},
+  {to: '/topics', icon: 'pi-comments', labelKey: 'nav.topics', permission: 'topics'},
+  {to: '/tasks', icon: 'pi-check-square', labelKey: 'nav.tasks', permission: 'tasks'},
+  {to: '/users', icon: 'pi-users', labelKey: 'nav.users', permission: 'users'},
+  {to: '/agenda-sections', icon: 'pi-list', labelKey: 'nav.sections', permission: 'contentSettings'},
 ];
 const visibleNavigation = computed(() => navigation.filter((item) => auth.canView(item.permission)));
 const isSetupRoute = computed(() => router.currentRoute.value.name === 'setup');
@@ -27,9 +29,9 @@ async function logout(): Promise<void> {
   <div v-if="auth.state.user && !isSetupRoute" class="app-shell">
     <aside class="sidebar">
       <div class="brand"><span class="brand-mark">E</span><span>ElderFlow</span></div>
-      <nav aria-label="Main navigation">
+      <nav :aria-label="t('nav.main')">
         <RouterLink v-for="item in visibleNavigation" :key="item.to" :to="item.to" class="nav-link">
-          <i :class="item.icon" aria-hidden="true" class="pi"/>{{ item.label }}
+          <i :class="item.icon" aria-hidden="true" class="pi"/>{{ t(item.labelKey) }}
         </RouterLink>
       </nav>
       <div class="current-user">
@@ -37,7 +39,7 @@ async function logout(): Promise<void> {
           <span class="avatar">{{ auth.state.user.firstName[0] }}{{ auth.state.user.lastName[0] }}</span>
           <span><strong>{{ formatUser(auth.state.user) }}</strong><small>{{ roleLabel(auth.state.user.role) }}</small></span>
         </RouterLink>
-        <button class="logout-button" type="button" title="Sign out" aria-label="Sign out" @click="logout">
+        <button class="logout-button" type="button" :title="t('nav.signOut')" :aria-label="t('nav.signOut')" @click="logout">
           <i class="pi pi-sign-out" aria-hidden="true" />
         </button>
       </div>

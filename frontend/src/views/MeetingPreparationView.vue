@@ -1,5 +1,7 @@
 <script lang="ts" setup>
 import { onMounted, reactive, ref } from 'vue';
+import { computed } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { RouterLink, useRoute } from 'vue-router';
 import Draggable from 'vuedraggable';
 import Button from 'primevue/button';
@@ -30,6 +32,9 @@ interface SuggestionClone extends Topic {
 }
 
 const route = useRoute();
+const { t } = useI18n();
+const topicTypes = computed(() => ['general', 'urgent', 'strategic', 'person_related', 'prayer_pastoral_care', 'communication', 'appointment_date', 'book_chapter_input'].map((value) => ({ value, label: t(`topicTypes.${value}`) })));
+const statusLabel = (value?: string) => value ? t(`labels.${value}`) : '';
 const id = route.params.id as string;
 const meeting = ref<Meeting | null>(null);
 const sections = ref<AgendaSection[]>([]);
@@ -78,7 +83,7 @@ const load = async () => {
     suggestions.value = loadedSuggestions;
     initialiseGroups();
   } catch (cause) {
-    error.value = cause instanceof Error ? cause.message : 'Unable to load meeting preparation';
+    error.value = cause instanceof Error ? cause.message : t('meetingPreparation.loadFailed');
   }
 };
 
@@ -104,7 +109,7 @@ const withReload = async (action: () => Promise<unknown>) => {
   try {
     await action();
   } catch (cause) {
-    error.value = cause instanceof Error ? cause.message : 'Unable to save agenda';
+    error.value = cause instanceof Error ? cause.message : t('meetingPreparation.saveFailed');
   } finally {
     await load();
     pending.value = false;
@@ -168,7 +173,7 @@ const saveDuration = async (item: MeetingTopic, duration: number | null) => {
         });
       } catch (cause) {
         if (item.plannedDuration === normalizedDuration) item.plannedDuration = previousDuration;
-        error.value = cause instanceof Error ? cause.message : 'Unable to save topic duration';
+        error.value = cause instanceof Error ? cause.message : t('meetingPreparation.durationFailed');
       }
     })
     .finally(() => {
@@ -200,12 +205,12 @@ onMounted(load);
     <template v-if="meeting">
       <header class="page-header">
         <div>
-          <p class="eyebrow">Meeting preparation</p>
+          <p class="eyebrow">{{ t('meetingPreparation.eyebrow') }}</p>
           <h1>{{ meetingLabel(meeting) }}</h1>
-          <p>Choose topics and adjust their section-specific order.</p>
+          <p>{{ t('meetingPreparation.description') }}</p>
         </div>
         <RouterLink :to="`/meetings/${id}`">
-          <Button icon="pi pi-arrow-right" icon-pos="right" label="Open agenda" />
+          <Button icon="pi pi-arrow-right" icon-pos="right" :label="t('meetingPreparation.openAgenda')" />
         </RouterLink>
       </header>
       <div class="layout">
@@ -214,7 +219,7 @@ onMounted(load);
             <h2>
               {{ group.section.name }}
               <span class="section-meta">
-                <span>{{ sectionDuration(group.items) }} min.</span>
+                <span>{{ sectionDuration(group.items) }} {{ t('common.minuteShort') }}</span>
                 <Tag :value="String(group.items.length)" severity="secondary" />
               </span>
             </h2>
@@ -231,37 +236,37 @@ onMounted(load);
             >
               <template #item="{ element: item }">
                 <article>
-                  <button class="drag-handle" type="button" aria-label="Drag topic" title="Drag topic">
+                  <button class="drag-handle" type="button" :aria-label="t('meetingPreparation.drag')" :title="t('meetingPreparation.drag')">
                     <span v-for="dot in 6" :key="dot" />
                   </button>
                   <div>
                     <strong>{{ item.topic?.name }}</strong>
                     <small>
-                      {{ item.topic?.status }}
-                      <template v-if="item.topic?.followUpDate"> · follow-up {{ item.topic.followUpDate }}</template>
+                      {{ statusLabel(item.topic?.status) }}
+                      <template v-if="item.topic?.followUpDate"> · {{ t('topics.followUp') }} {{ item.topic.followUpDate }}</template>
                     </small>
                   </div>
                   <div class="item-actions">
                     <div class="duration-control">
                       <InputNumber
                         :model-value="item.plannedDuration"
-                        aria-label="Planned duration in minutes"
+                        :aria-label="t('meetingPreparation.duration')"
                         :disabled="pending"
                         :invalid="item.plannedDuration === null"
                         :min="0"
                         :step="5"
-                        suffix=" min."
+                        :suffix="` ${t('common.minuteShort')}`"
                         show-buttons
                         size="small"
                         @update:model-value="saveDuration(item, $event)"
                       />
                     </div>
-                    <Button :disabled="pending" aria-label="Remove" icon="pi pi-times" rounded severity="danger" text @click="remove(item)" />
+                    <Button :disabled="pending" :aria-label="t('meetingPreparation.remove')" icon="pi pi-times" rounded severity="danger" text @click="remove(item)" />
                   </div>
                 </article>
               </template>
               <template #footer>
-                <p v-if="!group.items.length" class="empty">No topics yet.</p>
+                <p v-if="!group.items.length" class="empty">{{ t('meetingPreparation.noTopics') }}</p>
               </template>
             </Draggable>
           </section>
@@ -269,10 +274,10 @@ onMounted(load);
         <aside>
           <div class="suggestions-heading">
             <div>
-              <h2>Add topics</h2>
-              <p>Open, due, and deferred topics.</p>
+              <h2>{{ t('meetingPreparation.addTopics') }}</h2>
+              <p>{{ t('meetingPreparation.suggestions') }}</p>
             </div>
-            <Button aria-label="Create new topic" icon="pi pi-plus" rounded @click="newVisible = true" />
+            <Button :aria-label="t('meetingPreparation.createTopic')" icon="pi pi-plus" rounded @click="newVisible = true" />
           </div>
           <Draggable
             :list="suggestions"
@@ -286,35 +291,35 @@ onMounted(load);
             <template #item="{ element: topic }">
               <article class="suggestion">
                 <div class="suggestion-title">
-                  <button class="drag-handle" type="button" aria-label="Drag topic" title="Drag topic">
+                  <button class="drag-handle" type="button" :aria-label="t('meetingPreparation.drag')" :title="t('meetingPreparation.drag')">
                     <span v-for="dot in 6" :key="dot" />
                   </button>
                   <div>
                     <strong>{{ topic.name }}</strong>
-                    <small>{{ topic.type.replaceAll('_', ' ') }}<template v-if="topic.followUpDate"> · {{ topic.followUpDate }}</template></small>
+                    <small>{{ t(`topicTypes.${topic.type}`) }}<template v-if="topic.followUpDate"> · {{ topic.followUpDate }}</template></small>
                   </div>
                 </div>
-                <Select v-model="selectedSections[topic.id]" :options="sections" :placeholder="topic.defaultSection?.name || 'Choose section'" option-label="name" option-value="id" />
-                <Button icon="pi pi-plus" label="Add to agenda" outlined :disabled="pending" @click="add(topic)" />
+                <Select v-model="selectedSections[topic.id]" :options="sections" :placeholder="topic.defaultSection?.name || t('meetingPreparation.chooseSection')" option-label="name" option-value="id" />
+                <Button icon="pi pi-plus" :label="t('meetingPreparation.addToAgenda')" outlined :disabled="pending" @click="add(topic)" />
               </article>
             </template>
           </Draggable>
-          <p v-if="!suggestions.length" class="empty">All active topics are already on the agenda.</p>
+          <p v-if="!suggestions.length" class="empty">{{ t('meetingPreparation.allAdded') }}</p>
         </aside>
       </div>
     </template>
-    <Dialog v-model:visible="newVisible" :style="{ width: '44rem', maxWidth: 'calc(100vw - 2rem)' }" header="Create and add topic" modal>
+    <Dialog v-model:visible="newVisible" :style="{ width: '44rem', maxWidth: 'calc(100vw - 2rem)' }" :header="t('meetingPreparation.createAndAddTitle')" modal>
       <form id="new-topic" class="form" @submit.prevent="createAndAdd">
-        <label><span>Name</span><InputText v-model="form.name" required /></label>
-        <label><span>Description</span><RichTextEditor v-model="form.description" height="120px" /></label>
+        <label><span>{{ t('common.name') }}</span><InputText v-model="form.name" required /></label>
+        <label><span>{{ t('common.description') }}</span><RichTextEditor v-model="form.description" height="120px" /></label>
         <div class="row">
-          <label><span>Type</span><Select v-model="form.type" :options="['general', 'urgent', 'strategic', 'person_related', 'prayer_pastoral_care', 'communication', 'appointment_date', 'book_chapter_input']" /></label>
-          <label><span>Section</span><Select v-model="form.defaultSectionId" :options="sections" option-label="name" option-value="id" required /></label>
+          <label><span>{{ t('topics.type') }}</span><Select v-model="form.type" :options="topicTypes" option-label="label" option-value="value" /></label>
+          <label><span>{{ t('meetingPreparation.section') }}</span><Select v-model="form.defaultSectionId" :options="sections" option-label="name" option-value="id" required /></label>
         </div>
       </form>
       <template #footer>
-        <Button label="Cancel" severity="secondary" text @click="newVisible = false" />
-        <Button form="new-topic" label="Create and add" type="submit" />
+        <Button :label="t('common.cancel')" severity="secondary" text @click="newVisible = false" />
+        <Button form="new-topic" :label="t('meetingPreparation.createAndAdd')" type="submit" />
       </template>
     </Dialog>
   </section>

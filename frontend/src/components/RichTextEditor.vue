@@ -1,16 +1,19 @@
 <script setup lang="ts">
 import Editor from 'primevue/editor';
+import { computed } from 'vue';
+import { useI18n } from 'vue-i18n';
 
-withDefaults(defineProps<{ placeholder?: string; height?: string }>(), {
-  placeholder: 'Write an update...',
+const props = withDefaults(defineProps<{ placeholder?: string; height?: string }>(), {
   height: '160px',
 });
+const { t } = useI18n();
+const resolvedPlaceholder = computed(() => props.placeholder ?? t('topicDetail.addUpdate'));
 
 const model = defineModel<string>({ default: '' });
 </script>
 
 <template>
-  <Editor v-model="model" :placeholder="placeholder" :editor-style="{ height }">
+  <Editor v-model="model" :placeholder="resolvedPlaceholder" :editor-style="{ height: props.height }">
     <template #toolbar>
       <span class="ql-formats">
         <button class="ql-bold" type="button" />

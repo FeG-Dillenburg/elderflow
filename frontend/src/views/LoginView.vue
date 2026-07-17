@@ -6,12 +6,14 @@ import InputText from 'primevue/inputtext';
 import Message from 'primevue/message';
 import Password from 'primevue/password';
 import { auth } from '../auth/auth';
+import { useI18n } from 'vue-i18n';
 
 const route = useRoute();
 const router = useRouter();
 const form = reactive({ email: '', password: '' });
 const saving = ref(false);
 const errorMessage = ref('');
+const { t } = useI18n();
 
 async function submit(): Promise<void> {
   saving.value = true;
@@ -20,7 +22,7 @@ async function submit(): Promise<void> {
     await auth.login(form.email, form.password);
     await router.push(typeof route.query.redirect === 'string' ? route.query.redirect : '/');
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : 'Unable to sign in';
+    errorMessage.value = error instanceof Error ? error.message : t('login.failed');
   } finally {
     saving.value = false;
   }
@@ -32,19 +34,19 @@ async function submit(): Promise<void> {
     <section class="login-card">
       <div class="brand-mark">E</div>
       <p class="eyebrow">ElderFlow</p>
-      <h1>Welcome back</h1>
-      <p class="description">Sign in to continue to your workspace.</p>
+      <h1>{{ t('login.title') }}</h1>
+      <p class="description">{{ t('login.description') }}</p>
       <form class="login-form" @submit.prevent="submit">
         <Message v-if="errorMessage" severity="error" :closable="false">{{ errorMessage }}</Message>
         <label>
-          <span>Email</span>
+          <span>{{ t('common.email') }}</span>
           <InputText v-model="form.email" type="email" autocomplete="username" required autofocus />
         </label>
         <label>
-          <span>Password</span>
+          <span>{{ t('common.password') }}</span>
           <Password v-model="form.password" :feedback="false" toggle-mask autocomplete="current-password" required />
         </label>
-        <Button label="Sign in" type="submit" :loading="saving" />
+        <Button :label="t('login.submit')" type="submit" :loading="saving" />
       </form>
     </section>
   </main>

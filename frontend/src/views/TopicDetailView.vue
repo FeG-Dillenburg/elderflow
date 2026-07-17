@@ -26,8 +26,11 @@ import {
   type TopicUpdate,
   type User
 } from '../api/domain';
+import {useI18n} from 'vue-i18n';
+import {formatDate} from '../i18n';
 
 const canManage = computed(() => !auth.state.user || auth.canManage('topics'));
+const {t} = useI18n();
 
 const route = useRoute();
 const id = route.params.id as string;
@@ -43,7 +46,7 @@ const load = async () => {
       status: 'open'
     }), api.topicAppearances(id), api.userDirectory(), api.sections()])
   } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Unable to load topic'
+    error.value = e instanceof Error ? e.message : t('topicDetail.loadFailed')
   }
 };
 const addUpdate = async () => {
@@ -75,35 +78,35 @@ onMounted(load);
     <Message v-if="error" severity="error">{{ error }}</Message>
     <template v-if="topic">
       <header class="topic-header">
-        <div><p class="eyebrow">Topic history</p>
+        <div><p class="eyebrow">{{ t('topicDetail.eyebrow') }}</p>
           <h1>{{ topic.name }}</h1>
           <p>
-            <Tag :value="topic.status" severity="secondary"/>
-            <span>{{ topic.type.replaceAll('_', ' ') }}</span></p>
+            <Tag :value="t(`labels.${topic.status}`)" severity="secondary"/>
+            <span>{{ t(`topicTypes.${topic.type}`) }}</span></p>
         </div>
         <div v-if="canManage">
-          <Button icon="pi pi-pencil" label="Edit topic" text @click="editVisible=true"/>
-          <Button icon="pi pi-plus" label="Add task" outlined @click="taskVisible=true"/>
+          <Button icon="pi pi-pencil" :label="t('topicDetail.edit')" text @click="editVisible=true"/>
+          <Button icon="pi pi-plus" :label="t('topicDetail.addTask')" outlined @click="taskVisible=true"/>
         </div>
       </header>
       <div class="topic-grid">
         <main>
-          <section class="background"><h2>Background</h2>
+          <section class="background"><h2>{{ t('topicDetail.background') }}</h2>
             <div v-html="safe(topic.description)"/>
           </section>
           <section>
-            <div class="section-heading"><h2>Updates and minutes</h2><span>{{ updates.length }} entries</span></div>
+            <div class="section-heading"><h2>{{ t('topicDetail.updates') }}</h2><span>{{ t('topicDetail.entries', { count: updates.length }) }}</span></div>
             <div v-if="canManage" class="new-update">
               <RichTextEditor v-model="updateText" height="120px"/>
-              <Button :disabled="!updateText" icon="pi pi-plus" label="Add update" @click="addUpdate"/>
+              <Button :disabled="!updateText" icon="pi pi-plus" :label="t('topicDetail.addUpdate')" @click="addUpdate"/>
             </div>
             <div class="feed">
               <article v-for="update in updates" :key="update.id">
                 <div class="feed-mark"/>
                 <div>
                   <div class="feed-meta">
-                    <Tag :value="update.type" severity="secondary"/>
-                    <span>{{ new Date(update.date).toLocaleString() }} · {{ formatUser(update.createdBy) }}</span>
+                    <Tag :value="t(`labels.${update.type}`)" severity="secondary"/>
+                    <span>{{ formatDate(update.date, { dateStyle: 'short', timeStyle: 'short' }) }} · {{ formatUser(update.createdBy) }}</span>
                     <RouterLink v-if="update.meeting" :to="`/meetings/${update.meeting.id}`">
                       {{ meetingLabel(update.meeting) }}
                     </RouterLink>
@@ -111,59 +114,59 @@ onMounted(load);
                   <div class="rich" v-html="safe(update.text)"/>
                 </div>
               </article>
-              <p v-if="!updates.length" class="empty">No updates have been recorded.</p></div>
+              <p v-if="!updates.length" class="empty">{{ t('topicDetail.noUpdates') }}</p></div>
           </section>
         </main>
         <aside>
-          <section><h2>Details</h2>
+          <section><h2>{{ t('topicDetail.details') }}</h2>
             <dl>
-              <dt>Responsible</dt>
+              <dt>{{ t('topicDetail.responsible') }}</dt>
               <dd>{{ formatUser(topic.responsibleUser) }}</dd>
-              <dt>Follow-up date</dt>
-              <dd>{{ topic.followUpDate || 'Not set' }}</dd>
-              <dt>Default section</dt>
-              <dd>{{ topic.defaultSection?.name || 'Not set' }}</dd>
-              <dt>Recurring</dt>
-              <dd>{{ topic.isRecurring ? 'Yes' : 'No' }}</dd>
+              <dt>{{ t('topicDetail.followUpDate') }}</dt>
+              <dd>{{ topic.followUpDate || t('topicDetail.notSet') }}</dd>
+              <dt>{{ t('topicDetail.defaultSection') }}</dt>
+              <dd>{{ topic.defaultSection?.name || t('topicDetail.notSet') }}</dd>
+              <dt>{{ t('topicDetail.recurring') }}</dt>
+              <dd>{{ topic.isRecurring ? t('common.yes') : t('common.no') }}</dd>
             </dl>
           </section>
           <section>
-            <div class="aside-heading"><h2>Open tasks</h2>
-              <Button v-if="canManage" aria-label="Add task" icon="pi pi-plus" rounded text @click="taskVisible=true"/>
+            <div class="aside-heading"><h2>{{ t('topicDetail.openTasks') }}</h2>
+              <Button v-if="canManage" :aria-label="t('topicDetail.addTask')" icon="pi pi-plus" rounded text @click="taskVisible=true"/>
             </div>
             <article v-for="item in tasks" :key="item.id" class="task">
               <strong>{{ item.title }}</strong><small>{{ formatUser(item.assignedTo) }}
               <template v-if="item.dueDate"> · {{ item.dueDate }}</template>
             </small></article>
-            <p v-if="!tasks.length" class="empty">No open tasks.</p></section>
-          <section><h2>Meeting history</h2>
+            <p v-if="!tasks.length" class="empty">{{ t('topicDetail.noTasks') }}</p></section>
+          <section><h2>{{ t('topicDetail.meetingHistory') }}</h2>
             <RouterLink v-for="item in appearances" :key="item.id" :to="`/meetings/${item.meetingId}`"
                         class="appearance">
-              {{ item.meeting ? meetingLabel(item.meeting) : 'Meeting' }}<small>{{ item.section?.name }}</small>
+              {{ item.meeting ? meetingLabel(item.meeting) : t('common.meeting') }}<small>{{ item.section?.name }}</small>
             </RouterLink>
-            <p v-if="!appearances.length" class="empty">Not used in a meeting yet.</p></section>
+            <p v-if="!appearances.length" class="empty">{{ t('topicDetail.noMeetings') }}</p></section>
         </aside>
       </div>
     </template>
     <TopicEditDialog v-if="topic && canManage" v-model:visible="editVisible" :sections="sections" :topic="topic" :users="users"
                      @saved="load"/>
-    <Dialog v-if="canManage" v-model:visible="taskVisible" :style="{width:'38rem',maxWidth:'calc(100vw - 2rem)'}" header="Add follow-up task"
+    <Dialog v-if="canManage" v-model:visible="taskVisible" :style="{width:'38rem',maxWidth:'calc(100vw - 2rem)'}" :header="t('topicDetail.addFollowUpTask')"
             modal>
-      <form id="topic-task" class="form" @submit.prevent="addTask"><label><span>Title</span>
+      <form id="topic-task" class="form" @submit.prevent="addTask"><label><span>{{ t('tasks.titleField') }}</span>
         <InputText v-model="task.title" required/>
-      </label><label><span>Description</span>
+      </label><label><span>{{ t('common.description') }}</span>
         <RichTextEditor v-model="task.description" height="100px"/>
       </label>
-        <div class="row"><label><span>Assigned to</span><Select v-model="task.assignedToId" :options="assigneeOptions"
+        <div class="row"><label><span>{{ t('topicDetail.assignedTo') }}</span><Select v-model="task.assignedToId" :options="assigneeOptions"
                                                                 option-label="firstName" option-value="id" show-clear>
           <template #option="{option}">{{ formatUser(option) }}</template>
-        </Select></label><label><span>Due date</span>
+        </Select></label><label><span>{{ t('topicDetail.dueDate') }}</span>
           <DatePicker v-model="task.dueDate" date-format="yy-mm-dd" show-button-bar/>
         </label></div>
       </form>
       <template #footer>
-        <Button label="Cancel" severity="secondary" text @click="taskVisible=false"/>
-        <Button form="topic-task" label="Create task" type="submit"/>
+        <Button :label="t('common.cancel')" severity="secondary" text @click="taskVisible=false"/>
+        <Button form="topic-task" :label="t('topicDetail.createTask')" type="submit"/>
       </template>
     </Dialog>
   </section>

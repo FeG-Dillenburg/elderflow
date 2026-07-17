@@ -9,17 +9,20 @@ import Select from 'primevue/select';
 import { api, formatUser, toLocalDate, type AgendaSection, type Topic, type TopicInput, type User } from '../api/domain';
 import RichTextEditor from './RichTextEditor.vue';
 import { assignableUsers } from '../auth/roles';
+import { useI18n } from 'vue-i18n';
 
 const props = defineProps<{ topic: Topic; users: User[]; sections: AgendaSection[] }>();
 const emit = defineEmits<{ saved: [] }>();
 const visible = defineModel<boolean>('visible', { required: true });
 const responsibleUserOptions = computed(() => assignableUsers(props.users));
+const { t } = useI18n();
 const form = reactive({
   name: '', description: '', type: 'general', status: 'open', followUpDate: null as Date | null,
   responsibleUserId: null as string | null, isRecurring: false, defaultSectionId: null as string | null,
   defaultPosition: null as number | null,
 });
-const topicTypes = ['recurring_agenda', 'person_related', 'prayer_pastoral_care', 'urgent', 'strategic', 'communication', 'appointment_date', 'book_chapter_input', 'general'];
+const topicTypes = computed(() => ['recurring_agenda', 'person_related', 'prayer_pastoral_care', 'urgent', 'strategic', 'communication', 'appointment_date', 'book_chapter_input', 'general'].map((value) => ({ value, label: t(`topicTypes.${value}`) })));
+const statuses = computed(() => ['open', 'done', 'deferred', 'archived'].map((value) => ({ value, label: t(`labels.${value}`) })));
 
 watch(() => props.topic, (topic) => Object.assign(form, {
   name: topic.name,
@@ -42,22 +45,22 @@ async function save(): Promise<void> {
 </script>
 
 <template>
-  <Dialog v-model:visible="visible" modal header="Edit topic" :style="{ width: '46rem', maxWidth: 'calc(100vw - 2rem)' }">
+  <Dialog v-model:visible="visible" modal :header="t('topicEdit.title')" :style="{ width: '46rem', maxWidth: 'calc(100vw - 2rem)' }">
     <form id="edit-topic" class="form" @submit.prevent="save">
-      <label><span>Name</span><InputText v-model="form.name" required /></label>
-      <label><span>Description / background</span><RichTextEditor v-model="form.description" /></label>
+      <label><span>{{ t('common.name') }}</span><InputText v-model="form.name" required /></label>
+      <label><span>{{ t('topicEdit.background') }}</span><RichTextEditor v-model="form.description" /></label>
       <div class="row">
-        <label><span>Type</span><Select v-model="form.type" :options="topicTypes" /></label>
-        <label><span>Status</span><Select v-model="form.status" :options="['open', 'done', 'deferred', 'archived']" /></label>
+        <label><span>{{ t('topics.type') }}</span><Select v-model="form.type" :options="topicTypes" option-label="label" option-value="value" /></label>
+        <label><span>{{ t('common.status') }}</span><Select v-model="form.status" :options="statuses" option-label="label" option-value="value" /></label>
       </div>
       <div class="row">
-        <label><span>Responsible</span><Select v-model="form.responsibleUserId" :options="responsibleUserOptions" option-label="firstName" option-value="id" show-clear><template #option="{ option }">{{ formatUser(option) }}</template></Select></label>
-        <label><span>Follow-up date</span><DatePicker v-model="form.followUpDate" date-format="yy-mm-dd" show-button-bar /></label>
+        <label><span>{{ t('topicEdit.responsible') }}</span><Select v-model="form.responsibleUserId" :options="responsibleUserOptions" option-label="firstName" option-value="id" show-clear><template #option="{ option }">{{ formatUser(option) }}</template></Select></label>
+        <label><span>{{ t('topicEdit.followUpDate') }}</span><DatePicker v-model="form.followUpDate" date-format="yy-mm-dd" show-button-bar /></label>
       </div>
-      <label><span>Default section</span><Select v-model="form.defaultSectionId" :options="sections" option-label="name" option-value="id" show-clear /></label>
-      <label class="checkbox"><Checkbox v-model="form.isRecurring" binary /><span>Add automatically to new meetings</span></label>
+      <label><span>{{ t('topicEdit.defaultSection') }}</span><Select v-model="form.defaultSectionId" :options="sections" option-label="name" option-value="id" show-clear /></label>
+      <label class="checkbox"><Checkbox v-model="form.isRecurring" binary /><span>{{ t('topicEdit.autoAdd') }}</span></label>
     </form>
-    <template #footer><Button label="Cancel" severity="secondary" text @click="visible = false" /><Button label="Save topic" type="submit" form="edit-topic" /></template>
+    <template #footer><Button :label="t('common.cancel')" severity="secondary" text @click="visible = false" /><Button :label="t('topicEdit.save')" type="submit" form="edit-topic" /></template>
   </Dialog>
 </template>
 

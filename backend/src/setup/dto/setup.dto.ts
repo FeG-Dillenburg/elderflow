@@ -1,5 +1,6 @@
 import { Transform } from 'class-transformer';
-import { IsEmail, IsNotEmpty, IsString, MaxLength, MinLength } from 'class-validator';
+import { IsEmail, IsIn, IsNotEmpty, IsString, MaxLength, MinLength } from 'class-validator';
+import { SupportedLanguage, supportedLanguages } from '../../installation/language';
 
 export class SetupPasswordDto {
   @IsString()
@@ -9,6 +10,9 @@ export class SetupPasswordDto {
 }
 
 export class CreateInitialUserDto extends SetupPasswordDto {
+  @IsIn(supportedLanguages)
+  defaultLanguage: SupportedLanguage;
+
   @Transform(({ value }) => (typeof value === 'string' ? value.trim().toLowerCase() : value))
   @IsEmail()
   @MaxLength(320)

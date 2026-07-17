@@ -32,6 +32,10 @@ export const auth = {
   setUser(user: AuthUser): void {
     state.user = user;
   },
+  completeInitialization(user: AuthUser | null): void {
+    state.user = user;
+    state.ready = true;
+  },
   permission(category: PermissionCategory): PermissionLevel {
     return state.user?.permissions[category] ?? 'hide';
   },

@@ -4,22 +4,22 @@ import { User } from '../users/user.entity';
 import { CreateInitialUserDto, SetupPasswordDto } from './dto/setup.dto';
 import { SetupService } from './setup.service';
 
-@Controller('api/setup')
+@Controller('api')
 @Public()
 export class SetupController {
   constructor(private readonly setupService: SetupService) {}
 
-  @Get('status')
-  status(): Promise<{ setupRequired: boolean }> {
-    return this.setupService.status();
+  @Get('installation')
+  installation() {
+    return this.setupService.installation();
   }
 
-  @Post('verify')
+  @Post('setup/verify')
   verify(@Body() input: SetupPasswordDto): Promise<{ valid: true }> {
     return this.setupService.verifyPassword(input.setupPassword);
   }
 
-  @Post()
+  @Post('setup')
   createInitialUser(@Body() input: CreateInitialUserDto): Promise<User> {
     return this.setupService.createInitialUser(input);
   }

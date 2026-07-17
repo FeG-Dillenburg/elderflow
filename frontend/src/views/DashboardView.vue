@@ -6,83 +6,86 @@ import Message from 'primevue/message';
 import Tag from 'primevue/tag';
 import {RouterLink} from 'vue-router';
 import {api, formatUser, meetingLabel, type DashboardData} from '../api/domain';
+import {useI18n} from 'vue-i18n';
+import {formatDate} from '../i18n';
 
 const data = ref<DashboardData | null>(null);
 const error = ref('');
+const {t} = useI18n();
 onMounted(async () => {
   try {
     data.value = await api.dashboard();
   } catch (value) {
-    error.value = value instanceof Error ? value.message : 'Unable to load dashboard';
+    error.value = value instanceof Error ? value.message : t('dashboard.loadFailed');
   }
 });
-const date = (value: string | null) => value ? new Date(`${value}T12:00:00`).toLocaleDateString() : 'No date';
+const date = (value: string | null) => value ? formatDate(`${value}T12:00:00`) : t('dashboard.noDate');
 </script>
 
 <template>
   <section class="page">
     <header class="page-header">
-      <div><p class="eyebrow">Overview</p>
-        <h1>Dashboard</h1>
-        <p>Everything that needs attention before the next meeting.</p></div>
+      <div><p class="eyebrow">{{ t('dashboard.eyebrow') }}</p>
+        <h1>{{ t('dashboard.title') }}</h1>
+        <p>{{ t('dashboard.description') }}</p></div>
     </header>
     <Message v-if="error" severity="error">{{ error }}</Message>
     <div v-if="data" class="dashboard-grid">
       <Card class="next-meeting">
-        <template #title>Next planned meeting</template>
+        <template #title>{{ t('dashboard.nextMeeting') }}</template>
         <template #content>
           <template v-if="data.nextMeeting"><h2>{{ meetingLabel(data.nextMeeting) }}</h2>
-            <p>{{ date(data.nextMeeting.date) }} at {{ data.nextMeeting.beginTime.slice(0, 5) }}</p>
-            <p class="muted">Leader: {{ formatUser(data.nextMeeting.meetingLeader) }}</p>
+            <p>{{ date(data.nextMeeting.date) }} {{ t('common.at') }} {{ data.nextMeeting.beginTime.slice(0, 5) }}</p>
+            <p class="muted">{{ t('dashboard.leader', { name: formatUser(data.nextMeeting.meetingLeader) }) }}</p>
             <RouterLink :to="`/meetings/${data.nextMeeting.id}`">
-              <Button icon="pi pi-arrow-right" icon-pos="right" label="Open agenda"/>
+              <Button icon="pi pi-arrow-right" icon-pos="right" :label="t('dashboard.openAgenda')"/>
             </RouterLink>
           </template>
-          <p v-else class="muted">No upcoming meeting is planned.</p>
+          <p v-else class="muted">{{ t('dashboard.noMeeting') }}</p>
         </template>
       </Card>
       <Card>
-        <template #title>My open tasks</template>
+        <template #title>{{ t('dashboard.myTasks') }}</template>
         <template #content>
           <ul class="item-list">
             <li v-for="task in data.myOpenTasks" :key="task.id">
               <RouterLink :to="task.topicId ? `/topics/${task.topicId}` : '/tasks'">{{ task.title }}</RouterLink>
-              <small>{{ task.dueDate ? `Due ${date(task.dueDate)}` : 'No due date' }}</small></li>
-            <li v-if="!data.myOpenTasks.length" class="empty">Nothing assigned to you.</li>
+              <small>{{ task.dueDate ? t('dashboard.due', { date: date(task.dueDate) }) : t('dashboard.noDueDate') }}</small></li>
+            <li v-if="!data.myOpenTasks.length" class="empty">{{ t('dashboard.nothingAssigned') }}</li>
           </ul>
         </template>
       </Card>
       <Card>
-        <template #title>Overdue tasks</template>
+        <template #title>{{ t('dashboard.overdue') }}</template>
         <template #content>
           <ul class="item-list">
             <li v-for="task in data.overdueTasks" :key="task.id"><span>{{
                 task.title
-              }}</span><small>{{ formatUser(task.assignedTo) }} · due {{ date(task.dueDate) }}</small></li>
-            <li v-if="!data.overdueTasks.length" class="empty">No overdue tasks.</li>
+              }}</span><small>{{ formatUser(task.assignedTo) }} · {{ t('dashboard.dueBy', { date: date(task.dueDate) }) }}</small></li>
+            <li v-if="!data.overdueTasks.length" class="empty">{{ t('dashboard.noOverdue') }}</li>
           </ul>
         </template>
       </Card>
       <Card>
-        <template #title>Follow-ups due</template>
+        <template #title>{{ t('dashboard.followUps') }}</template>
         <template #content>
           <ul class="item-list">
             <li v-for="topic in data.followUpTopics" :key="topic.id">
               <RouterLink :to="`/topics/${topic.id}`">{{ topic.name }}</RouterLink>
               <small>{{ date(topic.followUpDate) }} · {{ formatUser(topic.responsibleUser) }}</small></li>
-            <li v-if="!data.followUpTopics.length" class="empty">No follow-ups are due.</li>
+            <li v-if="!data.followUpTopics.length" class="empty">{{ t('dashboard.noFollowUps') }}</li>
           </ul>
         </template>
       </Card>
       <Card>
-        <template #title>Recently updated topics</template>
+        <template #title>{{ t('dashboard.recentTopics') }}</template>
         <template #content>
           <ul class="item-list">
             <li v-for="topic in data.recentTopics" :key="topic.id">
               <RouterLink :to="`/topics/${topic.id}`">{{ topic.name }}</RouterLink>
               <Tag :value="topic.status" severity="secondary"/>
             </li>
-            <li v-if="!data.recentTopics.length" class="empty">No active topics yet.</li>
+            <li v-if="!data.recentTopics.length" class="empty">{{ t('dashboard.noTopics') }}</li>
           </ul>
         </template>
       </Card>

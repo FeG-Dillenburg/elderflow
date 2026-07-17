@@ -15,21 +15,19 @@ import RichTextEditor from '../components/RichTextEditor.vue';
 import {api, formatUser, toLocalDate, type AgendaSection, type Topic, type TopicInput, type User} from '../api/domain';
 import {auth} from '../auth/auth';
 import {assignableUsers} from '../auth/roles';
+import {useI18n} from 'vue-i18n';
 
 const canManage = computed(() => !auth.state.user || auth.canManage('topics'));
-const topicTypes = [{label: 'Recurring agenda', value: 'recurring_agenda'}, {
-  label: 'Person-related',
-  value: 'person_related'
-}, {label: 'Prayer / pastoral care', value: 'prayer_pastoral_care'}, {
-  label: 'Urgent',
-  value: 'urgent'
-}, {label: 'Strategic', value: 'strategic'}, {
-  label: 'Communication',
-  value: 'communication'
-}, {label: 'Appointment / date', value: 'appointment_date'}, {
-  label: 'Book / chapter / input',
-  value: 'book_chapter_input'
-}, {label: 'General', value: 'general'}];
+const {t} = useI18n();
+const topicTypeValues = ['recurring_agenda', 'person_related', 'prayer_pastoral_care', 'urgent', 'strategic', 'communication', 'appointment_date', 'book_chapter_input', 'general'];
+const topicTypes = computed(() => topicTypeValues.map((value) => ({value, label: t(`topicTypes.${value}`)})));
+const statusOptions = computed(() => [
+  {label: t('topics.openDeferred'), value: 'active'},
+  {label: t('labels.open'), value: 'open'},
+  {label: t('topics.deferred'), value: 'deferred'},
+  {label: t('labels.done'), value: 'done'},
+  {label: t('topics.archived'), value: 'archived'},
+]);
 const topics = ref<Topic[]>([]), users = ref<User[]>([]), sections = ref<AgendaSection[]>([]), loading = ref(true),
     visible = ref(false), saving = ref(false), error = ref('');
 const responsibleUserOptions = computed(() => assignableUsers(users.value));
@@ -63,7 +61,7 @@ const load = async () => {
       dueOn: toLocalDate(filters.dueOn) ?? undefined
     }), api.userDirectory(), api.sections()])
   } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Unable to load topics'
+    error.value = e instanceof Error ? e.message : t('topics.loadFailed')
   } finally {
     loading.value = false
   }
@@ -80,7 +78,7 @@ const create = async () => {
     visible.value = false;
     await load()
   } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Unable to create topic'
+    error.value = e instanceof Error ? e.message : t('topics.createFailed')
   } finally {
     saving.value = false
   }
@@ -90,70 +88,70 @@ onMounted(load);
 <template>
   <section class="page">
     <header class="page-header">
-      <div><p class="eyebrow">Discussion history</p>
-        <h1>Open topics</h1>
-        <p>Long-lived matters that can appear across several meetings.</p></div>
-      <Button v-if="canManage" label="New topic" icon="pi pi-plus" @click="open"/>
+      <div><p class="eyebrow">{{ t('topics.eyebrow') }}</p>
+        <h1>{{ t('topics.title') }}</h1>
+        <p>{{ t('topics.description') }}</p></div>
+      <Button v-if="canManage" :label="t('topics.new')" icon="pi pi-plus" @click="open"/>
     </header>
     <div class="filters"><Select v-model="filters.status"
-                                 :options="[{label:'Open & deferred',value:'active'},{label:'Open',value:'open'},{label:'Deferred',value:'deferred'},{label:'Done',value:'done'},{label:'Archived',value:'archived'}]"
+                                 :options="statusOptions"
                                  option-label="label" option-value="value" @change="load"/><Select
         v-model="filters.type" :options="topicTypes" option-label="label" option-value="value" show-clear
-        placeholder="All types" @change="load"/><Select v-model="filters.defaultSectionId" :options="sections"
+        :placeholder="t('topics.allTypes')" @change="load"/><Select v-model="filters.defaultSectionId" :options="sections"
                                                         option-label="name" option-value="id" show-clear
-                                                        placeholder="All sections" @change="load"/><Select
+                                                        :placeholder="t('topics.allSections')" @change="load"/><Select
         v-model="filters.responsibleUserId" :options="users" option-label="firstName" option-value="id" show-clear
-        placeholder="All responsible users" @change="load">
+        :placeholder="t('topics.allResponsible')" @change="load">
       <template #option="{option}">{{ formatUser(option) }}</template>
     </Select>
-      <DatePicker v-model="filters.dueOn" date-format="yy-mm-dd" show-button-bar placeholder="Follow-up due by"
+      <DatePicker v-model="filters.dueOn" date-format="yy-mm-dd" show-button-bar :placeholder="t('topics.followUpDueBy')"
                   @value-change="load"/>
     </div>
     <Message v-if="error" severity="error">{{ error }}</Message>
     <div class="table-card">
       <DataTable :value="topics" :loading="loading" data-key="id">
-        <Column header="Topic">
+        <Column :header="t('common.topic')">
           <template #body="{data}">
             <RouterLink class="primary-link" :to="`/topics/${data.id}`">{{ data.name }}</RouterLink>
-            <small>{{ data.defaultSection?.name || 'No default section' }}</small></template>
+            <small>{{ data.defaultSection?.name || t('topics.noDefaultSection') }}</small></template>
         </Column>
-        <Column header="Type">
+        <Column :header="t('topics.type')">
           <template #body="{data}">{{ topicTypes.find(t => t.value === data.type)?.label }}</template>
         </Column>
-        <Column header="Status">
+        <Column :header="t('common.status')">
           <template #body="{data}">
-            <Tag :value="data.status" severity="secondary"/>
+            <Tag :value="t(`labels.${data.status}`)" severity="secondary"/>
           </template>
         </Column>
-        <Column header="Responsible">
+        <Column :header="t('topics.responsible')">
           <template #body="{data}">{{ formatUser(data.responsibleUser) }}</template>
         </Column>
-        <Column field="followUpDate" header="Follow-up"/>
+        <Column field="followUpDate" :header="t('topics.followUp')"/>
       </DataTable>
     </div>
-    <Dialog v-model:visible="visible" modal header="Create topic"
+    <Dialog v-model:visible="visible" modal :header="t('topics.createTitle')"
             :style="{width:'46rem',maxWidth:'calc(100vw - 2rem)'}">
-      <form id="topic-form" class="form" @submit.prevent="create"><label><span>Name</span>
+      <form id="topic-form" class="form" @submit.prevent="create"><label><span>{{ t('common.name') }}</span>
         <InputText v-model="form.name" required/>
-      </label><label><span>Description / background</span>
+      </label><label><span>{{ t('topics.background') }}</span>
         <RichTextEditor v-model="form.description"/>
       </label>
-        <div class="row"><label><span>Type</span><Select v-model="form.type" :options="topicTypes" option-label="label"
-                                                         option-value="value"/></label><label><span>Responsible</span><Select
+        <div class="row"><label><span>{{ t('topics.type') }}</span><Select v-model="form.type" :options="topicTypes" option-label="label"
+                                                         option-value="value"/></label><label><span>{{ t('topics.responsible') }}</span><Select
             v-model="form.responsibleUserId" :options="responsibleUserOptions" option-label="firstName" option-value="id" show-clear>
           <template #option="{option}">{{ formatUser(option) }}</template>
         </Select></label></div>
-        <div class="row"><label><span>Follow-up date</span>
+        <div class="row"><label><span>{{ t('topics.followUpDate') }}</span>
           <DatePicker v-model="form.followUpDate" date-format="yy-mm-dd" show-button-bar/>
-        </label><label><span>Default section</span><Select v-model="form.defaultSectionId" :options="sections"
+        </label><label><span>{{ t('topics.defaultSection') }}</span><Select v-model="form.defaultSectionId" :options="sections"
                                                            option-label="name" option-value="id" show-clear/></label>
         </div>
         <label class="checkbox">
           <Checkbox v-model="form.isRecurring" binary/>
-          <span>Add automatically to new meetings</span></label></form>
+          <span>{{ t('topics.autoAdd') }}</span></label></form>
       <template #footer>
-        <Button label="Cancel" severity="secondary" text @click="visible=false"/>
-        <Button label="Create topic" type="submit" form="topic-form" :loading="saving"/>
+        <Button :label="t('common.cancel')" severity="secondary" text @click="visible=false"/>
+        <Button :label="t('topics.create')" type="submit" form="topic-form" :loading="saving"/>
       </template>
     </Dialog>
   </section>
