@@ -10,3 +10,17 @@
 - Admin, leadership, and read-only viewer permissions are enforced by the backend. Authorization must never rely only on hidden frontend controls.
 - Do not introduce new business domains unless explicitly requested.
 - Run the relevant tests and builds before finishing work. Prefer running the full root test suite when practical.
+
+## Agent skills
+
+### Issue tracker
+
+Issues and PRDs are tracked in this repository’s GitHub Issues. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Triage uses the five default canonical labels. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Domain documentation uses a single-context layout. See `docs/agents/domain.md`.
