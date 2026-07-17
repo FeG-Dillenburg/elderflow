@@ -12,10 +12,24 @@ export const i18n = createI18n({
 });
 
 export const primeVueLocale = { ...en.primevue };
+let installedPrimeVueLocale: object | null = null;
+
+const primeVueMessages = (language: SupportedLanguage): Record<string, unknown> =>
+  language === 'de' ? de.primevue : en.primevue;
+
+export const bindPrimeVueLocale = (locale: object): (() => void) => {
+  installedPrimeVueLocale = locale;
+  Object.assign(locale, primeVueMessages(currentLanguage()));
+  return () => {
+    if (installedPrimeVueLocale === locale) installedPrimeVueLocale = null;
+  };
+};
 
 export const setLanguage = (language: SupportedLanguage): void => {
   i18n.global.locale.value = language;
-  Object.assign(primeVueLocale, language === 'de' ? de.primevue : en.primevue);
+  const messages = primeVueMessages(language);
+  Object.assign(primeVueLocale, messages);
+  if (installedPrimeVueLocale) Object.assign(installedPrimeVueLocale, messages);
   if (typeof document !== 'undefined') document.documentElement.lang = language;
 };
 

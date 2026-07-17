@@ -8,7 +8,7 @@ import router from './router';
 import { api } from './api/domain';
 import { auth } from './auth/auth';
 import { clearSessionToken, getSessionToken } from './auth/session';
-import { i18n, primeVueLocale, setLanguage } from './i18n';
+import { bindPrimeVueLocale, i18n, primeVueLocale, setLanguage } from './i18n';
 import { loadApplicationContext } from './i18n/initialize';
 import { installation } from './installation';
 
@@ -28,7 +28,7 @@ auth.completeInitialization(context.user);
 if (hadSession && !context.user) clearSessionToken();
 setLanguage(context.language);
 
-createApp(App)
+const app = createApp(App)
   .use(router)
   .use(i18n)
   .use(PrimeVue, {
@@ -37,5 +37,7 @@ createApp(App)
       preset: Aura,
       options: { darkModeSelector: false },
     },
-  })
-  .mount('#app');
+  });
+
+bindPrimeVueLocale(app.config.globalProperties.$primevue.config.locale!);
+app.mount('#app');
