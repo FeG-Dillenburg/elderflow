@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { currentLanguage, i18n, primeVueLocale, setLanguage } from '.';
+import { currentLanguage, formatTime, i18n, primeVueLocale, setLanguage } from '.';
 
 describe('framework locale synchronization', () => {
   it('synchronizes Vue I18n, PrimeVue, and the document language', () => {
@@ -9,5 +9,6 @@ describe('framework locale synchronization', () => {
     expect(primeVueLocale.today).toBe('Heute');
     expect(primeVueLocale.firstDayOfWeek).toBe(1);
     expect(document.documentElement.lang).toBe('de');
+    expect(formatTime('14:30:00')).toBe('14:30');
   });
 });

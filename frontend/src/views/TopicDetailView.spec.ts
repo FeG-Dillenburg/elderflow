@@ -93,7 +93,7 @@ describe("TopicDetailView", () => {
     ] as any);
     const wrapper = await view();
     expect(wrapper.text()).toContain("Minute");
-    expect(wrapper.text()).toContain("2026-07-20");
+    expect(wrapper.text()).toContain("7/20/2026");
     expect(wrapper.text()).toContain("Main");
   });
   it("handles updates and nullable/date task creation", async () => {

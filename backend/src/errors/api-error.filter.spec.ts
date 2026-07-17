@@ -1,5 +1,6 @@
-import { BadRequestException, ConflictException, HttpStatus } from '@nestjs/common';
+import { BadRequestException, HttpStatus } from '@nestjs/common';
 import { ApiErrorFilter, validationExceptionFactory } from './api-error.filter';
+import { codedHttpException } from './coded-http.exception';
 
 describe('API error responses', () => {
   it('returns a stable code and keeps the English diagnostic message', () => {
@@ -12,13 +13,17 @@ describe('API error responses', () => {
       }),
     };
 
-    new ApiErrorFilter().catch(new ConflictException('System already setup'), host as any);
+    new ApiErrorFilter().catch(codedHttpException(
+      HttpStatus.CONFLICT,
+      'INSTALLATION_ALREADY_CONFIGURED',
+      'The installation has already been configured',
+    ), host as any);
 
     expect(status).toHaveBeenCalledWith(HttpStatus.CONFLICT);
     expect(json).toHaveBeenCalledWith(expect.objectContaining({
       statusCode: HttpStatus.CONFLICT,
       code: 'INSTALLATION_ALREADY_CONFIGURED',
-      message: 'System already setup',
+      message: 'The installation has already been configured',
     }));
   });
 

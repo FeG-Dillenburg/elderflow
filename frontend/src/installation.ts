@@ -10,3 +10,12 @@ export const installation = reactive<{
   setupRequired: true,
   defaultLanguage: null,
 });
+
+export const setupRedirect = (
+  setupRequired: boolean,
+  routeName: string | symbol | null | undefined,
+): true | { name: 'setup' } => (
+  setupRequired && routeName !== 'setup'
+    ? { name: 'setup' }
+    : true
+);

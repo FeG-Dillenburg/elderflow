@@ -1,6 +1,7 @@
 import { flushPromises, mount } from '@vue/test-utils';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import SetupView from './SetupView.vue';
+import { installation } from '../installation';
 
 const stubs = {
   RouterLink: { props: ['to'], template: '<a :href="to"><slot /></a>' },
@@ -11,7 +12,11 @@ const stubs = {
 };
 
 describe('SetupView', () => {
-  beforeEach(() => vi.restoreAllMocks());
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    installation.setupRequired = true;
+    installation.defaultLanguage = null;
+  });
 
   it('shows the required message when the system already has a user', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
@@ -71,6 +76,8 @@ describe('SetupView', () => {
       }),
     }));
     expect(vm.stage).toBe('complete');
+    expect(installation.setupRequired).toBe(false);
+    expect(installation.defaultLanguage).toBe('en');
     expect(wrapper.text()).toContain('Setup complete');
   });
 

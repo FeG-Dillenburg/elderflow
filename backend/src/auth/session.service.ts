@@ -1,6 +1,7 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { HttpException, HttpStatus, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createHmac, timingSafeEqual } from 'node:crypto';
+import { codedHttpException } from '../errors/coded-http.exception';
 
 interface SessionPayload {
   sub: string;
@@ -22,21 +23,21 @@ export class SessionService {
 
   verify(token: string): SessionPayload {
     const [encoded, signature, extra] = token.split('.');
-    if (!encoded || !signature || extra) throw new UnauthorizedException('Invalid session');
+    if (!encoded || !signature || extra) throw codedHttpException(HttpStatus.UNAUTHORIZED, 'AUTH_SESSION_INVALID', 'Invalid session');
     const expected = Buffer.from(this.sign(encoded));
     const supplied = Buffer.from(signature);
     if (expected.length !== supplied.length || !timingSafeEqual(expected, supplied)) {
-      throw new UnauthorizedException('Invalid session');
+      throw codedHttpException(HttpStatus.UNAUTHORIZED, 'AUTH_SESSION_INVALID', 'Invalid session');
     }
     try {
       const payload = JSON.parse(Buffer.from(encoded, 'base64url').toString('utf8')) as SessionPayload;
       if (!payload.sub || !payload.exp || payload.exp <= Math.floor(Date.now() / 1000)) {
-        throw new UnauthorizedException('Session expired');
+        throw codedHttpException(HttpStatus.UNAUTHORIZED, 'AUTH_SESSION_EXPIRED', 'Session expired');
       }
       return payload;
     } catch (error) {
-      if (error instanceof UnauthorizedException) throw error;
-      throw new UnauthorizedException('Invalid session');
+      if (error instanceof HttpException) throw error;
+      throw codedHttpException(HttpStatus.UNAUTHORIZED, 'AUTH_SESSION_INVALID', 'Invalid session');
     }
   }
 

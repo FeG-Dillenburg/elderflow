@@ -24,7 +24,16 @@ describe('SetupService', () => {
     installationRepository.count.mockResolvedValue(0);
     installationRepository.findOne.mockResolvedValue(null);
     manager.count.mockResolvedValue(0);
-    manager.find.mockResolvedValue([]);
+    manager.find.mockResolvedValue([
+      'Opening / Input',
+      'Attendance and next meeting',
+      'People in special life circumstances',
+      'Urgent topics',
+      'Strategic topics',
+      'Communication to the church',
+      'Dates and appointments',
+      'Other topics',
+    ].map((name) => ({ name })));
   });
 
   it('reports installation information and rejects verification after setup', async () => {
@@ -84,7 +93,7 @@ describe('SetupService', () => {
     expect(manager.save).not.toHaveBeenCalled();
   });
 
-  it('continues setup when seeded-section localization fails', async () => {
+  it('rolls back setup when seeded-section localization fails', async () => {
     manager.query
       .mockResolvedValueOnce(undefined)
       .mockResolvedValueOnce(undefined)
@@ -92,6 +101,6 @@ describe('SetupService', () => {
       .mockResolvedValueOnce(undefined);
     await expect(service.createInitialUser({
       setupPassword: 'startup-setup-password', defaultLanguage: 'de', email: 'ada@example.com', firstName: 'Ada', lastName: 'Lovelace', password: 'password123!',
-    })).resolves.toEqual(expect.objectContaining({ role: 'superadmin' }));
+    })).rejects.toThrow('translation update failed');
   });
 });

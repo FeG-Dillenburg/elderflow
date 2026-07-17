@@ -1,5 +1,8 @@
 import { computed, reactive } from 'vue';
 import { api, type AuthUser, type PermissionCategory, type PermissionLevel } from '../api/domain';
+import { installation } from '../installation';
+import { setLanguage } from '../i18n';
+import { resolveEffectiveLanguage } from '../i18n/language';
 import { clearSessionToken, getSessionToken, setSessionToken } from './session';
 
 const state = reactive<{ user: AuthUser | null; ready: boolean }>({ user: null, ready: false });
@@ -23,11 +26,23 @@ export const auth = {
     setSessionToken(result.token);
     state.user = result.user;
     state.ready = true;
+    setLanguage(resolveEffectiveLanguage({
+      authenticated: true,
+      userLanguage: result.user.language,
+      installationDefault: installation.defaultLanguage,
+      browserLanguages: navigator.languages,
+    }));
   },
   logout(): void {
     clearSessionToken();
     state.user = null;
     state.ready = true;
+    setLanguage(resolveEffectiveLanguage({
+      authenticated: false,
+      userLanguage: null,
+      installationDefault: installation.defaultLanguage,
+      browserLanguages: navigator.languages,
+    }));
   },
   setUser(user: AuthUser): void {
     state.user = user;

@@ -1,8 +1,9 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { HttpStatus, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { FindOptionsWhere, In, LessThan, LessThanOrEqual, Repository } from 'typeorm';
 import { TaskDto } from './dto/task.dto';
 import { Task } from './task.entity';
+import { codedHttpException } from '../errors/coded-http.exception';
 
 @Injectable()
 export class TasksService {
@@ -36,7 +37,7 @@ export class TasksService {
 
   async update(id: string, input: TaskDto): Promise<Task> {
     const task = await this.tasks.findOneBy({ id });
-    if (!task) throw new NotFoundException('Task not found');
+    if (!task) throw codedHttpException(HttpStatus.NOT_FOUND, 'TASK_NOT_FOUND', 'Task not found');
     Object.assign(task, input);
     task.completedAt = input.status === 'done' ? task.completedAt ?? new Date() : null;
     return this.tasks.save(task);

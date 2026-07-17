@@ -6,6 +6,7 @@ const de = {
     search: 'Suchen', all: 'Alle', optional: 'Optional', minutes: 'Minuten', minuteShort: 'Min.', back: 'Zurück', continue: 'Weiter', confirm: 'Bestätigen', open: 'Offen', default: 'Standard', at: 'um',
   },
   languages: { installationDefault: 'Installationsstandard verwenden', en: 'Englisch', de: 'Deutsch', label: 'Sprache' },
+  editor: { bold: 'Fett', italic: 'Kursiv', underline: 'Unterstrichen', orderedList: 'Nummerierte Liste', bulletList: 'Aufzählung', link: 'Link einfügen' },
   nav: { main: 'Hauptnavigation', dashboard: 'Übersicht', meetings: 'Sitzungen', topics: 'Themen', tasks: 'Offene Aufgaben', users: 'Benutzer', sections: 'Tagesordnungsabschnitte', signOut: 'Abmelden' },
   roles: { superadmin: 'Superadministrator', 'it-admin': 'IT-Administrator', admin: 'Administrator', user: 'Benutzer', guest: 'Gast' },
   setup: {
@@ -37,7 +38,13 @@ const de = {
     information: 'Information', discussion: 'Diskussion', decision: 'Entscheidung', pastoral: 'Seelsorge', organizational: 'Organisation', strategic: 'Strategisch',
   },
   errors: {
-    requestFailed: 'Die Anfrage konnte nicht abgeschlossen werden', validation: 'Bitte {field} prüfen ({constraint}).',
+    requestFailed: 'Die Anfrage konnte nicht abgeschlossen werden', validation: '{field}: {constraint}.',
+    fields: {
+      agendaNote: 'Tagesordnungsnotiz', assignedToId: 'Zugewiesener Benutzer', attendanceStatus: 'Anwesenheitsstatus', beginTime: 'Beginn', date: 'Datum', defaultLanguage: 'Standardsprache', defaultPosition: 'Standardposition', defaultSectionId: 'Standardabschnitt', description: 'Beschreibung', dueDate: 'Fälligkeitsdatum', email: 'E-Mail-Adresse', firstName: 'Vorname', followUpDate: 'Wiedervorlagedatum', generalNotes: 'Allgemeine Notizen', id: 'Kennung', isDefault: 'Standardeinstellung', isRecurring: 'Wiederholungseinstellung', items: 'Elemente', language: 'Sprache', lastName: 'Nachname', meetingId: 'Sitzung', meetingLeaderId: 'Sitzungsleitung', minuteTakerId: 'Protokollführung', name: 'Name', openingInput: 'Eröffnung / Impuls', password: 'Passwort', plannedDuration: 'Geplante Dauer', position: 'Position', responsibleUserId: 'Verantwortlicher Benutzer', role: 'Rolle', sectionId: 'Tagesordnungsabschnitt', setupPassword: 'Einrichtungspasswort', status: 'Status', text: 'Text', title: 'Titel', topicId: 'Thema', type: 'Typ', userId: 'Benutzer',
+    },
+    constraints: {
+      arrayNotEmpty: 'Mindestens ein Element auswählen', invalid: 'Der Wert ist ungültig', isArray: 'Muss eine Liste sein', isBoolean: 'Muss Ja oder Nein sein', isEmail: 'Eine gültige E-Mail-Adresse eingeben', isIn: 'Eine gültige Option auswählen', isInt: 'Eine ganze Zahl eingeben', isNotEmpty: 'Dieses Feld ist erforderlich', isString: 'Text eingeben', isUUID: 'Ein gültiges Element auswählen', max: 'Der Wert ist zu hoch', maxLength: 'Der Wert ist zu lang', min: 'Der Wert ist zu niedrig', minLength: 'Der Wert ist zu kurz', validateNested: 'Mindestens ein untergeordneter Wert ist ungültig', whitelistValidation: 'Dieses Feld ist nicht zulässig',
+    },
     codes: {
       SETUP_PASSWORD_INVALID: 'Das Einrichtungspasswort ist ungültig.', INSTALLATION_ALREADY_CONFIGURED: 'System ist bereits eingerichtet', INSTALLATION_STATE_INCONSISTENT: 'Der Installationszustand ist inkonsistent.',
       AUTH_CREDENTIALS_INVALID: 'E-Mail-Adresse oder Passwort ist ungültig', AUTH_SESSION_INVALID: 'Die Sitzung ist ungültig.', AUTH_SESSION_EXPIRED: 'Die Sitzung ist abgelaufen.', AUTH_USER_NOT_FOUND: 'Der angemeldete Benutzer ist nicht mehr vorhanden.',

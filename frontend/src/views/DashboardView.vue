@@ -1,91 +1,145 @@
 <script lang="ts" setup>
-import {onMounted, ref} from 'vue';
-import Button from 'primevue/button';
-import Card from 'primevue/card';
-import Message from 'primevue/message';
-import Tag from 'primevue/tag';
-import {RouterLink} from 'vue-router';
-import {api, formatUser, meetingLabel, type DashboardData} from '../api/domain';
-import {useI18n} from 'vue-i18n';
-import {formatDate} from '../i18n';
+import { onMounted, ref } from "vue";
+import Button from "primevue/button";
+import Card from "primevue/card";
+import Message from "primevue/message";
+import Tag from "primevue/tag";
+import { RouterLink } from "vue-router";
+import {
+  api,
+  formatUser,
+  meetingLabel,
+  type DashboardData,
+} from "../api/domain";
+import { useI18n } from "vue-i18n";
+import { formatDate, formatTime } from "../i18n";
 
 const data = ref<DashboardData | null>(null);
-const error = ref('');
-const {t} = useI18n();
+const error = ref("");
+const { t } = useI18n();
 onMounted(async () => {
   try {
     data.value = await api.dashboard();
   } catch (value) {
-    error.value = value instanceof Error ? value.message : t('dashboard.loadFailed');
+    error.value =
+      value instanceof Error ? value.message : t("dashboard.loadFailed");
   }
 });
-const date = (value: string | null) => value ? formatDate(`${value}T12:00:00`) : t('dashboard.noDate');
+const date = (value: string | null) =>
+  value ? formatDate(`${value}T12:00:00`) : t("dashboard.noDate");
 </script>
 
 <template>
   <section class="page">
     <header class="page-header">
-      <div><p class="eyebrow">{{ t('dashboard.eyebrow') }}</p>
-        <h1>{{ t('dashboard.title') }}</h1>
-        <p>{{ t('dashboard.description') }}</p></div>
+      <div>
+        <p class="eyebrow">{{ t("dashboard.eyebrow") }}</p>
+        <h1>{{ t("dashboard.title") }}</h1>
+        <p>{{ t("dashboard.description") }}</p>
+      </div>
     </header>
     <Message v-if="error" severity="error">{{ error }}</Message>
     <div v-if="data" class="dashboard-grid">
       <Card class="next-meeting">
-        <template #title>{{ t('dashboard.nextMeeting') }}</template>
+        <template #title>{{ t("dashboard.nextMeeting") }}</template>
         <template #content>
-          <template v-if="data.nextMeeting"><h2>{{ meetingLabel(data.nextMeeting) }}</h2>
-            <p>{{ date(data.nextMeeting.date) }} {{ t('common.at') }} {{ data.nextMeeting.beginTime.slice(0, 5) }}</p>
-            <p class="muted">{{ t('dashboard.leader', { name: formatUser(data.nextMeeting.meetingLeader) }) }}</p>
+          <template v-if="data.nextMeeting">
+            <h2>{{ meetingLabel(data.nextMeeting) }}</h2>
+            <p>
+              {{ date(data.nextMeeting.date) }} {{ t("common.at") }}
+              {{ formatTime(data.nextMeeting.beginTime) }}
+            </p>
+            <p class="muted">
+              {{
+                t("dashboard.leader", {
+                  name: formatUser(data.nextMeeting.meetingLeader),
+                })
+              }}
+            </p>
             <RouterLink :to="`/meetings/${data.nextMeeting.id}`">
-              <Button icon="pi pi-arrow-right" icon-pos="right" :label="t('dashboard.openAgenda')"/>
+              <Button
+                icon="pi pi-arrow-right"
+                icon-pos="right"
+                :label="t('dashboard.openAgenda')"
+              />
             </RouterLink>
           </template>
-          <p v-else class="muted">{{ t('dashboard.noMeeting') }}</p>
+          <p v-else class="muted">{{ t("dashboard.noMeeting") }}</p>
         </template>
       </Card>
       <Card>
-        <template #title>{{ t('dashboard.myTasks') }}</template>
+        <template #title>{{ t("dashboard.myTasks") }}</template>
         <template #content>
           <ul class="item-list">
             <li v-for="task in data.myOpenTasks" :key="task.id">
-              <RouterLink :to="task.topicId ? `/topics/${task.topicId}` : '/tasks'">{{ task.title }}</RouterLink>
-              <small>{{ task.dueDate ? t('dashboard.due', { date: date(task.dueDate) }) : t('dashboard.noDueDate') }}</small></li>
-            <li v-if="!data.myOpenTasks.length" class="empty">{{ t('dashboard.nothingAssigned') }}</li>
+              <RouterLink
+                :to="task.topicId ? `/topics/${task.topicId}` : '/tasks'"
+              >
+                {{ task.title }}
+              </RouterLink>
+              <small>
+                {{
+                  task.dueDate
+                    ? t("dashboard.due", { date: date(task.dueDate) })
+                    : t("dashboard.noDueDate")
+                }}
+              </small>
+            </li>
+            <li v-if="!data.myOpenTasks.length" class="empty">
+              {{ t("dashboard.nothingAssigned") }}
+            </li>
           </ul>
         </template>
       </Card>
       <Card>
-        <template #title>{{ t('dashboard.overdue') }}</template>
+        <template #title>{{ t("dashboard.overdue") }}</template>
         <template #content>
           <ul class="item-list">
-            <li v-for="task in data.overdueTasks" :key="task.id"><span>{{
-                task.title
-              }}</span><small>{{ formatUser(task.assignedTo) }} · {{ t('dashboard.dueBy', { date: date(task.dueDate) }) }}</small></li>
-            <li v-if="!data.overdueTasks.length" class="empty">{{ t('dashboard.noOverdue') }}</li>
+            <li v-for="task in data.overdueTasks" :key="task.id">
+              <span>{{ task.title }}</span>
+              <small>
+                {{ formatUser(task.assignedTo) }} ·
+                {{ t("dashboard.dueBy", { date: date(task.dueDate) }) }}
+              </small>
+            </li>
+            <li v-if="!data.overdueTasks.length" class="empty">
+              {{ t("dashboard.noOverdue") }}
+            </li>
           </ul>
         </template>
       </Card>
       <Card>
-        <template #title>{{ t('dashboard.followUps') }}</template>
+        <template #title>{{ t("dashboard.followUps") }}</template>
         <template #content>
           <ul class="item-list">
             <li v-for="topic in data.followUpTopics" :key="topic.id">
-              <RouterLink :to="`/topics/${topic.id}`">{{ topic.name }}</RouterLink>
-              <small>{{ date(topic.followUpDate) }} · {{ formatUser(topic.responsibleUser) }}</small></li>
-            <li v-if="!data.followUpTopics.length" class="empty">{{ t('dashboard.noFollowUps') }}</li>
+              <RouterLink :to="`/topics/${topic.id}`">
+                {{ topic.name }}
+              </RouterLink>
+              <small>
+                {{ date(topic.followUpDate) }} ·
+                {{ formatUser(topic.responsibleUser) }}
+              </small>
+            </li>
+            <li v-if="!data.followUpTopics.length" class="empty">
+              {{ t("dashboard.noFollowUps") }}
+            </li>
           </ul>
         </template>
       </Card>
       <Card>
-        <template #title>{{ t('dashboard.recentTopics') }}</template>
+        <template #title>{{ t("dashboard.recentTopics") }}</template>
         <template #content>
           <ul class="item-list">
             <li v-for="topic in data.recentTopics" :key="topic.id">
-              <RouterLink :to="`/topics/${topic.id}`">{{ topic.name }}</RouterLink>
-              <Tag :value="topic.status" severity="secondary"/>
+              <RouterLink :to="`/topics/${topic.id}`">
+                {{ topic.name }}
+              </RouterLink>
+              <Tag :value="t(`labels.${topic.status}`)" severity="secondary" />
             </li>
-            <li v-if="!data.recentTopics.length" class="empty">{{ t('dashboard.noTopics') }}</li>
+            <li v-if="!data.recentTopics.length" class="empty">
+              {{ t("dashboard.noTopics") }}
+            </li>
           </ul>
         </template>
       </Card>
@@ -104,22 +158,22 @@ const date = (value: string | null) => value ? formatDate(`${value}T12:00:00`) :
 }
 
 .eyebrow {
-  margin: 0 0 .3rem;
+  margin: 0 0 0.3rem;
   color: #607dae;
-  font-size: .72rem;
+  font-size: 0.72rem;
   font-weight: 800;
-  letter-spacing: .1em;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
 }
 
 h1 {
   margin: 0;
   font-size: 2.2rem;
-  letter-spacing: -.04em;
+  letter-spacing: -0.04em;
 }
 
 .page-header p:last-child {
-  margin: .45rem 0 0;
+  margin: 0.45rem 0 0;
   color: #68758a;
 }
 
@@ -140,16 +194,17 @@ h1 {
 }
 
 .next-meeting h2 {
-  margin: 0 0 .35rem;
+  margin: 0 0 0.35rem;
 }
 
-.muted, .item-list small {
+.muted,
+.item-list small {
   color: #718096;
 }
 
 .item-list {
   display: grid;
-  gap: .8rem;
+  gap: 0.8rem;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -160,7 +215,7 @@ h1 {
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
-  padding-bottom: .75rem;
+  padding-bottom: 0.75rem;
   border-bottom: 1px solid #edf0f4;
 }
 
@@ -175,7 +230,7 @@ h1 {
 
 .item-list small {
   display: block;
-  font-size: .78rem;
+  font-size: 0.78rem;
   text-align: right;
 }
 

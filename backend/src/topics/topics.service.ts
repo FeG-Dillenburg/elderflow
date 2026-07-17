@@ -1,9 +1,10 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { HttpStatus, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { FindOptionsWhere, In, LessThanOrEqual, Repository } from 'typeorm';
 import { User } from '../users/user.entity';
 import { TopicDto, TopicUpdateDto } from './dto/topic.dto';
 import { Topic } from './topic.entity';
+import { codedHttpException } from '../errors/coded-http.exception';
 import { TopicUpdate } from './topic-update.entity';
 import { MeetingTopic } from '../meetings/meeting-topic.entity';
 
@@ -30,7 +31,7 @@ export class TopicsService {
       where: { id },
       relations: { responsibleUser: true, defaultSection: true },
     });
-    if (!topic) throw new NotFoundException('Topic not found');
+    if (!topic) throw codedHttpException(HttpStatus.NOT_FOUND, 'TOPIC_NOT_FOUND', 'Topic not found');
     return topic;
   }
 

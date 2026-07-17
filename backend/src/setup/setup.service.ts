@@ -1,4 +1,4 @@
-import { ConflictException, Inject, Injectable, Logger, UnauthorizedException } from '@nestjs/common';
+import { HttpStatus, Inject, Injectable } from '@nestjs/common';
 import { compare, hash } from 'bcryptjs';
 import { DataSource, EntityManager } from 'typeorm';
 import { AgendaSection } from '../agenda-sections/agenda-section.entity';
@@ -6,13 +6,12 @@ import { InstallationSettings } from '../installation/installation-settings.enti
 import { SupportedLanguage } from '../installation/language';
 import { User } from '../users/user.entity';
 import { CreateInitialUserDto } from './dto/setup.dto';
+import { codedHttpException } from '../errors/coded-http.exception';
 
 export const SETUP_PASSWORD_HASH = Symbol('SETUP_PASSWORD_HASH');
 
 @Injectable()
 export class SetupService {
-  private readonly logger = new Logger(SetupService.name);
-
   constructor(
     private readonly dataSource: DataSource,
     @Inject(SETUP_PASSWORD_HASH)
@@ -25,25 +24,25 @@ export class SetupService {
       this.dataSource.getRepository(InstallationSettings).count(),
     ]);
     if ((userCount === 0) !== (settingsCount === 0)) {
-      throw new ConflictException('Installation state is inconsistent');
+      throw codedHttpException(HttpStatus.CONFLICT, 'INSTALLATION_STATE_INCONSISTENT', 'Installation state is inconsistent');
     }
     if (userCount === 0) return { setupRequired: true, defaultLanguage: null };
     const settings = await this.dataSource.getRepository(InstallationSettings).findOne({ where: { id: 1 } });
-    if (!settings) throw new ConflictException('Installation state is inconsistent');
+    if (!settings) throw codedHttpException(HttpStatus.CONFLICT, 'INSTALLATION_STATE_INCONSISTENT', 'Installation state is inconsistent');
     return { setupRequired: false, defaultLanguage: settings.defaultLanguage };
   }
 
   async verifyPassword(candidate: string): Promise<{ valid: true }> {
     await this.ensureSetupRequired();
     if (!(await this.passwordMatches(candidate))) {
-      throw new UnauthorizedException('Invalid setup password');
+      throw codedHttpException(HttpStatus.UNAUTHORIZED, 'SETUP_PASSWORD_INVALID', 'Invalid setup password');
     }
     return { valid: true };
   }
 
   async createInitialUser(input: CreateInitialUserDto): Promise<User> {
     if (!(await this.passwordMatches(input.setupPassword))) {
-      throw new UnauthorizedException('Invalid setup password');
+      throw codedHttpException(HttpStatus.UNAUTHORIZED, 'SETUP_PASSWORD_INVALID', 'Invalid setup password');
     }
 
     const passwordHash = await hash(input.password, 12);
@@ -53,9 +52,9 @@ export class SetupService {
       const settingsCount = await manager.count(InstallationSettings);
       if (userCount || settingsCount) {
         if ((userCount === 0) !== (settingsCount === 0)) {
-          throw new ConflictException('Installation state is inconsistent');
+          throw codedHttpException(HttpStatus.CONFLICT, 'INSTALLATION_STATE_INCONSISTENT', 'Installation state is inconsistent');
         }
-        throw new ConflictException('System already setup');
+        throw codedHttpException(HttpStatus.CONFLICT, 'INSTALLATION_ALREADY_CONFIGURED', 'System already setup');
       }
 
       const settings = manager.create(InstallationSettings, {
@@ -73,11 +72,7 @@ export class SetupService {
       });
       const saved = await manager.save(User, user);
       if (input.defaultLanguage === 'de') {
-        try {
-          await this.localizeSeededAgendaSections(manager);
-        } catch (error) {
-          this.logger.warn(`Seeded agenda-section localization failed: ${error instanceof Error ? error.message : String(error)}`);
-        }
+        await this.localizeSeededAgendaSections(manager);
       }
       delete (saved as Partial<User>).passwordHash;
       return saved;
@@ -86,7 +81,7 @@ export class SetupService {
 
   private async ensureSetupRequired(): Promise<void> {
     if (!(await this.installation()).setupRequired) {
-      throw new ConflictException('System already setup');
+      throw codedHttpException(HttpStatus.CONFLICT, 'INSTALLATION_ALREADY_CONFIGURED', 'System already setup');
     }
   }
 
@@ -110,7 +105,9 @@ export class SetupService {
       const sections = await manager.find(AgendaSection);
       const existing = new Set(sections.map(({ name }) => name));
       const unmatched = Object.keys(translations).filter((name) => !existing.has(name));
-      if (unmatched.length) this.logger.warn(`Seeded agenda sections not found: ${unmatched.join(', ')}`);
+      if (unmatched.length) {
+        throw new Error(`Seeded agenda sections not found: ${unmatched.join(', ')}`);
+      }
 
       await manager.query(`
         UPDATE "agenda_sections"

@@ -13,13 +13,17 @@ describe('localized API errors', () => {
   });
 
   it('localizes structured validation errors without parsing backend prose', () => {
-    const translate = (key: string, params?: Record<string, unknown>) => key === 'errors.validation'
-      ? `Check ${params?.field} (${params?.constraint})`
-      : key;
+    const translate = (key: string, params?: Record<string, unknown>) => {
+      if (key === 'errors.fields.email') return 'Email address';
+      if (key === 'errors.constraints.isEmail') return 'Enter a valid email address';
+      return key === 'errors.validation'
+        ? `${params?.field}: ${params?.constraint}.`
+        : key;
+    };
     expect(localizeApiError({
       code: 'VALIDATION_FAILED',
       message: 'Request validation failed',
       params: { errors: [{ field: 'email', constraint: 'isEmail' }] },
-    }, translate)).toBe('Check email (isEmail)');
+    }, translate)).toBe('Email address: Enter a valid email address.');
   });
 });
