@@ -1,4 +1,5 @@
-import { ConflictException, Logger, UnauthorizedException } from '@nestjs/common';
+import { ConflictException, UnauthorizedException } from '@nestjs/common';
+import { hashSync } from 'bcryptjs';
 import { SetupService } from './setup.service';
 
 describe('SetupService', () => {
@@ -13,7 +14,7 @@ describe('SetupService', () => {
     getRepository: jest.fn(() => repository),
     transaction: jest.fn(async (callback: (value: typeof manager) => unknown) => callback(manager)),
   };
-  const service = new SetupService(dataSource as any, 'startup-setup-password');
+  const service = new SetupService(dataSource as any, hashSync('startup-setup-password', 4));
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -62,12 +63,5 @@ describe('SetupService', () => {
       setupPassword: 'startup-setup-password', email: 'ada@example.com', firstName: 'Ada', lastName: 'Lovelace', password: 'password123!',
     })).rejects.toThrow('System already setup');
     expect(manager.save).not.toHaveBeenCalled();
-  });
-
-  it('prints the current startup password to the backend log', () => {
-    const log = jest.spyOn(Logger.prototype, 'log').mockImplementation();
-    service.onModuleInit();
-    expect(log).toHaveBeenCalledWith('Initial setup password: startup-setup-password');
-    log.mockRestore();
   });
 });

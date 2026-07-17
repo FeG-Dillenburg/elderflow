@@ -1,25 +1,18 @@
-import { ConflictException, Inject, Injectable, Logger, OnModuleInit, UnauthorizedException } from '@nestjs/common';
-import { hash } from 'bcryptjs';
-import { createHash, timingSafeEqual } from 'node:crypto';
+import { ConflictException, Inject, Injectable, UnauthorizedException } from '@nestjs/common';
+import { compare, hash } from 'bcryptjs';
 import { DataSource } from 'typeorm';
 import { User } from '../users/user.entity';
 import { CreateInitialUserDto } from './dto/setup.dto';
 
-export const SETUP_PASSWORD = Symbol('SETUP_PASSWORD');
+export const SETUP_PASSWORD_HASH = Symbol('SETUP_PASSWORD_HASH');
 
 @Injectable()
-export class SetupService implements OnModuleInit {
-  private readonly logger = new Logger(SetupService.name);
-
+export class SetupService {
   constructor(
     private readonly dataSource: DataSource,
-    @Inject(SETUP_PASSWORD)
-    private readonly setupPassword: string,
+    @Inject(SETUP_PASSWORD_HASH)
+    private readonly setupPasswordHash: string,
   ) {}
-
-  onModuleInit(): void {
-    this.logger.log(`Initial setup password: ${this.setupPassword}`);
-  }
 
   async status(): Promise<{ setupRequired: boolean }> {
     const users = await this.dataSource.getRepository(User).count();
@@ -28,14 +21,14 @@ export class SetupService implements OnModuleInit {
 
   async verifyPassword(candidate: string): Promise<{ valid: true }> {
     await this.ensureSetupRequired();
-    if (!this.passwordMatches(candidate)) {
+    if (!(await this.passwordMatches(candidate))) {
       throw new UnauthorizedException('Invalid setup password');
     }
     return { valid: true };
   }
 
   async createInitialUser(input: CreateInitialUserDto): Promise<User> {
-    if (!this.passwordMatches(input.setupPassword)) {
+    if (!(await this.passwordMatches(input.setupPassword))) {
       throw new UnauthorizedException('Invalid setup password');
     }
 
@@ -65,9 +58,7 @@ export class SetupService implements OnModuleInit {
     }
   }
 
-  private passwordMatches(candidate: string): boolean {
-    const expectedHash = createHash('sha256').update(this.setupPassword).digest();
-    const candidateHash = createHash('sha256').update(candidate).digest();
-    return timingSafeEqual(expectedHash, candidateHash);
+  private passwordMatches(candidate: string): Promise<boolean> {
+    return compare(candidate, this.setupPasswordHash);
   }
 }
