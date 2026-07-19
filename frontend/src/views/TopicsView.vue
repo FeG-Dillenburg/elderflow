@@ -14,6 +14,7 @@ import TopicTypeRadioGroup from "../topics/components/TopicTypeRadioGroup.vue";
 import TopicTypeBadge from "../topics/components/TopicTypeBadge.vue";
 import { canonicalTopicTypes } from "../topics/topicTypeRegistry";
 import { topicNameTranslationKey } from "../topics/topicTypes";
+import { toTopicInput } from "../topics/types/new-membership/topicInput";
 import {
   api,
   formatUser,
@@ -62,6 +63,9 @@ const empty = () => ({
   status: "open",
   followUpDate: null as Date | null,
   responsibleUserId: null as string | null,
+  membershipProcessStatus: null as string | null,
+  membershipStatusSignal: null as TopicInput["membershipStatusSignal"],
+  godparents: null as string | null,
   defaultSectionId: null as string | null,
   defaultPosition: null as number | null,
 });
@@ -93,10 +97,10 @@ const open = () => {
 const create = async () => {
   saving.value = true;
   try {
-    const input: TopicInput = {
+    const input = toTopicInput({
       ...form,
       followUpDate: toLocalDate(form.followUpDate),
-    };
+    });
     await api.createTopic(input);
     visible.value = false;
     await load();

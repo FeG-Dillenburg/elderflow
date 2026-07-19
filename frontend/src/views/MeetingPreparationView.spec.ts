@@ -2,7 +2,7 @@ import { flushPromises, mount } from "@vue/test-utils";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { api } from "../api/domain";
 import MeetingPreparationView from "./MeetingPreparationView.vue";
-import { saveMeetingTopicNote } from "../topics/meetingTopicNote";
+import { saveMeetingTopicNote } from "../topics/meetingTopicEdits";
 
 vi.mock("vue-router", () => ({
   RouterLink: { template: "<a><slot /></a>" },

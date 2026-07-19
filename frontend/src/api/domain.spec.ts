@@ -146,6 +146,22 @@ describe("domain API client", () => {
       }),
     );
   });
+  it("writes one or more inline Topic fields through the narrow patch endpoint", async () => {
+    const fetch = vi.fn().mockResolvedValue(response({ membershipStatusSignal: "attention" }));
+    vi.stubGlobal("fetch", fetch);
+
+    await api.updateMeetingTopicFields("meeting", "appearance", {
+      membershipStatusSignal: "attention",
+    });
+
+    expect(fetch).toHaveBeenCalledWith(
+      "http://localhost:3000/api/meetings/meeting/topics/appearance/fields",
+      expect.objectContaining({
+        method: "PUT",
+        body: JSON.stringify({ membershipStatusSignal: "attention" }),
+      }),
+    );
+  });
   it("formats users and meetings and retains the local calendar date", () => {
     expect(formatUser()).toBe("Unassigned");
     expect(formatUser({ firstName: "Ada", lastName: "Lovelace" } as any)).toBe(

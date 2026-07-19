@@ -4,6 +4,9 @@ import { formatDate, translate } from '../i18n';
 import type { TopicType } from '../topics/topicTypes';
 export type { TopicType } from '../topics/topicTypes';
 
+export const membershipStatusSignals = ['new', 'in_progress', 'nearly_finished', 'attention', 'paused'] as const;
+export type MembershipStatusSignal = (typeof membershipStatusSignals)[number];
+
 export interface User {
   id: string;
   email: string;
@@ -52,9 +55,21 @@ interface TopicBase {
   tasks?: Task[];
 }
 
-type TopicDiscriminator = { [Type in TopicType]: { type: Type } }[TopicType];
+type MembershipTopicFields = {
+  type: 'new_membership';
+  membershipProcessStatus: string | null;
+  membershipStatusSignal: MembershipStatusSignal;
+  godparents: string | null;
+};
 
-export type Topic = TopicBase & TopicDiscriminator;
+type NonMembershipTopicFields = {
+  type: Exclude<TopicType, 'new_membership'>;
+  membershipProcessStatus: null;
+  membershipStatusSignal: null;
+  godparents: null;
+};
+
+export type Topic = TopicBase & (MembershipTopicFields | NonMembershipTopicFields);
 
 interface TopicInputBase {
   name: string;
@@ -66,7 +81,23 @@ interface TopicInputBase {
   defaultPosition: number | null;
 }
 
-export type TopicInput = TopicInputBase & TopicDiscriminator;
+type MembershipTopicInputFields = {
+  type: 'new_membership';
+  membershipProcessStatus?: string | null;
+  membershipStatusSignal?: MembershipStatusSignal | null;
+  godparents?: string | null;
+};
+
+type NonMembershipTopicInputFields = {
+  type: Exclude<TopicType, 'new_membership'>;
+  membershipProcessStatus?: null;
+  membershipStatusSignal?: null;
+  godparents?: null;
+};
+
+export type TopicInput = TopicInputBase & (
+  MembershipTopicInputFields | NonMembershipTopicInputFields
+);
 
 export interface Meeting {
   id: string;
@@ -106,6 +137,9 @@ export interface MeetingTopic {
   status: string;
   topicNameSnapshot?: string | null;
   responsibleUserDisplayNameSnapshot?: string | null;
+  membershipProcessStatusSnapshot?: string | null;
+  membershipStatusSignalSnapshot?: MembershipStatusSignal | null;
+  godparentsSnapshot?: string | null;
   meeting?: Meeting;
 }
 
@@ -137,6 +171,11 @@ export interface Task {
 }
 
 export type TaskInput = Omit<Task, 'id' | 'topic' | 'meeting' | 'assignedTo' | 'createdAt' | 'completedAt'>;
+
+export type TopicFieldPatch = Partial<Pick<
+  Topic,
+  'responsibleUserId' | 'membershipProcessStatus' | 'membershipStatusSignal' | 'godparents'
+>>;
 
 export interface DashboardData {
   nextMeeting: Meeting | null;
@@ -204,6 +243,7 @@ export const api = {
   addMeetingTopic: (meetingId: string, input: { topicId: string; sectionId: string; position?: number }) => request<MeetingTopic>(`/api/meetings/${meetingId}/topics`, { method: 'POST', body: JSON.stringify(input) }),
   reorderMeetingTopics: (meetingId: string, items: Array<{ id: string; sectionId: string; position: number }>) => request<MeetingTopic[]>(`/api/meetings/${meetingId}/topics/order`, { method: 'PUT', body: JSON.stringify({ items }) }),
   updateMeetingTopic: (meetingId: string, item: MeetingTopic) => request<MeetingTopic>(`/api/meetings/${meetingId}/topics/${item.id}`, { method: 'PUT', body: JSON.stringify({ sectionId: item.sectionId, position: item.position, plannedDuration: item.plannedDuration, status: item.status }) }),
+  updateMeetingTopicFields: (meetingId: string, itemId: string, input: TopicFieldPatch) => request<Topic>(`/api/meetings/${meetingId}/topics/${itemId}/fields`, { method: 'PUT', body: JSON.stringify(input) }),
   updateMeetingTopicNote: (meetingId: string, itemId: string, agendaNote: string | null) => request<MeetingTopic>(`/api/meetings/${meetingId}/topics/${itemId}/note`, { method: 'PUT', body: JSON.stringify({ agendaNote }) }),
   removeMeetingTopic: (meetingId: string, itemId: string) => request<void>(`/api/meetings/${meetingId}/topics/${itemId}`, { method: 'DELETE' }),
   tasks: (filters: Record<string, string | boolean | undefined> = {}) => request<Task[]>(`/api/tasks${query(filters)}`),

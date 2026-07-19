@@ -21,6 +21,7 @@ import { assignableUsers } from "../auth/roles";
 import { useI18n } from "vue-i18n";
 import { dateInputFormat } from "../i18n";
 import { topicNameTranslationKey } from "../topics/topicTypes";
+import { toTopicInput } from "../topics/types/new-membership/topicInput";
 
 const props = defineProps<{
   topic: Topic;
@@ -38,6 +39,9 @@ const form = reactive({
   status: "open",
   followUpDate: null as Date | null,
   responsibleUserId: null as string | null,
+  membershipProcessStatus: null as string | null,
+  membershipStatusSignal: null as TopicInput["membershipStatusSignal"],
+  godparents: null as string | null,
   defaultSectionId: null as string | null,
   defaultPosition: null as number | null,
 });
@@ -63,6 +67,9 @@ watch(
         ? new Date(`${topic.followUpDate}T12:00:00`)
         : null,
       responsibleUserId: topic.responsibleUserId,
+      membershipProcessStatus: topic.membershipProcessStatus,
+      membershipStatusSignal: topic.membershipStatusSignal,
+      godparents: topic.godparents,
       defaultSectionId: topic.defaultSectionId,
       defaultPosition: topic.defaultPosition,
     }),
@@ -70,10 +77,10 @@ watch(
 );
 
 async function save(): Promise<void> {
-  const input: TopicInput = {
+  const input = toTopicInput({
     ...form,
     followUpDate: toLocalDate(form.followUpDate),
-  };
+  });
   await api.updateTopic(props.topic.id, input);
   visible.value = false;
   emit("saved");

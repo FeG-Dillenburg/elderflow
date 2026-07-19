@@ -10,11 +10,12 @@ import { Meeting } from './meeting.entity';
 import { MeetingsController } from './meetings.controller';
 import { MeetingsService } from './meetings.service';
 import { MeetingSnapshotRegistry } from './meeting-snapshot-contributor';
+import { NewMembershipSnapshotContributor } from '../topics/new-membership-snapshot.contributor';
 
 @Module({
   imports: [TypeOrmModule.forFeature([Meeting, MeetingUser, MeetingTopic, Topic, TopicUpdate, Task, AgendaSection])],
   controllers: [MeetingsController],
-  providers: [MeetingSnapshotRegistry, MeetingsService],
+  providers: [MeetingSnapshotRegistry, NewMembershipSnapshotContributor, MeetingsService],
   exports: [MeetingSnapshotRegistry, MeetingsService],
 })
 export class MeetingsModule {}

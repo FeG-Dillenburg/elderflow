@@ -8,7 +8,11 @@ import { PERMISSION_CATEGORY_KEY } from '../auth/permissions';
 
 describe('MeetingsController completion boundary', () => {
   let app: INestApplication;
-  const service = { complete: jest.fn(), updateTopicNote: jest.fn() };
+  const service = {
+    complete: jest.fn(),
+    updateTopicFields: jest.fn(),
+    updateTopicNote: jest.fn(),
+  };
   const currentUser = { id: '00000000-0000-4000-8000-000000000002' };
 
   beforeAll(async () => {
@@ -71,6 +75,28 @@ describe('MeetingsController completion boundary', () => {
       .expect(400);
 
     expect(service.updateTopicNote).not.toHaveBeenCalled();
+  });
+
+  it('writes only independently validated fields through the appearance endpoint', async () => {
+    const meetingId = '00000000-0000-4000-8000-000000000001';
+    const appearanceId = '00000000-0000-4000-8000-000000000003';
+    const topic = {
+      id: '00000000-0000-4000-8000-000000000004',
+      membershipStatusSignal: 'attention',
+    };
+    service.updateTopicFields.mockResolvedValue(topic);
+
+    await request(app.getHttpServer())
+      .put(`/api/meetings/${meetingId}/topics/${appearanceId}/fields`)
+      .send({ membershipStatusSignal: 'attention' })
+      .expect(200)
+      .expect(topic);
+
+    expect(service.updateTopicFields).toHaveBeenCalledWith(
+      meetingId,
+      appearanceId,
+      { membershipStatusSignal: 'attention' },
+    );
   });
 
   it('protects the appearance-note endpoint with Meeting authorization', () => {

@@ -8,6 +8,7 @@ import { codedHttpException } from '../errors/coded-http.exception';
 import { TopicUpdate } from './topic-update.entity';
 import { MeetingTopic } from '../meetings/meeting-topic.entity';
 import { lockedMutableMeeting } from '../meetings/meeting-mutation-boundary';
+import { normalizedMembershipTopicState } from './membership-topic-state';
 
 @Injectable()
 export class TopicsService {
@@ -42,7 +43,8 @@ export class TopicsService {
   async create(input: DiscriminatedTopicDto): Promise<Topic> {
     this.assertSupportedType(input.type);
     this.assertEnabledCreationType(input.type);
-    return this.topics.save(this.topics.create({ ...input, isRecurring: false }));
+    const values = normalizedMembershipTopicState(input.type, input, false, true);
+    return this.topics.save(this.topics.create({ ...input, ...values, isRecurring: false }));
   }
 
   async update(id: string, input: Partial<DiscriminatedTopicDto>): Promise<Topic> {
@@ -70,8 +72,11 @@ export class TopicsService {
         }
       }
 
-      const converted = input.type !== undefined && input.type !== topic.type;
-      return topics.save(Object.assign(topic, input, converted ? this.clearedTypeState(input.type!) : {}));
+      const effectiveType = input.type ?? topic.type;
+      const converted = effectiveType !== topic.type;
+      const candidate = { ...topic, ...input };
+      const typeState = normalizedMembershipTopicState(effectiveType, candidate, converted, converted);
+      return topics.save(Object.assign(topic, input, typeState, converted ? this.clearedTypeState(effectiveType) : {}));
     });
   }
 
@@ -82,7 +87,7 @@ export class TopicsService {
   }
 
   private assertEnabledCreationType(type: TopicType): void {
-    if (type !== 'generic' && type !== 'person') {
+    if (type !== 'generic' && type !== 'person' && type !== 'new_membership') {
       throw codedHttpException(
         HttpStatus.BAD_REQUEST,
         'TOPIC_TYPE_NOT_ENABLED',

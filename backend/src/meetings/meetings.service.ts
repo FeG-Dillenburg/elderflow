@@ -13,6 +13,8 @@ import { codedHttpException } from '../errors/coded-http.exception';
 import { User } from '../users/user.entity';
 import { MeetingSnapshotRegistry } from './meeting-snapshot-contributor';
 import { lockedMutableMeeting } from './meeting-mutation-boundary';
+import { UpdateTopicFieldsDto } from '../topics/dto/topic.dto';
+import { normalizedMembershipTopicState } from '../topics/membership-topic-state';
 
 export interface MeetingDetail extends Meeting {
   participants: MeetingUser[];
@@ -279,6 +281,40 @@ export class MeetingsService {
       const item = await manager.findOneBy(MeetingTopic, { id, meetingId });
       if (!item) throw codedHttpException(HttpStatus.NOT_FOUND, 'AGENDA_TOPIC_NOT_FOUND', 'Agenda topic not found');
       return manager.save(MeetingTopic, Object.assign(item, input));
+    });
+  }
+
+  async updateTopicFields(
+    meetingId: string,
+    id: string,
+    input: UpdateTopicFieldsDto,
+  ): Promise<Topic> {
+    return this.dataSource.transaction(async (manager) => {
+      await lockedMutableMeeting(manager, meetingId);
+      const appearance = await manager.findOneBy(MeetingTopic, { id, meetingId });
+      if (!appearance) {
+        throw codedHttpException(
+          HttpStatus.NOT_FOUND,
+          'AGENDA_TOPIC_NOT_FOUND',
+          'Agenda topic not found',
+        );
+      }
+      const topic = await manager.findOne(Topic, {
+        where: { id: appearance.topicId },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!topic) {
+        throw codedHttpException(HttpStatus.NOT_FOUND, 'TOPIC_NOT_FOUND', 'Topic not found');
+      }
+      const typeState = normalizedMembershipTopicState(topic.type, {
+        ...topic,
+        ...input,
+      });
+      const saved = await manager.save(Topic, Object.assign(topic, input, typeState));
+      return await manager.findOne(Topic, {
+        where: { id: topic.id },
+        relations: { responsibleUser: true, defaultSection: true },
+      }) ?? saved;
     });
   }
 

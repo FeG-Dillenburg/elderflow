@@ -167,6 +167,7 @@ describe("MeetingsService", () => {
     ["agenda membership", () => service.addTopic("meeting", { topicId: "topic", sectionId: "section" } as any)],
     ["agenda ordering", () => service.reorderTopics("meeting", [])],
     ["agenda values", () => service.updateTopic("meeting", "appearance", { plannedDuration: 20 } as any)],
+    ["Topic type fields", () => service.updateTopicFields("meeting", "appearance", { membershipProcessStatus: "changed" })],
     ["Meeting topic notes", () => service.updateTopicNote("meeting", "appearance", "changed")],
     ["agenda removal", () => service.removeTopic("meeting", "appearance")],
   ])("rejects changes to completed %s with a stable error", async (_label, mutate) => {
@@ -196,6 +197,37 @@ describe("MeetingsService", () => {
     expect(manager.save).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({ agendaNote: "Current note" }),
+    );
+  });
+
+  it("updates fields only through an appearance belonging to the mutable Meeting", async () => {
+    const topic = {
+      id: "topic",
+      type: "new_membership",
+      membershipProcessStatus: "Earlier",
+      membershipStatusSignal: "new",
+      godparents: null,
+    };
+    manager.findOne
+      .mockResolvedValueOnce({ id: "meeting", status: "in_progress" })
+      .mockResolvedValueOnce(topic)
+      .mockResolvedValueOnce({ ...topic, membershipProcessStatus: "Current" });
+    manager.findOneBy.mockResolvedValue({
+      id: "appearance",
+      meetingId: "meeting",
+      topicId: "topic",
+    });
+
+    await expect(service.updateTopicFields("meeting", "appearance", {
+      membershipProcessStatus: "Current",
+    })).resolves.toMatchObject({ membershipProcessStatus: "Current" });
+    expect(manager.findOneBy).toHaveBeenCalledWith(expect.anything(), {
+      id: "appearance",
+      meetingId: "meeting",
+    });
+    expect(manager.save).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ membershipProcessStatus: "Current" }),
     );
   });
 
