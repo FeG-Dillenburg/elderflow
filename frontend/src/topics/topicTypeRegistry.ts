@@ -1,6 +1,7 @@
 import type { Component } from "vue";
-import { canonicalTopicTypes, type TopicType } from "./topicTypes";
+import { canonicalTopicTypes, resolveTopicType, type TopicType } from "./topicTypes";
 import { genericTopicRenderers } from "./types/generic";
+import { personTopicRenderers } from "./types/person";
 
 export { canonicalTopicTypes, resolveTopicType } from "./topicTypes";
 
@@ -13,18 +14,48 @@ export type TopicRendererContext =
 
 type TopicTypeRegistration = {
   creationEnabled: boolean;
+  agendaPresentation: "standard" | "compact";
+  usesPlannedDuration: boolean;
   renderers: Record<TopicRendererContext, Component>;
 };
 
-const genericAdapter = (): TopicTypeRegistration["renderers"] =>
-  genericTopicRenderers;
-
 export const topicTypeRegistry: Record<TopicType, TopicTypeRegistration> = {
-  generic: { creationEnabled: true, renderers: genericAdapter() },
-  person: { creationEnabled: false, renderers: genericAdapter() },
-  new_membership: { creationEnabled: false, renderers: genericAdapter() },
-  recurring: { creationEnabled: false, renderers: genericAdapter() },
+  generic: {
+    creationEnabled: true,
+    agendaPresentation: "standard",
+    usesPlannedDuration: true,
+    renderers: genericTopicRenderers,
+  },
+  person: {
+    creationEnabled: true,
+    agendaPresentation: "compact",
+    usesPlannedDuration: false,
+    renderers: personTopicRenderers,
+  },
+  new_membership: {
+    creationEnabled: false,
+    agendaPresentation: "standard",
+    usesPlannedDuration: true,
+    renderers: genericTopicRenderers,
+  },
+  recurring: {
+    creationEnabled: false,
+    agendaPresentation: "standard",
+    usesPlannedDuration: true,
+    renderers: genericTopicRenderers,
+  },
 };
 
 export const creatableTopicTypes = (): TopicType[] =>
   canonicalTopicTypes.filter((type) => topicTypeRegistry[type].creationEnabled);
+
+export const topicAgendaClass = (value: string): string[] => {
+  const type = resolveTopicType(value);
+  const presentation = type ? topicTypeRegistry[type].agendaPresentation : "standard";
+  return ["agenda-topic", `agenda-topic-${presentation}`];
+};
+
+export const topicUsesPlannedDuration = (value: string): boolean => {
+  const type = resolveTopicType(value);
+  return type ? topicTypeRegistry[type].usesPlannedDuration : true;
+};

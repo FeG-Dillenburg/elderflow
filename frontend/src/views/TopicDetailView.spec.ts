@@ -16,6 +16,7 @@ const stubs = {
   Tag: true,
   RichTextEditor: true,
   TopicEditDialog: true,
+  RouterLink: { template: "<a><slot /></a>" },
 };
 const topic: any = {
   id: "topic-1",
@@ -41,7 +42,6 @@ describe("TopicDetailView", () => {
   });
   const view = async () => {
     const wrapper = mount(TopicDetailView, {
-      shallow: true,
       global: { stubs },
     });
     await flushPromises();
@@ -87,6 +87,7 @@ describe("TopicDetailView", () => {
       {
         id: "appearance",
         meetingId: "meeting",
+        agendaNote: "Appearance-owned context",
         meeting: { id: "meeting", title: "Council", date: "2026-07-15" },
         section: { name: "Main" },
       },
@@ -95,6 +96,7 @@ describe("TopicDetailView", () => {
     expect(wrapper.text()).toContain("Minute");
     expect(wrapper.text()).toContain("7/20/2026");
     expect(wrapper.text()).toContain("Main");
+    expect(wrapper.text()).toContain("Appearance-owned context");
   });
   it("handles updates and nullable/date task creation", async () => {
     const wrapper = await view();

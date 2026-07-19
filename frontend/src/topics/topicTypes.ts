@@ -14,3 +14,13 @@ export const topicTypeTranslationKey = (value: string): string => {
   const type = resolveTopicType(value);
   return type ? `topicTypes.${type}` : "topicTypes.unknown";
 };
+
+const topicNameTranslationKeys: Record<TopicType, string> = {
+  generic: "common.name",
+  person: "personTopic.nameLabel",
+  new_membership: "common.name",
+  recurring: "common.name",
+};
+
+export const topicNameTranslationKey = (type: TopicType): string =>
+  topicNameTranslationKeys[type];

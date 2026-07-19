@@ -2,6 +2,7 @@ import { flushPromises, mount } from "@vue/test-utils";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { api } from "../api/domain";
 import MeetingPreparationView from "./MeetingPreparationView.vue";
+import { saveMeetingTopicNote } from "../topics/meetingTopicNote";
 
 vi.mock("vue-router", () => ({
   RouterLink: { template: "<a><slot /></a>" },
@@ -60,6 +61,7 @@ describe("MeetingPreparationView", () => {
         defaultSectionId: "second",
       },
     ] as any);
+    vi.spyOn(api, "userDirectory").mockResolvedValue([]);
   });
   const view = async () => {
     const wrapper = mount(MeetingPreparationView, {
@@ -105,6 +107,18 @@ describe("MeetingPreparationView", () => {
     expect(durations[0].attributes("min")).toBe("0");
     expect(durations[0].attributes("step")).toBe("5");
     expect(durations[0].attributes("suffix")).toBe(" min.");
+  });
+  it("omits planned duration controls and totals for Person Topics", async () => {
+    const personMeeting = structuredClone(meeting);
+    personMeeting.agenda[0].topic.type = "person";
+    personMeeting.agenda[0].plannedDuration = 10;
+    vi.spyOn(api, "meeting").mockResolvedValueOnce(personMeeting);
+
+    const wrapper = await view();
+
+    expect(wrapper.findAll("input-number-stub")).toHaveLength(1);
+    expect(wrapper.text()).toContain("15 min.");
+    expect(wrapper.text()).not.toContain("25 min.");
   });
   it("selects explicit, topic-default, then first available section and does nothing without one", async () => {
     const wrapper = await view();
@@ -219,6 +233,27 @@ describe("MeetingPreparationView", () => {
     await vm.saveDuration(item, 20);
     expect(item.plannedDuration).toBe(15);
     expect(vm.error).toBe("Duration save failed");
+  });
+
+  it("reconciles a saved Person Meeting topic note without reloading the Meeting", async () => {
+    const wrapper = await view();
+    const vm: any = wrapper.vm;
+    const appearance = vm.grouped[1].items[0];
+    vi.spyOn(api, "updateMeetingTopicNote").mockResolvedValue({
+      ...appearance,
+      agendaNote: "Saved context",
+    });
+
+    const result = await saveMeetingTopicNote("meeting-1", appearance)("Saved context");
+
+    expect(api.updateMeetingTopicNote).toHaveBeenCalledWith(
+      "meeting-1",
+      appearance.id,
+      "Saved context",
+    );
+    expect(appearance.agendaNote).toBe("Saved context");
+    expect(result.agendaNote).toBe("Saved context");
+    expect(api.meeting).toHaveBeenCalledTimes(1);
   });
 
   it("renders a completed Meeting without preparation controls", async () => {

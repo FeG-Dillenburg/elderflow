@@ -15,14 +15,20 @@ import TopicTypeRenderer from "../topics/TopicTypeRenderer.vue";
 import TopicTypeRadioGroup from "../topics/components/TopicTypeRadioGroup.vue";
 import {
   api,
+  formatUser,
   meetingLabel,
   type AgendaSection,
   type Meeting,
   type MeetingTopic,
   type Topic,
   type TopicInput,
+  type User,
 } from "../api/domain";
 import { formatDate } from "../i18n";
+import { topicNameTranslationKey } from "../topics/topicTypes";
+import { assignableUsers } from "../auth/roles";
+import { saveMeetingTopicNote } from "../topics/meetingTopicNote";
+import { topicUsesPlannedDuration } from "../topics/topicTypeRegistry";
 
 interface AgendaGroup {
   section: AgendaSection;
@@ -41,6 +47,8 @@ const meeting = ref<Meeting | null>(null);
 const readOnly = computed(() => meeting.value?.status === "completed");
 const sections = ref<AgendaSection[]>([]);
 const suggestions = ref<Topic[]>([]);
+const users = ref<User[]>([]);
+const responsibleUserOptions = computed(() => assignableUsers(users.value));
 const grouped = ref<AgendaGroup[]>([]);
 const error = ref("");
 const pending = ref(false);
@@ -76,15 +84,17 @@ const initialiseGroups = () => {
 
 const load = async () => {
   try {
-    const [loadedMeeting, loadedSections, loadedSuggestions] =
+    const [loadedMeeting, loadedSections, loadedSuggestions, loadedUsers] =
       await Promise.all([
         api.meeting(id),
         api.sections(),
         api.meetingSuggestions(id),
+        api.userDirectory(),
       ]);
     meeting.value = loadedMeeting;
     sections.value = loadedSections;
     suggestions.value = loadedSuggestions;
+    users.value = loadedUsers;
     initialiseGroups();
   } catch (cause) {
     error.value =
@@ -217,7 +227,14 @@ const saveDuration = async (item: MeetingTopic, duration: number | null) => {
 };
 
 const sectionDuration = (items: MeetingTopic[]) =>
-  items.reduce((total, item) => total + (item.plannedDuration ?? 0), 0);
+  items.reduce(
+    (total, item) =>
+      total +
+      (topicUsesPlannedDuration(item.topic?.type ?? "")
+        ? (item.plannedDuration ?? 0)
+        : 0),
+    0,
+  );
 
 const createAndAdd = async () => {
   await withReload(async () => {
@@ -289,11 +306,14 @@ onMounted(load);
                   >
                     <span v-for="dot in 6" :key="dot" />
                   </button>
-                  <div v-if="item.topic">
+                  <div v-if="item.topic" class="topic-content">
                     <TopicTypeRenderer
                       :type="item.topic.type"
                       context="preparation"
                       :topic="item.topic"
+                      :item="item"
+                      :read-only="readOnly"
+                      :save-note="saveMeetingTopicNote(id, item)"
                     />
                     <small>
                       {{ statusLabel(item.topic?.status) }}
@@ -304,7 +324,10 @@ onMounted(load);
                     </small>
                   </div>
                   <div v-if="!readOnly" class="item-actions">
-                    <div class="duration-control">
+                    <div
+                      v-if="topicUsesPlannedDuration(item.topic?.type ?? '')"
+                      class="duration-control"
+                    >
                       <InputNumber
                         :model-value="item.plannedDuration"
                         :aria-label="t('meetingPreparation.duration')"
@@ -328,7 +351,10 @@ onMounted(load);
                       @click="remove(item)"
                     />
                   </div>
-                  <div v-else class="topic-duration">
+                  <div
+                    v-else-if="topicUsesPlannedDuration(item.topic?.type ?? '')"
+                    class="topic-duration"
+                  >
                     {{ item.plannedDuration ?? 0 }}
                     {{ t("common.minuteShort") }}
                   </div>
@@ -421,7 +447,7 @@ onMounted(load);
         <TopicTypeRadioGroup id="new-topic-type" v-model="form.type" />
         <div class="row">
           <label>
-            <span>{{ t("common.name") }}</span>
+            <span>{{ t(topicNameTranslationKey(form.type)) }}</span>
             <InputText v-model="form.name" required />
           </label>
           <label>
@@ -435,6 +461,18 @@ onMounted(load);
             />
           </label>
         </div>
+        <label>
+          <span>{{ t("topics.responsible") }}</span>
+          <Select
+            v-model="form.responsibleUserId"
+            :options="responsibleUserOptions"
+            option-label="firstName"
+            option-value="id"
+            show-clear
+          >
+            <template #option="{ option }">{{ formatUser(option) }}</template>
+          </Select>
+        </label>
         <TopicTypeRenderer
           :type="form.type"
           context="form"
@@ -539,10 +577,13 @@ onMounted(load);
 .section article:last-child {
   border: 0;
 }
+.topic-content {
+  min-width: 0;
+}
 .item-actions {
-  display: grid;
-  grid-template-columns: 5.75rem auto;
+  display: flex;
   align-items: center;
+  justify-content: flex-end;
   gap: 0.25rem;
   min-width: 0;
 }

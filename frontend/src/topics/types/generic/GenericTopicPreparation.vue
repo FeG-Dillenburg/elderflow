@@ -3,6 +3,7 @@ import type { Topic } from "../../../api/domain";
 import { useI18n } from "vue-i18n";
 import { formatDate } from "../../../i18n";
 
+defineOptions({ inheritAttrs: false });
 defineProps<{ topic: Topic; showType?: boolean }>();
 const { t } = useI18n();
 </script>

@@ -20,6 +20,7 @@ import { creatableTopicTypes } from "../topics/topicTypeRegistry";
 import { assignableUsers } from "../auth/roles";
 import { useI18n } from "vue-i18n";
 import { dateInputFormat } from "../i18n";
+import { topicNameTranslationKey } from "../topics/topicTypes";
 
 const props = defineProps<{
   topic: Topic;
@@ -94,7 +95,7 @@ async function save(): Promise<void> {
       />
       <div class="row">
         <label>
-          <span>{{ t("common.name") }}</span>
+          <span>{{ t(topicNameTranslationKey(form.type)) }}</span>
           <InputText v-model="form.name" required />
         </label>
         <label>

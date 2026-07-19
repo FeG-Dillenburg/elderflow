@@ -220,9 +220,25 @@ describe("TopicsService", () => {
   });
 
   it("does not allow specialized type creation before its capability is enabled", async () => {
-    await expect(service.create({ type: "person" } as any)).rejects.toMatchObject({
+    await expect(service.create({ type: "new_membership" } as any)).rejects.toMatchObject({
       response: expect.objectContaining({ code: "TOPIC_TYPE_NOT_ENABLED" }),
     });
+  });
+
+  it("creates a Person Topic with only common Topic state", async () => {
+    const input = {
+      name: "Alex and Sam",
+      description: "Pastoral context",
+      type: "person",
+      status: "open",
+      responsibleUserId: "00000000-0000-4000-8000-000000000001",
+    } as any;
+    const topic = { id: "topic", ...input, isRecurring: false } as Topic;
+    topics.create.mockReturnValue(topic);
+    topics.save.mockResolvedValue(topic);
+
+    await expect(service.create(input)).resolves.toBe(topic);
+    expect(topics.create).toHaveBeenCalledWith({ ...input, isRecurring: false });
   });
 
   it("rejects a type change after the first Meeting appearance", async () => {

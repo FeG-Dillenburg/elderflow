@@ -254,6 +254,11 @@ onMounted(load);
                 item.meeting ? meetingLabel(item.meeting) : t("common.meeting")
               }}
               <small>{{ item.section?.name }}</small>
+              <span
+                v-if="item.agendaNote"
+                class="appearance-note"
+                v-html="safe(item.agendaNote)"
+              />
             </RouterLink>
             <p v-if="!appearances.length" class="empty">
               {{ t("topicDetail.noMeetings") }}
@@ -480,6 +485,17 @@ onMounted(load);
 .appearance {
   text-decoration: none;
   font-weight: 650;
+}
+
+.appearance-note {
+  display: block;
+  margin-top: 0.35rem;
+  color: #4a5568;
+  font-weight: 400;
+}
+
+.appearance-note :deep(p) {
+  margin: 0;
 }
 
 .empty {

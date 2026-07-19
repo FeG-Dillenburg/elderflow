@@ -28,9 +28,12 @@ export class MeetingTopicDto {
 export class UpdateMeetingTopicDto {
   @IsUUID() sectionId: string;
   @IsInt() @Min(1) position: number;
-  @IsOptional() @IsString() agendaNote?: string | null;
   @IsOptional() @IsInt() @Min(1) plannedDuration?: number | null;
   @IsIn(['planned', 'discussed', 'skipped', 'moved', 'done']) status: string;
+}
+
+export class UpdateMeetingTopicNoteDto {
+  @IsOptional() @IsString() agendaNote?: string | null;
 }
 
 export class MeetingTopicOrderItemDto {

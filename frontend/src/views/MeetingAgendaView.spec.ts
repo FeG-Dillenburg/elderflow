@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { api, type AuthUser } from "../api/domain";
 import { auth } from "../auth/auth";
 import MeetingAgendaView from "./MeetingAgendaView.vue";
+import { saveMeetingTopicNote } from "../topics/meetingTopicNote";
 
 vi.mock("vue-router", () => ({
   RouterLink: { template: "<a><slot /></a>" },
@@ -25,6 +26,12 @@ const stubs = {
   Tag: { template: "<span><slot />{{ value }}</span>", props: ["value"] },
   Message: { template: "<div><slot /></div>" },
   RichTextEditor: { template: "<textarea />" },
+  TopicTypeRenderer: {
+    name: "TopicTypeRenderer",
+    inheritAttrs: false,
+    props: ["type", "context", "item", "canEdit"],
+    template: "<div />",
+  },
 };
 const meeting: any = {
   id: "meeting-1",
@@ -162,6 +169,24 @@ describe("MeetingAgendaView", () => {
       "own-old-minute",
     ]);
   });
+  it("passes completed Person snapshots to a read-only agenda renderer", async () => {
+    const completedMeeting = structuredClone(meeting);
+    completedMeeting.status = "completed";
+    completedMeeting.agenda[0].topic.type = "person";
+    completedMeeting.agenda[0].topic.name = "Later live name";
+    completedMeeting.agenda[0].topicNameSnapshot = "Recorded person";
+    completedMeeting.agenda[0].agendaNote = "Recorded note";
+    vi.spyOn(api, "meeting").mockResolvedValueOnce(completedMeeting);
+
+    const wrapper = await view();
+    const renderer = wrapper.getComponent({ name: "TopicTypeRenderer" });
+
+    expect(renderer.props("canEdit")).toBe(false);
+    expect(renderer.props("item")).toMatchObject({
+      topicNameSnapshot: "Recorded person",
+      agendaNote: "Recorded note",
+    });
+  });
   it("adds a minute, manages participants, and makes blank input a no-op", async () => {
     const wrapper = await view();
     const vm: any = wrapper.vm;
@@ -240,6 +265,39 @@ describe("MeetingAgendaView", () => {
     vm.editForm.date = null;
     await vm.saveMeeting();
     expect((api.updateMeeting as any).mock.calls).toHaveLength(1);
+  });
+
+  it("reconciles a saved Person note without reloading or overwriting other agenda state", async () => {
+    const personMeeting = structuredClone(meeting);
+    personMeeting.agenda[0].topic.type = "person";
+    vi.spyOn(api, "meeting").mockResolvedValueOnce(personMeeting);
+    const wrapper = await view();
+    const vm: any = wrapper.vm;
+    const appearance = vm.meeting.agenda[0];
+    vi.spyOn(api, "updateMeetingTopicNote").mockResolvedValue({
+      ...appearance,
+      agendaNote: "Saved note",
+    });
+
+    await saveMeetingTopicNote("meeting-1", appearance)("Saved note");
+
+    expect(api.updateMeetingTopicNote).toHaveBeenCalledWith(
+      "meeting-1",
+      "item-1",
+      "Saved note",
+    );
+    expect(appearance.agendaNote).toBe("Saved note");
+    expect(api.meeting).toHaveBeenCalledTimes(1);
+  });
+  it("excludes Person Topics from planned section duration", async () => {
+    const personMeeting = structuredClone(meeting);
+    personMeeting.agenda[0].topic.type = "person";
+    personMeeting.agenda[0].plannedDuration = 10;
+    vi.spyOn(api, "meeting").mockResolvedValueOnce(personMeeting);
+
+    const wrapper = await view();
+
+    expect(wrapper.get(".section-duration").text()).toBe("0 min.");
   });
 
   it.each([

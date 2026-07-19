@@ -11,8 +11,9 @@ import Select from "primevue/select";
 import Tag from "primevue/tag";
 import TopicTypeRenderer from "../topics/TopicTypeRenderer.vue";
 import TopicTypeRadioGroup from "../topics/components/TopicTypeRadioGroup.vue";
+import TopicTypeBadge from "../topics/components/TopicTypeBadge.vue";
 import { canonicalTopicTypes } from "../topics/topicTypeRegistry";
-import { topicTypeTranslationKey } from "../topics/topicTypes";
+import { topicNameTranslationKey } from "../topics/topicTypes";
 import {
   api,
   formatUser,
@@ -181,7 +182,7 @@ onMounted(load);
         </Column>
         <Column :header="t('topics.type')">
           <template #body="{ data }">
-            {{ t(topicTypeTranslationKey(data.type)) }}
+            <TopicTypeBadge :type="data.type" />
           </template>
         </Column>
         <Column :header="t('common.status')">
@@ -215,7 +216,7 @@ onMounted(load);
         <TopicTypeRadioGroup id="topic-form-type" v-model="form.type" />
         <div class="row">
           <label>
-            <span>{{ t("common.name") }}</span>
+            <span>{{ t(topicNameTranslationKey(form.type)) }}</span>
             <InputText v-model="form.name" required />
           </label>
           <label>
