@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed, reactive, watch } from "vue";
 import Button from "primevue/button";
-import Checkbox from "primevue/checkbox";
 import DatePicker from "primevue/datepicker";
 import Dialog from "primevue/dialog";
 import InputText from "primevue/inputtext";
@@ -15,7 +14,8 @@ import {
   type TopicInput,
   type User,
 } from "../api/domain";
-import RichTextEditor from "./RichTextEditor.vue";
+import TopicTypeRenderer from "../topics/TopicTypeRenderer.vue";
+import { creatableTopicTypes } from "../topics/topicTypeRegistry";
 import { assignableUsers } from "../auth/roles";
 import { useI18n } from "vue-i18n";
 import { dateInputFormat } from "../i18n";
@@ -31,8 +31,8 @@ const responsibleUserOptions = computed(() => assignableUsers(props.users));
 const { t } = useI18n();
 const form = reactive({
   name: "",
-  description: "",
-  type: "general",
+  description: null as string | null,
+  type: "generic" as TopicInput["type"],
   status: "open",
   followUpDate: null as Date | null,
   responsibleUserId: null as string | null,
@@ -41,17 +41,10 @@ const form = reactive({
   defaultPosition: null as number | null,
 });
 const topicTypes = computed(() =>
-  [
-    "recurring_agenda",
-    "person_related",
-    "prayer_pastoral_care",
-    "urgent",
-    "strategic",
-    "communication",
-    "appointment_date",
-    "book_chapter_input",
-    "general",
-  ].map((value) => ({ value, label: t(`topicTypes.${value}`) })),
+  [...new Set([props.topic.type, ...creatableTopicTypes()])].map((value) => ({
+    value,
+    label: t(`topicTypes.${value}`),
+  })),
 );
 const statuses = computed(() =>
   ["open", "done", "deferred", "archived"].map((value) => ({
@@ -102,10 +95,12 @@ async function save(): Promise<void> {
         <span>{{ t("common.name") }}</span>
         <InputText v-model="form.name" required />
       </label>
-      <label>
-        <span>{{ t("topicEdit.background") }}</span>
-        <RichTextEditor v-model="form.description" />
-      </label>
+      <TopicTypeRenderer
+        :type="form.type"
+        context="form"
+        :model-value="form"
+        @change="Object.assign(form, $event)"
+      />
       <div class="row">
         <label>
           <span>{{ t("topics.type") }}</span>
@@ -157,10 +152,6 @@ async function save(): Promise<void> {
           option-value="id"
           show-clear
         />
-      </label>
-      <label class="checkbox">
-        <Checkbox v-model="form.isRecurring" binary />
-        <span>{{ t("topicEdit.autoAdd") }}</span>
       </label>
     </form>
     <template #footer>

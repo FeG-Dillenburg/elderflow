@@ -33,11 +33,12 @@ export interface AgendaSection {
   isDefault: boolean;
 }
 
-export interface Topic {
+export type TopicType = 'generic' | 'person' | 'new_membership' | 'recurring';
+
+interface TopicBase {
   id: string;
   name: string;
-  description: string;
-  type: string;
+  description: string | null;
   status: string;
   followUpDate: string | null;
   responsibleUserId: string | null;
@@ -52,10 +53,12 @@ export interface Topic {
   tasks?: Task[];
 }
 
+export type Topic = TopicBase & { type: TopicType };
+
 export interface TopicInput {
   name: string;
-  description: string;
-  type: string;
+  description: string | null;
+  type: TopicType;
   status: string;
   followUpDate: string | null;
   responsibleUserId: string | null;

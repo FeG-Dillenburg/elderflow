@@ -3,7 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { FindOptionsWhere, In, LessThanOrEqual, Repository } from 'typeorm';
 import { User } from '../users/user.entity';
 import { TopicDto, TopicUpdateDto } from './dto/topic.dto';
-import { Topic } from './topic.entity';
+import { TOPIC_TYPES, Topic, TopicType } from './topic.entity';
 import { codedHttpException } from '../errors/coded-http.exception';
 import { TopicUpdate } from './topic-update.entity';
 import { MeetingTopic } from '../meetings/meeting-topic.entity';
@@ -19,7 +19,10 @@ export class TopicsService {
   findAll(filters: { status?: string; type?: string; responsibleUserId?: string; defaultSectionId?: string; dueOn?: string }): Promise<Topic[]> {
     const where: FindOptionsWhere<Topic> = {};
     if (filters.status) where.status = filters.status === 'active' ? In(['open', 'deferred']) : filters.status;
-    if (filters.type) where.type = filters.type;
+    if (filters.type) {
+      this.assertSupportedType(filters.type);
+      where.type = filters.type;
+    }
     if (filters.responsibleUserId) where.responsibleUserId = filters.responsibleUserId;
     if (filters.defaultSectionId) where.defaultSectionId = filters.defaultSectionId;
     if (filters.dueOn) where.followUpDate = LessThanOrEqual(filters.dueOn);
@@ -35,13 +38,60 @@ export class TopicsService {
     return topic;
   }
 
-  create(input: TopicDto): Promise<Topic> {
-    return this.topics.save(this.topics.create(input));
+  async create(input: TopicDto): Promise<Topic> {
+    this.assertSupportedType(input.type);
+    this.assertEnabledCreationType(input.type);
+    return this.topics.save(this.topics.create({ ...input, isRecurring: false }));
   }
 
   async update(id: string, input: Partial<TopicDto>): Promise<Topic> {
-    const topic = await this.findOne(id);
-    return this.topics.save(Object.assign(topic, input));
+    return this.topics.manager.transaction(async (manager) => {
+      const topics = manager.getRepository(Topic);
+      const topic = await topics.findOne({
+        where: { id },
+        relations: { responsibleUser: true, defaultSection: true },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!topic) throw codedHttpException(HttpStatus.NOT_FOUND, 'TOPIC_NOT_FOUND', 'Topic not found');
+
+      if (input.type !== undefined) {
+        this.assertSupportedType(input.type);
+        if (input.type !== topic.type) {
+          const hasAppearance = await manager.getRepository(MeetingTopic).exist({ where: { topicId: id } });
+          if (hasAppearance) {
+            throw codedHttpException(
+              HttpStatus.CONFLICT,
+              'TOPIC_TYPE_LOCKED',
+              'Topic type cannot change after its first Meeting appearance',
+            );
+          }
+          this.assertEnabledCreationType(input.type);
+        }
+      }
+
+      const converted = input.type !== undefined && input.type !== topic.type;
+      return topics.save(Object.assign(topic, input, converted ? this.clearedTypeState(input.type!) : {}));
+    });
+  }
+
+  private assertSupportedType(type: string): asserts type is TopicType {
+    if (!TOPIC_TYPES.includes(type as TopicType)) {
+      throw codedHttpException(HttpStatus.BAD_REQUEST, 'UNSUPPORTED_TOPIC_TYPE', 'Unsupported Topic type');
+    }
+  }
+
+  private assertEnabledCreationType(type: TopicType): void {
+    if (type !== 'generic') {
+      throw codedHttpException(
+        HttpStatus.BAD_REQUEST,
+        'TOPIC_TYPE_NOT_ENABLED',
+        'This Topic type is not enabled for creation or conversion',
+      );
+    }
+  }
+
+  private clearedTypeState(type: TopicType): Pick<Topic, 'isRecurring'> {
+    return { isRecurring: type === 'recurring' };
   }
 
   async getUpdates(topicId: string): Promise<TopicUpdate[]> {

@@ -37,7 +37,7 @@ export class MeetingsService {
     return this.dataSource.transaction(async (manager) => {
       const meeting = await manager.save(Meeting, manager.create(Meeting, input));
       const recurringTopics = await manager.find(Topic, {
-        where: { isRecurring: true, status: 'open' },
+        where: { type: 'recurring', status: 'open' },
         order: { defaultPosition: 'ASC' },
       });
       const fallbackSection = await manager.findOne(AgendaSection, { where: { isDefault: true }, order: { position: 'ASC' } });

@@ -131,7 +131,7 @@ describe("MeetingsService", () => {
     );
     expect(dataSource.transaction).toHaveBeenCalled();
     expect(manager.find).toHaveBeenCalledWith(expect.anything(), {
-      where: { isRecurring: true, status: "open" },
+      where: { type: "recurring", status: "open" },
       order: { defaultPosition: "ASC" },
     });
     expect(manager.findOne).toHaveBeenCalledWith(expect.anything(), {

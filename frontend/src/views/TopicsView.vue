@@ -1,8 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from "vue";
-import { RouterLink } from "vue-router";
 import Button from "primevue/button";
-import Checkbox from "primevue/checkbox";
 import Column from "primevue/column";
 import DataTable from "primevue/datatable";
 import DatePicker from "primevue/datepicker";
@@ -11,7 +9,12 @@ import InputText from "primevue/inputtext";
 import Message from "primevue/message";
 import Select from "primevue/select";
 import Tag from "primevue/tag";
-import RichTextEditor from "../components/RichTextEditor.vue";
+import TopicTypeRenderer from "../topics/TopicTypeRenderer.vue";
+import {
+  canonicalTopicTypes,
+  creatableTopicTypes,
+  resolveTopicType,
+} from "../topics/topicTypeRegistry";
 import {
   api,
   formatUser,
@@ -28,20 +31,16 @@ import { dateInputFormat, formatDate } from "../i18n";
 
 const canManage = computed(() => !auth.state.user || auth.canManage("topics"));
 const { t } = useI18n();
-const topicTypeValues = [
-  "recurring_agenda",
-  "person_related",
-  "prayer_pastoral_care",
-  "urgent",
-  "strategic",
-  "communication",
-  "appointment_date",
-  "book_chapter_input",
-  "general",
-];
 const topicTypes = computed(() =>
-  topicTypeValues.map((value) => ({ value, label: t(`topicTypes.${value}`) })),
+  canonicalTopicTypes.map((value) => ({ value, label: t(`topicTypes.${value}`) })),
 );
+const creatableTopicTypeOptions = computed(() =>
+  creatableTopicTypes().map((value) => ({ value, label: t(`topicTypes.${value}`) })),
+);
+const topicTypeLabel = (value: string) => {
+  const type = resolveTopicType(value);
+  return type ? t(`topicTypes.${type}`) : t("topicTypes.unknown");
+};
 const statusOptions = computed(() => [
   { label: t("topics.openDeferred"), value: "active" },
   { label: t("labels.open"), value: "open" },
@@ -66,8 +65,8 @@ const filters = reactive({
 });
 const empty = () => ({
   name: "",
-  description: "",
-  type: "general",
+  description: null as string | null,
+  type: "generic" as TopicInput["type"],
   status: "open",
   followUpDate: null as Date | null,
   responsibleUserId: null as string | null,
@@ -183,17 +182,16 @@ onMounted(load);
       <DataTable :value="topics" :loading="loading" data-key="id">
         <Column :header="t('common.topic')">
           <template #body="{ data }">
-            <RouterLink class="primary-link" :to="`/topics/${data.id}`">
-              {{ data.name }}
-            </RouterLink>
-            <small>
-              {{ data.defaultSection?.name || t("topics.noDefaultSection") }}
-            </small>
+            <TopicTypeRenderer
+              :type="data.type"
+              context="list"
+              :topic="data"
+            />
           </template>
         </Column>
         <Column :header="t('topics.type')">
           <template #body="{ data }">
-            {{ topicTypes.find((t) => t.value === data.type)?.label }}
+            {{ topicTypeLabel(data.type) }}
           </template>
         </Column>
         <Column :header="t('common.status')">
@@ -228,16 +226,18 @@ onMounted(load);
           <span>{{ t("common.name") }}</span>
           <InputText v-model="form.name" required />
         </label>
-        <label>
-          <span>{{ t("topics.background") }}</span>
-          <RichTextEditor v-model="form.description" />
-        </label>
+        <TopicTypeRenderer
+          :type="form.type"
+          context="form"
+          :model-value="form"
+          @change="Object.assign(form, $event)"
+        />
         <div class="row">
           <label>
             <span>{{ t("topics.type") }}</span>
             <Select
               v-model="form.type"
-              :options="topicTypes"
+              :options="creatableTopicTypeOptions"
               option-label="label"
               option-value="value"
             />
@@ -275,10 +275,6 @@ onMounted(load);
             />
           </label>
         </div>
-        <label class="checkbox">
-          <Checkbox v-model="form.isRecurring" binary />
-          <span>{{ t("topics.autoAdd") }}</span>
-        </label>
       </form>
       <template #footer>
         <Button

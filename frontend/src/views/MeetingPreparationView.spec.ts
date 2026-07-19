@@ -31,7 +31,7 @@ const meeting: any = {
       sectionId: "second",
       position: 2,
       plannedDuration: 10,
-      topic: { name: "Later" },
+      topic: { name: "Later", type: "generic" },
     },
     {
       id: "item-1",
@@ -39,7 +39,7 @@ const meeting: any = {
       sectionId: "second",
       position: 1,
       plannedDuration: 15,
-      topic: { name: "First" },
+      topic: { name: "First", type: "generic" },
     },
   ],
 };
@@ -56,7 +56,7 @@ describe("MeetingPreparationView", () => {
       {
         id: "topic-3",
         name: "Suggested",
-        type: "general",
+        type: "generic",
         defaultSectionId: "second",
       },
     ] as any);

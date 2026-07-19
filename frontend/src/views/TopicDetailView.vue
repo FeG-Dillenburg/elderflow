@@ -11,6 +11,8 @@ import Select from "primevue/select";
 import Tag from "primevue/tag";
 import RichTextEditor from "../components/RichTextEditor.vue";
 import TopicEditDialog from "../components/TopicEditDialog.vue";
+import TopicTypeRenderer from "../topics/TopicTypeRenderer.vue";
+import { resolveTopicType } from "../topics/topicTypeRegistry";
 import { auth } from "../auth/auth";
 import { assignableUsers } from "../auth/roles";
 import {
@@ -31,6 +33,10 @@ import { dateInputFormat, formatDate } from "../i18n";
 
 const canManage = computed(() => !auth.state.user || auth.canManage("topics"));
 const { t } = useI18n();
+const topicTypeLabel = (value: string) => {
+  const type = resolveTopicType(value);
+  return type ? t(`topicTypes.${type}`) : t("topicTypes.unknown");
+};
 
 const route = useRoute();
 const id = route.params.id as string;
@@ -115,7 +121,7 @@ onMounted(load);
           <h1>{{ topic.name }}</h1>
           <p>
             <Tag :value="t(`labels.${topic.status}`)" severity="secondary" />
-            <span>{{ t(`topicTypes.${topic.type}`) }}</span>
+            <span>{{ topicTypeLabel(topic.type) }}</span>
           </p>
         </div>
         <div v-if="canManage">
@@ -135,10 +141,12 @@ onMounted(load);
       </header>
       <div class="topic-grid">
         <main>
-          <section class="background">
-            <h2>{{ t("topicDetail.background") }}</h2>
-            <div v-html="safe(topic.description)" />
-          </section>
+          <TopicTypeRenderer
+            class="background"
+            :type="topic.type"
+            context="detail"
+            :topic="topic"
+          />
           <section>
             <div class="section-heading">
               <h2>{{ t("topicDetail.updates") }}</h2>

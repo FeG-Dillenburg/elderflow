@@ -1,10 +1,10 @@
 import { IsBoolean, IsIn, IsInt, IsNotEmpty, IsOptional, IsString, IsUUID, Min } from 'class-validator';
-import { TOPIC_STATUSES, TOPIC_TYPES } from '../topic.entity';
+import { TOPIC_STATUSES, TopicType } from '../topic.entity';
 
 export class TopicDto {
   @IsString() @IsNotEmpty() name: string;
-  @IsString() @IsNotEmpty() description: string;
-  @IsIn(TOPIC_TYPES) type: string;
+  @IsOptional() @IsString() description?: string | null;
+  @IsString() type: TopicType;
   @IsIn(TOPIC_STATUSES) status: string;
   @IsOptional() @IsString() followUpDate?: string | null;
   @IsOptional() @IsUUID() responsibleUserId?: string | null;
