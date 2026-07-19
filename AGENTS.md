@@ -11,6 +11,13 @@
 - Do not introduce new business domains unless explicitly requested.
 - Run the relevant tests and builds before finishing work. Prefer running the full root test suite when practical.
 
+## Internationalization
+
+- All system-owned UI must support English and German through Vue I18n; do not hard-code user-facing text or technical enum values.
+- Add matching English and German catalog entries, including validation, errors, tooltips, ARIA text, and empty states.
+- Use the shared locale-aware date/time helpers and PrimeVue locale. Keep backend error codes stable and localize them in the frontend.
+- Run the catalog-parity test and relevant frontend tests.
+
 ## Agent skills
 
 ### Issue tracker

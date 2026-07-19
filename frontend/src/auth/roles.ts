@@ -1,21 +1,14 @@
 import type { UserRole } from '../api/domain';
-
-const roleLabels: Record<UserRole, string> = {
-  superadmin: 'Superadmin',
-  'it-admin': 'IT admin',
-  admin: 'Admin',
-  user: 'User',
-  guest: 'Guest',
-};
+import { translate } from '../i18n';
 
 const roleOrder: UserRole[] = ['superadmin', 'it-admin', 'admin', 'user', 'guest'];
 
 export const userRoleOptions = roleOrder.map((value) => ({
   value,
-  label: roleLabels[value],
+  get label() { return roleLabel(value); },
 }));
 
-export const roleLabel = (role: UserRole): string => roleLabels[role];
+export const roleLabel = (role: UserRole | undefined): string => role ? translate(`roles.${role}`) : '';
 
 export const isAssignableUser = (user: { role: UserRole }): boolean => user.role !== 'it-admin';
 

@@ -1,9 +1,14 @@
+import type { SupportedLanguage } from '../i18n/language';
+import { localizeApiError, type ApiErrorPayload } from '../i18n/api-errors';
+import { formatDate, translate } from '../i18n';
+
 export interface User {
   id: string;
   email: string;
   firstName: string;
   lastName: string;
   role: UserRole;
+  language: SupportedLanguage | null;
 }
 
 export type UserRole = 'superadmin' | 'it-admin' | 'admin' | 'user' | 'guest';
@@ -13,6 +18,7 @@ export type UserPermissions = Record<PermissionCategory, PermissionLevel>;
 export interface AuthUser extends User { permissions: UserPermissions }
 
 export interface InitialUserInput {
+  defaultLanguage: SupportedLanguage;
   setupPassword: string;
   email: string;
   firstName: string;
@@ -144,9 +150,8 @@ export async function request<T>(path: string, options?: RequestInit): Promise<T
     headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}), ...options?.headers },
   });
   if (!response.ok) {
-    const payload = (await response.json().catch(() => null)) as { message?: string | string[] } | null;
-    const message = Array.isArray(payload?.message) ? payload.message.join(', ') : payload?.message;
-    throw new Error(message || 'The request could not be completed');
+    const payload = (await response.json().catch(() => null)) as ApiErrorPayload | null;
+    throw new Error(localizeApiError(payload, translate));
   }
   if (response.status === 204 || response.headers?.get('content-length') === '0') return undefined as T;
   return response.json() as Promise<T>;
@@ -162,12 +167,12 @@ const query = (values: Record<string, string | boolean | null | undefined>): str
 };
 
 export const api = {
-  setupStatus: () => request<{ setupRequired: boolean }>('/api/setup/status'),
+  installation: () => request<{ setupRequired: boolean; defaultLanguage: SupportedLanguage | null }>('/api/installation'),
   verifySetupPassword: (setupPassword: string) => request<{ valid: true }>('/api/setup/verify', { method: 'POST', body: JSON.stringify({ setupPassword }) }),
   createInitialUser: (input: InitialUserInput) => request<User>('/api/setup', { method: 'POST', body: JSON.stringify(input) }),
   login: (input: { email: string; password: string }) => request<{ token: string; user: AuthUser }>('/api/auth/login', { method: 'POST', body: JSON.stringify(input) }),
   me: () => request<AuthUser>('/api/auth/me'),
-  updateProfile: (input: { email: string; firstName: string; lastName: string; password?: string }) => request<AuthUser>('/api/auth/profile', { method: 'PATCH', body: JSON.stringify(input) }),
+  updateProfile: (input: { email: string; firstName: string; lastName: string; language: SupportedLanguage | null; password?: string }) => request<AuthUser>('/api/auth/profile', { method: 'PATCH', body: JSON.stringify(input) }),
   users: () => request<User[]>('/api/users'),
   userDirectory: () => request<User[]>('/api/user-directory'),
   dashboard: () => request<DashboardData>('/api/dashboard'),
@@ -198,8 +203,8 @@ export const api = {
   updateTask: (id: string, input: TaskInput) => request<Task>(`/api/tasks/${id}`, { method: 'PUT', body: JSON.stringify(input) }),
 };
 
-export const formatUser = (user?: User | null): string => user ? `${user.firstName} ${user.lastName}` : 'Unassigned';
-export const meetingLabel = (meeting: Pick<Meeting, 'title' | 'date'>): string => meeting.title || `Leadership meeting - ${new Date(`${meeting.date}T12:00:00`).toLocaleDateString()}`;
+export const formatUser = (user?: User | null): string => user ? `${user.firstName} ${user.lastName}` : translate('common.unassigned');
+export const meetingLabel = (meeting: Pick<Meeting, 'title' | 'date'>): string => meeting.title || translate('meetings.defaultTitle', { date: formatDate(`${meeting.date}T12:00:00`) });
 export const toLocalDate = (date: Date | null): string | null => {
   if (!date) return null;
   const year = date.getFullYear();

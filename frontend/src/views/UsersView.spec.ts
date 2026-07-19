@@ -16,6 +16,7 @@ describe("UsersView", () => {
       firstName: "Ivy",
       lastName: "Tech",
       role: "it-admin",
+      language: null,
       permissions: {
         dashboard: "hide",
         users: "view",

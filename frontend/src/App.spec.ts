@@ -16,7 +16,7 @@ describe('App', () => {
 
   it('renders the current user and permitted navigation destinations', () => {
     auth.state.user = {
-      id: 'user', email: 'ada@example.com', firstName: 'Ada', lastName: 'Lovelace', role: 'admin', permissions,
+      id: 'user', email: 'ada@example.com', firstName: 'Ada', lastName: 'Lovelace', role: 'admin', language: null, permissions,
     };
     const wrapper = mount(App, { global: { stubs } });
     expect(wrapper.text()).toContain('Ada Lovelace');
@@ -28,7 +28,7 @@ describe('App', () => {
 
   it('hides forbidden content navigation for an IT admin', () => {
     auth.state.user = {
-      id: 'it', email: 'it@example.com', firstName: 'Ivy', lastName: 'Tech', role: 'it-admin',
+      id: 'it', email: 'it@example.com', firstName: 'Ivy', lastName: 'Tech', role: 'it-admin', language: null,
       permissions: { ...permissions, dashboard: 'hide', users: 'view', meetings: 'hide', topics: 'hide', tasks: 'hide', contentSettings: 'hide', authSettings: 'manage' },
     };
     const wrapper = mount(App, { global: { stubs } });
@@ -39,7 +39,7 @@ describe('App', () => {
 
   it('hides the user directory navigation for a guest', () => {
     auth.state.user = {
-      id: 'guest', email: 'guest@example.com', firstName: 'Grace', lastName: 'Guest', role: 'guest',
+      id: 'guest', email: 'guest@example.com', firstName: 'Grace', lastName: 'Guest', role: 'guest', language: null,
       permissions: { ...permissions, dashboard: 'view', users: 'hide', meetings: 'view', topics: 'view', tasks: 'view', contentSettings: 'hide' },
     };
     const wrapper = mount(App, { global: { stubs } });

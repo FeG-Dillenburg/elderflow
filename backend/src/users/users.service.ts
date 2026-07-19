@@ -1,10 +1,11 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { HttpStatus, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, IsNull, QueryFailedError, Repository } from 'typeorm';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/create-user.dto';
 import { User } from './user.entity';
 import { hash } from 'bcryptjs';
+import { codedHttpException } from '../errors/coded-http.exception';
 
 @Injectable()
 export class UsersService {
@@ -28,7 +29,7 @@ export class UsersService {
       return this.withoutPassword(await this.usersRepository.save(user));
     } catch (error) {
       if (error instanceof QueryFailedError && (error as QueryFailedError & { driverError?: { code?: string } }).driverError?.code === '23505') {
-        throw new ConflictException('A user with this email already exists');
+        throw codedHttpException(HttpStatus.CONFLICT, 'USER_EMAIL_CONFLICT', 'A user with this email already exists');
       }
       throw error;
     }
@@ -36,7 +37,7 @@ export class UsersService {
 
   async update(id: string, input: UpdateUserDto): Promise<User> {
     const user = await this.usersRepository.findOneBy({ id });
-    if (!user) throw new NotFoundException('User not found');
+    if (!user) throw codedHttpException(HttpStatus.NOT_FOUND, 'USER_NOT_FOUND', 'User not found');
     const { password, ...fields } = input;
     Object.assign(user, fields);
     if (password) user.passwordHash = await hash(password, 12);
@@ -44,7 +45,7 @@ export class UsersService {
       return this.withoutPassword(await this.usersRepository.save(user));
     } catch (error) {
       if (error instanceof QueryFailedError && (error as QueryFailedError & { driverError?: { code?: string } }).driverError?.code === '23505') {
-        throw new ConflictException('A user with this email already exists');
+        throw codedHttpException(HttpStatus.CONFLICT, 'USER_EMAIL_CONFLICT', 'A user with this email already exists');
       }
       throw error;
     }
@@ -56,7 +57,7 @@ export class UsersService {
         where: { id },
         lock: { mode: 'pessimistic_write' },
       });
-      if (!user) throw new NotFoundException('User not found');
+      if (!user) throw codedHttpException(HttpStatus.NOT_FOUND, 'USER_NOT_FOUND', 'User not found');
 
       const [result] = await manager.query(
         `SELECT EXISTS (
@@ -82,7 +83,7 @@ export class UsersService {
 
   async restore(id: string): Promise<User> {
     const user = await this.usersRepository.findOneBy({ id });
-    if (!user) throw new NotFoundException('User not found');
+    if (!user) throw codedHttpException(HttpStatus.NOT_FOUND, 'USER_NOT_FOUND', 'User not found');
     user.archivedAt = null;
     return this.usersRepository.save(user);
   }

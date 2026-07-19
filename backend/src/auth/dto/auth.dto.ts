@@ -1,5 +1,6 @@
 import { Transform } from 'class-transformer';
-import { IsEmail, IsNotEmpty, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
+import { IsEmail, IsIn, IsNotEmpty, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
+import { SupportedLanguage, supportedLanguages } from '../../installation/language';
 
 export class LoginDto {
   @Transform(({ value }) => (typeof value === 'string' ? value.trim().toLowerCase() : value))
@@ -14,6 +15,10 @@ export class LoginDto {
 }
 
 export class UpdateProfileDto {
+  @IsOptional()
+  @IsIn(supportedLanguages)
+  language?: SupportedLanguage | null;
+
   @Transform(({ value }) => (typeof value === 'string' ? value.trim().toLowerCase() : value))
   @IsEmail()
   @MaxLength(320)

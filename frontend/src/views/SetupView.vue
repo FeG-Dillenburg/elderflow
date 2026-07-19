@@ -1,47 +1,78 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue';
-import Button from 'primevue/button';
-import InputText from 'primevue/inputtext';
-import Message from 'primevue/message';
-import Password from 'primevue/password';
-import { api } from '../api/domain';
+import { computed, onMounted, reactive, ref, watch } from "vue";
+import { useI18n } from "vue-i18n";
+import Button from "primevue/button";
+import InputText from "primevue/inputtext";
+import Message from "primevue/message";
+import Password from "primevue/password";
+import Select from "primevue/select";
+import { api } from "../api/domain";
+import {
+  detectSupportedLanguage,
+  type SupportedLanguage,
+} from "../i18n/language";
+import { setLanguage } from "../i18n";
+import { installation } from "../installation";
 
-type Stage = 'loading' | 'password' | 'user' | 'complete' | 'already-setup' | 'error';
+type Stage =
+  | "loading"
+  | "password"
+  | "user"
+  | "complete"
+  | "already-setup"
+  | "error";
 
-const stage = ref<Stage>('loading');
-const setupPassword = ref('');
-const form = reactive({ email: '', firstName: '', lastName: '', password: '', passwordConfirmation: '' });
+const stage = ref<Stage>("loading");
+const setupPassword = ref("");
+const form = reactive({
+  email: "",
+  firstName: "",
+  lastName: "",
+  password: "",
+  passwordConfirmation: "",
+});
 const submitting = ref(false);
-const errorMessage = ref('');
+const errorMessage = ref("");
+const defaultLanguage = ref<SupportedLanguage>(
+  detectSupportedLanguage(navigator.languages) ?? "en",
+);
+const { t } = useI18n();
+const languageOptions = computed(() => [
+  { label: t("languages.en"), value: "en" },
+  { label: t("languages.de"), value: "de" },
+]);
+
+watch(defaultLanguage, setLanguage, { immediate: true });
 
 onMounted(async () => {
   try {
-    const status = await api.setupStatus();
-    stage.value = status.setupRequired ? 'password' : 'already-setup';
+    const status = await api.installation();
+    stage.value = status.setupRequired ? "password" : "already-setup";
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : 'Unable to check setup status';
-    stage.value = 'error';
+    errorMessage.value =
+      error instanceof Error ? error.message : t("setup.checkFailed");
+    stage.value = "error";
   }
 });
 
 async function verifyPassword(): Promise<void> {
   submitting.value = true;
-  errorMessage.value = '';
+  errorMessage.value = "";
   try {
     await api.verifySetupPassword(setupPassword.value);
-    stage.value = 'user';
+    stage.value = "user";
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : 'Unable to verify setup password';
-    if (errorMessage.value === 'System already setup') stage.value = 'already-setup';
+    errorMessage.value =
+      error instanceof Error ? error.message : t("setup.verifyFailed");
   } finally {
     submitting.value = false;
   }
 }
 
 async function createUser(): Promise<void> {
-  errorMessage.value = '';
+  errorMessage.value = "";
   if (form.password !== form.passwordConfirmation) {
-    errorMessage.value = 'Passwords do not match';
+    errorMessage.value = t("setup.passwordsMismatch");
     return;
   }
 
@@ -49,15 +80,18 @@ async function createUser(): Promise<void> {
   try {
     await api.createInitialUser({
       setupPassword: setupPassword.value,
+      defaultLanguage: defaultLanguage.value,
       email: form.email,
       firstName: form.firstName,
       lastName: form.lastName,
       password: form.password,
     });
-    stage.value = 'complete';
+    installation.setupRequired = false;
+    installation.defaultLanguage = defaultLanguage.value;
+    stage.value = "complete";
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : 'Unable to create the initial user';
-    if (errorMessage.value === 'System already setup') stage.value = 'already-setup';
+    errorMessage.value =
+      error instanceof Error ? error.message : t("setup.createFailed");
   } finally {
     submitting.value = false;
   }
@@ -69,59 +103,139 @@ async function createUser(): Promise<void> {
     <section class="setup-card">
       <div class="brand-mark">E</div>
       <p class="eyebrow">ElderFlow</p>
-      <h1>System setup</h1>
+      <h1>{{ t("setup.title") }}</h1>
 
-      <p v-if="stage === 'loading'" class="description">Checking system status…</p>
+      <label
+        v-if="stage !== 'already-setup' && stage !== 'complete'"
+        class="language-field"
+      >
+        <span>{{ t("setup.defaultLanguage") }}</span>
+        <Select
+          v-model="defaultLanguage"
+          :options="languageOptions"
+          option-label="label"
+          option-value="value"
+        />
+      </label>
+
+      <p v-if="stage === 'loading'" class="description">
+        {{ t("setup.checking") }}
+      </p>
 
       <template v-else-if="stage === 'already-setup'">
-        <Message class="result-message" severity="info" :closable="false">System already setup</Message>
-        <RouterLink class="login-link" to="/login">Go to sign in</RouterLink>
+        <Message class="result-message" severity="info" :closable="false">
+          {{ t("setup.already") }}
+        </Message>
+        <RouterLink class="login-link" to="/login">
+          {{ t("setup.goToSignIn") }}
+        </RouterLink>
       </template>
 
       <template v-else-if="stage === 'complete'">
-        <Message class="result-message" severity="success" :closable="false">Setup complete. Your superadmin account is ready.</Message>
-        <RouterLink class="login-link" to="/login">Sign in</RouterLink>
+        <Message class="result-message" severity="success" :closable="false">
+          {{ t("setup.complete") }}
+        </Message>
+        <RouterLink class="login-link" to="/login">
+          {{ t("setup.signIn") }}
+        </RouterLink>
       </template>
 
       <template v-else>
         <p v-if="stage === 'password'" class="description">
-          Enter the setup password printed in the backend log to continue.
+          {{ t("setup.passwordHelp") }}
         </p>
         <p v-else-if="stage === 'user'" class="description">
-          Create the first user. This account will be assigned the superadmin role.
+          {{ t("setup.userHelp") }}
         </p>
-        <Message v-if="errorMessage" severity="error" :closable="false">{{ errorMessage }}</Message>
+        <Message v-if="errorMessage" severity="error" :closable="false">
+          {{ errorMessage }}
+        </Message>
 
-        <form v-if="stage === 'password'" class="setup-form" @submit.prevent="verifyPassword">
+        <form
+          v-if="stage === 'password'"
+          class="setup-form"
+          @submit.prevent="verifyPassword"
+        >
           <label>
-            <span>Setup password</span>
-            <Password v-model="setupPassword" :feedback="false" toggle-mask autocomplete="off" required autofocus />
+            <span>{{ t("setup.setupPassword") }}</span>
+            <Password
+              v-model="setupPassword"
+              :feedback="false"
+              toggle-mask
+              autocomplete="off"
+              required
+              autofocus
+            />
           </label>
-          <Button label="Continue" type="submit" :loading="submitting" />
+          <Button
+            :label="t('common.continue')"
+            type="submit"
+            :loading="submitting"
+          />
         </form>
 
-        <form v-else-if="stage === 'user'" class="setup-form" @submit.prevent="createUser">
+        <form
+          v-else-if="stage === 'user'"
+          class="setup-form"
+          @submit.prevent="createUser"
+        >
           <label>
-            <span>First name</span>
-            <InputText v-model="form.firstName" autocomplete="given-name" maxlength="100" required autofocus />
+            <span>{{ t("setup.firstName") }}</span>
+            <InputText
+              v-model="form.firstName"
+              autocomplete="given-name"
+              maxlength="100"
+              required
+              autofocus
+            />
           </label>
           <label>
-            <span>Last name</span>
-            <InputText v-model="form.lastName" autocomplete="family-name" maxlength="100" required />
+            <span>{{ t("setup.lastName") }}</span>
+            <InputText
+              v-model="form.lastName"
+              autocomplete="family-name"
+              maxlength="100"
+              required
+            />
           </label>
           <label>
-            <span>Email</span>
-            <InputText v-model="form.email" type="email" autocomplete="username" maxlength="320" required />
+            <span>{{ t("common.email") }}</span>
+            <InputText
+              v-model="form.email"
+              type="email"
+              autocomplete="username"
+              maxlength="320"
+              required
+            />
           </label>
           <label>
-            <span>Password</span>
-            <Password v-model="form.password" toggle-mask autocomplete="new-password" minlength="10" maxlength="200" required />
+            <span>{{ t("common.password") }}</span>
+            <Password
+              v-model="form.password"
+              toggle-mask
+              autocomplete="new-password"
+              minlength="10"
+              maxlength="200"
+              required
+            />
           </label>
           <label>
-            <span>Confirm password</span>
-            <Password v-model="form.passwordConfirmation" :feedback="false" toggle-mask autocomplete="new-password" minlength="10" maxlength="200" required />
+            <span>{{ t("setup.confirmPassword") }}</span>
+            <Password
+              v-model="form.passwordConfirmation"
+              :feedback="false"
+              toggle-mask
+              autocomplete="new-password"
+              minlength="10"
+              maxlength="200"
+              required
+            />
           </label>
-          <Button label="Create superadmin" type="submit" :loading="submitting" />
+          <Button
+            :label="t('setup.createSuperadmin')"
+            type="submit"
+            :loading="submitting"
+          />
         </form>
       </template>
     </section>
@@ -151,18 +265,18 @@ async function createUser(): Promise<void> {
   width: 2.8rem;
   height: 2.8rem;
   place-items: center;
-  border-radius: .75rem;
+  border-radius: 0.75rem;
   background: #315a9b;
   color: #fff;
   font-weight: 800;
 }
 
 .eyebrow {
-  margin: 1.25rem 0 .35rem;
+  margin: 1.25rem 0 0.35rem;
   color: #5572a7;
-  font-size: .75rem;
+  font-size: 0.75rem;
   font-weight: 700;
-  letter-spacing: .1em;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
 }
 
@@ -172,14 +286,23 @@ h1 {
 }
 
 .description {
-  margin: .5rem 0 1.5rem;
+  margin: 0.5rem 0 1.5rem;
   color: #64748b;
 }
 
 .setup-form,
 .setup-form label {
   display: grid;
-  gap: .45rem;
+  gap: 0.45rem;
+}
+
+.language-field {
+  display: grid;
+  gap: 0.45rem;
+  margin: 1rem 0;
+  color: #334155;
+  font-size: 0.9rem;
+  font-weight: 600;
 }
 
 .setup-form {
@@ -189,7 +312,7 @@ h1 {
 
 .setup-form label {
   color: #334155;
-  font-size: .9rem;
+  font-size: 0.9rem;
   font-weight: 600;
 }
 

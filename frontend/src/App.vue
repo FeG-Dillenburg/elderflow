@@ -1,49 +1,108 @@
 <script lang="ts" setup>
-import { computed } from 'vue';
-import {RouterLink, RouterView} from 'vue-router';
-import { formatUser, type PermissionCategory } from './api/domain';
-import { auth } from './auth/auth';
-import { roleLabel } from './auth/roles';
-import router from './router';
+import { computed } from "vue";
+import { RouterLink, RouterView } from "vue-router";
+import { formatUser, type PermissionCategory } from "./api/domain";
+import { auth } from "./auth/auth";
+import { roleLabel } from "./auth/roles";
+import router from "./router";
+import { useI18n } from "vue-i18n";
 
-const navigation: Array<{ to: string; icon: string; label: string; permission: PermissionCategory }> = [
-  {to: '/', icon: 'pi-home', label: 'Dashboard', permission: 'dashboard'},
-  {to: '/meetings', icon: 'pi-calendar', label: 'Meetings', permission: 'meetings'},
-  {to: '/topics', icon: 'pi-comments', label: 'Topics', permission: 'topics'},
-  {to: '/tasks', icon: 'pi-check-square', label: 'Open tasks', permission: 'tasks'},
-  {to: '/users', icon: 'pi-users', label: 'Users', permission: 'users'},
-  {to: '/agenda-sections', icon: 'pi-list', label: 'Agenda sections', permission: 'contentSettings'},
+const { t } = useI18n();
+const navigation: Array<{
+  to: string;
+  icon: string;
+  labelKey: string;
+  permission: PermissionCategory;
+}> = [
+  {
+    to: "/",
+    icon: "pi-home",
+    labelKey: "nav.dashboard",
+    permission: "dashboard",
+  },
+  {
+    to: "/meetings",
+    icon: "pi-calendar",
+    labelKey: "nav.meetings",
+    permission: "meetings",
+  },
+  {
+    to: "/topics",
+    icon: "pi-comments",
+    labelKey: "nav.topics",
+    permission: "topics",
+  },
+  {
+    to: "/tasks",
+    icon: "pi-check-square",
+    labelKey: "nav.tasks",
+    permission: "tasks",
+  },
+  {
+    to: "/users",
+    icon: "pi-users",
+    labelKey: "nav.users",
+    permission: "users",
+  },
+  {
+    to: "/agenda-sections",
+    icon: "pi-list",
+    labelKey: "nav.sections",
+    permission: "contentSettings",
+  },
 ];
-const visibleNavigation = computed(() => navigation.filter((item) => auth.canView(item.permission)));
-const isSetupRoute = computed(() => router.currentRoute.value.name === 'setup');
+const visibleNavigation = computed(() =>
+  navigation.filter((item) => auth.canView(item.permission)),
+);
+const isSetupRoute = computed(() => router.currentRoute.value.name === "setup");
 
 async function logout(): Promise<void> {
   auth.logout();
-  await router.push('/login');
+  await router.push("/login");
 }
 </script>
 
 <template>
   <div v-if="auth.state.user && !isSetupRoute" class="app-shell">
     <aside class="sidebar">
-      <div class="brand"><span class="brand-mark">E</span><span>ElderFlow</span></div>
-      <nav aria-label="Main navigation">
-        <RouterLink v-for="item in visibleNavigation" :key="item.to" :to="item.to" class="nav-link">
-          <i :class="item.icon" aria-hidden="true" class="pi"/>{{ item.label }}
+      <div class="brand">
+        <span class="brand-mark">E</span>
+        <span>ElderFlow</span>
+      </div>
+      <nav :aria-label="t('nav.main')">
+        <RouterLink
+          v-for="item in visibleNavigation"
+          :key="item.to"
+          :to="item.to"
+          class="nav-link"
+        >
+          <i :class="item.icon" aria-hidden="true" class="pi" />
+          {{ t(item.labelKey) }}
         </RouterLink>
       </nav>
       <div class="current-user">
         <RouterLink to="/profile" class="profile-link">
-          <span class="avatar">{{ auth.state.user.firstName[0] }}{{ auth.state.user.lastName[0] }}</span>
-          <span><strong>{{ formatUser(auth.state.user) }}</strong><small>{{ roleLabel(auth.state.user.role) }}</small></span>
+          <span class="avatar">
+            {{ auth.state.user.firstName[0] }}{{ auth.state.user.lastName[0] }}
+          </span>
+          <span>
+            <strong>{{ formatUser(auth.state.user) }}</strong>
+            <small>{{ roleLabel(auth.state.user.role) }}</small>
+          </span>
         </RouterLink>
-        <button class="logout-button" type="button" title="Sign out" aria-label="Sign out" @click="logout">
+        <button
+          class="logout-button"
+          type="button"
+          :title="t('nav.signOut')"
+          :aria-label="t('nav.signOut')"
+          @click="logout"
+        >
           <i class="pi pi-sign-out" aria-hidden="true" />
         </button>
       </div>
     </aside>
     <main class="main-content">
-      <RouterView/>
+      <RouterView />
     </main>
   </div>
   <RouterView v-else />
@@ -59,7 +118,14 @@ async function logout(): Promise<void> {
   min-width: 320px;
   background: #f5f6f8;
   color: #243047;
-  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-family:
+    Inter,
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
 }
 
 :global(a) {
@@ -86,8 +152,8 @@ async function logout(): Promise<void> {
 .brand {
   display: flex;
   align-items: center;
-  gap: .75rem;
-  margin: 0 .55rem 2rem;
+  gap: 0.75rem;
+  margin: 0 0.55rem 2rem;
   font-size: 1.18rem;
   font-weight: 750;
 }
@@ -97,26 +163,27 @@ async function logout(): Promise<void> {
   width: 2.1rem;
   height: 2.1rem;
   place-items: center;
-  border-radius: .65rem;
+  border-radius: 0.65rem;
   background: #7094d6;
 }
 
 nav {
   display: grid;
-  gap: .3rem;
+  gap: 0.3rem;
 }
 
 .nav-link {
   display: flex;
   align-items: center;
-  gap: .75rem;
-  padding: .78rem .9rem;
-  border-radius: .6rem;
+  gap: 0.75rem;
+  padding: 0.78rem 0.9rem;
+  border-radius: 0.6rem;
   color: #dce5f4;
   text-decoration: none;
 }
 
-.nav-link:hover, .nav-link.router-link-exact-active {
+.nav-link:hover,
+.nav-link.router-link-exact-active {
   background: rgb(255 255 255 / 10%);
   color: #fff;
 }
@@ -124,9 +191,9 @@ nav {
 .current-user {
   display: flex;
   align-items: center;
-  gap: .7rem;
+  gap: 0.7rem;
   margin-top: auto;
-  padding: .9rem .55rem 0;
+  padding: 0.9rem 0.55rem 0;
   border-top: 1px solid rgb(255 255 255 / 12%);
 }
 
@@ -135,33 +202,36 @@ nav {
   min-width: 0;
   flex: 1;
   align-items: center;
-  gap: .7rem;
+  gap: 0.7rem;
   color: inherit;
   text-decoration: none;
 }
 
 .logout-button {
-  padding: .4rem;
+  padding: 0.4rem;
   border: 0;
   background: transparent;
   color: #aebbd0;
   cursor: pointer;
 }
 
-.logout-button:hover { color: #fff; }
+.logout-button:hover {
+  color: #fff;
+}
 
-.current-user strong, .current-user small {
+.current-user strong,
+.current-user small {
   display: block;
 }
 
 .current-user strong {
-  font-size: .86rem;
+  font-size: 0.86rem;
 }
 
 .current-user small {
-  margin-top: .15rem;
+  margin-top: 0.15rem;
   color: #aebbd0;
-  font-size: .7rem;
+  font-size: 0.7rem;
 }
 
 .avatar {
@@ -173,7 +243,7 @@ nav {
   border-radius: 50%;
   background: #e9eef8;
   color: #273956;
-  font-size: .75rem;
+  font-size: 0.75rem;
   font-weight: 800;
 }
 

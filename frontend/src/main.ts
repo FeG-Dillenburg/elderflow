@@ -5,13 +5,39 @@ import 'primeicons/primeicons.css';
 import 'quill/dist/quill.snow.css';
 import App from './App.vue';
 import router from './router';
+import { api } from './api/domain';
+import { auth } from './auth/auth';
+import { clearSessionToken, getSessionToken } from './auth/session';
+import { bindPrimeVueLocale, i18n, primeVueLocale, setLanguage } from './i18n';
+import { loadApplicationContext } from './i18n/initialize';
+import { installation } from './installation';
 
-createApp(App)
+const hadSession = Boolean(getSessionToken());
+const context = await loadApplicationContext({
+  installation: api.installation,
+  currentUser: api.me,
+  hasSession: hadSession,
+  browserLanguages: navigator.languages,
+});
+if (context.installation) {
+  installation.setupRequired = context.installation.setupRequired;
+  installation.defaultLanguage = context.installation.defaultLanguage;
+}
+installation.ready = true;
+auth.completeInitialization(context.user);
+if (hadSession && !context.user) clearSessionToken();
+setLanguage(context.language);
+
+const app = createApp(App)
   .use(router)
+  .use(i18n)
   .use(PrimeVue, {
+    locale: primeVueLocale,
     theme: {
       preset: Aura,
       options: { darkModeSelector: false },
     },
-  })
-  .mount('#app');
+  });
+
+bindPrimeVueLocale(app.config.globalProperties.$primevue.config.locale!);
+app.mount('#app');

@@ -2,6 +2,7 @@ import { createRouter, createWebHistory } from 'vue-router';
 import DashboardView from '../views/DashboardView.vue';
 import { auth } from '../auth/auth';
 import type { PermissionCategory } from '../api/domain';
+import { installation, setupRedirect } from '../installation';
 
 const router = createRouter({
   history: createWebHistory(),
@@ -22,6 +23,8 @@ const router = createRouter({
 });
 
 router.beforeEach(async (to) => {
+  const installationRoute = setupRedirect(installation.setupRequired, to.name);
+  if (installationRoute !== true) return installationRoute;
   if (to.name === 'setup') return true;
   await auth.initialize();
   if (to.meta.public) return auth.state.user ? { path: '/' } : true;
