@@ -10,10 +10,8 @@ import Message from "primevue/message";
 import Select from "primevue/select";
 import Tag from "primevue/tag";
 import TopicTypeRenderer from "../topics/TopicTypeRenderer.vue";
-import {
-  canonicalTopicTypes,
-  creatableTopicTypes,
-} from "../topics/topicTypeRegistry";
+import TopicTypeRadioGroup from "../topics/components/TopicTypeRadioGroup.vue";
+import { canonicalTopicTypes } from "../topics/topicTypeRegistry";
 import { topicTypeTranslationKey } from "../topics/topicTypes";
 import {
   api,
@@ -33,9 +31,6 @@ const canManage = computed(() => !auth.state.user || auth.canManage("topics"));
 const { t } = useI18n();
 const topicTypes = computed(() =>
   canonicalTopicTypes.map((value) => ({ value, label: t(`topicTypes.${value}`) })),
-);
-const creatableTopicTypeOptions = computed(() =>
-  creatableTopicTypes().map((value) => ({ value, label: t(`topicTypes.${value}`) })),
 );
 const statusOptions = computed(() => [
   { label: t("topics.openDeferred"), value: "active" },
@@ -217,15 +212,7 @@ onMounted(load);
       :style="{ width: '46rem', maxWidth: 'calc(100vw - 2rem)' }"
     >
       <form id="topic-form" class="form" @submit.prevent="create">
-        <label>
-          <span>{{ t("topics.type") }}</span>
-          <Select
-            v-model="form.type"
-            :options="creatableTopicTypeOptions"
-            option-label="label"
-            option-value="value"
-          />
-        </label>
+        <TopicTypeRadioGroup id="topic-form-type" v-model="form.type" />
         <div class="row">
           <label>
             <span>{{ t("common.name") }}</span>

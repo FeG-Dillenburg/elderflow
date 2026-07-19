@@ -12,7 +12,7 @@ import Message from "primevue/message";
 import Select from "primevue/select";
 import Tag from "primevue/tag";
 import TopicTypeRenderer from "../topics/TopicTypeRenderer.vue";
-import { creatableTopicTypes } from "../topics/topicTypeRegistry";
+import TopicTypeRadioGroup from "../topics/components/TopicTypeRadioGroup.vue";
 import {
   api,
   meetingLabel,
@@ -35,12 +35,6 @@ type SuggestionClone = Topic & {
 
 const route = useRoute();
 const { t } = useI18n();
-const topicTypes = computed(() =>
-  creatableTopicTypes().map((value) => ({
-    value,
-    label: t(`topicTypes.${value}`),
-  })),
-);
 const statusLabel = (value?: string) => (value ? t(`labels.${value}`) : "");
 const id = route.params.id as string;
 const meeting = ref<Meeting | null>(null);
@@ -417,15 +411,7 @@ onMounted(load);
       modal
     >
       <form id="new-topic" class="form" @submit.prevent="createAndAdd">
-        <label>
-          <span>{{ t("topics.type") }}</span>
-          <Select
-            v-model="form.type"
-            :options="topicTypes"
-            option-label="label"
-            option-value="value"
-          />
-        </label>
+        <TopicTypeRadioGroup id="new-topic-type" v-model="form.type" />
         <div class="row">
           <label>
             <span>{{ t("common.name") }}</span>

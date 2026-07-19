@@ -9,6 +9,7 @@ import genericDetailSource from "./components/GenericTopicDetail.vue?raw";
 import genericFormSource from "./components/GenericTopicFormFields.vue?raw";
 import genericListSource from "./components/GenericTopicList.vue?raw";
 import genericPreparationSource from "./components/GenericTopicPreparation.vue?raw";
+import typeRadioGroupSource from "./components/TopicTypeRadioGroup.vue?raw";
 
 describe("Topic renderer architecture", () => {
   it("routes every parent context through the shared dispatcher", () => {
@@ -37,12 +38,20 @@ describe("Topic renderer architecture", () => {
       [preparationSource, 'id="new-topic"'],
     ]) {
       const form = source.slice(source.indexOf(formId));
-      expect(form.indexOf('t("topics.type")')).toBeLessThan(
+      expect(form.indexOf("<TopicTypeRadioGroup")).toBeLessThan(
         form.indexOf('t("common.name")'),
       );
       expect(form.indexOf('t("common.name")')).toBeLessThan(
         form.indexOf('context="form"'),
       );
     }
+  });
+
+  it("uses a shared single-click radio group for creatable Topic types", () => {
+    expect(typeRadioGroupSource).toContain("<RadioButton");
+    expect(typeRadioGroupSource).toContain("v-model=\"model\"");
+    expect(typeRadioGroupSource).toContain("creatableTopicTypes()");
+    expect(topicsSource).toContain("<TopicTypeRadioGroup");
+    expect(preparationSource).toContain("<TopicTypeRadioGroup");
   });
 });
