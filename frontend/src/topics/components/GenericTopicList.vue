@@ -17,3 +17,17 @@ const { t } = useI18n();
     </small>
   </div>
 </template>
+
+<style scoped>
+.primary-link {
+  display: block;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+small {
+  display: block;
+  margin-top: 0.2rem;
+  color: #718096;
+}
+</style>

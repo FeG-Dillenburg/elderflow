@@ -129,7 +129,7 @@ describe("TopicsService", () => {
     topics.findOne.mockResolvedValue(topic);
     updates.find.mockResolvedValue([]);
     appearances.find.mockResolvedValue([]);
-    await service.create({ name: "New", type: "generic", isRecurring: false } as any);
+    await service.create({ name: "New", type: "generic" } as any);
     expect(topics.create).toHaveBeenCalledWith({ name: "New", type: "generic", isRecurring: false });
     await service.update("topic", { name: "New" });
     expect(topics.save).toHaveBeenCalledWith(

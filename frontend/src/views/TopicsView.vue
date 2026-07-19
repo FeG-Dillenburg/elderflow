@@ -13,8 +13,8 @@ import TopicTypeRenderer from "../topics/TopicTypeRenderer.vue";
 import {
   canonicalTopicTypes,
   creatableTopicTypes,
-  resolveTopicType,
 } from "../topics/topicTypeRegistry";
+import { topicTypeTranslationKey } from "../topics/topicTypes";
 import {
   api,
   formatUser,
@@ -37,10 +37,6 @@ const topicTypes = computed(() =>
 const creatableTopicTypeOptions = computed(() =>
   creatableTopicTypes().map((value) => ({ value, label: t(`topicTypes.${value}`) })),
 );
-const topicTypeLabel = (value: string) => {
-  const type = resolveTopicType(value);
-  return type ? t(`topicTypes.${type}`) : t("topicTypes.unknown");
-};
 const statusOptions = computed(() => [
   { label: t("topics.openDeferred"), value: "active" },
   { label: t("labels.open"), value: "open" },
@@ -70,7 +66,6 @@ const empty = () => ({
   status: "open",
   followUpDate: null as Date | null,
   responsibleUserId: null as string | null,
-  isRecurring: false,
   defaultSectionId: null as string | null,
   defaultPosition: null as number | null,
 });
@@ -191,7 +186,7 @@ onMounted(load);
         </Column>
         <Column :header="t('topics.type')">
           <template #body="{ data }">
-            {{ topicTypeLabel(data.type) }}
+            {{ t(topicTypeTranslationKey(data.type)) }}
           </template>
         </Column>
         <Column :header="t('common.status')">
@@ -338,18 +333,6 @@ h1 {
   border: 1px solid #e2e6ec;
   border-radius: 0.8rem;
   background: #fff;
-}
-
-.primary-link {
-  display: block;
-  font-weight: 700;
-  text-decoration: none;
-}
-
-.primary-link + small {
-  display: block;
-  margin-top: 0.2rem;
-  color: #718096;
 }
 
 .form,

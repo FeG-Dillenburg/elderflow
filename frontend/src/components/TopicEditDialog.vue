@@ -36,7 +36,6 @@ const form = reactive({
   status: "open",
   followUpDate: null as Date | null,
   responsibleUserId: null as string | null,
-  isRecurring: false,
   defaultSectionId: null as string | null,
   defaultPosition: null as number | null,
 });
@@ -65,7 +64,6 @@ watch(
         ? new Date(`${topic.followUpDate}T12:00:00`)
         : null,
       responsibleUserId: topic.responsibleUserId,
-      isRecurring: topic.isRecurring,
       defaultSectionId: topic.defaultSectionId,
       defaultPosition: topic.defaultPosition,
     }),

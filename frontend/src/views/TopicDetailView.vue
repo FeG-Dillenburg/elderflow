@@ -12,7 +12,7 @@ import Tag from "primevue/tag";
 import RichTextEditor from "../components/RichTextEditor.vue";
 import TopicEditDialog from "../components/TopicEditDialog.vue";
 import TopicTypeRenderer from "../topics/TopicTypeRenderer.vue";
-import { resolveTopicType } from "../topics/topicTypeRegistry";
+import { topicTypeTranslationKey } from "../topics/topicTypes";
 import { auth } from "../auth/auth";
 import { assignableUsers } from "../auth/roles";
 import {
@@ -33,10 +33,6 @@ import { dateInputFormat, formatDate } from "../i18n";
 
 const canManage = computed(() => !auth.state.user || auth.canManage("topics"));
 const { t } = useI18n();
-const topicTypeLabel = (value: string) => {
-  const type = resolveTopicType(value);
-  return type ? t(`topicTypes.${type}`) : t("topicTypes.unknown");
-};
 
 const route = useRoute();
 const id = route.params.id as string;
@@ -121,7 +117,7 @@ onMounted(load);
           <h1>{{ topic.name }}</h1>
           <p>
             <Tag :value="t(`labels.${topic.status}`)" severity="secondary" />
-            <span>{{ topicTypeLabel(topic.type) }}</span>
+            <span>{{ t(topicTypeTranslationKey(topic.type)) }}</span>
           </p>
         </div>
         <div v-if="canManage">
@@ -217,7 +213,7 @@ onMounted(load);
               </dd>
               <dt>{{ t("topicDetail.recurring") }}</dt>
               <dd>
-                {{ topic.isRecurring ? t("common.yes") : t("common.no") }}
+                {{ topic.type === "recurring" ? t("common.yes") : t("common.no") }}
               </dd>
             </dl>
           </section>
@@ -386,15 +382,6 @@ onMounted(load);
 .topic-grid h2 {
   margin: 0 0 0.8rem;
   font-size: 1rem;
-}
-
-.background > div {
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-
-.background :deep(p) {
-  line-height: 1.55;
 }
 
 .section-heading,

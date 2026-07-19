@@ -48,7 +48,7 @@ export class Topic {
   @JoinColumn({ name: 'responsible_user_id' })
   responsibleUser?: User | null;
 
-  @Column({ name: 'is_recurring', type: 'boolean', default: false })
+  @Column({ name: 'is_recurring', type: 'boolean', default: false, select: false })
   isRecurring: boolean;
 
   @Column({ name: 'default_section_id', type: 'uuid', nullable: true })

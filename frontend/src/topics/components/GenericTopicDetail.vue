@@ -14,3 +14,19 @@ const safe = (html: string | null) => DOMPurify.sanitize(html ?? "");
     <div v-html="safe(topic.description)" />
   </section>
 </template>
+
+<style scoped>
+h2 {
+  margin: 0 0 0.8rem;
+  font-size: 1rem;
+}
+
+div {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+div :deep(p) {
+  line-height: 1.55;
+}
+</style>

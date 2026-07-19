@@ -1,11 +1,6 @@
-import type { TopicType } from "../api/domain";
+import { canonicalTopicTypes, type TopicType } from "./topicTypes";
 
-export const canonicalTopicTypes = [
-  "generic",
-  "person",
-  "new_membership",
-  "recurring",
-] as const satisfies readonly TopicType[];
+export { canonicalTopicTypes, resolveTopicType } from "./topicTypes";
 
 export type TopicRendererContext =
   | "form"
@@ -33,9 +28,6 @@ export const topicTypeRegistry: Record<TopicType, TopicTypeRegistration> = {
   new_membership: { creationEnabled: false, renderers: genericAdapter() },
   recurring: { creationEnabled: false, renderers: genericAdapter() },
 };
-
-export const resolveTopicType = (value: string): TopicType | null =>
-  canonicalTopicTypes.find((type) => type === value) ?? null;
 
 export const creatableTopicTypes = (): TopicType[] =>
   canonicalTopicTypes.filter((type) => topicTypeRegistry[type].creationEnabled);

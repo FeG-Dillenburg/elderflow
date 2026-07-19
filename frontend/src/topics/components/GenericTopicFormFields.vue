@@ -21,3 +21,15 @@ const description = computed({
     <RichTextEditor v-model="description" />
   </label>
 </template>
+
+<style scoped>
+label {
+  display: grid;
+  gap: 0.45rem;
+}
+
+label > span {
+  font-size: 0.86rem;
+  font-weight: 650;
+}
+</style>

@@ -139,7 +139,6 @@ const topicInput = (item: MeetingTopic, status: string): TopicInput => ({
   status,
   followUpDate: item.topic!.followUpDate,
   responsibleUserId: item.topic!.responsibleUserId,
-  isRecurring: item.topic!.isRecurring,
   defaultSectionId: item.topic!.defaultSectionId,
   defaultPosition: item.topic!.defaultPosition,
 });
@@ -799,11 +798,6 @@ onMounted(load);
 
 .topic-heading a {
   text-decoration: none;
-}
-
-.topic-heading h3 {
-  margin: 0;
-  font-size: 1.05rem;
 }
 
 .topic-meta {

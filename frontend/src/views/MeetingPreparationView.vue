@@ -29,9 +29,9 @@ interface AgendaGroup {
   items: MeetingTopic[];
 }
 
-interface SuggestionClone extends Topic {
+type SuggestionClone = Topic & {
   temporaryKey: string;
-}
+};
 
 const route = useRoute();
 const { t } = useI18n();
@@ -62,7 +62,6 @@ const form = reactive({
   status: "open",
   followUpDate: null,
   responsibleUserId: null,
-  isRecurring: false,
   defaultSectionId: null as string | null,
   defaultPosition: null,
 });
@@ -381,6 +380,7 @@ onMounted(load);
                       :type="topic.type"
                       context="preparation"
                       :topic="topic"
+                      show-type
                     />
                     <small>
                       <template v-if="topic.followUpDate">

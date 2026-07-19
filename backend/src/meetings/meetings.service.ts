@@ -44,6 +44,7 @@ export class MeetingsService {
       for (const [index, topic] of recurringTopics.entries()) {
         const sectionId = topic.defaultSectionId ?? fallbackSection?.id;
         if (sectionId) {
+          await manager.findOne(Topic, { where: { id: topic.id }, lock: { mode: 'pessimistic_write' } });
           await manager.save(MeetingTopic, manager.create(MeetingTopic, {
             meetingId: meeting.id,
             topicId: topic.id,
@@ -108,22 +109,14 @@ export class MeetingsService {
   }
 
   async addTopic(meetingId: string, input: MeetingTopicDto): Promise<MeetingTopic> {
-    const existing = await this.meetingTopics.findOneBy({ meetingId, topicId: input.topicId });
-    if (existing) throw codedHttpException(HttpStatus.CONFLICT, 'AGENDA_TOPIC_CONFLICT', 'Topic is already on this agenda');
-    if (input.position !== undefined) return this.insertTopicAtPosition(meetingId, input);
-    const last = await this.meetingTopics.findOne({ where: { meetingId, sectionId: input.sectionId }, order: { position: 'DESC' } });
-    return this.meetingTopics.save(this.meetingTopics.create({
-      ...input,
-      meetingId,
-      position: input.position ?? (last?.position ?? 0) + 1,
-      status: 'planned',
-    }));
-  }
-
-  private async insertTopicAtPosition(meetingId: string, input: MeetingTopicDto): Promise<MeetingTopic> {
     return this.dataSource.transaction(async (manager) => {
       const meeting = await manager.findOneBy(Meeting, { id: meetingId });
       if (!meeting) throw codedHttpException(HttpStatus.NOT_FOUND, 'MEETING_NOT_FOUND', 'Meeting not found');
+      const topic = await manager.findOne(Topic, {
+        where: { id: input.topicId },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!topic) throw codedHttpException(HttpStatus.NOT_FOUND, 'TOPIC_NOT_FOUND', 'Topic not found');
       const section = await manager.findOneBy(AgendaSection, { id: input.sectionId });
       if (!section) throw codedHttpException(HttpStatus.NOT_FOUND, 'AGENDA_SECTION_NOT_FOUND', 'Agenda section not found');
       const existing = await manager.findOneBy(MeetingTopic, { meetingId, topicId: input.topicId });
@@ -131,11 +124,15 @@ export class MeetingsService {
       const items = await manager.find(MeetingTopic, {
         where: { meetingId, sectionId: input.sectionId }, order: { position: 'ASC' },
       });
-      if (input.position! > items.length + 1) throw codedHttpException(HttpStatus.BAD_REQUEST, 'AGENDA_POSITION_INVALID', 'Position must be within the agenda section');
-      for (const item of items.filter((item) => item.position >= input.position!)) item.position += 1;
-      if (items.length) await manager.save(MeetingTopic, items);
+      const position = input.position ?? (items[items.length - 1]?.position ?? 0) + 1;
+      if (input.position !== undefined && position > items.length + 1) {
+        throw codedHttpException(HttpStatus.BAD_REQUEST, 'AGENDA_POSITION_INVALID', 'Position must be within the agenda section');
+      }
+      const shifted = items.filter((item) => item.position >= position);
+      for (const item of shifted) item.position += 1;
+      if (shifted.length) await manager.save(MeetingTopic, shifted);
       return manager.save(MeetingTopic, manager.create(MeetingTopic, {
-        ...input, meetingId, position: input.position, status: 'planned',
+        ...input, meetingId, position, status: 'planned',
       }));
     });
   }

@@ -2,7 +2,7 @@ import { HttpStatus, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { FindOptionsWhere, In, LessThanOrEqual, Repository } from 'typeorm';
 import { User } from '../users/user.entity';
-import { TopicDto, TopicUpdateDto } from './dto/topic.dto';
+import { DiscriminatedTopicDto, TopicUpdateDto } from './dto/topic.dto';
 import { TOPIC_TYPES, Topic, TopicType } from './topic.entity';
 import { codedHttpException } from '../errors/coded-http.exception';
 import { TopicUpdate } from './topic-update.entity';
@@ -38,13 +38,13 @@ export class TopicsService {
     return topic;
   }
 
-  async create(input: TopicDto): Promise<Topic> {
+  async create(input: DiscriminatedTopicDto): Promise<Topic> {
     this.assertSupportedType(input.type);
     this.assertEnabledCreationType(input.type);
     return this.topics.save(this.topics.create({ ...input, isRecurring: false }));
   }
 
-  async update(id: string, input: Partial<TopicDto>): Promise<Topic> {
+  async update(id: string, input: Partial<DiscriminatedTopicDto>): Promise<Topic> {
     return this.topics.manager.transaction(async (manager) => {
       const topics = manager.getRepository(Topic);
       const topic = await topics.findOne({

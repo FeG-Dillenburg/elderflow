@@ -202,24 +202,31 @@ describe("MeetingsService", () => {
       meetingId: "meeting",
       userId: "user",
     });
-    meetingTopics.findOneBy.mockResolvedValue(null);
-    meetingTopics.findOne.mockResolvedValue({ position: 2 });
-    meetingTopics.create.mockImplementation((v) => v);
-    meetingTopics.save.mockImplementation(async (v) => v);
+    manager.findOne.mockResolvedValue({ id: "topic" });
+    manager.findOneBy.mockImplementation(async (type: any) => {
+      if (type.name === "Meeting") return { id: "meeting" };
+      if (type.name === "AgendaSection") return { id: "section" };
+      return null;
+    });
+    manager.find.mockResolvedValue([{ position: 2 }]);
     await expect(
       service.addTopic("meeting", {
         topicId: "topic",
         sectionId: "section",
       } as any),
     ).resolves.toMatchObject({ position: 3, status: "planned" });
-    meetingTopics.findOne.mockResolvedValue(null);
+    manager.find.mockResolvedValue([]);
     await expect(
       service.addTopic("meeting", {
         topicId: "topic-two",
         sectionId: "section",
       } as any),
     ).resolves.toMatchObject({ position: 1 });
-    meetingTopics.findOneBy.mockResolvedValue({});
+    manager.findOneBy.mockImplementation(async (type: any) => {
+      if (type.name === "Meeting") return { id: "meeting" };
+      if (type.name === "AgendaSection") return { id: "section" };
+      return {};
+    });
     await expect(
       service.addTopic("meeting", {
         topicId: "topic",
@@ -228,7 +235,7 @@ describe("MeetingsService", () => {
     ).rejects.toThrow(ConflictException);
   });
   it("inserts an explicitly positioned topic transactionally and shifts later rows", async () => {
-    meetingTopics.findOneBy.mockResolvedValue(null);
+    manager.findOne.mockResolvedValue({ id: "new" });
     manager.findOneBy.mockImplementation(async (type: any) => {
       if (type.name === "Meeting") return { id: "meeting" };
       if (type.name === "AgendaSection") return { id: "section" };
@@ -242,9 +249,13 @@ describe("MeetingsService", () => {
       .resolves.toMatchObject({ position: 2, status: "planned" });
     expect(later.position).toBe(3);
     expect(manager.save).toHaveBeenCalledWith(expect.anything(), [later]);
+    expect(manager.findOne).toHaveBeenCalledWith(expect.anything(), {
+      where: { id: "new" },
+      lock: { mode: "pessimistic_write" },
+    });
   });
   it("rejects invalid explicit positions and preserves duplicate-topic conflicts", async () => {
-    meetingTopics.findOneBy.mockResolvedValue(null);
+    manager.findOne.mockResolvedValue({ id: "new" });
     manager.findOneBy.mockImplementation(async (type: any) => {
       if (type.name === "Meeting") return { id: "meeting" };
       if (type.name === "AgendaSection") return { id: "section" };
@@ -253,7 +264,11 @@ describe("MeetingsService", () => {
     manager.find.mockResolvedValue([]);
     await expect(service.addTopic("meeting", { topicId: "new", sectionId: "section", position: 2 } as any))
       .rejects.toThrow(BadRequestException);
-    meetingTopics.findOneBy.mockResolvedValue({ id: "present" });
+    manager.findOneBy.mockImplementation(async (type: any) => {
+      if (type.name === "Meeting") return { id: "meeting" };
+      if (type.name === "AgendaSection") return { id: "section" };
+      return { id: "present" };
+    });
     await expect(service.addTopic("meeting", { topicId: "new", sectionId: "section", position: 1 } as any))
       .rejects.toThrow(ConflictException);
   });

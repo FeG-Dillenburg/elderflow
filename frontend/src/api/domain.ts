@@ -1,6 +1,8 @@
 import type { SupportedLanguage } from '../i18n/language';
 import { localizeApiError, type ApiErrorPayload } from '../i18n/api-errors';
 import { formatDate, translate } from '../i18n';
+import type { TopicType } from '../topics/topicTypes';
+export type { TopicType } from '../topics/topicTypes';
 
 export interface User {
   id: string;
@@ -33,8 +35,6 @@ export interface AgendaSection {
   isDefault: boolean;
 }
 
-export type TopicType = 'generic' | 'person' | 'new_membership' | 'recurring';
-
 interface TopicBase {
   id: string;
   name: string;
@@ -43,7 +43,6 @@ interface TopicBase {
   followUpDate: string | null;
   responsibleUserId: string | null;
   responsibleUser?: User | null;
-  isRecurring: boolean;
   defaultSectionId: string | null;
   defaultSection?: AgendaSection | null;
   defaultPosition: number | null;
@@ -53,19 +52,21 @@ interface TopicBase {
   tasks?: Task[];
 }
 
-export type Topic = TopicBase & { type: TopicType };
+type TopicDiscriminator = { [Type in TopicType]: { type: Type } }[TopicType];
 
-export interface TopicInput {
+export type Topic = TopicBase & TopicDiscriminator;
+
+interface TopicInputBase {
   name: string;
   description: string | null;
-  type: TopicType;
   status: string;
   followUpDate: string | null;
   responsibleUserId: string | null;
-  isRecurring: boolean;
   defaultSectionId: string | null;
   defaultPosition: number | null;
 }
+
+export type TopicInput = TopicInputBase & TopicDiscriminator;
 
 export interface Meeting {
   id: string;
