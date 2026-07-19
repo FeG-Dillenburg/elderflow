@@ -418,24 +418,18 @@ onMounted(load);
     >
       <form id="new-topic" class="form" @submit.prevent="createAndAdd">
         <label>
-          <span>{{ t("common.name") }}</span>
-          <InputText v-model="form.name" required />
+          <span>{{ t("topics.type") }}</span>
+          <Select
+            v-model="form.type"
+            :options="topicTypes"
+            option-label="label"
+            option-value="value"
+          />
         </label>
-        <TopicTypeRenderer
-          :type="form.type"
-          context="form"
-          :model-value="form"
-          @change="Object.assign(form, $event)"
-        />
         <div class="row">
           <label>
-            <span>{{ t("topics.type") }}</span>
-            <Select
-              v-model="form.type"
-              :options="topicTypes"
-              option-label="label"
-              option-value="value"
-            />
+            <span>{{ t("common.name") }}</span>
+            <InputText v-model="form.name" required />
           </label>
           <label>
             <span>{{ t("meetingPreparation.section") }}</span>
@@ -448,6 +442,12 @@ onMounted(load);
             />
           </label>
         </div>
+        <TopicTypeRenderer
+          :type="form.type"
+          context="form"
+          :model-value="form"
+          @change="Object.assign(form, $event)"
+        />
       </form>
       <template #footer>
         <Button

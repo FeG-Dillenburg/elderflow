@@ -30,4 +30,19 @@ describe("Topic renderer architecture", () => {
       expect(source).not.toMatch(/\bapi\s*\./);
     }
   });
+
+  it("selects the Topic type before the name in both creation flows", () => {
+    for (const [source, formId] of [
+      [topicsSource, 'id="topic-form"'],
+      [preparationSource, 'id="new-topic"'],
+    ]) {
+      const form = source.slice(source.indexOf(formId));
+      expect(form.indexOf('t("topics.type")')).toBeLessThan(
+        form.indexOf('t("common.name")'),
+      );
+      expect(form.indexOf('t("common.name")')).toBeLessThan(
+        form.indexOf('context="form"'),
+      );
+    }
+  });
 });
