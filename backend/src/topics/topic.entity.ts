@@ -11,16 +11,13 @@ import {
 } from 'typeorm';
 
 export const TOPIC_TYPES = [
-  'recurring_agenda',
-  'person_related',
-  'prayer_pastoral_care',
-  'urgent',
-  'strategic',
-  'communication',
-  'appointment_date',
-  'book_chapter_input',
-  'general',
+  'generic',
+  'person',
+  'new_membership',
+  'recurring',
 ] as const;
+
+export type TopicType = (typeof TOPIC_TYPES)[number];
 
 export const TOPIC_STATUSES = ['open', 'done', 'deferred', 'archived'] as const;
 
@@ -32,11 +29,11 @@ export class Topic {
   @Column({ type: 'text' })
   name: string;
 
-  @Column({ type: 'text' })
-  description: string;
+  @Column({ type: 'text', nullable: true })
+  description: string | null;
 
   @Column({ type: 'text' })
-  type: string;
+  type: TopicType;
 
   @Column({ type: 'text', default: 'open' })
   status: string;
@@ -51,7 +48,7 @@ export class Topic {
   @JoinColumn({ name: 'responsible_user_id' })
   responsibleUser?: User | null;
 
-  @Column({ name: 'is_recurring', type: 'boolean', default: false })
+  @Column({ name: 'is_recurring', type: 'boolean', default: false, select: false })
   isRecurring: boolean;
 
   @Column({ name: 'default_section_id', type: 'uuid', nullable: true })

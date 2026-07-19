@@ -15,7 +15,7 @@ const topic: any = {
   id: "topic",
   name: "Old",
   description: "Text",
-  type: "general",
+  type: "generic",
   status: "open",
   followUpDate: "2026-07-15",
   responsibleUserId: "user",

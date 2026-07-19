@@ -14,13 +14,14 @@ describe("TopicsService", () => {
     find: jest.fn(),
     create: jest.fn(),
     save: jest.fn(),
+    manager: { transaction: jest.fn() },
   };
   const updates = { find: jest.fn(), create: jest.fn(), save: jest.fn() };
-  const appearances = { find: jest.fn() };
+  const appearances = { find: jest.fn(), exist: jest.fn() };
   let service: TopicsService;
 
   beforeEach(async () => {
-    jest.clearAllMocks();
+    jest.resetAllMocks();
     const module = await Test.createTestingModule({
       providers: [
         TopicsService,
@@ -30,6 +31,10 @@ describe("TopicsService", () => {
       ],
     }).compile();
     service = module.get(TopicsService);
+    appearances.exist.mockResolvedValue(false);
+    topics.manager.transaction.mockImplementation(async (work) => work({
+      getRepository: (entity: unknown) => entity === Topic ? topics : appearances,
+    }));
   });
 
   it("links a new update to the topic and current user", async () => {
@@ -61,7 +66,7 @@ describe("TopicsService", () => {
     topics.find.mockResolvedValue([]);
     await service.findAll({
       status: "active",
-      type: "general",
+      type: "generic",
       responsibleUserId: "user",
       defaultSectionId: "section",
       dueOn: "2026-07-20",
@@ -69,7 +74,7 @@ describe("TopicsService", () => {
     expect(topics.find).toHaveBeenCalledWith({
       where: {
         status: In(["open", "deferred"]),
-        type: "general",
+        type: "generic",
         responsibleUserId: "user",
         defaultSectionId: "section",
         followUpDate: LessThanOrEqual("2026-07-20"),
@@ -85,9 +90,9 @@ describe("TopicsService", () => {
     expect(topics.find).toHaveBeenLastCalledWith(
       expect.objectContaining({ where: { status: "done" } }),
     );
-    await service.findAll({ type: "general" });
+    await service.findAll({ type: "generic" });
     expect(topics.find).toHaveBeenLastCalledWith(
-      expect.objectContaining({ where: { type: "general" } }),
+      expect.objectContaining({ where: { type: "generic" } }),
     );
     await service.findAll({ responsibleUserId: "user" });
     expect(topics.find).toHaveBeenLastCalledWith(
@@ -124,8 +129,8 @@ describe("TopicsService", () => {
     topics.findOne.mockResolvedValue(topic);
     updates.find.mockResolvedValue([]);
     appearances.find.mockResolvedValue([]);
-    await service.create({ name: "New" } as any);
-    expect(topics.create).toHaveBeenCalledWith({ name: "New" });
+    await service.create({ name: "New", type: "generic" } as any);
+    expect(topics.create).toHaveBeenCalledWith({ name: "New", type: "generic", isRecurring: false });
     await service.update("topic", { name: "New" });
     expect(topics.save).toHaveBeenCalledWith(
       expect.objectContaining({ name: "New" }),
@@ -169,5 +174,65 @@ describe("TopicsService", () => {
     const failure = new Error("database unavailable");
     topics.find.mockRejectedValue(failure);
     await expect(service.findAll({})).rejects.toBe(failure);
+  });
+
+  it("creates a Generic Topic with an optional description", async () => {
+    const input = {
+      name: "Topic",
+      description: null,
+      type: "generic",
+      status: "open",
+      isRecurring: false,
+    } as any;
+    const topic = { id: "topic", ...input } as Topic;
+    topics.create.mockReturnValue(topic);
+    topics.save.mockResolvedValue(topic);
+
+    await expect(service.create(input)).resolves.toBe(topic);
+    expect(topics.create).toHaveBeenCalledWith(input);
+  });
+
+  it("rejects unsupported discriminator values with a stable code", async () => {
+    await expect(service.create({ type: "general" } as any)).rejects.toMatchObject({
+      response: expect.objectContaining({ code: "UNSUPPORTED_TOPIC_TYPE" }),
+    });
+  });
+
+  it("does not allow specialized type creation before its capability is enabled", async () => {
+    await expect(service.create({ type: "person" } as any)).rejects.toMatchObject({
+      response: expect.objectContaining({ code: "TOPIC_TYPE_NOT_ENABLED" }),
+    });
+  });
+
+  it("rejects a type change after the first Meeting appearance", async () => {
+    topics.findOne.mockResolvedValue({ id: "topic", type: "person" } as Topic);
+    appearances.exist.mockResolvedValue(true);
+
+    await expect(service.update("topic", { type: "generic" })).rejects.toMatchObject({
+      response: expect.objectContaining({ code: "TOPIC_TYPE_LOCKED" }),
+    });
+    expect(topics.save).not.toHaveBeenCalled();
+    expect(topics.findOne).toHaveBeenCalledWith(expect.objectContaining({
+      lock: { mode: "pessimistic_write" },
+    }));
+  });
+
+  it("converts a pre-history Topic atomically and clears legacy source-only state", async () => {
+    const topic = {
+      id: "topic",
+      type: "recurring",
+      isRecurring: true,
+      name: "Old",
+    } as Topic;
+    topics.findOne.mockResolvedValue(topic);
+    topics.save.mockImplementation(async (value: Topic) => value);
+
+    await expect(service.update("topic", { type: "generic", name: "New" })).resolves.toMatchObject({
+      type: "generic",
+      isRecurring: false,
+      name: "New",
+    });
+    expect(appearances.exist).toHaveBeenCalledWith({ where: { topicId: "topic" } });
+    expect(topics.save).toHaveBeenCalledTimes(1);
   });
 });

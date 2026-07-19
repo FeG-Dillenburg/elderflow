@@ -1,8 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from "vue";
-import { RouterLink } from "vue-router";
 import Button from "primevue/button";
-import Checkbox from "primevue/checkbox";
 import Column from "primevue/column";
 import DataTable from "primevue/datatable";
 import DatePicker from "primevue/datepicker";
@@ -11,7 +9,10 @@ import InputText from "primevue/inputtext";
 import Message from "primevue/message";
 import Select from "primevue/select";
 import Tag from "primevue/tag";
-import RichTextEditor from "../components/RichTextEditor.vue";
+import TopicTypeRenderer from "../topics/TopicTypeRenderer.vue";
+import TopicTypeRadioGroup from "../topics/components/TopicTypeRadioGroup.vue";
+import { canonicalTopicTypes } from "../topics/topicTypeRegistry";
+import { topicTypeTranslationKey } from "../topics/topicTypes";
 import {
   api,
   formatUser,
@@ -28,19 +29,8 @@ import { dateInputFormat, formatDate } from "../i18n";
 
 const canManage = computed(() => !auth.state.user || auth.canManage("topics"));
 const { t } = useI18n();
-const topicTypeValues = [
-  "recurring_agenda",
-  "person_related",
-  "prayer_pastoral_care",
-  "urgent",
-  "strategic",
-  "communication",
-  "appointment_date",
-  "book_chapter_input",
-  "general",
-];
 const topicTypes = computed(() =>
-  topicTypeValues.map((value) => ({ value, label: t(`topicTypes.${value}`) })),
+  canonicalTopicTypes.map((value) => ({ value, label: t(`topicTypes.${value}`) })),
 );
 const statusOptions = computed(() => [
   { label: t("topics.openDeferred"), value: "active" },
@@ -66,12 +56,11 @@ const filters = reactive({
 });
 const empty = () => ({
   name: "",
-  description: "",
-  type: "general",
+  description: null as string | null,
+  type: "generic" as TopicInput["type"],
   status: "open",
   followUpDate: null as Date | null,
   responsibleUserId: null as string | null,
-  isRecurring: false,
   defaultSectionId: null as string | null,
   defaultPosition: null as number | null,
 });
@@ -183,17 +172,16 @@ onMounted(load);
       <DataTable :value="topics" :loading="loading" data-key="id">
         <Column :header="t('common.topic')">
           <template #body="{ data }">
-            <RouterLink class="primary-link" :to="`/topics/${data.id}`">
-              {{ data.name }}
-            </RouterLink>
-            <small>
-              {{ data.defaultSection?.name || t("topics.noDefaultSection") }}
-            </small>
+            <TopicTypeRenderer
+              :type="data.type"
+              context="list"
+              :topic="data"
+            />
           </template>
         </Column>
         <Column :header="t('topics.type')">
           <template #body="{ data }">
-            {{ topicTypes.find((t) => t.value === data.type)?.label }}
+            {{ t(topicTypeTranslationKey(data.type)) }}
           </template>
         </Column>
         <Column :header="t('common.status')">
@@ -224,23 +212,11 @@ onMounted(load);
       :style="{ width: '46rem', maxWidth: 'calc(100vw - 2rem)' }"
     >
       <form id="topic-form" class="form" @submit.prevent="create">
-        <label>
-          <span>{{ t("common.name") }}</span>
-          <InputText v-model="form.name" required />
-        </label>
-        <label>
-          <span>{{ t("topics.background") }}</span>
-          <RichTextEditor v-model="form.description" />
-        </label>
+        <TopicTypeRadioGroup id="topic-form-type" v-model="form.type" />
         <div class="row">
           <label>
-            <span>{{ t("topics.type") }}</span>
-            <Select
-              v-model="form.type"
-              :options="topicTypes"
-              option-label="label"
-              option-value="value"
-            />
+            <span>{{ t("common.name") }}</span>
+            <InputText v-model="form.name" required />
           </label>
           <label>
             <span>{{ t("topics.responsible") }}</span>
@@ -255,6 +231,12 @@ onMounted(load);
             </Select>
           </label>
         </div>
+        <TopicTypeRenderer
+          :type="form.type"
+          context="form"
+          :model-value="form"
+          @change="Object.assign(form, $event)"
+        />
         <div class="row">
           <label>
             <span>{{ t("topics.followUpDate") }}</span>
@@ -275,10 +257,6 @@ onMounted(load);
             />
           </label>
         </div>
-        <label class="checkbox">
-          <Checkbox v-model="form.isRecurring" binary />
-          <span>{{ t("topics.autoAdd") }}</span>
-        </label>
       </form>
       <template #footer>
         <Button
@@ -342,18 +320,6 @@ h1 {
   border: 1px solid #e2e6ec;
   border-radius: 0.8rem;
   background: #fff;
-}
-
-.primary-link {
-  display: block;
-  font-weight: 700;
-  text-decoration: none;
-}
-
-.primary-link + small {
-  display: block;
-  margin-top: 0.2rem;
-  color: #718096;
 }
 
 .form,

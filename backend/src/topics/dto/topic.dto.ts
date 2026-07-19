@@ -1,17 +1,20 @@
-import { IsBoolean, IsIn, IsInt, IsNotEmpty, IsOptional, IsString, IsUUID, Min } from 'class-validator';
-import { TOPIC_STATUSES, TOPIC_TYPES } from '../topic.entity';
+import { IsIn, IsInt, IsNotEmpty, IsOptional, IsString, IsUUID, Min } from 'class-validator';
+import { TOPIC_STATUSES, TopicType } from '../topic.entity';
 
 export class TopicDto {
   @IsString() @IsNotEmpty() name: string;
-  @IsString() @IsNotEmpty() description: string;
-  @IsIn(TOPIC_TYPES) type: string;
+  @IsOptional() @IsString() description?: string | null;
+  @IsString() type: TopicType;
   @IsIn(TOPIC_STATUSES) status: string;
   @IsOptional() @IsString() followUpDate?: string | null;
   @IsOptional() @IsUUID() responsibleUserId?: string | null;
-  @IsBoolean() isRecurring: boolean;
   @IsOptional() @IsUUID() defaultSectionId?: string | null;
   @IsOptional() @IsInt() @Min(1) defaultPosition?: number | null;
 }
+
+type TopicDiscriminator = { [Type in TopicType]: { type: Type } }[TopicType];
+
+export type DiscriminatedTopicDto = Omit<TopicDto, 'type'> & TopicDiscriminator;
 
 export class TopicUpdateDto {
   @IsString() @IsNotEmpty() text: string;

@@ -11,6 +11,8 @@ import Select from "primevue/select";
 import Tag from "primevue/tag";
 import RichTextEditor from "../components/RichTextEditor.vue";
 import TopicEditDialog from "../components/TopicEditDialog.vue";
+import TopicTypeRenderer from "../topics/TopicTypeRenderer.vue";
+import { topicTypeTranslationKey } from "../topics/topicTypes";
 import { auth } from "../auth/auth";
 import { assignableUsers } from "../auth/roles";
 import {
@@ -115,7 +117,7 @@ onMounted(load);
           <h1>{{ topic.name }}</h1>
           <p>
             <Tag :value="t(`labels.${topic.status}`)" severity="secondary" />
-            <span>{{ t(`topicTypes.${topic.type}`) }}</span>
+            <span>{{ t(topicTypeTranslationKey(topic.type)) }}</span>
           </p>
         </div>
         <div v-if="canManage">
@@ -135,10 +137,12 @@ onMounted(load);
       </header>
       <div class="topic-grid">
         <main>
-          <section class="background">
-            <h2>{{ t("topicDetail.background") }}</h2>
-            <div v-html="safe(topic.description)" />
-          </section>
+          <TopicTypeRenderer
+            class="background"
+            :type="topic.type"
+            context="detail"
+            :topic="topic"
+          />
           <section>
             <div class="section-heading">
               <h2>{{ t("topicDetail.updates") }}</h2>
@@ -209,7 +213,7 @@ onMounted(load);
               </dd>
               <dt>{{ t("topicDetail.recurring") }}</dt>
               <dd>
-                {{ topic.isRecurring ? t("common.yes") : t("common.no") }}
+                {{ topic.type === "recurring" ? t("common.yes") : t("common.no") }}
               </dd>
             </dl>
           </section>
@@ -378,15 +382,6 @@ onMounted(load);
 .topic-grid h2 {
   margin: 0 0 0.8rem;
   font-size: 1rem;
-}
-
-.background > div {
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-
-.background :deep(p) {
-  line-height: 1.55;
 }
 
 .section-heading,

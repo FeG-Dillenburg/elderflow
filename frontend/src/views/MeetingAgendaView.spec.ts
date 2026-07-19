@@ -46,7 +46,7 @@ const meeting: any = {
         id: "topic-1",
         name: "Topic",
         description: "",
-        type: "general",
+        type: "generic",
         status: "open",
         followUpDate: null,
         responsibleUserId: null,

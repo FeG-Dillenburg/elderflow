@@ -21,7 +21,7 @@ const topic: any = {
   id: "topic-1",
   name: "Topic",
   description: "<img src=x onerror=alert(1)><p>Safe</p>",
-  type: "general",
+  type: "generic",
   status: "open",
   followUpDate: null,
   responsibleUserId: null,

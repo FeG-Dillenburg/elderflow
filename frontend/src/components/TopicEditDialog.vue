@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { computed, reactive, watch } from "vue";
 import Button from "primevue/button";
-import Checkbox from "primevue/checkbox";
 import DatePicker from "primevue/datepicker";
 import Dialog from "primevue/dialog";
 import InputText from "primevue/inputtext";
 import Select from "primevue/select";
+import TopicTypeRadioGroup from "../topics/components/TopicTypeRadioGroup.vue";
 import {
   api,
   formatUser,
@@ -15,7 +15,8 @@ import {
   type TopicInput,
   type User,
 } from "../api/domain";
-import RichTextEditor from "./RichTextEditor.vue";
+import TopicTypeRenderer from "../topics/TopicTypeRenderer.vue";
+import { creatableTopicTypes } from "../topics/topicTypeRegistry";
 import { assignableUsers } from "../auth/roles";
 import { useI18n } from "vue-i18n";
 import { dateInputFormat } from "../i18n";
@@ -31,27 +32,16 @@ const responsibleUserOptions = computed(() => assignableUsers(props.users));
 const { t } = useI18n();
 const form = reactive({
   name: "",
-  description: "",
-  type: "general",
+  description: null as string | null,
+  type: "generic" as TopicInput["type"],
   status: "open",
   followUpDate: null as Date | null,
   responsibleUserId: null as string | null,
-  isRecurring: false,
   defaultSectionId: null as string | null,
   defaultPosition: null as number | null,
 });
-const topicTypes = computed(() =>
-  [
-    "recurring_agenda",
-    "person_related",
-    "prayer_pastoral_care",
-    "urgent",
-    "strategic",
-    "communication",
-    "appointment_date",
-    "book_chapter_input",
-    "general",
-  ].map((value) => ({ value, label: t(`topicTypes.${value}`) })),
+const editableTopicTypes = computed(() =>
+  [...new Set([props.topic.type, ...creatableTopicTypes()])],
 );
 const statuses = computed(() =>
   ["open", "done", "deferred", "archived"].map((value) => ({
@@ -72,7 +62,6 @@ watch(
         ? new Date(`${topic.followUpDate}T12:00:00`)
         : null,
       responsibleUserId: topic.responsibleUserId,
-      isRecurring: topic.isRecurring,
       defaultSectionId: topic.defaultSectionId,
       defaultPosition: topic.defaultPosition,
     }),
@@ -98,23 +87,15 @@ async function save(): Promise<void> {
     :style="{ width: '46rem', maxWidth: 'calc(100vw - 2rem)' }"
   >
     <form id="edit-topic" class="form" @submit.prevent="save">
-      <label>
-        <span>{{ t("common.name") }}</span>
-        <InputText v-model="form.name" required />
-      </label>
-      <label>
-        <span>{{ t("topicEdit.background") }}</span>
-        <RichTextEditor v-model="form.description" />
-      </label>
+      <TopicTypeRadioGroup
+        id="edit-topic-type"
+        v-model="form.type"
+        :types="editableTopicTypes"
+      />
       <div class="row">
         <label>
-          <span>{{ t("topics.type") }}</span>
-          <Select
-            v-model="form.type"
-            :options="topicTypes"
-            option-label="label"
-            option-value="value"
-          />
+          <span>{{ t("common.name") }}</span>
+          <InputText v-model="form.name" required />
         </label>
         <label>
           <span>{{ t("common.status") }}</span>
@@ -126,6 +107,12 @@ async function save(): Promise<void> {
           />
         </label>
       </div>
+      <TopicTypeRenderer
+        :type="form.type"
+        context="form"
+        :model-value="form"
+        @change="Object.assign(form, $event)"
+      />
       <div class="row">
         <label>
           <span>{{ t("topicEdit.responsible") }}</span>
@@ -157,10 +144,6 @@ async function save(): Promise<void> {
           option-value="id"
           show-clear
         />
-      </label>
-      <label class="checkbox">
-        <Checkbox v-model="form.isRecurring" binary />
-        <span>{{ t("topicEdit.autoAdd") }}</span>
       </label>
     </form>
     <template #footer>

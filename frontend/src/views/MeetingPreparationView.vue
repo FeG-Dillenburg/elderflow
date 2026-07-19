@@ -11,7 +11,8 @@ import InputText from "primevue/inputtext";
 import Message from "primevue/message";
 import Select from "primevue/select";
 import Tag from "primevue/tag";
-import RichTextEditor from "../components/RichTextEditor.vue";
+import TopicTypeRenderer from "../topics/TopicTypeRenderer.vue";
+import TopicTypeRadioGroup from "../topics/components/TopicTypeRadioGroup.vue";
 import {
   api,
   meetingLabel,
@@ -28,24 +29,12 @@ interface AgendaGroup {
   items: MeetingTopic[];
 }
 
-interface SuggestionClone extends Topic {
+type SuggestionClone = Topic & {
   temporaryKey: string;
-}
+};
 
 const route = useRoute();
 const { t } = useI18n();
-const topicTypes = computed(() =>
-  [
-    "general",
-    "urgent",
-    "strategic",
-    "person_related",
-    "prayer_pastoral_care",
-    "communication",
-    "appointment_date",
-    "book_chapter_input",
-  ].map((value) => ({ value, label: t(`topicTypes.${value}`) })),
-);
 const statusLabel = (value?: string) => (value ? t(`labels.${value}`) : "");
 const id = route.params.id as string;
 const meeting = ref<Meeting | null>(null);
@@ -62,12 +51,11 @@ let temporaryKey = 0;
 const durationSaveQueues = new Map<string, Promise<void>>();
 const form = reactive({
   name: "",
-  description: "",
-  type: "general",
+  description: null as string | null,
+  type: "generic" as TopicInput["type"],
   status: "open",
   followUpDate: null,
   responsibleUserId: null,
-  isRecurring: false,
   defaultSectionId: null as string | null,
   defaultPosition: null,
 });
@@ -299,8 +287,12 @@ onMounted(load);
                   >
                     <span v-for="dot in 6" :key="dot" />
                   </button>
-                  <div>
-                    <strong>{{ item.topic?.name }}</strong>
+                  <div v-if="item.topic">
+                    <TopicTypeRenderer
+                      :type="item.topic.type"
+                      context="preparation"
+                      :topic="item.topic"
+                    />
                     <small>
                       {{ statusLabel(item.topic?.status) }}
                       <template v-if="item.topic?.followUpDate">
@@ -378,14 +370,12 @@ onMounted(load);
                     <span v-for="dot in 6" :key="dot" />
                   </button>
                   <div>
-                    <strong>{{ topic.name }}</strong>
-                    <small>
-                      {{ t(`topicTypes.${topic.type}`) }}
-                      <template v-if="topic.followUpDate">
-                        ·
-                        {{ formatDate(`${topic.followUpDate}T12:00:00`) }}
-                      </template>
-                    </small>
+                    <TopicTypeRenderer
+                      :type="topic.type"
+                      context="preparation"
+                      :topic="topic"
+                      show-type
+                    />
                   </div>
                 </div>
                 <Select
@@ -421,23 +411,11 @@ onMounted(load);
       modal
     >
       <form id="new-topic" class="form" @submit.prevent="createAndAdd">
-        <label>
-          <span>{{ t("common.name") }}</span>
-          <InputText v-model="form.name" required />
-        </label>
-        <label>
-          <span>{{ t("common.description") }}</span>
-          <RichTextEditor v-model="form.description" height="120px" />
-        </label>
+        <TopicTypeRadioGroup id="new-topic-type" v-model="form.type" />
         <div class="row">
           <label>
-            <span>{{ t("topics.type") }}</span>
-            <Select
-              v-model="form.type"
-              :options="topicTypes"
-              option-label="label"
-              option-value="value"
-            />
+            <span>{{ t("common.name") }}</span>
+            <InputText v-model="form.name" required />
           </label>
           <label>
             <span>{{ t("meetingPreparation.section") }}</span>
@@ -450,6 +428,12 @@ onMounted(load);
             />
           </label>
         </div>
+        <TopicTypeRenderer
+          :type="form.type"
+          context="form"
+          :model-value="form"
+          @change="Object.assign(form, $event)"
+        />
       </form>
       <template #footer>
         <Button

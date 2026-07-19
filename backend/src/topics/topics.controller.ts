@@ -1,7 +1,7 @@
 import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Put, Query } from '@nestjs/common';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { User } from '../users/user.entity';
-import { TopicDto, TopicUpdateDto } from './dto/topic.dto';
+import { DiscriminatedTopicDto, TopicDto, TopicUpdateDto } from './dto/topic.dto';
 import { Topic } from './topic.entity';
 import { TopicUpdate } from './topic-update.entity';
 import { TopicsService } from './topics.service';
@@ -26,11 +26,11 @@ export class TopicsController {
   findOne(@Param('id', ParseUUIDPipe) id: string): Promise<Topic> { return this.service.findOne(id); }
 
   @Post()
-  create(@Body() input: TopicDto): Promise<Topic> { return this.service.create(input); }
+  create(@Body() input: TopicDto): Promise<Topic> { return this.service.create(input as DiscriminatedTopicDto); }
 
   @Put(':id')
   update(@Param('id', ParseUUIDPipe) id: string, @Body() input: TopicDto): Promise<Topic> {
-    return this.service.update(id, input);
+    return this.service.update(id, input as DiscriminatedTopicDto);
   }
 
   @Get(':id/updates')
