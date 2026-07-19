@@ -29,7 +29,7 @@ A Topic that follows one person, couple, or freely named group through the churc
 _Avoid_: Person Topic, membership record; Personenthema, Mitgliedsdatensatz
 
 **Person Topic (Personenthema)**:
-A compact Topic about the special circumstances of a freely named person, couple, or group, with one Meeting topic note for each Meeting in which it appears.
+A compact Topic about the special circumstances of a freely named person, couple, or group, with one Meeting topic note for each Meeting in which it appears. A new appearance initializes its note from the most recent earlier Meeting appearance, while remaining an independently editable Meeting record.
 _Avoid_: New membership Topic, person record; Aufnahmethema, Personendatensatz
 
 **Recurrence interval (Wiederholungsintervall)**:

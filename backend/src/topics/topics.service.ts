@@ -82,7 +82,7 @@ export class TopicsService {
   }
 
   private assertEnabledCreationType(type: TopicType): void {
-    if (type !== 'generic') {
+    if (type !== 'generic' && type !== 'person') {
       throw codedHttpException(
         HttpStatus.BAD_REQUEST,
         'TOPIC_TYPE_NOT_ENABLED',

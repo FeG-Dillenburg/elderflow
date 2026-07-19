@@ -98,7 +98,6 @@ describe("domain API client", () => {
     expect(JSON.parse(fetch.mock.calls[2][1].body)).toEqual({
       sectionId: "section",
       position: 2,
-      agendaNote: null,
       plannedDuration: 10,
       status: "planned",
     });
@@ -132,6 +131,20 @@ describe("domain API client", () => {
       expect.objectContaining({ method: "POST" }),
     );
     expect(fetch.mock.calls[0][1]?.body).toBeUndefined();
+  });
+  it("writes only a Meeting appearance note through its narrow endpoint", async () => {
+    const fetch = vi.fn().mockResolvedValue(response({ agendaNote: "Context" }));
+    vi.stubGlobal("fetch", fetch);
+
+    await api.updateMeetingTopicNote("meeting", "appearance", "Context");
+
+    expect(fetch).toHaveBeenCalledWith(
+      "http://localhost:3000/api/meetings/meeting/topics/appearance/note",
+      expect.objectContaining({
+        method: "PUT",
+        body: JSON.stringify({ agendaNote: "Context" }),
+      }),
+    );
   });
   it("formats users and meetings and retains the local calendar date", () => {
     expect(formatUser()).toBe("Unassigned");

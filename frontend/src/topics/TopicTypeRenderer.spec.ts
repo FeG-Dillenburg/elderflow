@@ -1,9 +1,14 @@
 import { mount } from "@vue/test-utils";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import TopicTypeRenderer from "./TopicTypeRenderer.vue";
 import GenericTopicFormFields from "./types/generic/GenericTopicFormFields.vue";
 import GenericTopicPreparation from "./types/generic/GenericTopicPreparation.vue";
 import GenericTopicAgenda from "./types/generic/GenericTopicAgenda.vue";
+import PersonTopicAgenda from "./types/person/PersonTopicAgenda.vue";
+import PersonTopicDetail from "./types/person/PersonTopicDetail.vue";
+import PersonTopicList from "./types/person/PersonTopicList.vue";
+import PersonTopicPreparation from "./types/person/PersonTopicPreparation.vue";
+import TopicTypeBadge from "./components/TopicTypeBadge.vue";
 
 describe("TopicTypeRenderer", () => {
   it.each(["form", "preparation", "agenda", "detail", "list"] as const)(
@@ -83,9 +88,170 @@ describe("TopicTypeRenderer", () => {
           responsibleUserDisplayNameSnapshot: "Recorded Owner",
         } as any,
       },
+      global: {
+        stubs: { RouterLink: { template: "<a><slot /></a>" } },
+      },
     });
 
     expect(wrapper.text()).toContain("Recorded Owner");
     expect(wrapper.text()).not.toContain("Later Owner");
+  });
+
+  it.each(["form", "preparation", "agenda", "detail", "list"] as const)(
+    "dispatches Person through its dedicated %s renderer",
+    (context) => {
+      const topic = { id: "topic", name: "Alex and Sam", type: "person" } as any;
+      const contextProps = context === "form"
+        ? { modelValue: { type: "person", description: null } }
+        : context === "agenda"
+          ? { item: { topic }, canEdit: false, saveNote: async () => ({} as any) }
+          : { topic };
+      const wrapper = mount(TopicTypeRenderer, {
+        shallow: true,
+        props: { type: "person", context },
+        attrs: contextProps,
+      });
+
+      expect(wrapper.html()).toContain(`person-topic-${context === "form" ? "form-fields" : context}-stub`);
+    },
+  );
+
+  it("renders a compact Person agenda without Generic-only chrome", () => {
+    const wrapper = mount(PersonTopicAgenda, {
+      shallow: true,
+      props: {
+        item: {
+          id: "appearance",
+          topicId: "topic",
+          topic: { name: "Recorded couple", type: "person" },
+          topicNameSnapshot: "Recorded couple",
+          agendaNote: "Private note",
+        } as any,
+        canEdit: false,
+        saveNote: async () => ({} as any),
+      },
+      global: {
+        stubs: {
+          RouterLink: { template: "<a><slot /></a>" },
+          PersonTopicNote: {
+            props: ["item"],
+            template: '<span><slot name="label" />{{ item.agendaNote }}</span>',
+          },
+        },
+      },
+    });
+
+    expect(wrapper.text()).toContain("Recorded couple");
+    expect(wrapper.text()).toContain("Private note");
+    expect(wrapper.text()).not.toContain("TOP");
+    expect(wrapper.find(".updates").exists()).toBe(false);
+    expect(wrapper.find(".tasks").exists()).toBe(false);
+  });
+
+  it("places the Person name inside the preparation note when an appearance exists", () => {
+    const wrapper = mount(PersonTopicPreparation, {
+      shallow: true,
+      props: {
+        topic: { id: "topic", name: "Alex", type: "person" } as any,
+        item: { id: "appearance", topicId: "topic", agendaNote: "Context" } as any,
+        saveNote: async () => ({} as any),
+      },
+      global: {
+        stubs: {
+          RouterLink: { template: "<a><slot /></a>" },
+          PersonTopicNote: {
+            template: '<span class="note"><slot name="label" /></span>',
+          },
+        },
+      },
+    });
+
+    expect(wrapper.get(".note").text()).toBe("Alex:");
+    expect(wrapper.find(".person-preparation > .person-name").exists()).toBe(false);
+  });
+
+  it("keeps the Person name standalone in preparation suggestions", () => {
+    const wrapper = mount(PersonTopicPreparation, {
+      shallow: true,
+      props: {
+        topic: { id: "topic", name: "Alex", type: "person" } as any,
+        showType: true,
+      },
+      global: {
+        stubs: { RouterLink: { template: "<a><slot /></a>" } },
+      },
+    });
+
+    expect(wrapper.get(".person-name").text()).toBe("Alex");
+    expect(wrapper.text()).toContain("Person");
+  });
+
+  it("keeps only the relevant compact Person lifecycle action inline", async () => {
+    const markDone = vi.fn();
+    const wrapper = mount(PersonTopicAgenda, {
+      shallow: true,
+      props: {
+        item: {
+          id: "appearance",
+          topicId: "topic",
+          topic: { name: "Alex", type: "person", status: "open" },
+        } as any,
+        canEdit: true,
+        saveNote: async () => ({} as any),
+        markDone,
+      },
+      global: {
+        stubs: {
+          RouterLink: { template: "<a><slot /></a>" },
+          PersonTopicNote: true,
+          Button: {
+            inheritAttrs: false,
+            props: ["label"],
+            emits: ["click"],
+            template: '<button @click="$emit(\'click\')">{{ label }}</button>',
+          },
+        },
+      },
+    });
+
+    const buttons = wrapper.findAll("button");
+    expect(buttons).toHaveLength(1);
+    expect(wrapper.text()).not.toContain("Defer");
+    await buttons[0].trigger("click");
+    expect(markDone).toHaveBeenCalledOnce();
+  });
+
+  it("renders the Person list without type-specific summary metadata", () => {
+    const wrapper = mount(PersonTopicList, {
+      props: { topic: { id: "person", name: "Alex and Sam", type: "person" } as any },
+      global: { stubs: { RouterLink: { template: "<a><slot /></a>" } } },
+    });
+
+    expect(wrapper.text()).toBe("Alex and Sam");
+    expect(wrapper.find("small").exists()).toBe(false);
+  });
+
+  it("renders sanitized Person description in the detail context", () => {
+    const wrapper = mount(PersonTopicDetail, {
+      props: {
+        topic: {
+          type: "person",
+          description: '<img src="x" onerror="alert(1)"><p>Pastoral context</p>',
+        } as any,
+      },
+    });
+
+    expect(wrapper.text()).toContain("Description");
+    expect(wrapper.text()).toContain("Pastoral context");
+    expect(wrapper.html()).not.toContain("onerror");
+  });
+
+  it("renders the localized Person type as a badge", () => {
+    const wrapper = mount(TopicTypeBadge, {
+      shallow: true,
+      props: { type: "person" },
+    });
+
+    expect(wrapper.get("tag-stub").attributes("value")).toBe("Person");
   });
 });

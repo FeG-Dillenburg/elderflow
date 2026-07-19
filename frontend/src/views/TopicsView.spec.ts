@@ -51,11 +51,18 @@ describe("TopicsView", () => {
     vm.form.name = "Old";
     vm.open();
     expect(vm.form.name).toBe("");
-    vm.form.name = "New";
+    vm.form.name = "Alex and Sam";
+    vm.form.type = "person";
+    vm.form.responsibleUserId = "user-1";
     vm.form.followUpDate = new Date(2026, 6, 20);
     await vm.create();
     expect(api.createTopic).toHaveBeenCalledWith(
-      expect.objectContaining({ name: "New", followUpDate: "2026-07-20" }),
+      expect.objectContaining({
+        name: "Alex and Sam",
+        type: "person",
+        responsibleUserId: "user-1",
+        followUpDate: "2026-07-20",
+      }),
     );
     expect(vm.visible).toBe(false);
   });

@@ -1,12 +1,14 @@
-import { INestApplication } from '@nestjs/common';
+import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
 import { MeetingsController } from './meetings.controller';
 import { MeetingsService } from './meetings.service';
+import { Reflector } from '@nestjs/core';
+import { PERMISSION_CATEGORY_KEY } from '../auth/permissions';
 
 describe('MeetingsController completion boundary', () => {
   let app: INestApplication;
-  const service = { complete: jest.fn() };
+  const service = { complete: jest.fn(), updateTopicNote: jest.fn() };
   const currentUser = { id: '00000000-0000-4000-8000-000000000002' };
 
   beforeAll(async () => {
@@ -19,6 +21,7 @@ describe('MeetingsController completion boundary', () => {
       request_.user = currentUser;
       next();
     });
+    app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true }));
     await app.init();
   });
 
@@ -38,5 +41,44 @@ describe('MeetingsController completion boundary', () => {
       .expect(meeting);
 
     expect(service.complete).toHaveBeenCalledWith(meeting.id, currentUser);
+  });
+
+  it('writes only the note field through the appearance-note HTTP endpoint', async () => {
+    const appearance = {
+      id: '00000000-0000-4000-8000-000000000003',
+      meetingId: '00000000-0000-4000-8000-000000000001',
+      agendaNote: 'Private context',
+    };
+    service.updateTopicNote.mockResolvedValue(appearance);
+
+    await request(app.getHttpServer())
+      .put(`/api/meetings/${appearance.meetingId}/topics/${appearance.id}/note`)
+      .send({ agendaNote: appearance.agendaNote })
+      .expect(200)
+      .expect(appearance);
+
+    expect(service.updateTopicNote).toHaveBeenCalledWith(
+      appearance.meetingId,
+      appearance.id,
+      appearance.agendaNote,
+    );
+  });
+
+  it('rejects unrelated fields on the appearance-note HTTP endpoint', async () => {
+    await request(app.getHttpServer())
+      .put('/api/meetings/00000000-0000-4000-8000-000000000001/topics/00000000-0000-4000-8000-000000000003/note')
+      .send({ agendaNote: 'Note', membershipProcessStatus: 'Started' })
+      .expect(400);
+
+    expect(service.updateTopicNote).not.toHaveBeenCalled();
+  });
+
+  it('protects the appearance-note endpoint with Meeting authorization', () => {
+    const permission = new Reflector().getAllAndOverride(
+      PERMISSION_CATEGORY_KEY,
+      [MeetingsController.prototype.updateTopicNote, MeetingsController],
+    );
+
+    expect(permission).toBe('meetings');
   });
 });

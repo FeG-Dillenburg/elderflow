@@ -64,6 +64,7 @@ describe('DevelopmentIdentityGuard', () => {
     ['it-admin', 'users', 'PATCH'],
     ['guest', 'users', 'GET'],
     ['guest', 'topics', 'POST'],
+    ['guest', 'meetings', 'PUT'],
     ['user', 'authSettings', 'GET'],
   ])('rejects %s access to %s %s', async (role, category, method) => {
     reflector.getAllAndOverride.mockReturnValueOnce(false).mockReturnValueOnce(category);

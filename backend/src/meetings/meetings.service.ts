@@ -1,6 +1,6 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, In, LessThanOrEqual, Repository } from 'typeorm';
+import { DataSource, In, LessThan, LessThanOrEqual, Repository } from 'typeorm';
 import { AgendaSection } from '../agenda-sections/agenda-section.entity';
 import { Task } from '../tasks/task.entity';
 import { Topic } from '../topics/topic.entity';
@@ -195,7 +195,7 @@ export class MeetingsService {
 
   async addTopic(meetingId: string, input: MeetingTopicDto): Promise<MeetingTopic> {
     return this.dataSource.transaction(async (manager) => {
-      await lockedMutableMeeting(manager, meetingId);
+      const meeting = await lockedMutableMeeting(manager, meetingId);
       const topic = await manager.findOne(Topic, {
         where: { id: input.topicId },
         lock: { mode: 'pessimistic_write' },
@@ -215,8 +215,33 @@ export class MeetingsService {
       const shifted = items.filter((item) => item.position >= position);
       for (const item of shifted) item.position += 1;
       if (shifted.length) await manager.save(MeetingTopic, shifted);
+      const previousPersonAppearance = topic.type === 'person' && input.agendaNote === undefined
+        ? await manager.findOne(MeetingTopic, {
+          where: [
+            {
+              topicId: topic.id,
+              meeting: { date: LessThan(meeting.date) },
+            },
+            {
+              topicId: topic.id,
+              meeting: {
+                date: meeting.date,
+                beginTime: LessThan(meeting.beginTime),
+              },
+            },
+          ],
+          relations: { meeting: true },
+          order: { meeting: { date: 'DESC', beginTime: 'DESC' } },
+        })
+        : null;
       return manager.save(MeetingTopic, manager.create(MeetingTopic, {
-        ...input, meetingId, position, status: 'planned',
+        ...input,
+        meetingId,
+        position,
+        status: 'planned',
+        agendaNote: input.agendaNote !== undefined
+          ? input.agendaNote
+          : previousPersonAppearance?.agendaNote ?? null,
       }));
     });
   }
@@ -254,6 +279,22 @@ export class MeetingsService {
       const item = await manager.findOneBy(MeetingTopic, { id, meetingId });
       if (!item) throw codedHttpException(HttpStatus.NOT_FOUND, 'AGENDA_TOPIC_NOT_FOUND', 'Agenda topic not found');
       return manager.save(MeetingTopic, Object.assign(item, input));
+    });
+  }
+
+  async updateTopicNote(meetingId: string, id: string, agendaNote: string | null): Promise<MeetingTopic> {
+    return this.dataSource.transaction(async (manager) => {
+      await lockedMutableMeeting(manager, meetingId);
+      const appearance = await manager.findOneBy(MeetingTopic, { id, meetingId });
+      if (!appearance) {
+        throw codedHttpException(
+          HttpStatus.NOT_FOUND,
+          'AGENDA_TOPIC_NOT_FOUND',
+          'Agenda topic not found',
+        );
+      }
+      appearance.agendaNote = agendaNote;
+      return manager.save(MeetingTopic, appearance);
     });
   }
 

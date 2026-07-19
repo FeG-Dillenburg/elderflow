@@ -81,6 +81,7 @@ describe("MeetingsService", () => {
     };
     const appearance = {
       id: "appearance",
+      agendaNote: "Appearance-owned note",
       topic: {
         name: "Current topic name",
         responsibleUser: { firstName: "Ada", lastName: "Lovelace" },
@@ -94,6 +95,7 @@ describe("MeetingsService", () => {
     expect(dataSource.transaction).toHaveBeenCalled();
     expect(meeting.status).toBe("completed");
     expect(appearance).toMatchObject({
+      agendaNote: "Appearance-owned note",
       topicNameSnapshot: "Current topic name",
       responsibleUserDisplayNameSnapshot: "Ada Lovelace",
     });
@@ -164,7 +166,8 @@ describe("MeetingsService", () => {
     ["participant removal", () => service.removeParticipant("meeting", "user")],
     ["agenda membership", () => service.addTopic("meeting", { topicId: "topic", sectionId: "section" } as any)],
     ["agenda ordering", () => service.reorderTopics("meeting", [])],
-    ["agenda values", () => service.updateTopic("meeting", "appearance", { agendaNote: "changed" } as any)],
+    ["agenda values", () => service.updateTopic("meeting", "appearance", { plannedDuration: 20 } as any)],
+    ["Meeting topic notes", () => service.updateTopicNote("meeting", "appearance", "changed")],
     ["agenda removal", () => service.removeTopic("meeting", "appearance")],
   ])("rejects changes to completed %s with a stable error", async (_label, mutate) => {
     manager.findOne.mockResolvedValue({ id: "meeting", status: "completed" });
@@ -172,6 +175,40 @@ describe("MeetingsService", () => {
     await expect(mutate()).rejects.toMatchObject({
       response: expect.objectContaining({ code: "MEETING_COMPLETED_IMMUTABLE" }),
     });
+  });
+
+  it("saves a Meeting topic note on its specific appearance and returns the saved state", async () => {
+    const appearance = {
+      id: "appearance",
+      meetingId: "meeting",
+      agendaNote: "Earlier note",
+    };
+    manager.findOne.mockResolvedValue({ id: "meeting", status: "in_progress" });
+    manager.findOneBy.mockResolvedValue(appearance);
+
+    await expect(
+      service.updateTopicNote("meeting", "appearance", "Current note"),
+    ).resolves.toMatchObject({ agendaNote: "Current note" });
+    expect(manager.findOneBy).toHaveBeenCalledWith(expect.anything(), {
+      id: "appearance",
+      meetingId: "meeting",
+    });
+    expect(manager.save).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ agendaNote: "Current note" }),
+    );
+  });
+
+  it("rejects a note write for a missing appearance with a stable error", async () => {
+    manager.findOne.mockResolvedValue({ id: "meeting", status: "planned" });
+    manager.findOneBy.mockResolvedValue(null);
+
+    await expect(
+      service.updateTopicNote("meeting", "missing", "Note"),
+    ).rejects.toMatchObject({
+      response: expect.objectContaining({ code: "AGENDA_TOPIC_NOT_FOUND" }),
+    });
+    expect(manager.save).not.toHaveBeenCalled();
   });
 
   it("rejects bypassing the completion lifecycle through the general Meeting update", async () => {
@@ -397,6 +434,69 @@ describe("MeetingsService", () => {
         sectionId: "section",
       } as any),
     ).rejects.toThrow(ConflictException);
+  });
+  it("initializes a Person Meeting topic note from its latest earlier appearance", async () => {
+    manager.findOne.mockImplementation(async (type: any) => {
+      if (type.name === "Meeting") {
+        return {
+          id: "meeting",
+          status: "planned",
+          date: "2026-07-22",
+          beginTime: "19:30:00",
+        };
+      }
+      if (type.name === "Topic") {
+        return { id: "person", type: "person" };
+      }
+      if (type.name === "MeetingTopic") {
+        return { id: "previous", agendaNote: "Latest pastoral update" };
+      }
+      return null;
+    });
+    manager.findOneBy.mockImplementation(async (type: any) => {
+      if (type.name === "AgendaSection") return { id: "section" };
+      return null;
+    });
+    manager.find.mockResolvedValue([]);
+
+    await expect(service.addTopic("meeting", {
+      topicId: "person",
+      sectionId: "section",
+    } as any)).resolves.toMatchObject({
+      agendaNote: "Latest pastoral update",
+    });
+    const historyQuery = manager.findOne.mock.calls.find(
+      ([type]: [any]) => type.name === "MeetingTopic",
+    )?.[1];
+    expect(historyQuery).toMatchObject({
+      relations: { meeting: true },
+      order: { meeting: { date: "DESC", beginTime: "DESC" } },
+    });
+    expect(historyQuery.where).toHaveLength(2);
+  });
+  it("keeps an explicitly supplied Person Meeting topic note", async () => {
+    manager.findOne.mockImplementation(async (type: any) => type.name === "Meeting"
+      ? {
+        id: "meeting",
+        status: "planned",
+        date: "2026-07-22",
+        beginTime: "19:30:00",
+      }
+      : { id: "person", type: "person" });
+    manager.findOneBy.mockImplementation(async (type: any) => {
+      if (type.name === "AgendaSection") return { id: "section" };
+      return null;
+    });
+    manager.find.mockResolvedValue([]);
+
+    await expect(service.addTopic("meeting", {
+      topicId: "person",
+      sectionId: "section",
+      agendaNote: "New meeting context",
+    } as any)).resolves.toMatchObject({ agendaNote: "New meeting context" });
+    expect(manager.findOne.mock.calls.some(
+      ([type]: [any]) => type.name === "MeetingTopic",
+    )).toBe(false);
   });
   it("inserts an explicitly positioned topic transactionally and shifts later rows", async () => {
     manager.findOne.mockImplementation(async (type: any) => type.name === "Meeting"

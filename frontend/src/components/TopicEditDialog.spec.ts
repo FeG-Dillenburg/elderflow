@@ -58,4 +58,27 @@ describe("TopicEditDialog", () => {
     expect(wrapper.emitted("saved")).toHaveLength(1);
     expect(wrapper.emitted("update:visible")?.[0]).toEqual([false]);
   });
+
+  it("edits a Person Topic without changing its discriminator", async () => {
+    vi.spyOn(api, "updateTopic").mockResolvedValue({} as any);
+    const wrapper = mount(TopicEditDialog, {
+      shallow: true,
+      props: {
+        topic: { ...topic, type: "person", name: "Alex and Sam" },
+        users: [],
+        sections: [],
+        visible: true,
+      },
+      global: { stubs },
+    });
+    const vm: any = wrapper.vm;
+
+    expect(vm.form.type).toBe("person");
+    expect(vm.form.name).toBe("Alex and Sam");
+    await vm.save();
+    expect(api.updateTopic).toHaveBeenCalledWith(
+      "topic",
+      expect.objectContaining({ type: "person", name: "Alex and Sam" }),
+    );
+  });
 });
