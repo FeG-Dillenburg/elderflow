@@ -7,11 +7,12 @@ import type { TopicType } from "../topicTypes";
 
 const props = defineProps<{
   id: string;
+  types?: readonly TopicType[];
 }>();
 const model = defineModel<TopicType>({ required: true });
 const { t } = useI18n();
 const options = computed(() =>
-  creatableTopicTypes().map((value) => ({
+  (props.types ?? creatableTopicTypes()).map((value) => ({
     value,
     label: t(`topicTypes.${value}`),
   })),

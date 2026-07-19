@@ -54,4 +54,12 @@ describe("Topic renderer architecture", () => {
     expect(topicsSource).toContain("<TopicTypeRadioGroup");
     expect(preparationSource).toContain("<TopicTypeRadioGroup");
   });
+
+  it("puts the shared type radio group first when editing a Topic", () => {
+    const form = topicEditSource.slice(topicEditSource.indexOf('id="edit-topic"'));
+    expect(form.indexOf("<TopicTypeRadioGroup")).toBeLessThan(
+      form.indexOf('t("common.name")'),
+    );
+    expect(topicEditSource).toContain(':types="editableTopicTypes"');
+  });
 });

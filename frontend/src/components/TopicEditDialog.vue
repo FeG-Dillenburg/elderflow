@@ -5,6 +5,7 @@ import DatePicker from "primevue/datepicker";
 import Dialog from "primevue/dialog";
 import InputText from "primevue/inputtext";
 import Select from "primevue/select";
+import TopicTypeRadioGroup from "../topics/components/TopicTypeRadioGroup.vue";
 import {
   api,
   formatUser,
@@ -39,11 +40,8 @@ const form = reactive({
   defaultSectionId: null as string | null,
   defaultPosition: null as number | null,
 });
-const topicTypes = computed(() =>
-  [...new Set([props.topic.type, ...creatableTopicTypes()])].map((value) => ({
-    value,
-    label: t(`topicTypes.${value}`),
-  })),
+const editableTopicTypes = computed(() =>
+  [...new Set([props.topic.type, ...creatableTopicTypes()])],
 );
 const statuses = computed(() =>
   ["open", "done", "deferred", "archived"].map((value) => ({
@@ -89,25 +87,15 @@ async function save(): Promise<void> {
     :style="{ width: '46rem', maxWidth: 'calc(100vw - 2rem)' }"
   >
     <form id="edit-topic" class="form" @submit.prevent="save">
-      <label>
-        <span>{{ t("common.name") }}</span>
-        <InputText v-model="form.name" required />
-      </label>
-      <TopicTypeRenderer
-        :type="form.type"
-        context="form"
-        :model-value="form"
-        @change="Object.assign(form, $event)"
+      <TopicTypeRadioGroup
+        id="edit-topic-type"
+        v-model="form.type"
+        :types="editableTopicTypes"
       />
       <div class="row">
         <label>
-          <span>{{ t("topics.type") }}</span>
-          <Select
-            v-model="form.type"
-            :options="topicTypes"
-            option-label="label"
-            option-value="value"
-          />
+          <span>{{ t("common.name") }}</span>
+          <InputText v-model="form.name" required />
         </label>
         <label>
           <span>{{ t("common.status") }}</span>
@@ -119,6 +107,12 @@ async function save(): Promise<void> {
           />
         </label>
       </div>
+      <TopicTypeRenderer
+        :type="form.type"
+        context="form"
+        :model-value="form"
+        @change="Object.assign(form, $event)"
+      />
       <div class="row">
         <label>
           <span>{{ t("topicEdit.responsible") }}</span>
