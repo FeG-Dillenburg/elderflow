@@ -62,7 +62,12 @@ function canConnect(host, port, timeout = 1000) {
 
 async function findFreePort(startPort) {
   let port = startPort;
-  while (await canConnect('127.0.0.1', port, 200)) {
+  while (
+    (await Promise.all([
+      canConnect('127.0.0.1', port, 200),
+      canConnect('::1', port, 200),
+    ])).some(Boolean)
+  ) {
     port += 1;
   }
   return port;
@@ -106,6 +111,7 @@ const databaseHost = databaseUrl.hostname;
 const databasePort = Number(databaseUrl.port || 5432);
 const requestedPort = Number(backendEnvironment.PORT || 3000);
 const backendPort = await findFreePort(requestedPort);
+const frontendPort = await findFreePort(5173);
 
 if (!(await canConnect(databaseHost, databasePort))) {
   console.log('PostgreSQL is not reachable; starting the local Docker Compose service...');
@@ -115,16 +121,38 @@ if (!(await canConnect(databaseHost, databasePort))) {
 await waitForDatabase(databaseHost, databasePort);
 
 const apiBaseUrl = `http://localhost:${backendPort}`;
-console.log(`Starting backend at ${apiBaseUrl}`);
-console.log(`Starting frontend with VITE_API_BASE_URL=${apiBaseUrl}`);
+const frontendUrl = `http://localhost:${frontendPort}`;
+console.log(`\nOpen ElderFlow at ${frontendUrl}`);
+console.log(`Backend API: ${apiBaseUrl}\n`);
 
 const children = [
-  run(pnpmCommand, ['--filter', '@elderflow/backend', 'start:dev'], {
-    env: { ...process.env, ...backendEnvironment, PORT: String(backendPort) },
-  }),
-  run(pnpmCommand, ['--filter', '@elderflow/frontend', 'dev'], {
-    env: { ...process.env, VITE_API_BASE_URL: apiBaseUrl },
-  }),
+  run(
+    pnpmCommand,
+    ['--filter', '@elderflow/backend', 'start:dev', '--preserveWatchOutput'],
+    {
+      env: {
+        ...process.env,
+        ...backendEnvironment,
+        PORT: String(backendPort),
+      },
+    },
+  ),
+  run(
+    pnpmCommand,
+    [
+      '--filter',
+      '@elderflow/frontend',
+      'dev',
+      '--port',
+      String(frontendPort),
+      '--strictPort',
+      '--clearScreen',
+      'false',
+    ],
+    {
+      env: { ...process.env, VITE_API_BASE_URL: apiBaseUrl },
+    },
+  ),
 ];
 
 let stopping = false;
