@@ -1,0 +1,3 @@
+# Store Meeting topic notes on agenda appearances
+
+A Meeting topic note belongs to the Topic's single agenda appearance in a Meeting and is stored on `meeting_topics`, rather than as a `topic_updates` row. This gives Person Topics exactly one text that can be edited before or during the Meeting, preserves its Meeting context for history, and leaves Updates and Minutes entries as distinct historical records for the later paired-text feature.

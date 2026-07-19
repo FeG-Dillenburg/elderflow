@@ -1,0 +1,3 @@
+# Reconcile Recurring Topics on domain changes
+
+Recurring Topics are scheduled by chronologically reconciling planned Meetings whenever relevant Meeting, recurrence, skip, or restore data changes; no clock-based background scheduler is used. Eligibility is determined by Meeting dates and the rolling last appearance, so event-driven reconciliation is deterministic, can honor skipped recurrences, avoids changing in-progress or completed Meetings, and works even when future Meetings are created out of order. Reconciliation may reschedule an automatic planned appearance only while its Meeting topic note remains untouched; edited preparation and manual appearances are preserved and surfaced as conflicts rather than silently discarded.
