@@ -9,6 +9,10 @@ import { NotFoundException } from "@nestjs/common";
 import { In, LessThanOrEqual } from "typeorm";
 
 describe("TopicsService", () => {
+  const manager = {
+    findOne: jest.fn(),
+    getRepository: jest.fn(),
+  };
   const topics = {
     findOne: jest.fn(),
     find: jest.fn(),
@@ -32,9 +36,13 @@ describe("TopicsService", () => {
     }).compile();
     service = module.get(TopicsService);
     appearances.exist.mockResolvedValue(false);
-    topics.manager.transaction.mockImplementation(async (work) => work({
-      getRepository: (entity: unknown) => entity === Topic ? topics : appearances,
-    }));
+    manager.findOne.mockResolvedValue(null);
+    manager.getRepository.mockImplementation((entity: unknown) => entity === Topic
+      ? topics
+      : entity === TopicUpdate
+        ? updates
+        : appearances);
+    topics.manager.transaction.mockImplementation(async (work) => work(manager));
   });
 
   it("links a new update to the topic and current user", async () => {
@@ -60,6 +68,19 @@ describe("TopicsService", () => {
         type: "decision",
       }),
     );
+  });
+
+  it("rejects a Minutes entry linked to a completed Meeting with a stable error", async () => {
+    manager.findOne.mockResolvedValue({ id: "meeting", status: "completed" });
+
+    await expect(service.addUpdate(
+      "topic-id",
+      { text: "Late change", type: "minute", meetingId: "meeting" },
+      { id: "user-id" } as User,
+    )).rejects.toMatchObject({
+      response: expect.objectContaining({ code: "MEETING_COMPLETED_IMMUTABLE" }),
+    });
+    expect(updates.save).not.toHaveBeenCalled();
   });
 
   it("applies each topic filter with relations and order", async () => {

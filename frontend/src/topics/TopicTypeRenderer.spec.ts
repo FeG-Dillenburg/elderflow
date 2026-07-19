@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import TopicTypeRenderer from "./TopicTypeRenderer.vue";
 import GenericTopicFormFields from "./types/generic/GenericTopicFormFields.vue";
 import GenericTopicPreparation from "./types/generic/GenericTopicPreparation.vue";
+import GenericTopicAgenda from "./types/generic/GenericTopicAgenda.vue";
 
 describe("TopicTypeRenderer", () => {
   it.each(["form", "preparation", "agenda", "detail", "list"] as const)(
@@ -69,5 +70,22 @@ describe("TopicTypeRenderer", () => {
     expect(wrapper.find("small").text().replace(/\s+/g, " ")).toBe(
       "Generic · 7/20/2026",
     );
+  });
+
+  it("renders the snapshotted responsible display name for a completed appearance", () => {
+    const wrapper = mount(GenericTopicAgenda, {
+      props: {
+        item: {
+          topic: {
+            name: "Recorded Topic",
+            responsibleUser: { firstName: "Later", lastName: "Owner" },
+          },
+          responsibleUserDisplayNameSnapshot: "Recorded Owner",
+        } as any,
+      },
+    });
+
+    expect(wrapper.text()).toContain("Recorded Owner");
+    expect(wrapper.text()).not.toContain("Later Owner");
   });
 });

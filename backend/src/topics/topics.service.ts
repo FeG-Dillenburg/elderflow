@@ -7,6 +7,7 @@ import { TOPIC_TYPES, Topic, TopicType } from './topic.entity';
 import { codedHttpException } from '../errors/coded-http.exception';
 import { TopicUpdate } from './topic-update.entity';
 import { MeetingTopic } from '../meetings/meeting-topic.entity';
+import { Meeting } from '../meetings/meeting.entity';
 
 @Injectable()
 export class TopicsService {
@@ -100,8 +101,32 @@ export class TopicsService {
   }
 
   async addUpdate(topicId: string, input: TopicUpdateDto, user: User): Promise<TopicUpdate> {
-    await this.findOne(topicId);
-    return this.updates.save(this.updates.create({ ...input, topicId, createdById: user.id, date: new Date() }));
+    return this.topics.manager.transaction(async (manager) => {
+      if (input.meetingId) {
+        const meeting = await manager.findOne(Meeting, {
+          where: { id: input.meetingId },
+          lock: { mode: 'pessimistic_write' },
+        });
+        if (!meeting) {
+          throw codedHttpException(HttpStatus.NOT_FOUND, 'MEETING_NOT_FOUND', 'Meeting not found');
+        }
+        if (meeting.status === 'completed') {
+          throw codedHttpException(
+            HttpStatus.CONFLICT,
+            'MEETING_COMPLETED_IMMUTABLE',
+            'Completed Meeting content cannot be changed',
+          );
+        }
+      }
+
+      const topic = await manager.getRepository(Topic).findOne({
+        where: { id: topicId },
+        relations: { responsibleUser: true, defaultSection: true },
+      });
+      if (!topic) throw codedHttpException(HttpStatus.NOT_FOUND, 'TOPIC_NOT_FOUND', 'Topic not found');
+      const updates = manager.getRepository(TopicUpdate);
+      return updates.save(updates.create({ ...input, topicId, createdById: user.id, date: new Date() }));
+    });
   }
 
   async getAppearances(topicId: string): Promise<MeetingTopic[]> {

@@ -220,4 +220,19 @@ describe("MeetingPreparationView", () => {
     expect(item.plannedDuration).toBe(15);
     expect(vm.error).toBe("Duration save failed");
   });
+
+  it("renders a completed Meeting without preparation controls", async () => {
+    vi.spyOn(api, "meeting").mockResolvedValueOnce({
+      ...structuredClone(meeting),
+      status: "completed",
+    });
+
+    const wrapper = await view();
+
+    expect(wrapper.findAll('button[aria-label="Drag topic"]')).toHaveLength(0);
+    expect(wrapper.findAll('input-number-stub')).toHaveLength(0);
+    expect(wrapper.findAll('[aria-label="Remove"]')).toHaveLength(0);
+    expect(wrapper.find("aside").exists()).toBe(false);
+    expect(wrapper.find("dialog-stub").exists()).toBe(false);
+  });
 });

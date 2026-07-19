@@ -38,6 +38,7 @@ const { t } = useI18n();
 const statusLabel = (value?: string) => (value ? t(`labels.${value}`) : "");
 const id = route.params.id as string;
 const meeting = ref<Meeting | null>(null);
+const readOnly = computed(() => meeting.value?.status === "completed");
 const sections = ref<AgendaSection[]>([]);
 const suggestions = ref<Topic[]>([]);
 const grouped = ref<AgendaGroup[]>([]);
@@ -249,7 +250,7 @@ onMounted(load);
           />
         </RouterLink>
       </header>
-      <div class="layout">
+      <div :class="['layout', { 'layout-read-only': readOnly }]">
         <main>
           <section
             v-for="group in grouped"
@@ -271,7 +272,7 @@ onMounted(load);
               :group="agendaGroup"
               item-key="id"
               handle=".drag-handle"
-              :disabled="pending"
+              :disabled="pending || readOnly"
               class="agenda-drop-zone"
               ghost-class="drag-ghost"
               chosen-class="drag-chosen"
@@ -280,6 +281,7 @@ onMounted(load);
               <template #item="{ element: item }">
                 <article>
                   <button
+                    v-if="!readOnly"
                     class="drag-handle"
                     type="button"
                     :aria-label="t('meetingPreparation.drag')"
@@ -301,7 +303,7 @@ onMounted(load);
                       </template>
                     </small>
                   </div>
-                  <div class="item-actions">
+                  <div v-if="!readOnly" class="item-actions">
                     <div class="duration-control">
                       <InputNumber
                         :model-value="item.plannedDuration"
@@ -326,6 +328,10 @@ onMounted(load);
                       @click="remove(item)"
                     />
                   </div>
+                  <div v-else class="topic-duration">
+                    {{ item.plannedDuration ?? 0 }}
+                    {{ t("common.minuteShort") }}
+                  </div>
                 </article>
               </template>
               <template #footer>
@@ -336,7 +342,7 @@ onMounted(load);
             </Draggable>
           </section>
         </main>
-        <aside>
+        <aside v-if="!readOnly">
           <div class="suggestions-heading">
             <div>
               <h2>{{ t("meetingPreparation.addTopics") }}</h2>
@@ -405,6 +411,7 @@ onMounted(load);
       </div>
     </template>
     <Dialog
+      v-if="!readOnly"
       v-model:visible="newVisible"
       :style="{ width: '44rem', maxWidth: 'calc(100vw - 2rem)' }"
       :header="t('meetingPreparation.createAndAddTitle')"
@@ -487,6 +494,9 @@ onMounted(load);
   grid-template-columns: minmax(0, 1.6fr) minmax(300px, 0.8fr);
   gap: 1.25rem;
   align-items: start;
+}
+.layout-read-only {
+  grid-template-columns: minmax(0, 1fr);
 }
 .section {
   margin-bottom: 1rem;
