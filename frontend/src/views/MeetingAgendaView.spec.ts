@@ -94,6 +94,16 @@ describe("MeetingAgendaView", () => {
     await flushPromises();
     expect(errorView.text()).toContain("Unavailable");
   });
+  it("treats script-only rich text as empty after sanitization", async () => {
+    const unsafeMeeting = structuredClone(meeting);
+    unsafeMeeting.generalNotes = "<script>alert(1)</script>";
+    vi.spyOn(api, "meeting").mockResolvedValueOnce(unsafeMeeting);
+
+    const wrapper = await view();
+
+    expect(wrapper.find(".meeting-notes").exists()).toBe(false);
+    expect(wrapper.html()).not.toContain("<script");
+  });
   it("limits recent updates to the prior 14 days and orders the selected three oldest-to-newest", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-07-15T12:00:00Z"));

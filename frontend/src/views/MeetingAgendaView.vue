@@ -170,8 +170,7 @@ const move = async (
 const safe = (html: string | null | undefined) =>
   DOMPurify.sanitize(html ?? "");
 const hasRichText = (html: string | null | undefined) =>
-  (html ?? "")
-    .replace(/<[^>]*>/g, "")
+  DOMPurify.sanitize(html ?? "", { ALLOWED_TAGS: [] })
     .replace(/&nbsp;|&#160;/gi, " ")
     .trim().length > 0;
 const timeToDate = (value: string) => {
