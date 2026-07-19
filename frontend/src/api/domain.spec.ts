@@ -121,6 +121,18 @@ describe("domain API client", () => {
       }],
     ]);
   });
+  it("uses the explicit completion action without a mutable Meeting payload", async () => {
+    const fetch = vi.fn().mockResolvedValue(response({ status: "completed" }));
+    vi.stubGlobal("fetch", fetch);
+
+    await api.completeMeeting("meeting");
+
+    expect(fetch).toHaveBeenCalledWith(
+      "http://localhost:3000/api/meetings/meeting/complete",
+      expect.objectContaining({ method: "POST" }),
+    );
+    expect(fetch.mock.calls[0][1]?.body).toBeUndefined();
+  });
   it("formats users and meetings and retains the local calendar date", () => {
     expect(formatUser()).toBe("Unassigned");
     expect(formatUser({ firstName: "Ada", lastName: "Lovelace" } as any)).toBe(

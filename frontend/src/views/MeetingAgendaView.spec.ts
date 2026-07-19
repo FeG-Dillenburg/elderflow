@@ -1,6 +1,7 @@
 import { flushPromises, mount } from "@vue/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { api } from "../api/domain";
+import { api, type AuthUser } from "../api/domain";
+import { auth } from "../auth/auth";
 import MeetingAgendaView from "./MeetingAgendaView.vue";
 
 vi.mock("vue-router", () => ({
@@ -10,11 +11,15 @@ vi.mock("vue-router", () => ({
 
 const stubs = {
   Button: {
-    props: ["label", "disabled"],
+    props: ["label", "disabled", "loading"],
     template:
       '<button :disabled="disabled" @click="$emit(\'click\')">{{ label }}<slot /></button>',
   },
-  Dialog: { template: '<div><slot /><slot name="footer" /></div>' },
+  Dialog: {
+    props: ["visible", "header"],
+    template:
+      '<div v-if="visible" role="dialog" :aria-label="header"><slot /><slot name="footer" /></div>',
+  },
   Select: { template: "<select><slot /></select>" },
   DatePicker: { template: "<input />" },
   Tag: { template: "<span><slot />{{ value }}</span>", props: ["value"] },
@@ -62,11 +67,31 @@ const meeting: any = {
 describe("MeetingAgendaView", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    auth.completeInitialization(null);
     vi.spyOn(api, "meeting").mockResolvedValue(structuredClone(meeting));
     vi.spyOn(api, "sections").mockResolvedValue([
       { id: "section-1", name: "Main", position: 1, isDefault: true },
     ]);
     vi.spyOn(api, "userDirectory").mockResolvedValue([]);
+  });
+
+  const authenticatedUser = (id: string): AuthUser => ({
+    id,
+    email: `${id}@example.com`,
+    firstName: "Current",
+    lastName: "User",
+    role: "user" as const,
+    language: null,
+    permissions: {
+      dashboard: "view" as const,
+      users: "view" as const,
+      references: "view" as const,
+      meetings: "manage" as const,
+      topics: "manage" as const,
+      tasks: "manage" as const,
+      contentSettings: "view" as const,
+      authSettings: "hide" as const,
+    },
   });
   afterEach(() => {
     vi.useRealTimers();
@@ -119,6 +144,23 @@ describe("MeetingAgendaView", () => {
     expect(
       (wrapper.vm as any).recent(item).map((update: any) => update.id),
     ).toEqual(["b", "c", "d"]);
+  });
+  it("shows all and only this completed Meeting's Minutes entries without a rolling cutoff", async () => {
+    const completedMeeting = structuredClone(meeting);
+    completedMeeting.status = "completed";
+    completedMeeting.agenda[0].topic.updates = [
+      { id: "later-update", meetingId: null, date: "2026-07-15T12:00:00Z" },
+      { id: "other-minute", meetingId: "other", date: "2026-07-14T12:00:00Z" },
+      { id: "own-old-minute", meetingId: "meeting-1", date: "2025-01-01T12:00:00Z" },
+    ];
+    vi.spyOn(api, "meeting").mockResolvedValueOnce(completedMeeting);
+
+    const wrapper = await view();
+    const vm: any = wrapper.vm;
+
+    expect(vm.recent(vm.meeting.agenda[0]).map((update: any) => update.id)).toEqual([
+      "own-old-minute",
+    ]);
   });
   it("adds a minute, manages participants, and makes blank input a no-op", async () => {
     const wrapper = await view();
@@ -198,5 +240,95 @@ describe("MeetingAgendaView", () => {
     vm.editForm.date = null;
     await vm.saveMeeting();
     expect((api.updateMeeting as any).mock.calls).toHaveLength(1);
+  });
+
+  it.each([
+    ["Meeting leader", "leader"],
+    ["Minute taker", "minute-taker"],
+  ])("shows the Finish meeting action to the assigned %s", async (_role, userId) => {
+    const activeMeeting = structuredClone(meeting);
+    activeMeeting.status = "in_progress";
+    activeMeeting.meetingLeaderId = "leader";
+    activeMeeting.minuteTakerId = "minute-taker";
+    auth.setUser(authenticatedUser(userId));
+    vi.spyOn(api, "meeting").mockResolvedValueOnce(activeMeeting);
+
+    const wrapper = await view();
+
+    expect(wrapper.text()).toContain("Finish meeting");
+  });
+
+  it("keeps completion unavailable to unrelated users and cancellation leaves the Meeting unchanged", async () => {
+    const activeMeeting = structuredClone(meeting);
+    activeMeeting.status = "in_progress";
+    activeMeeting.meetingLeaderId = "leader";
+    auth.setUser(authenticatedUser("unrelated"));
+    vi.spyOn(api, "meeting").mockResolvedValueOnce(activeMeeting);
+    vi.spyOn(api, "completeMeeting").mockResolvedValue({} as any);
+
+    const unauthorized = await view();
+    expect(unauthorized.text()).not.toContain("Finish meeting");
+
+    auth.setUser(authenticatedUser("leader"));
+    vi.spyOn(api, "meeting").mockResolvedValueOnce(activeMeeting);
+    const authorized = await view();
+    const vm: any = authorized.vm;
+    vm.finishVisible = true;
+    await authorized.vm.$nextTick();
+    expect(authorized.get('[role="dialog"]').attributes("aria-label")).toBe("Finish meeting?");
+    expect(authorized.text()).toContain("cannot currently be undone");
+    vm.finishVisible = false;
+    await authorized.vm.$nextTick();
+    expect(api.completeMeeting).not.toHaveBeenCalled();
+  });
+
+  it("does not show Finish meeting to an assigned view-only user", async () => {
+    const activeMeeting = structuredClone(meeting);
+    activeMeeting.status = "in_progress";
+    activeMeeting.meetingLeaderId = "leader";
+    const viewer = authenticatedUser("leader");
+    viewer.permissions.meetings = "view";
+    auth.setUser(viewer);
+    vi.spyOn(api, "meeting").mockResolvedValueOnce(activeMeeting);
+
+    const wrapper = await view();
+
+    expect(wrapper.text()).not.toContain("Finish meeting");
+  });
+
+  it("prevents duplicate completion, reports failure, and switches successful completion to read-only", async () => {
+    const activeMeeting = structuredClone(meeting);
+    activeMeeting.status = "in_progress";
+    activeMeeting.meetingLeaderId = "leader";
+    const completedMeeting = structuredClone(activeMeeting);
+    completedMeeting.status = "completed";
+    auth.setUser(authenticatedUser("leader"));
+    vi.spyOn(api, "meeting")
+      .mockResolvedValueOnce(activeMeeting)
+      .mockResolvedValueOnce(completedMeeting);
+    const complete = vi.spyOn(api, "completeMeeting");
+    let rejectCompletion!: (reason: Error) => void;
+    complete.mockReturnValueOnce(new Promise((_resolve, reject) => {
+      rejectCompletion = reject;
+    }));
+
+    const wrapper = await view();
+    const vm: any = wrapper.vm;
+    vm.finishVisible = true;
+    const first = vm.finishMeeting();
+    const duplicate = vm.finishMeeting();
+    rejectCompletion(new Error("Completion failed"));
+    await Promise.all([first, duplicate]);
+    expect(complete).toHaveBeenCalledTimes(1);
+    expect(wrapper.text()).toContain("Completion failed");
+
+    complete.mockResolvedValueOnce(completedMeeting);
+    await vm.finishMeeting();
+    await flushPromises();
+    expect(vm.meeting.status).toBe("completed");
+    expect(wrapper.find(".header-actions").exists()).toBe(false);
+    expect(wrapper.find(".topic-actions").exists()).toBe(false);
+    expect(wrapper.find(".topic-footer").exists()).toBe(false);
+    expect(wrapper.text()).not.toContain("Finish meeting");
   });
 });

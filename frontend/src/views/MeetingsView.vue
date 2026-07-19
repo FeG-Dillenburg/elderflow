@@ -129,7 +129,10 @@ const date = (value: string) => formatDate(`${value}T12:00:00`);
         </Column>
         <Column>
           <template #body="{ data }">
-            <RouterLink v-if="canManage" :to="`/meetings/${data.id}/prepare`">
+            <RouterLink
+              v-if="canManage && data.status !== 'completed'"
+              :to="`/meetings/${data.id}/prepare`"
+            >
               <Button icon="pi pi-pencil" :label="t('meetings.prepare')" text />
             </RouterLink>
             <RouterLink v-else :to="`/meetings/${data.id}`">

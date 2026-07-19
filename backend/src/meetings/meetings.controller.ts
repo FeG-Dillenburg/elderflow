@@ -6,6 +6,8 @@ import { Meeting } from './meeting.entity';
 import { MeetingDetail, MeetingsService } from './meetings.service';
 import { Topic } from '../topics/topic.entity';
 import { Permission } from '../auth/permissions';
+import { CurrentUser } from '../auth/current-user.decorator';
+import { User } from '../users/user.entity';
 
 @Controller('api/meetings')
 @Permission('meetings')
@@ -13,6 +15,10 @@ export class MeetingsController {
   constructor(private readonly service: MeetingsService) {}
   @Get() findAll(): Promise<Meeting[]> { return this.service.findAll(); }
   @Post() create(@Body() input: MeetingDto): Promise<Meeting> { return this.service.create(input); }
+  @Post(':id/complete') complete(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: User,
+  ): Promise<Meeting> { return this.service.complete(id, user); }
   @Get(':id') findOne(@Param('id', ParseUUIDPipe) id: string): Promise<MeetingDetail> { return this.service.findOne(id); }
   @Put(':id') update(@Param('id', ParseUUIDPipe) id: string, @Body() input: MeetingDto): Promise<Meeting> { return this.service.update(id, input); }
   @Get(':id/suggestions') suggestions(@Param('id', ParseUUIDPipe) id: string): Promise<Topic[]> { return this.service.suggestions(id); }

@@ -8,7 +8,12 @@ defineProps<{ item: MeetingTopic }>();
 <template>
   <div>
     <h3>{{ item.topic?.name }}</h3>
-    <p>{{ formatUser(item.topic?.responsibleUser) }}</p>
+    <p>
+      {{
+        item.responsibleUserDisplayNameSnapshot ??
+        formatUser(item.topic?.responsibleUser)
+      }}
+    </p>
   </div>
 </template>
 

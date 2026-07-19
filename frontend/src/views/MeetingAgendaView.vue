@@ -31,6 +31,18 @@ import { dateInputFormat, formatDate, formatTime } from "../i18n";
 const canManage = computed(
   () => !auth.state.user || auth.canManage("meetings"),
 );
+const isCompleted = computed(() => meeting.value?.status === "completed");
+const canEdit = computed(() => canManage.value && !isCompleted.value);
+const canFinish = computed(() => {
+  const userId = auth.state.user?.id;
+  return Boolean(
+    canManage.value &&
+      userId &&
+      meeting.value?.status === "in_progress" &&
+      (userId === meeting.value.meetingLeaderId ||
+        userId === meeting.value.minuteTakerId),
+  );
+});
 const { t } = useI18n();
 
 const route = useRoute();
@@ -41,7 +53,10 @@ const meeting = ref<Meeting | null>(null),
   loading = ref(true),
   error = ref(""),
   participantVisible = ref(false),
-  editVisible = ref(false);
+  editVisible = ref(false),
+  finishVisible = ref(false),
+  finishing = ref(false),
+  finishError = ref("");
 const updateEditors = reactive<Record<string, string>>({});
 const openEditors = reactive<Record<string, boolean>>({});
 const participant = reactive({
@@ -59,7 +74,7 @@ const editForm = reactive({
   openingInput: "",
 });
 const statusOptions = computed(() =>
-  ["planned", "in_progress", "completed"].map((value) => ({
+  ["planned", "in_progress"].map((value) => ({
     value,
     label: t(`labels.${value}`),
   })),
@@ -96,8 +111,15 @@ const sectionDuration = (items: MeetingTopic[]) =>
 const recent = (item: MeetingTopic) => {
   const cutoff = Date.now() - 14 * 86400000;
   const timestamp = (date: string) => new Date(date).getTime();
+  const updates = [...(item.topic?.updates ?? [])];
 
-  return [...(item.topic?.updates ?? [])]
+  if (meeting.value?.status === "completed") {
+    return updates
+      .filter((update) => update.meetingId === id)
+      .sort((left, right) => timestamp(left.date) - timestamp(right.date));
+  }
+
+  return updates
     .filter((update) => timestamp(update.date) >= cutoff)
     .sort((left, right) => timestamp(right.date) - timestamp(left.date))
     .slice(0, 3)
@@ -210,6 +232,21 @@ const saveMeeting = async () => {
   editVisible.value = false;
   await load();
 };
+const finishMeeting = async () => {
+  if (finishing.value || !meeting.value) return;
+  finishing.value = true;
+  finishError.value = "";
+  try {
+    meeting.value = await api.completeMeeting(id);
+    finishVisible.value = false;
+    await load();
+  } catch (e) {
+    finishError.value =
+      e instanceof Error ? e.message : t("meetingAgenda.finishFailed");
+  } finally {
+    finishing.value = false;
+  }
+};
 onMounted(load);
 </script>
 <template>
@@ -226,7 +263,7 @@ onMounted(load);
             <Tag :value="t(`labels.${meeting.status}`)" severity="secondary" />
           </p>
         </div>
-        <div v-if="canManage" class="header-actions">
+        <div v-if="canEdit" class="header-actions">
           <Button
             icon="pi pi-cog"
             :label="t('meetingAgenda.editDetails')"
@@ -258,12 +295,12 @@ onMounted(load);
               v-for="person in meeting.participants"
               :key="person.id"
               :value="formatUser(person.user)"
-              :removable="canManage"
+              :removable="canEdit"
               severity="secondary"
               @remove="removeParticipant(person.userId)"
             />
             <Button
-              v-if="canManage"
+              v-if="canEdit"
               :aria-label="t('meetingAgenda.addParticipant')"
               icon="pi pi-plus"
               rounded
@@ -345,7 +382,7 @@ onMounted(load);
               <div v-if="item.plannedDuration" class="topic-meta">
                 {{ item.plannedDuration }} {{ t("common.minuteShort") }}
               </div>
-              <div v-if="canManage" class="topic-actions">
+              <div v-if="canEdit" class="topic-actions">
                 <Button
                   :disabled="itemIndex === 0"
                   :aria-label="t('meetingAgenda.moveUp')"
@@ -403,7 +440,7 @@ onMounted(load);
                 </small>
               </p>
             </div>
-            <div v-if="canManage && openEditors[item.id]" class="quick-update">
+            <div v-if="canEdit && openEditors[item.id]" class="quick-update">
               <RichTextEditor v-model="updateEditors[item.id]" height="100px" />
               <div class="quick-update-actions">
                 <Button
@@ -419,7 +456,7 @@ onMounted(load);
                 />
               </div>
             </div>
-            <div v-else-if="canManage" class="topic-footer">
+            <div v-else-if="canEdit" class="topic-footer">
               <Button
                 icon="pi pi-plus"
                 :label="t('meetingAgenda.addMinute')"
@@ -451,10 +488,26 @@ onMounted(load);
           </article>
         </section>
       </main>
+      <div v-if="canFinish" class="finish-meeting">
+        <Button
+          icon="pi pi-check-circle"
+          :label="t('meetingAgenda.finish')"
+          severity="success"
+          @click="finishVisible = true"
+        />
+      </div>
+      <p
+        v-else-if="isCompleted"
+        class="completed-status"
+        role="status"
+      >
+        <i class="pi pi-lock" />
+        {{ t("meetingAgenda.completedReadOnly") }}
+      </p>
     </template>
     <p v-else-if="loading">{{ t("meetingAgenda.loading") }}</p>
     <Dialog
-      v-if="canManage"
+      v-if="canEdit"
       v-model:visible="participantVisible"
       :header="t('meetingAgenda.participantTitle')"
       modal
@@ -489,7 +542,7 @@ onMounted(load);
       </template>
     </Dialog>
     <Dialog
-      v-if="canManage"
+      v-if="canEdit"
       v-model:visible="editVisible"
       :style="{ width: '48rem', maxWidth: 'calc(100vw - 2rem)' }"
       :header="t('meetingAgenda.editTitle')"
@@ -633,6 +686,37 @@ onMounted(load);
         />
       </template>
     </Dialog>
+    <Dialog
+      v-if="canFinish || finishVisible"
+      v-model:visible="finishVisible"
+      :header="t('meetingAgenda.finishTitle')"
+      modal
+    >
+      <p id="finish-meeting-description">
+        {{ t("meetingAgenda.finishWarning") }}
+      </p>
+      <Message v-if="finishError" severity="error">
+        {{ finishError }}
+      </Message>
+      <template #footer>
+        <Button
+          :disabled="finishing"
+          :label="t('common.cancel')"
+          severity="secondary"
+          text
+          @click="finishVisible = false"
+        />
+        <Button
+          aria-describedby="finish-meeting-description"
+          :disabled="finishing"
+          icon="pi pi-check-circle"
+          :label="t('meetingAgenda.confirmFinish')"
+          :loading="finishing"
+          severity="success"
+          @click="finishMeeting"
+        />
+      </template>
+    </Dialog>
   </section>
 </template>
 <style scoped>
@@ -738,6 +822,20 @@ onMounted(load);
 
 .document {
   margin-top: 1.7rem;
+}
+
+.finish-meeting,
+.completed-status {
+  display: flex;
+  justify-content: center;
+  margin: 1.5rem 0;
+}
+
+.completed-status {
+  align-items: center;
+  gap: 0.45rem;
+  color: #536f9f;
+  font-weight: 650;
 }
 
 .agenda-section {

@@ -41,4 +41,10 @@ export class MeetingTopic {
 
   @Column({ type: 'text', default: 'planned' })
   status: string;
+
+  @Column({ name: 'topic_name_snapshot', type: 'text', nullable: true })
+  topicNameSnapshot: string | null;
+
+  @Column({ name: 'responsible_user_display_name_snapshot', type: 'text', nullable: true })
+  responsibleUserDisplayNameSnapshot: string | null;
 }

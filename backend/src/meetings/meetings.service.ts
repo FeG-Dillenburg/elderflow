@@ -10,6 +10,9 @@ import { MeetingTopic } from './meeting-topic.entity';
 import { MeetingUser } from './meeting-user.entity';
 import { Meeting } from './meeting.entity';
 import { codedHttpException } from '../errors/coded-http.exception';
+import { User } from '../users/user.entity';
+import { MeetingSnapshotRegistry } from './meeting-snapshot-contributor';
+import { lockedMutableMeeting } from './meeting-mutation-boundary';
 
 export interface MeetingDetail extends Meeting {
   participants: MeetingUser[];
@@ -27,13 +30,65 @@ export class MeetingsService {
     @InjectRepository(TopicUpdate) private readonly updates: Repository<TopicUpdate>,
     @InjectRepository(Task) private readonly tasks: Repository<Task>,
     @InjectRepository(AgendaSection) private readonly sections: Repository<AgendaSection>,
+    private readonly snapshots: MeetingSnapshotRegistry,
   ) {}
+
+  async complete(id: string, user: User): Promise<Meeting> {
+    return this.dataSource.transaction(async (manager) => {
+      const meeting = await manager.findOne(Meeting, {
+        where: { id },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!meeting) {
+        throw codedHttpException(HttpStatus.NOT_FOUND, 'MEETING_NOT_FOUND', 'Meeting not found');
+      }
+      if (meeting.status !== 'in_progress') {
+        throw codedHttpException(
+          HttpStatus.CONFLICT,
+          'MEETING_COMPLETION_INVALID_STATUS',
+          'Only an in-progress Meeting can be completed',
+        );
+      }
+      if (user.id !== meeting.meetingLeaderId && user.id !== meeting.minuteTakerId) {
+        throw codedHttpException(
+          HttpStatus.FORBIDDEN,
+          'MEETING_COMPLETION_FORBIDDEN',
+          'Only the Meeting leader or Minute taker can complete this Meeting',
+        );
+      }
+
+      const appearances = await manager.find(MeetingTopic, {
+        where: { meetingId: id },
+        relations: { topic: { responsibleUser: true } },
+      });
+      for (const appearance of appearances) {
+        const topic = appearance.topic!;
+        appearance.topicNameSnapshot = topic.name;
+        appearance.responsibleUserDisplayNameSnapshot = topic.responsibleUser
+          ? `${topic.responsibleUser.firstName} ${topic.responsibleUser.lastName}`.trim()
+          : null;
+        await this.snapshots.apply(appearance, topic, manager);
+      }
+      if (appearances.length) {
+        await manager.save(MeetingTopic, appearances);
+      }
+      meeting.status = 'completed';
+      return manager.save(Meeting, meeting);
+    });
+  }
 
   findAll(): Promise<Meeting[]> {
     return this.meetings.find({ relations: { meetingLeader: true, minuteTaker: true }, order: { date: 'DESC' } });
   }
 
   async create(input: MeetingDto): Promise<Meeting> {
+    if (input.status === 'completed') {
+      throw codedHttpException(
+        HttpStatus.CONFLICT,
+        'MEETING_STATUS_TRANSITION_INVALID',
+        'A Meeting can only become completed through the completion action',
+      );
+    }
     return this.dataSource.transaction(async (manager) => {
       const meeting = await manager.save(Meeting, manager.create(Meeting, input));
       const recurringTopics = await manager.find(Topic, {
@@ -59,9 +114,17 @@ export class MeetingsService {
   }
 
   async update(id: string, input: MeetingDto): Promise<Meeting> {
-    const meeting = await this.meetings.findOneBy({ id });
-    if (!meeting) throw codedHttpException(HttpStatus.NOT_FOUND, 'MEETING_NOT_FOUND', 'Meeting not found');
-    return this.meetings.save(Object.assign(meeting, input));
+    return this.dataSource.transaction(async (manager) => {
+      const meeting = await lockedMutableMeeting(manager, id);
+      if (input.status === 'completed') {
+        throw codedHttpException(
+          HttpStatus.CONFLICT,
+          'MEETING_STATUS_TRANSITION_INVALID',
+          'Complete an in-progress Meeting through the completion action',
+        );
+      }
+      return manager.save(Meeting, Object.assign(meeting, input));
+    });
   }
 
   async findOne(id: string): Promise<MeetingDetail> {
@@ -81,7 +144,12 @@ export class MeetingsService {
     if (topicIds.length) {
       const [updates, tasks] = await Promise.all([
         this.updates.find({
-          where: { topicId: In(topicIds) }, relations: { createdBy: true, meeting: true }, order: { date: 'DESC' },
+          where: {
+            topicId: In(topicIds),
+            ...(meeting.status === 'completed' ? { meetingId: id } : {}),
+          },
+          relations: { createdBy: true, meeting: true },
+          order: { date: 'DESC' },
         }),
         this.tasks.find({
           where: { topicId: In(topicIds), status: In(['open', 'in_progress']) }, relations: { assignedTo: true }, order: { dueDate: 'ASC' },
@@ -89,29 +157,45 @@ export class MeetingsService {
       ]);
       for (const item of agenda) {
         Object.assign(item.topic!, {
-          updates: updates.filter((update) => update.topicId === item.topicId),
+          updates: updates.filter((update) =>
+            update.topicId === item.topicId &&
+            (meeting.status !== 'completed' || update.meetingId === id)),
           tasks: tasks.filter((task) => task.topicId === item.topicId),
         });
+      }
+    }
+    if (meeting.status === 'completed') {
+      for (const item of agenda) {
+        if (item.topic) {
+          Object.assign(item.topic, {
+            name: item.topicNameSnapshot ?? item.topic.name,
+            responsibleUser: null,
+          });
+        }
       }
     }
     return Object.assign(meeting, { participants, agenda });
   }
 
   async addParticipant(meetingId: string, input: MeetingParticipantDto): Promise<MeetingUser> {
-    await this.findOne(meetingId);
-    const existing = await this.participants.findOneBy({ meetingId, userId: input.userId });
-    if (existing) return this.participants.save(Object.assign(existing, input));
-    return this.participants.save(this.participants.create({ meetingId, ...input }));
+    return this.dataSource.transaction(async (manager) => {
+      await lockedMutableMeeting(manager, meetingId);
+      const existing = await manager.findOneBy(MeetingUser, { meetingId, userId: input.userId });
+      if (existing) return manager.save(MeetingUser, Object.assign(existing, input));
+      return manager.save(MeetingUser, manager.create(MeetingUser, { meetingId, ...input }));
+    });
   }
 
   async removeParticipant(meetingId: string, userId: string): Promise<void> {
-    await this.participants.delete({ meetingId, userId });
+    await this.dataSource.transaction(async (manager) => {
+      await lockedMutableMeeting(manager, meetingId);
+      await manager.delete(MeetingUser, { meetingId, userId });
+    });
   }
 
   async addTopic(meetingId: string, input: MeetingTopicDto): Promise<MeetingTopic> {
     return this.dataSource.transaction(async (manager) => {
-      const meeting = await manager.findOneBy(Meeting, { id: meetingId });
-      if (!meeting) throw codedHttpException(HttpStatus.NOT_FOUND, 'MEETING_NOT_FOUND', 'Meeting not found');
+      await lockedMutableMeeting(manager, meetingId);
       const topic = await manager.findOne(Topic, {
         where: { id: input.topicId },
         lock: { mode: 'pessimistic_write' },
@@ -139,8 +223,7 @@ export class MeetingsService {
 
   async reorderTopics(meetingId: string, input: MeetingTopicOrderItemDto[]): Promise<MeetingTopic[]> {
     return this.dataSource.transaction(async (manager) => {
-      const meeting = await manager.findOneBy(Meeting, { id: meetingId });
-      if (!meeting) throw codedHttpException(HttpStatus.NOT_FOUND, 'MEETING_NOT_FOUND', 'Meeting not found');
+      await lockedMutableMeeting(manager, meetingId);
       const ids = input.map((item) => item.id);
       if (new Set(ids).size !== ids.length) throw codedHttpException(HttpStatus.BAD_REQUEST, 'AGENDA_TOPIC_IDS_DUPLICATE', 'Agenda topic IDs must be unique');
       const current = await manager.find(MeetingTopic, { where: { meetingId } });
@@ -166,13 +249,19 @@ export class MeetingsService {
   }
 
   async updateTopic(meetingId: string, id: string, input: UpdateMeetingTopicDto): Promise<MeetingTopic> {
-    const item = await this.meetingTopics.findOneBy({ id, meetingId });
-    if (!item) throw codedHttpException(HttpStatus.NOT_FOUND, 'AGENDA_TOPIC_NOT_FOUND', 'Agenda topic not found');
-    return this.meetingTopics.save(Object.assign(item, input));
+    return this.dataSource.transaction(async (manager) => {
+      await lockedMutableMeeting(manager, meetingId);
+      const item = await manager.findOneBy(MeetingTopic, { id, meetingId });
+      if (!item) throw codedHttpException(HttpStatus.NOT_FOUND, 'AGENDA_TOPIC_NOT_FOUND', 'Agenda topic not found');
+      return manager.save(MeetingTopic, Object.assign(item, input));
+    });
   }
 
   async removeTopic(meetingId: string, id: string): Promise<void> {
-    await this.meetingTopics.delete({ id, meetingId });
+    await this.dataSource.transaction(async (manager) => {
+      await lockedMutableMeeting(manager, meetingId);
+      await manager.delete(MeetingTopic, { id, meetingId });
+    });
   }
 
   async suggestions(meetingId: string): Promise<Topic[]> {
@@ -190,4 +279,5 @@ export class MeetingsService {
     });
     return candidates.filter((topic) => !excluded.includes(topic.id));
   }
+
 }

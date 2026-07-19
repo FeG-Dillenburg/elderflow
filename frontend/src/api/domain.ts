@@ -104,6 +104,8 @@ export interface MeetingTopic {
   agendaNote: string | null;
   plannedDuration: number | null;
   status: string;
+  topicNameSnapshot?: string | null;
+  responsibleUserDisplayNameSnapshot?: string | null;
   meeting?: Meeting;
 }
 
@@ -195,6 +197,7 @@ export const api = {
   meeting: (id: string) => request<Meeting>(`/api/meetings/${id}`),
   createMeeting: (input: MeetingInput) => request<Meeting>('/api/meetings', { method: 'POST', body: JSON.stringify(input) }),
   updateMeeting: (id: string, input: MeetingInput) => request<Meeting>(`/api/meetings/${id}`, { method: 'PUT', body: JSON.stringify(input) }),
+  completeMeeting: (id: string) => request<Meeting>(`/api/meetings/${id}/complete`, { method: 'POST' }),
   meetingSuggestions: (id: string) => request<Topic[]>(`/api/meetings/${id}/suggestions`),
   addParticipant: (meetingId: string, input: { userId: string; attendanceStatus: string }) => request<MeetingParticipant>(`/api/meetings/${meetingId}/participants`, { method: 'POST', body: JSON.stringify(input) }),
   removeParticipant: (meetingId: string, userId: string) => request<void>(`/api/meetings/${meetingId}/participants/${userId}`, { method: 'DELETE' }),
