@@ -2,6 +2,7 @@ import { mount } from "@vue/test-utils";
 import { describe, expect, it } from "vitest";
 import TopicTypeRenderer from "./TopicTypeRenderer.vue";
 import GenericTopicFormFields from "./components/GenericTopicFormFields.vue";
+import GenericTopicPreparation from "./components/GenericTopicPreparation.vue";
 
 describe("TopicTypeRenderer", () => {
   it.each(["form", "preparation", "agenda", "detail", "list"] as const)(
@@ -51,5 +52,22 @@ describe("TopicTypeRenderer", () => {
     expect(wrapper.emitted("change")?.[0]).toEqual([
       { description: "<p>Context</p>" },
     ]);
+  });
+
+  it("preserves the one-line preparation suggestion metadata", () => {
+    const wrapper = mount(GenericTopicPreparation, {
+      props: {
+        topic: {
+          name: "Topic",
+          type: "generic",
+          followUpDate: "2026-07-20",
+        } as any,
+        showType: true,
+      },
+    });
+
+    expect(wrapper.find("small").text().replace(/\s+/g, " ")).toBe(
+      "Generic · 7/20/2026",
+    );
   });
 });

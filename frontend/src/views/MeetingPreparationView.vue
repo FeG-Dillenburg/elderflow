@@ -382,11 +382,6 @@ onMounted(load);
                       :topic="topic"
                       show-type
                     />
-                    <small>
-                      <template v-if="topic.followUpDate">
-                        {{ formatDate(`${topic.followUpDate}T12:00:00`) }}
-                      </template>
-                    </small>
                   </div>
                 </div>
                 <Select
