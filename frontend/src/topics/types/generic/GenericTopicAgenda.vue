@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import type { MeetingTopic } from "../../api/domain";
-import { formatUser } from "../../api/domain";
+import type { MeetingTopic } from "../../../api/domain";
+import { formatUser } from "../../../api/domain";
 
 defineProps<{ item: MeetingTopic }>();
 </script>

@@ -2,11 +2,6 @@
 import { computed, type Component } from "vue";
 import Message from "primevue/message";
 import { useI18n } from "vue-i18n";
-import GenericTopicAgenda from "./components/GenericTopicAgenda.vue";
-import GenericTopicDetail from "./components/GenericTopicDetail.vue";
-import GenericTopicFormFields from "./components/GenericTopicFormFields.vue";
-import GenericTopicList from "./components/GenericTopicList.vue";
-import GenericTopicPreparation from "./components/GenericTopicPreparation.vue";
 import {
   resolveTopicType,
   topicTypeRegistry,
@@ -16,18 +11,10 @@ import {
 defineOptions({ inheritAttrs: false });
 const props = defineProps<{ type: string; context: TopicRendererContext }>();
 const { t } = useI18n();
-const components: Record<TopicRendererContext, Component> = {
-  form: GenericTopicFormFields,
-  preparation: GenericTopicPreparation,
-  agenda: GenericTopicAgenda,
-  detail: GenericTopicDetail,
-  list: GenericTopicList,
-};
 const renderer = computed<Component | null>(() => {
   const type = resolveTopicType(props.type);
   if (!type) return null;
-  const adapter = topicTypeRegistry[type].renderers[props.context];
-  return adapter === "generic" ? components[props.context] : null;
+  return topicTypeRegistry[type].renderers[props.context];
 });
 </script>
 

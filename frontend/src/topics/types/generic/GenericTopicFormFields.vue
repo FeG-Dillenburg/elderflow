@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from "vue";
-import RichTextEditor from "../../components/RichTextEditor.vue";
-import type { TopicInput } from "../../api/domain";
+import RichTextEditor from "../../../components/RichTextEditor.vue";
+import type { TopicInput } from "../../../api/domain";
 import { useI18n } from "vue-i18n";
 
 const props = defineProps<{ modelValue: TopicInput }>();

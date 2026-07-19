@@ -4,12 +4,14 @@ import agendaSource from "../views/MeetingAgendaView.vue?raw";
 import detailSource from "../views/TopicDetailView.vue?raw";
 import preparationSource from "../views/MeetingPreparationView.vue?raw";
 import topicsSource from "../views/TopicsView.vue?raw";
-import genericAgendaSource from "./components/GenericTopicAgenda.vue?raw";
-import genericDetailSource from "./components/GenericTopicDetail.vue?raw";
-import genericFormSource from "./components/GenericTopicFormFields.vue?raw";
-import genericListSource from "./components/GenericTopicList.vue?raw";
-import genericPreparationSource from "./components/GenericTopicPreparation.vue?raw";
+import dispatcherSource from "./TopicTypeRenderer.vue?raw";
 import typeRadioGroupSource from "./components/TopicTypeRadioGroup.vue?raw";
+import genericAgendaSource from "./types/generic/GenericTopicAgenda.vue?raw";
+import genericDetailSource from "./types/generic/GenericTopicDetail.vue?raw";
+import genericFormSource from "./types/generic/GenericTopicFormFields.vue?raw";
+import genericListSource from "./types/generic/GenericTopicList.vue?raw";
+import genericPreparationSource from "./types/generic/GenericTopicPreparation.vue?raw";
+import genericModuleSource from "./types/generic/index.ts?raw";
 
 describe("Topic renderer architecture", () => {
   it("routes every parent context through the shared dispatcher", () => {
@@ -29,6 +31,13 @@ describe("Topic renderer architecture", () => {
       genericListSource,
     ]) {
       expect(source).not.toMatch(/\bapi\s*\./);
+    }
+  });
+
+  it("keeps type-specific renderer imports behind the type module interface", () => {
+    expect(dispatcherSource).not.toContain("GenericTopic");
+    for (const context of ["form", "preparation", "agenda", "detail", "list"]) {
+      expect(genericModuleSource).toContain(`${context}: GenericTopic`);
     }
   });
 

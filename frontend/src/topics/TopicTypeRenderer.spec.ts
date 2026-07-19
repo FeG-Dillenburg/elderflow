@@ -1,8 +1,8 @@
 import { mount } from "@vue/test-utils";
 import { describe, expect, it } from "vitest";
 import TopicTypeRenderer from "./TopicTypeRenderer.vue";
-import GenericTopicFormFields from "./components/GenericTopicFormFields.vue";
-import GenericTopicPreparation from "./components/GenericTopicPreparation.vue";
+import GenericTopicFormFields from "./types/generic/GenericTopicFormFields.vue";
+import GenericTopicPreparation from "./types/generic/GenericTopicPreparation.vue";
 
 describe("TopicTypeRenderer", () => {
   it.each(["form", "preparation", "agenda", "detail", "list"] as const)(

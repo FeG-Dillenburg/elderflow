@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { RouterLink } from "vue-router";
-import type { Topic } from "../../api/domain";
+import type { Topic } from "../../../api/domain";
 import { useI18n } from "vue-i18n";
 
 defineProps<{ topic: Topic }>();

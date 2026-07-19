@@ -1,4 +1,6 @@
+import type { Component } from "vue";
 import { canonicalTopicTypes, type TopicType } from "./topicTypes";
+import { genericTopicRenderers } from "./types/generic";
 
 export { canonicalTopicTypes, resolveTopicType } from "./topicTypes";
 
@@ -11,16 +13,11 @@ export type TopicRendererContext =
 
 type TopicTypeRegistration = {
   creationEnabled: boolean;
-  renderers: Record<TopicRendererContext, "generic">;
+  renderers: Record<TopicRendererContext, Component>;
 };
 
-const genericAdapter = (): TopicTypeRegistration["renderers"] => ({
-  form: "generic",
-  preparation: "generic",
-  agenda: "generic",
-  detail: "generic",
-  list: "generic",
-});
+const genericAdapter = (): TopicTypeRegistration["renderers"] =>
+  genericTopicRenderers;
 
 export const topicTypeRegistry: Record<TopicType, TopicTypeRegistration> = {
   generic: { creationEnabled: true, renderers: genericAdapter() },
