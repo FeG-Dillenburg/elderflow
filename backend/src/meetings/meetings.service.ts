@@ -144,7 +144,12 @@ export class MeetingsService {
     if (topicIds.length) {
       const [updates, tasks] = await Promise.all([
         this.updates.find({
-          where: { topicId: In(topicIds) }, relations: { createdBy: true, meeting: true }, order: { date: 'DESC' },
+          where: {
+            topicId: In(topicIds),
+            ...(meeting.status === 'completed' ? { meetingId: id } : {}),
+          },
+          relations: { createdBy: true, meeting: true },
+          order: { date: 'DESC' },
         }),
         this.tasks.find({
           where: { topicId: In(topicIds), status: In(['open', 'in_progress']) }, relations: { assignedTo: true }, order: { dueDate: 'ASC' },
@@ -152,7 +157,9 @@ export class MeetingsService {
       ]);
       for (const item of agenda) {
         Object.assign(item.topic!, {
-          updates: updates.filter((update) => update.topicId === item.topicId),
+          updates: updates.filter((update) =>
+            update.topicId === item.topicId &&
+            (meeting.status !== 'completed' || update.meetingId === id)),
           tasks: tasks.filter((task) => task.topicId === item.topicId),
         });
       }

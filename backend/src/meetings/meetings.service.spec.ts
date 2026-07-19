@@ -249,6 +249,29 @@ describe("MeetingsService", () => {
     expect(result.agenda[0].responsibleUserDisplayNameSnapshot).toBe("Recorded Owner");
   });
 
+  it("returns only this Meeting's Minutes entries for a completed Meeting while retaining open tasks", async () => {
+    const appearance: any = {
+      id: "appearance",
+      topicId: "topic",
+      topicNameSnapshot: "Recorded name",
+      topic: { name: "Live name" },
+    };
+    const ownMinute = { id: "own-minute", topicId: "topic", meetingId: "meeting", type: "minute" };
+    const laterStandaloneUpdate = { id: "later-update", topicId: "topic", meetingId: null, type: "update" };
+    const otherMeetingMinute = { id: "other-minute", topicId: "topic", meetingId: "other-meeting", type: "minute" };
+    const openTask = { id: "open-task", topicId: "topic" };
+    meetings.findOne.mockResolvedValue({ id: "meeting", status: "completed" });
+    participants.find.mockResolvedValue([]);
+    meetingTopics.find.mockResolvedValue([appearance]);
+    updates.find.mockResolvedValue([laterStandaloneUpdate, otherMeetingMinute, ownMinute]);
+    tasks.find.mockResolvedValue([openTask]);
+
+    const result = await service.findOne("meeting");
+
+    expect((result.agenda[0].topic as any).updates).toEqual([ownMinute]);
+    expect((result.agenda[0].topic as any).tasks).toEqual([openTask]);
+  });
+
   it("rejects missing meetings when finding details", async () => {
     meetings.findOne.mockResolvedValue(null);
     await expect(service.findOne("missing")).rejects.toThrow(NotFoundException);

@@ -111,8 +111,15 @@ const sectionDuration = (items: MeetingTopic[]) =>
 const recent = (item: MeetingTopic) => {
   const cutoff = Date.now() - 14 * 86400000;
   const timestamp = (date: string) => new Date(date).getTime();
+  const updates = [...(item.topic?.updates ?? [])];
 
-  return [...(item.topic?.updates ?? [])]
+  if (meeting.value?.status === "completed") {
+    return updates
+      .filter((update) => update.meetingId === id)
+      .sort((left, right) => timestamp(left.date) - timestamp(right.date));
+  }
+
+  return updates
     .filter((update) => timestamp(update.date) >= cutoff)
     .sort((left, right) => timestamp(right.date) - timestamp(left.date))
     .slice(0, 3)

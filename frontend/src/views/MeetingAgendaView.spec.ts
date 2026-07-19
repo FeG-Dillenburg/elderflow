@@ -145,6 +145,23 @@ describe("MeetingAgendaView", () => {
       (wrapper.vm as any).recent(item).map((update: any) => update.id),
     ).toEqual(["b", "c", "d"]);
   });
+  it("shows all and only this completed Meeting's Minutes entries without a rolling cutoff", async () => {
+    const completedMeeting = structuredClone(meeting);
+    completedMeeting.status = "completed";
+    completedMeeting.agenda[0].topic.updates = [
+      { id: "later-update", meetingId: null, date: "2026-07-15T12:00:00Z" },
+      { id: "other-minute", meetingId: "other", date: "2026-07-14T12:00:00Z" },
+      { id: "own-old-minute", meetingId: "meeting-1", date: "2025-01-01T12:00:00Z" },
+    ];
+    vi.spyOn(api, "meeting").mockResolvedValueOnce(completedMeeting);
+
+    const wrapper = await view();
+    const vm: any = wrapper.vm;
+
+    expect(vm.recent(vm.meeting.agenda[0]).map((update: any) => update.id)).toEqual([
+      "own-old-minute",
+    ]);
+  });
   it("adds a minute, manages participants, and makes blank input a no-op", async () => {
     const wrapper = await view();
     const vm: any = wrapper.vm;
