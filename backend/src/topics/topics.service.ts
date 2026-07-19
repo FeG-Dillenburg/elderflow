@@ -7,7 +7,7 @@ import { TOPIC_TYPES, Topic, TopicType } from './topic.entity';
 import { codedHttpException } from '../errors/coded-http.exception';
 import { TopicUpdate } from './topic-update.entity';
 import { MeetingTopic } from '../meetings/meeting-topic.entity';
-import { Meeting } from '../meetings/meeting.entity';
+import { lockedMutableMeeting } from '../meetings/meeting-mutation-boundary';
 
 @Injectable()
 export class TopicsService {
@@ -103,20 +103,7 @@ export class TopicsService {
   async addUpdate(topicId: string, input: TopicUpdateDto, user: User): Promise<TopicUpdate> {
     return this.topics.manager.transaction(async (manager) => {
       if (input.meetingId) {
-        const meeting = await manager.findOne(Meeting, {
-          where: { id: input.meetingId },
-          lock: { mode: 'pessimistic_write' },
-        });
-        if (!meeting) {
-          throw codedHttpException(HttpStatus.NOT_FOUND, 'MEETING_NOT_FOUND', 'Meeting not found');
-        }
-        if (meeting.status === 'completed') {
-          throw codedHttpException(
-            HttpStatus.CONFLICT,
-            'MEETING_COMPLETED_IMMUTABLE',
-            'Completed Meeting content cannot be changed',
-          );
-        }
+        await lockedMutableMeeting(manager, input.meetingId);
       }
 
       const topic = await manager.getRepository(Topic).findOne({

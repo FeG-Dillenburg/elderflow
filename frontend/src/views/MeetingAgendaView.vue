@@ -36,7 +36,8 @@ const canEdit = computed(() => canManage.value && !isCompleted.value);
 const canFinish = computed(() => {
   const userId = auth.state.user?.id;
   return Boolean(
-    userId &&
+    canManage.value &&
+      userId &&
       meeting.value?.status === "in_progress" &&
       (userId === meeting.value.meetingLeaderId ||
         userId === meeting.value.minuteTakerId),

@@ -1,6 +1,6 @@
-import { HttpStatus, Inject, Injectable, Optional } from '@nestjs/common';
+import { HttpStatus, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, EntityManager, In, LessThanOrEqual, Repository } from 'typeorm';
+import { DataSource, In, LessThanOrEqual, Repository } from 'typeorm';
 import { AgendaSection } from '../agenda-sections/agenda-section.entity';
 import { Task } from '../tasks/task.entity';
 import { Topic } from '../topics/topic.entity';
@@ -11,10 +11,8 @@ import { MeetingUser } from './meeting-user.entity';
 import { Meeting } from './meeting.entity';
 import { codedHttpException } from '../errors/coded-http.exception';
 import { User } from '../users/user.entity';
-import {
-  MEETING_SNAPSHOT_CONTRIBUTORS,
-  MeetingSnapshotContributor,
-} from './meeting-snapshot-contributor';
+import { MeetingSnapshotRegistry } from './meeting-snapshot-contributor';
+import { lockedMutableMeeting } from './meeting-mutation-boundary';
 
 export interface MeetingDetail extends Meeting {
   participants: MeetingUser[];
@@ -32,9 +30,7 @@ export class MeetingsService {
     @InjectRepository(TopicUpdate) private readonly updates: Repository<TopicUpdate>,
     @InjectRepository(Task) private readonly tasks: Repository<Task>,
     @InjectRepository(AgendaSection) private readonly sections: Repository<AgendaSection>,
-    @Optional()
-    @Inject(MEETING_SNAPSHOT_CONTRIBUTORS)
-    private readonly snapshotContributors: readonly MeetingSnapshotContributor[] = [],
+    private readonly snapshots: MeetingSnapshotRegistry,
   ) {}
 
   async complete(id: string, user: User): Promise<Meeting> {
@@ -71,9 +67,7 @@ export class MeetingsService {
         appearance.responsibleUserDisplayNameSnapshot = topic.responsibleUser
           ? `${topic.responsibleUser.firstName} ${topic.responsibleUser.lastName}`.trim()
           : null;
-        for (const contributor of this.snapshotContributors) {
-          Object.assign(appearance, await contributor.snapshot(appearance, topic, manager));
-        }
+        await this.snapshots.apply(appearance, topic, manager);
       }
       if (appearances.length) {
         await manager.save(MeetingTopic, appearances);
@@ -121,7 +115,7 @@ export class MeetingsService {
 
   async update(id: string, input: MeetingDto): Promise<Meeting> {
     return this.dataSource.transaction(async (manager) => {
-      const meeting = await this.mutableMeeting(manager, id);
+      const meeting = await lockedMutableMeeting(manager, id);
       if (input.status === 'completed') {
         throw codedHttpException(
           HttpStatus.CONFLICT,
@@ -178,7 +172,7 @@ export class MeetingsService {
 
   async addParticipant(meetingId: string, input: MeetingParticipantDto): Promise<MeetingUser> {
     return this.dataSource.transaction(async (manager) => {
-      await this.mutableMeeting(manager, meetingId);
+      await lockedMutableMeeting(manager, meetingId);
       const existing = await manager.findOneBy(MeetingUser, { meetingId, userId: input.userId });
       if (existing) return manager.save(MeetingUser, Object.assign(existing, input));
       return manager.save(MeetingUser, manager.create(MeetingUser, { meetingId, ...input }));
@@ -187,14 +181,14 @@ export class MeetingsService {
 
   async removeParticipant(meetingId: string, userId: string): Promise<void> {
     await this.dataSource.transaction(async (manager) => {
-      await this.mutableMeeting(manager, meetingId);
+      await lockedMutableMeeting(manager, meetingId);
       await manager.delete(MeetingUser, { meetingId, userId });
     });
   }
 
   async addTopic(meetingId: string, input: MeetingTopicDto): Promise<MeetingTopic> {
     return this.dataSource.transaction(async (manager) => {
-      await this.mutableMeeting(manager, meetingId);
+      await lockedMutableMeeting(manager, meetingId);
       const topic = await manager.findOne(Topic, {
         where: { id: input.topicId },
         lock: { mode: 'pessimistic_write' },
@@ -222,7 +216,7 @@ export class MeetingsService {
 
   async reorderTopics(meetingId: string, input: MeetingTopicOrderItemDto[]): Promise<MeetingTopic[]> {
     return this.dataSource.transaction(async (manager) => {
-      await this.mutableMeeting(manager, meetingId);
+      await lockedMutableMeeting(manager, meetingId);
       const ids = input.map((item) => item.id);
       if (new Set(ids).size !== ids.length) throw codedHttpException(HttpStatus.BAD_REQUEST, 'AGENDA_TOPIC_IDS_DUPLICATE', 'Agenda topic IDs must be unique');
       const current = await manager.find(MeetingTopic, { where: { meetingId } });
@@ -249,7 +243,7 @@ export class MeetingsService {
 
   async updateTopic(meetingId: string, id: string, input: UpdateMeetingTopicDto): Promise<MeetingTopic> {
     return this.dataSource.transaction(async (manager) => {
-      await this.mutableMeeting(manager, meetingId);
+      await lockedMutableMeeting(manager, meetingId);
       const item = await manager.findOneBy(MeetingTopic, { id, meetingId });
       if (!item) throw codedHttpException(HttpStatus.NOT_FOUND, 'AGENDA_TOPIC_NOT_FOUND', 'Agenda topic not found');
       return manager.save(MeetingTopic, Object.assign(item, input));
@@ -258,7 +252,7 @@ export class MeetingsService {
 
   async removeTopic(meetingId: string, id: string): Promise<void> {
     await this.dataSource.transaction(async (manager) => {
-      await this.mutableMeeting(manager, meetingId);
+      await lockedMutableMeeting(manager, meetingId);
       await manager.delete(MeetingTopic, { id, meetingId });
     });
   }
@@ -279,21 +273,4 @@ export class MeetingsService {
     return candidates.filter((topic) => !excluded.includes(topic.id));
   }
 
-  private async mutableMeeting(manager: EntityManager, id: string): Promise<Meeting> {
-    const meeting = await manager.findOne(Meeting, {
-      where: { id },
-      lock: { mode: 'pessimistic_write' },
-    });
-    if (!meeting) {
-      throw codedHttpException(HttpStatus.NOT_FOUND, 'MEETING_NOT_FOUND', 'Meeting not found');
-    }
-    if (meeting.status === 'completed') {
-      throw codedHttpException(
-        HttpStatus.CONFLICT,
-        'MEETING_COMPLETED_IMMUTABLE',
-        'Completed Meeting content cannot be changed',
-      );
-    }
-    return meeting;
-  }
 }

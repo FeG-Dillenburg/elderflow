@@ -1,6 +1,6 @@
 import { flushPromises, mount } from "@vue/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { api } from "../api/domain";
+import { api, type AuthUser } from "../api/domain";
 import { auth } from "../auth/auth";
 import MeetingAgendaView from "./MeetingAgendaView.vue";
 
@@ -75,7 +75,7 @@ describe("MeetingAgendaView", () => {
     vi.spyOn(api, "userDirectory").mockResolvedValue([]);
   });
 
-  const authenticatedUser = (id: string) => ({
+  const authenticatedUser = (id: string): AuthUser => ({
     id,
     email: `${id}@example.com`,
     firstName: "Current",
@@ -263,6 +263,20 @@ describe("MeetingAgendaView", () => {
     vm.finishVisible = false;
     await authorized.vm.$nextTick();
     expect(api.completeMeeting).not.toHaveBeenCalled();
+  });
+
+  it("does not show Finish meeting to an assigned view-only user", async () => {
+    const activeMeeting = structuredClone(meeting);
+    activeMeeting.status = "in_progress";
+    activeMeeting.meetingLeaderId = "leader";
+    const viewer = authenticatedUser("leader");
+    viewer.permissions.meetings = "view";
+    auth.setUser(viewer);
+    vi.spyOn(api, "meeting").mockResolvedValueOnce(activeMeeting);
+
+    const wrapper = await view();
+
+    expect(wrapper.text()).not.toContain("Finish meeting");
   });
 
   it("prevents duplicate completion, reports failure, and switches successful completion to read-only", async () => {

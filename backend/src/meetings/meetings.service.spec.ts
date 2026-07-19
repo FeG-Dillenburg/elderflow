@@ -37,6 +37,7 @@ describe("MeetingsService", () => {
   const updates = { find: jest.fn() };
   const tasks = { find: jest.fn() };
   const sections = {};
+  const snapshots = { apply: jest.fn() };
   const service = new MeetingsService(
     dataSource as any,
     meetings as any,
@@ -46,7 +47,7 @@ describe("MeetingsService", () => {
     updates as any,
     tasks as any,
     sections as any,
-    [],
+    snapshots as any,
   );
   beforeEach(() => {
     jest.clearAllMocks();
@@ -56,6 +57,8 @@ describe("MeetingsService", () => {
     manager.findOne.mockReset();
     manager.findOneBy.mockReset();
     manager.delete.mockReset();
+    snapshots.apply.mockReset();
+    snapshots.apply.mockResolvedValue(undefined);
     manager.save.mockImplementation(async (_type, value) => value);
     manager.create.mockImplementation((_type, value) => value);
   });
@@ -117,8 +120,10 @@ describe("MeetingsService", () => {
   });
 
   it("collects type-specific snapshots inside the centralized completion transaction", async () => {
-    const contributor = {
-      snapshot: jest.fn().mockResolvedValue({ membershipProcessStatusSnapshot: "Nearly ready" }),
+    const extensibleSnapshots = {
+      apply: jest.fn(async (appearance) => {
+        Object.assign(appearance, { membershipProcessStatusSnapshot: "Nearly ready" });
+      }),
     };
     const extensibleService = new MeetingsService(
       dataSource as any,
@@ -129,7 +134,7 @@ describe("MeetingsService", () => {
       updates as any,
       tasks as any,
       sections as any,
-      [contributor],
+      extensibleSnapshots as any,
     );
     const meeting = {
       id: "meeting",
@@ -146,7 +151,7 @@ describe("MeetingsService", () => {
 
     await extensibleService.complete("meeting", { id: "leader" } as any);
 
-    expect(contributor.snapshot).toHaveBeenCalledWith(appearance, appearance.topic, manager);
+    expect(extensibleSnapshots.apply).toHaveBeenCalledWith(appearance, appearance.topic, manager);
     expect(appearance).toMatchObject({
       responsibleUserDisplayNameSnapshot: null,
       membershipProcessStatusSnapshot: "Nearly ready",
