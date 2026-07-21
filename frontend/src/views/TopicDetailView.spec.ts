@@ -100,6 +100,65 @@ describe("TopicDetailView", () => {
     expect(wrapper.findComponent({ name: "TopicEditDialog" }).props("typeLocked"))
       .toBe(true);
   });
+  it("merges every Topic-history entry and orders same-day Meetings by start time", async () => {
+    vi.spyOn(api, "topic").mockResolvedValue({
+      ...topic,
+      type: "recurring",
+      defaultSectionId: "section",
+      recurrenceFirstDueDate: "2026-01-01",
+      recurrenceInterval: 1,
+      recurrenceUnit: "months",
+    });
+    vi.spyOn(api, "topicUpdates").mockResolvedValue([{
+      id: "update",
+      type: "update",
+      text: "Middle update",
+      date: "2026-07-15T19:30:00",
+    }] as any);
+    vi.spyOn(api, "topicAppearances").mockResolvedValue([{
+      id: "appearance",
+      meetingId: "late",
+      agendaNote: "Late appearance",
+      meeting: {
+        id: "late",
+        title: "Late meeting",
+        date: "2026-07-15",
+        beginTime: "20:00:00",
+      },
+    }] as any);
+    vi.spyOn(api, "skippedRecurrences").mockResolvedValue([{
+      id: "skip",
+      meetingId: "early",
+      meeting: {
+        id: "early",
+        title: "Early meeting",
+        date: "2026-07-15",
+        beginTime: "18:00:00",
+        status: "planned",
+      },
+    }] as any);
+
+    const wrapper = await view();
+    const text = wrapper.text();
+
+    expect(api.skippedRecurrences).toHaveBeenCalledWith("topic-1");
+    expect(text.indexOf("Late meeting")).toBeLessThan(text.indexOf("Middle update"));
+    expect(text.indexOf("Middle update")).toBeLessThan(text.indexOf("Early meeting"));
+    expect(wrapper.findAll("tag-stub").map((tag) => tag.attributes("value")))
+      .toContain("Skipped recurrence");
+    expect(text.match(/Topic history/g)).toHaveLength(2);
+  });
+
+  it("restores a skipped recurrence and reloads the unified history", async () => {
+    vi.spyOn(api, "restoreRecurrence").mockResolvedValue(undefined);
+    const wrapper = await view();
+    const skip = { meetingId: "meeting" } as any;
+
+    await (wrapper.vm as any).restore(skip);
+
+    expect(api.restoreRecurrence).toHaveBeenCalledWith("meeting", "topic-1");
+    expect(api.topic).toHaveBeenCalledTimes(2);
+  });
   it("handles updates and nullable/date task creation", async () => {
     const wrapper = await view();
     const vm: any = wrapper.vm;

@@ -597,4 +597,36 @@ describe("MeetingsService", () => {
       NotFoundException,
     );
   });
+
+  it("records an automatic removal as a skip and restores it transactionally", async () => {
+    const appearance = {
+      id: "appearance",
+      meetingId: "meeting",
+      topicId: "topic",
+      source: "recurrence",
+    };
+    manager.findOne.mockResolvedValue({ id: "meeting", status: "planned" });
+    manager.findOneBy
+      .mockResolvedValueOnce(appearance)
+      .mockResolvedValueOnce(null);
+
+    await service.removeTopic("meeting", "appearance");
+
+    expect(manager.save).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ meetingId: "meeting", topicId: "topic" }),
+    );
+    expect(manager.remove).toHaveBeenCalledWith(expect.anything(), appearance);
+    expect(recurrence.reconcile).toHaveBeenCalledWith(manager);
+
+    const skip = { id: "skip", meetingId: "meeting", topicId: "topic" };
+    manager.findOne.mockResolvedValue({ id: "meeting", status: "planned" });
+    manager.findOneBy.mockResolvedValue(skip);
+    recurrence.reconcile.mockClear();
+
+    await service.restoreRecurrence("meeting", "topic");
+
+    expect(manager.remove).toHaveBeenCalledWith(expect.anything(), skip);
+    expect(recurrence.reconcile).toHaveBeenCalledWith(manager);
+  });
 });

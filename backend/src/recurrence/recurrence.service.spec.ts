@@ -132,6 +132,59 @@ describe('RecurrenceService reconciliation', () => {
     });
   });
 
+  it('advances cadence from a manual appearance instead of the original due date', async () => {
+    const manualMeeting = { id: 'manual-meeting', date: '2026-01-10', beginTime: '19:00', status: 'planned' } as Meeting;
+    const tooEarly = { id: 'too-early', date: '2026-02-05', beginTime: '19:00', status: 'planned' } as Meeting;
+    const eligible = { id: 'eligible', date: '2026-02-10', beginTime: '19:00', status: 'planned' } as Meeting;
+    const manual = {
+      id: 'manual', topicId: topic.id, meetingId: manualMeeting.id, meeting: manualMeeting,
+      source: 'manual', noteEditedAt: null,
+    } as MeetingTopic;
+    const { value, saved } = manager([manualMeeting, tooEarly, eligible], [manual]);
+
+    await service.reconcile(value as any);
+
+    expect(saved).toHaveLength(1);
+    expect(saved[0]).toMatchObject({ meetingId: eligible.id, source: 'recurrence' });
+  });
+
+  it('preserves automatic appearances once their Meeting is active or completed', async () => {
+    const activeMeeting = { id: 'active', date: '2026-01-05', beginTime: '19:00', status: 'in_progress' } as Meeting;
+    const completedMeeting = { id: 'completed', date: '2026-02-05', beginTime: '19:00', status: 'completed' } as Meeting;
+    const futureMeeting = { id: 'future', date: '2026-03-05', beginTime: '19:00', status: 'planned' } as Meeting;
+    const appearances = [activeMeeting, completedMeeting].map((meeting) => ({
+      id: `appearance-${meeting.id}`,
+      topicId: topic.id,
+      meetingId: meeting.id,
+      meeting,
+      source: 'recurrence',
+      noteEditedAt: null,
+    } as MeetingTopic));
+    const { value, saved } = manager([activeMeeting, completedMeeting, futureMeeting], appearances);
+
+    await service.reconcile(value as any);
+
+    expect(value.remove).not.toHaveBeenCalled();
+    expect(saved).toHaveLength(1);
+    expect(saved[0]).toMatchObject({ meetingId: futureMeeting.id });
+  });
+
+  it('locks recurring Topics in stable order before reconciling them', async () => {
+    const meeting = { id: 'meeting', date: '2026-01-05', beginTime: '19:00', status: 'planned' } as Meeting;
+    const { value } = manager([meeting], []);
+
+    await service.reconcile(value as any);
+
+    expect(value.find).toHaveBeenCalledWith(Topic, {
+      where: { type: 'recurring' },
+      order: { id: 'ASC' },
+      lock: { mode: 'pessimistic_write' },
+    });
+    expect(value.find).toHaveBeenCalledWith(Meeting, {
+      order: { date: 'ASC', beginTime: 'ASC', id: 'ASC' },
+    });
+  });
+
   it('removes untouched future automatic appearances when a Recurring Topic is closed', async () => {
     const meeting = { id: 'meeting', date: '2026-01-05', beginTime: '19:00', status: 'planned' } as Meeting;
     const appearance = {

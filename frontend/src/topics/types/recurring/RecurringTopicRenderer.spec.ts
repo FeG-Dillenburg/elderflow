@@ -44,4 +44,36 @@ describe("Recurring Topic renderers", () => {
     expect(wrapper.findComponent({ name: "PersonTopicNote" }).exists()).toBe(true);
     expect(wrapper.text()).not.toContain("Recent updates");
   });
+
+  it("passes recurring appearance autosave through and makes completed content read-only", async () => {
+    const saveNote = vi.fn().mockResolvedValue({ agendaNote: "Saved note" });
+    const editable = mount(RecurringTopicAgenda, {
+      shallow: true,
+      props: {
+        item: { topic, topicId: topic.id, agendaNote: "Draft" } as any,
+        canEdit: true,
+        saveNote,
+      },
+      global: { stubs: { RouterLink: { template: "<a><slot /></a>" } } },
+    });
+    const note = editable.findComponent({ name: "PersonTopicNote" });
+
+    await note.props("save")("Saved note");
+
+    expect(saveNote).toHaveBeenCalledWith("Saved note");
+    expect(note.props("readOnly")).toBe(false);
+
+    const completed = mount(RecurringTopicAgenda, {
+      shallow: true,
+      props: {
+        item: { topic, topicId: topic.id, agendaNote: "Final" } as any,
+        canEdit: false,
+        saveNote,
+      },
+      global: { stubs: { RouterLink: { template: "<a><slot /></a>" } } },
+    });
+
+    expect(completed.findComponent({ name: "PersonTopicNote" }).props("readOnly"))
+      .toBe(true);
+  });
 });
