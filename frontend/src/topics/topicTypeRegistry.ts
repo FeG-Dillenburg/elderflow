@@ -3,6 +3,7 @@ import { canonicalTopicTypes, resolveTopicType, type TopicType } from "./topicTy
 import { genericTopicRenderers } from "./types/generic";
 import { personTopicRenderers } from "./types/person";
 import { newMembershipTopicRenderers } from "./types/new-membership";
+import { recurringTopicRenderers } from "./types/recurring";
 
 export { canonicalTopicTypes, resolveTopicType } from "./topicTypes";
 
@@ -40,10 +41,10 @@ export const topicTypeRegistry: Record<TopicType, TopicTypeRegistration> = {
     renderers: newMembershipTopicRenderers,
   },
   recurring: {
-    creationEnabled: false,
+    creationEnabled: true,
     agendaPresentation: "standard",
     usesPlannedDuration: true,
-    renderers: genericTopicRenderers,
+    renderers: recurringTopicRenderers,
   },
 };
 

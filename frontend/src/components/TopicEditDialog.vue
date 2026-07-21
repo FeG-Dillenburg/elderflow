@@ -51,6 +51,9 @@ const form = reactive({
   godparents: null as string | null,
   defaultSectionId: null as string | null,
   defaultPosition: null as number | null,
+  recurrenceFirstDueDate: null as string | null,
+  recurrenceInterval: null as number | null,
+  recurrenceUnit: null as "weeks" | "months" | null,
 });
 const editableTopicTypes = computed(() =>
   [...new Set([props.topic.type, ...creatableTopicTypes()])],
@@ -79,6 +82,9 @@ watch(
       godparents: topic.godparents,
       defaultSectionId: topic.defaultSectionId,
       defaultPosition: topic.defaultPosition,
+      recurrenceFirstDueDate: topic.recurrenceFirstDueDate ?? null,
+      recurrenceInterval: topic.recurrenceInterval ?? null,
+      recurrenceUnit: topic.recurrenceUnit ?? null,
     }),
   { immediate: true },
 );
@@ -172,7 +178,7 @@ function submitForm(): void {
             <template #option="{ option }">{{ formatUser(option) }}</template>
           </Select>
         </label>
-        <label>
+        <label v-if="form.type !== 'recurring'">
           <span>{{ t("topicEdit.followUpDate") }}</span>
           <DatePicker
             v-model="form.followUpDate"
@@ -189,6 +195,7 @@ function submitForm(): void {
           option-label="name"
           option-value="id"
           show-clear
+          :required="form.type === 'recurring'"
         />
       </label>
     </form>

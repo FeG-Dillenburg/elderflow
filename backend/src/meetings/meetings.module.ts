@@ -11,9 +11,14 @@ import { MeetingsController } from './meetings.controller';
 import { MeetingsService } from './meetings.service';
 import { MeetingSnapshotRegistry } from './meeting-snapshot-contributor';
 import { NewMembershipSnapshotContributor } from '../topics/new-membership-snapshot.contributor';
+import { RecurrenceModule } from '../recurrence/recurrence.module';
+import { SkippedRecurrence } from '../recurrence/skipped-recurrence.entity';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Meeting, MeetingUser, MeetingTopic, Topic, TopicUpdate, Task, AgendaSection])],
+  imports: [
+    TypeOrmModule.forFeature([Meeting, MeetingUser, MeetingTopic, Topic, TopicUpdate, Task, AgendaSection, SkippedRecurrence]),
+    RecurrenceModule,
+  ],
   controllers: [MeetingsController],
   providers: [MeetingSnapshotRegistry, NewMembershipSnapshotContributor, MeetingsService],
   exports: [MeetingSnapshotRegistry, MeetingsService],

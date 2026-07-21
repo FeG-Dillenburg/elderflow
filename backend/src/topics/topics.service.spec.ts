@@ -6,7 +6,8 @@ import { Topic } from "./topic.entity";
 import { TopicUpdate } from "./topic-update.entity";
 import { TopicsService } from "./topics.service";
 import { NotFoundException } from "@nestjs/common";
-import { In, LessThanOrEqual } from "typeorm";
+import { In } from "typeorm";
+import { RecurrenceService } from "../recurrence/recurrence.service";
 
 describe("TopicsService", () => {
   const manager = {
@@ -22,6 +23,7 @@ describe("TopicsService", () => {
   };
   const updates = { find: jest.fn(), create: jest.fn(), save: jest.fn() };
   const appearances = { find: jest.fn(), exist: jest.fn() };
+  const recurrence = { reconcile: jest.fn(), nextDueDate: jest.fn() };
   let service: TopicsService;
 
   beforeEach(async () => {
@@ -32,10 +34,12 @@ describe("TopicsService", () => {
         { provide: getRepositoryToken(Topic), useValue: topics },
         { provide: getRepositoryToken(TopicUpdate), useValue: updates },
         { provide: getRepositoryToken(MeetingTopic), useValue: appearances },
+        { provide: RecurrenceService, useValue: recurrence },
       ],
     }).compile();
     service = module.get(TopicsService);
     appearances.exist.mockResolvedValue(false);
+    recurrence.reconcile.mockResolvedValue(undefined);
     manager.findOne.mockResolvedValue(null);
     manager.getRepository.mockImplementation((entity: unknown) => entity === Topic
       ? topics
@@ -98,7 +102,6 @@ describe("TopicsService", () => {
         type: "generic",
         responsibleUserId: "user",
         defaultSectionId: "section",
-        followUpDate: LessThanOrEqual("2026-07-20"),
       },
       relations: { responsibleUser: true, defaultSection: true },
       order: { updatedAt: "DESC" },
@@ -125,9 +128,7 @@ describe("TopicsService", () => {
     );
     await service.findAll({ dueOn: "2026-07-20" });
     expect(topics.find).toHaveBeenLastCalledWith(
-      expect.objectContaining({
-        where: { followUpDate: LessThanOrEqual("2026-07-20") },
-      }),
+      expect.objectContaining({ where: {} }),
     );
   });
 
@@ -151,7 +152,11 @@ describe("TopicsService", () => {
     updates.find.mockResolvedValue([]);
     appearances.find.mockResolvedValue([]);
     await service.create({ name: "New", type: "generic" } as any);
-    expect(topics.create).toHaveBeenCalledWith({ name: "New", type: "generic", isRecurring: false });
+    expect(topics.create).toHaveBeenCalledWith(expect.objectContaining({
+      name: "New",
+      type: "generic",
+      recurrenceFirstDueDate: null,
+    }));
     await service.update("topic", { name: "New" });
     expect(topics.save).toHaveBeenCalledWith(
       expect.objectContaining({ name: "New" }),
@@ -203,14 +208,13 @@ describe("TopicsService", () => {
       description: null,
       type: "generic",
       status: "open",
-      isRecurring: false,
     } as any;
     const topic = { id: "topic", ...input } as Topic;
     topics.create.mockReturnValue(topic);
     topics.save.mockResolvedValue(topic);
 
     await expect(service.create(input)).resolves.toBe(topic);
-    expect(topics.create).toHaveBeenCalledWith(input);
+    expect(topics.create).toHaveBeenCalledWith(expect.objectContaining(input));
   });
 
   it("rejects unsupported discriminator values with a stable code", async () => {
@@ -269,12 +273,12 @@ describe("TopicsService", () => {
       status: "open",
       responsibleUserId: "00000000-0000-4000-8000-000000000001",
     } as any;
-    const topic = { id: "topic", ...input, isRecurring: false } as Topic;
+    const topic = { id: "topic", ...input } as Topic;
     topics.create.mockReturnValue(topic);
     topics.save.mockResolvedValue(topic);
 
     await expect(service.create(input)).resolves.toBe(topic);
-    expect(topics.create).toHaveBeenCalledWith({ ...input, isRecurring: false });
+    expect(topics.create).toHaveBeenCalledWith(expect.objectContaining(input));
   });
 
   it("rejects a type change after the first Meeting appearance", async () => {
@@ -294,7 +298,9 @@ describe("TopicsService", () => {
     const topic = {
       id: "topic",
       type: "recurring",
-      isRecurring: true,
+      recurrenceFirstDueDate: "2026-01-01",
+      recurrenceInterval: 1,
+      recurrenceUnit: "months",
       name: "Old",
     } as Topic;
     topics.findOne.mockResolvedValue(topic);
@@ -302,7 +308,9 @@ describe("TopicsService", () => {
 
     await expect(service.update("topic", { type: "generic", name: "New" })).resolves.toMatchObject({
       type: "generic",
-      isRecurring: false,
+      recurrenceFirstDueDate: null,
+      recurrenceInterval: null,
+      recurrenceUnit: null,
       name: "New",
     });
     expect(appearances.exist).toHaveBeenCalledWith({ where: { topicId: "topic" } });

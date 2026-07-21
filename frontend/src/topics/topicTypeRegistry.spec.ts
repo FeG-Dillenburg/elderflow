@@ -23,7 +23,12 @@ describe("Topic type registry", () => {
   });
 
   it("exposes each complete implemented capability for creation", () => {
-    expect(creatableTopicTypes()).toEqual(["generic", "person", "new_membership"]);
+    expect(creatableTopicTypes()).toEqual([
+      "generic",
+      "person",
+      "new_membership",
+      "recurring",
+    ]);
   });
 
   it("never falls back to Generic for an unknown server value", () => {

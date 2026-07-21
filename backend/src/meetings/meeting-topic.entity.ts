@@ -36,6 +36,12 @@ export class MeetingTopic {
   @Column({ name: 'agenda_note', type: 'text', nullable: true })
   agendaNote: string | null;
 
+  @Column({ type: 'text', default: 'manual' })
+  source: 'manual' | 'recurrence';
+
+  @Column({ name: 'note_edited_at', type: 'timestamptz', nullable: true })
+  noteEditedAt: Date | null;
+
   @Column({ name: 'planned_duration', type: 'integer', nullable: true })
   plannedDuration: number | null;
 

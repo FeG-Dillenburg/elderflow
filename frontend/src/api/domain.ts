@@ -49,6 +49,10 @@ interface TopicBase {
   defaultSectionId: string | null;
   defaultSection?: AgendaSection | null;
   defaultPosition: number | null;
+  recurrenceFirstDueDate?: string | null;
+  recurrenceInterval?: number | null;
+  recurrenceUnit?: 'weeks' | 'months' | null;
+  nextDueDate?: string | null;
   createdAt: string;
   updatedAt: string;
   updates?: TopicUpdate[];
@@ -79,6 +83,9 @@ interface TopicInputBase {
   responsibleUserId: string | null;
   defaultSectionId: string | null;
   defaultPosition: number | null;
+  recurrenceFirstDueDate?: string | null;
+  recurrenceInterval?: number | null;
+  recurrenceUnit?: 'weeks' | 'months' | null;
 }
 
 type MembershipTopicInputFields = {
@@ -133,6 +140,8 @@ export interface MeetingTopic {
   topic?: Topic;
   position: number;
   agendaNote: string | null;
+  source?: 'manual' | 'recurrence';
+  noteEditedAt?: string | null;
   plannedDuration: number | null;
   status: string;
   topicNameSnapshot?: string | null;
@@ -141,6 +150,14 @@ export interface MeetingTopic {
   membershipStatusSignalSnapshot?: MembershipStatusSignal | null;
   godparentsSnapshot?: string | null;
   meeting?: Meeting;
+}
+
+export interface SkippedRecurrence {
+  id: string;
+  topicId: string;
+  meetingId: string;
+  meeting?: Meeting;
+  createdAt: string;
 }
 
 export interface TopicUpdate {
@@ -232,6 +249,7 @@ export const api = {
   topicUpdates: (id: string) => request<TopicUpdate[]>(`/api/topics/${id}/updates`),
   addTopicUpdate: (id: string, input: { text: string; type: string; meetingId?: string | null }) => request<TopicUpdate>(`/api/topics/${id}/updates`, { method: 'POST', body: JSON.stringify(input) }),
   topicAppearances: (id: string) => request<MeetingTopic[]>(`/api/topics/${id}/appearances`),
+  skippedRecurrences: (id: string) => request<SkippedRecurrence[]>(`/api/topics/${id}/skipped-recurrences`),
   meetings: () => request<Meeting[]>('/api/meetings'),
   meeting: (id: string) => request<Meeting>(`/api/meetings/${id}`),
   createMeeting: (input: MeetingInput) => request<Meeting>('/api/meetings', { method: 'POST', body: JSON.stringify(input) }),
@@ -246,6 +264,7 @@ export const api = {
   updateMeetingTopicFields: (meetingId: string, itemId: string, input: TopicFieldPatch) => request<Topic>(`/api/meetings/${meetingId}/topics/${itemId}/fields`, { method: 'PUT', body: JSON.stringify(input) }),
   updateMeetingTopicNote: (meetingId: string, itemId: string, agendaNote: string | null) => request<MeetingTopic>(`/api/meetings/${meetingId}/topics/${itemId}/note`, { method: 'PUT', body: JSON.stringify({ agendaNote }) }),
   removeMeetingTopic: (meetingId: string, itemId: string) => request<void>(`/api/meetings/${meetingId}/topics/${itemId}`, { method: 'DELETE' }),
+  restoreRecurrence: (meetingId: string, topicId: string) => request<void>(`/api/meetings/${meetingId}/recurrences/${topicId}/restore`, { method: 'POST' }),
   tasks: (filters: Record<string, string | boolean | undefined> = {}) => request<Task[]>(`/api/tasks${query(filters)}`),
   createTask: (input: TaskInput) => request<Task>('/api/tasks', { method: 'POST', body: JSON.stringify(input) }),
   updateTask: (id: string, input: TaskInput) => request<Task>(`/api/tasks/${id}`, { method: 'PUT', body: JSON.stringify(input) }),

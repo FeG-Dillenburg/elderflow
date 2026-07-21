@@ -43,6 +43,9 @@ export class TopicDto {
   @IsOptional() @IsString() @IsNewMembershipField() godparents?: string | null;
   @IsOptional() @IsUUID() defaultSectionId?: string | null;
   @IsOptional() @IsInt() @Min(1) defaultPosition?: number | null;
+  @IsOptional() @IsString() recurrenceFirstDueDate?: string | null;
+  @IsOptional() @IsInt() @Min(1) recurrenceInterval?: number | null;
+  @IsOptional() @IsIn(['weeks', 'months']) recurrenceUnit?: 'weeks' | 'months' | null;
 }
 
 type MembershipFieldNames =

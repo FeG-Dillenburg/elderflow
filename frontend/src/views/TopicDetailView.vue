@@ -22,6 +22,7 @@ import {
   toLocalDate,
   type AgendaSection,
   type MeetingTopic,
+  type SkippedRecurrence,
   type Task,
   type TaskInput,
   type Topic,
@@ -40,6 +41,7 @@ const topic = ref<Topic | null>(null),
   updates = ref<TopicUpdate[]>([]),
   tasks = ref<Task[]>([]),
   appearances = ref<MeetingTopic[]>([]),
+  skippedRecurrences = ref<SkippedRecurrence[]>([]),
   users = ref<User[]>([]),
   sections = ref<AgendaSection[]>([]),
   error = ref(""),
@@ -73,6 +75,9 @@ const load = async () => {
       api.userDirectory(),
       api.sections(),
     ]);
+    skippedRecurrences.value = topic.value?.type === "recurring"
+      ? await api.skippedRecurrences(id)
+      : [];
   } catch (e) {
     error.value = e instanceof Error ? e.message : t("topicDetail.loadFailed");
   }
@@ -105,6 +110,14 @@ const addTask = async () => {
 };
 const safe = (html: string | null | undefined) =>
   DOMPurify.sanitize(html ?? "").replace(/&nbsp;|&#160;|\u00a0/gi, " ");
+const restore = async (skip: SkippedRecurrence) => {
+  try {
+    await api.restoreRecurrence(skip.meetingId, id);
+    await load();
+  } catch (cause) {
+    error.value = cause instanceof Error ? cause.message : t("topicDetail.loadFailed");
+  }
+};
 onMounted(load);
 </script>
 <template>
@@ -260,6 +273,23 @@ onMounted(load);
                 v-html="safe(item.agendaNote)"
               />
             </RouterLink>
+            <div
+              v-for="skip in skippedRecurrences"
+              :key="skip.id"
+              class="appearance skipped"
+            >
+              <RouterLink :to="`/meetings/${skip.meetingId}`">
+                {{ skip.meeting ? meetingLabel(skip.meeting) : t("common.meeting") }}
+              </RouterLink>
+              <Tag :value="t('recurringTopic.skip')" severity="warn" />
+              <Button
+                v-if="canManage && skip.meeting?.status === 'planned'"
+                :label="t('recurringTopic.restore')"
+                size="small"
+                text
+                @click="restore(skip)"
+              />
+            </div>
             <p v-if="!appearances.length" class="empty">
               {{ t("topicDetail.noMeetings") }}
             </p>

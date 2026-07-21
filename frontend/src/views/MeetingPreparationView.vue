@@ -71,6 +71,9 @@ const form = reactive({
   godparents: null,
   defaultSectionId: null as string | null,
   defaultPosition: null,
+  recurrenceFirstDueDate: null as string | null,
+  recurrenceInterval: null as number | null,
+  recurrenceUnit: null as "weeks" | "months" | null,
 });
 
 const initialiseGroups = () => {
@@ -351,7 +354,12 @@ onMounted(load);
                     </div>
                     <Button
                       :disabled="pending"
-                      :aria-label="t('meetingPreparation.remove')"
+                      :aria-label="item.source === 'recurrence'
+                        ? t('recurringTopic.skip')
+                        : t('meetingPreparation.remove')"
+                      :title="item.source === 'recurrence'
+                        ? t('recurringTopic.skip')
+                        : t('meetingPreparation.remove')"
                       icon="pi pi-times"
                       rounded
                       severity="danger"

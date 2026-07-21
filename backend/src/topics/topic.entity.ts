@@ -80,6 +80,17 @@ export class Topic {
   @Column({ name: 'default_position', type: 'integer', nullable: true })
   defaultPosition: number | null;
 
+  @Column({ name: 'recurrence_first_due_date', type: 'date', nullable: true })
+  recurrenceFirstDueDate: string | null;
+
+  @Column({ name: 'recurrence_interval', type: 'integer', nullable: true })
+  recurrenceInterval: number | null;
+
+  @Column({ name: 'recurrence_unit', type: 'text', nullable: true })
+  recurrenceUnit: 'weeks' | 'months' | null;
+
+  nextDueDate?: string | null;
+
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;
 
