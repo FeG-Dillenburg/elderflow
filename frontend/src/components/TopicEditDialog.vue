@@ -164,7 +164,19 @@ function submitForm(): void {
         context="form"
         :model-value="form"
         @change="Object.assign(form, $event)"
-      />
+      >
+        <label v-if="form.type === 'recurring'">
+          <span>{{ t("topicEdit.defaultSection") }}</span>
+          <Select
+            v-model="form.defaultSectionId"
+            :options="sections"
+            option-label="name"
+            option-value="id"
+            show-clear
+            required
+          />
+        </label>
+      </TopicTypeRenderer>
       <div class="row">
         <label>
           <span>{{ t("topicEdit.responsible") }}</span>
@@ -187,7 +199,7 @@ function submitForm(): void {
           />
         </label>
       </div>
-      <label>
+      <label v-if="form.type !== 'recurring'">
         <span>{{ t("topicEdit.defaultSection") }}</span>
         <Select
           v-model="form.defaultSectionId"
@@ -195,7 +207,6 @@ function submitForm(): void {
           option-label="name"
           option-value="id"
           show-clear
-          :required="form.type === 'recurring'"
         />
       </label>
     </form>

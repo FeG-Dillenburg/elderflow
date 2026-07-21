@@ -148,6 +148,31 @@ describe("TopicEditDialog", () => {
     );
   });
 
+  it("passes a recurring Default section into the type-specific form layout", () => {
+    const wrapper = mount(TopicEditDialog, {
+      shallow: true,
+      props: {
+        topic: { ...topic, type: "recurring" },
+        users: [],
+        sections: [],
+        visible: true,
+      },
+      global: {
+        stubs: {
+          ...stubs,
+          Dialog: { template: "<div><slot /></div>" },
+          TopicTypeRenderer: {
+            template: '<div class="topic-type-renderer"><slot /></div>',
+          },
+        },
+      },
+    });
+
+    expect(wrapper.find(".topic-type-renderer").text())
+      .toContain("Default section");
+    expect(wrapper.findAll("#edit-topic > label")).toHaveLength(0);
+  });
+
   it("disables type choices after the Topic has appeared in a Meeting", () => {
     const wrapper = mount(TopicEditDialog, {
       props: {

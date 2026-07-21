@@ -63,6 +63,7 @@ const units = computed(() => [
         </span>
       </label>
     </div>
+    <slot />
     <label>
       <span>{{ t("recurringTopic.defaultPosition") }}</span>
       <InputNumber

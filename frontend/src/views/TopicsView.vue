@@ -246,7 +246,9 @@ onMounted(load);
           v-bind="form.type === 'new_membership' ? { initializeDefaults: true } : {}"
           @change="Object.assign(form, $event)"
         >
-          <label v-if="form.type === 'new_membership'">
+          <label
+            v-if="form.type === 'new_membership' || form.type === 'recurring'"
+          >
             <span>{{ t("topics.defaultSection") }}</span>
             <Select
               v-model="form.defaultSectionId"
@@ -257,8 +259,11 @@ onMounted(load);
             />
           </label>
         </TopicTypeRenderer>
-        <div v-if="form.type !== 'new_membership'" class="row">
-          <label v-if="form.type !== 'recurring'">
+        <div
+          v-if="form.type !== 'new_membership' && form.type !== 'recurring'"
+          class="row"
+        >
+          <label>
             <span>{{ t("topics.followUpDate") }}</span>
             <DatePicker
               v-model="form.followUpDate"
@@ -274,7 +279,6 @@ onMounted(load);
               option-label="name"
               option-value="id"
               show-clear
-              :required="form.type === 'recurring'"
             />
           </label>
         </div>

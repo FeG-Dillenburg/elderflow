@@ -1,4 +1,5 @@
 import { mount } from "@vue/test-utils";
+import { h } from "vue";
 import { describe, expect, it } from "vitest";
 import RecurringTopicFormFields from "./RecurringTopicFormFields.vue";
 
@@ -56,5 +57,27 @@ describe("RecurringTopicFormFields", () => {
       [{ defaultPosition: 4 }],
       [{ recurrenceFirstDueDate: "2026-09-15" }],
     ]);
+  });
+
+  it("places the caller-provided Default section before Default position", () => {
+    const wrapper = mount(RecurringTopicFormFields, {
+      shallow: true,
+      props: {
+        modelValue: {
+          type: "recurring",
+          recurrenceFirstDueDate: "2026-08-01",
+          recurrenceInterval: 3,
+          recurrenceUnit: "months",
+        } as any,
+      },
+      slots: {
+        default: () => h("label", { class: "default-section" }, "Default section"),
+      },
+    });
+    const text = wrapper.text();
+
+    expect(text.indexOf("Default section")).toBeLessThan(
+      text.indexOf("Default position"),
+    );
   });
 });
