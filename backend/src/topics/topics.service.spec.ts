@@ -223,6 +223,20 @@ describe("TopicsService", () => {
     });
   });
 
+  it("rejects an invalid recurrence date with the stable configuration code", async () => {
+    await expect(service.create({
+      name: "Review",
+      type: "recurring",
+      status: "open",
+      defaultSectionId: "00000000-0000-4000-8000-000000000001",
+      recurrenceFirstDueDate: "not-a-date",
+      recurrenceInterval: 1,
+      recurrenceUnit: "months",
+    } as any)).rejects.toMatchObject({
+      response: expect.objectContaining({ code: "RECURRENCE_CONFIGURATION_INVALID" }),
+    });
+  });
+
   it("creates a New membership Topic with the default signal", async () => {
     const input = {
       name: "Alex and Sam",

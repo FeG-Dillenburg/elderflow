@@ -3,6 +3,8 @@ import { localizeApiError, type ApiErrorPayload } from '../i18n/api-errors';
 import { formatDate, translate } from '../i18n';
 import type { TopicType } from '../topics/topicTypes';
 export type { TopicType } from '../topics/topicTypes';
+export type RecurrenceUnit = 'weeks' | 'months';
+export type AgendaAppearanceSource = 'manual' | 'recurrence';
 
 export const membershipStatusSignals = ['new', 'in_progress', 'nearly_finished', 'attention', 'paused'] as const;
 export type MembershipStatusSignal = (typeof membershipStatusSignals)[number];
@@ -49,9 +51,6 @@ interface TopicBase {
   defaultSectionId: string | null;
   defaultSection?: AgendaSection | null;
   defaultPosition: number | null;
-  recurrenceFirstDueDate?: string | null;
-  recurrenceInterval?: number | null;
-  recurrenceUnit?: 'weeks' | 'months' | null;
   nextDueDate?: string | null;
   createdAt: string;
   updatedAt: string;
@@ -64,16 +63,36 @@ type MembershipTopicFields = {
   membershipProcessStatus: string | null;
   membershipStatusSignal: MembershipStatusSignal;
   godparents: string | null;
+  recurrenceFirstDueDate: null;
+  recurrenceInterval: null;
+  recurrenceUnit: null;
 };
 
 type NonMembershipTopicFields = {
-  type: Exclude<TopicType, 'new_membership'>;
+  type: Exclude<TopicType, 'new_membership' | 'recurring'>;
+  membershipProcessStatus: null;
+  membershipStatusSignal: null;
+  godparents: null;
+  recurrenceFirstDueDate: null;
+  recurrenceInterval: null;
+  recurrenceUnit: null;
+};
+
+type RecurringTopicFields = {
+  type: 'recurring';
+  followUpDate: null;
+  defaultSectionId: string;
+  recurrenceFirstDueDate: string;
+  recurrenceInterval: number;
+  recurrenceUnit: RecurrenceUnit;
   membershipProcessStatus: null;
   membershipStatusSignal: null;
   godparents: null;
 };
 
-export type Topic = TopicBase & (MembershipTopicFields | NonMembershipTopicFields);
+export type Topic = TopicBase & (
+  MembershipTopicFields | NonMembershipTopicFields | RecurringTopicFields
+);
 
 interface TopicInputBase {
   name: string;
@@ -83,9 +102,6 @@ interface TopicInputBase {
   responsibleUserId: string | null;
   defaultSectionId: string | null;
   defaultPosition: number | null;
-  recurrenceFirstDueDate?: string | null;
-  recurrenceInterval?: number | null;
-  recurrenceUnit?: 'weeks' | 'months' | null;
 }
 
 type MembershipTopicInputFields = {
@@ -93,17 +109,35 @@ type MembershipTopicInputFields = {
   membershipProcessStatus?: string | null;
   membershipStatusSignal?: MembershipStatusSignal | null;
   godparents?: string | null;
+  recurrenceFirstDueDate?: null;
+  recurrenceInterval?: null;
+  recurrenceUnit?: null;
 };
 
 type NonMembershipTopicInputFields = {
-  type: Exclude<TopicType, 'new_membership'>;
+  type: Exclude<TopicType, 'new_membership' | 'recurring'>;
+  membershipProcessStatus?: null;
+  membershipStatusSignal?: null;
+  godparents?: null;
+  recurrenceFirstDueDate?: null;
+  recurrenceInterval?: null;
+  recurrenceUnit?: null;
+};
+
+type RecurringTopicInputFields = {
+  type: 'recurring';
+  defaultSectionId: string;
+  followUpDate: null;
+  recurrenceFirstDueDate: string;
+  recurrenceInterval: number;
+  recurrenceUnit: RecurrenceUnit;
   membershipProcessStatus?: null;
   membershipStatusSignal?: null;
   godparents?: null;
 };
 
 export type TopicInput = TopicInputBase & (
-  MembershipTopicInputFields | NonMembershipTopicInputFields
+  MembershipTopicInputFields | NonMembershipTopicInputFields | RecurringTopicInputFields
 );
 
 export interface Meeting {
@@ -140,7 +174,7 @@ export interface MeetingTopic {
   topic?: Topic;
   position: number;
   agendaNote: string | null;
-  source?: 'manual' | 'recurrence';
+  source?: AgendaAppearanceSource;
   noteEditedAt?: string | null;
   plannedDuration: number | null;
   status: string;

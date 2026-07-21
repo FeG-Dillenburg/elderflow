@@ -10,7 +10,12 @@ export class RecurringTopics1720000008000 implements MigrationInterface {
         ADD COLUMN "recurrence_interval" integer,
         ADD COLUMN "recurrence_unit" text;
 
-      UPDATE "topics" SET "type" = 'generic' WHERE "type" = 'recurring';
+      DO $$
+      BEGIN
+        IF EXISTS (SELECT 1 FROM "topics" WHERE "type" = 'recurring') THEN
+          RAISE EXCEPTION 'Reset the development database before migrating legacy recurring Topics';
+        END IF;
+      END $$;
 
       ALTER TABLE "topics"
         DROP COLUMN "is_recurring",

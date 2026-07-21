@@ -51,7 +51,6 @@ export class TopicsService {
 
   async create(input: DiscriminatedTopicDto): Promise<Topic> {
     this.assertSupportedType(input.type);
-    this.assertEnabledCreationType(input.type);
     this.assertRecurrenceConfiguration(input.type, input);
     return this.topics.manager.transaction(async (manager) => {
       const topics = manager.getRepository(Topic);
@@ -87,7 +86,6 @@ export class TopicsService {
               'Topic type cannot change after its first Meeting appearance',
             );
           }
-          this.assertEnabledCreationType(input.type);
         }
       }
 
@@ -113,20 +111,11 @@ export class TopicsService {
     }
   }
 
-  private assertEnabledCreationType(type: TopicType): void {
-    if (!TOPIC_TYPES.includes(type)) {
-      throw codedHttpException(
-        HttpStatus.BAD_REQUEST,
-        'TOPIC_TYPE_NOT_ENABLED',
-        'This Topic type is not enabled for creation or conversion',
-      );
-    }
-  }
-
   private assertRecurrenceConfiguration(type: TopicType, input: Partial<Topic>): void {
     if (type !== 'recurring') return;
     if (
       !input.recurrenceFirstDueDate ||
+      !this.isIsoDate(input.recurrenceFirstDueDate) ||
       !input.recurrenceInterval ||
       input.recurrenceInterval < 1 ||
       !['weeks', 'months'].includes(input.recurrenceUnit ?? '') ||
@@ -134,6 +123,12 @@ export class TopicsService {
     ) {
       throw codedHttpException(HttpStatus.BAD_REQUEST, 'RECURRENCE_CONFIGURATION_INVALID', 'Recurring Topic configuration is incomplete');
     }
+  }
+
+  private isIsoDate(value: string): boolean {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+    const [year, month, day] = value.split('-').map(Number);
+    return new Date(Date.UTC(year, month - 1, day)).toISOString().slice(0, 10) === value;
   }
 
   private normalizedRecurrenceState(type: TopicType, input: Partial<Topic>): Pick<

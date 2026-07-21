@@ -78,7 +78,9 @@ export class MeetingsService {
         await manager.save(MeetingTopic, appearances);
       }
       meeting.status = 'completed';
-      return manager.save(Meeting, meeting);
+      const saved = await manager.save(Meeting, meeting);
+      await this.recurrence.reconcile(manager);
+      return saved;
     });
   }
 

@@ -4,10 +4,8 @@ import { AgendaSection } from '../agenda-sections/agenda-section.entity';
 import { codedHttpException } from '../errors/coded-http.exception';
 import { MeetingTopic } from '../meetings/meeting-topic.entity';
 import { Meeting } from '../meetings/meeting.entity';
-import { Topic } from '../topics/topic.entity';
+import { RecurrenceUnit, Topic } from '../topics/topic.entity';
 import { SkippedRecurrence } from './skipped-recurrence.entity';
-
-export type RecurrenceUnit = 'weeks' | 'months';
 
 type RecurrenceConfiguration = Pick<Topic, 'recurrenceFirstDueDate' | 'recurrenceInterval' | 'recurrenceUnit'>;
 
@@ -56,6 +54,9 @@ export class RecurrenceService {
       const skippedMeetingIds = new Set(skips.map(({ meetingId }) => meetingId));
       const movable = appearances.filter((item) =>
         item.source === 'recurrence' && item.noteEditedAt === null && item.meeting?.status === 'planned');
+      const reusableNotes = movable
+        .sort((left, right) => left.meeting!.date.localeCompare(right.meeting!.date))
+        .map((item) => item.agendaNote);
       if (movable.length) await manager.remove(MeetingTopic, movable);
       if (topic.status !== 'open') continue;
       const fixedByMeeting = new Map(
@@ -76,6 +77,20 @@ export class RecurrenceService {
           continue;
         }
         if (meeting.status !== 'planned' || meeting.date < nextDue || skippedMeetingIds.has(meeting.id)) continue;
+        const nextPreservedMeeting = meetings.slice(meetings.indexOf(meeting) + 1)
+          .find((laterMeeting) => fixedByMeeting.has(laterMeeting.id));
+        const dueAfterCurrentMeeting = this.addInterval(
+          meeting.date,
+          topic.recurrenceInterval!,
+          topic.recurrenceUnit!,
+        );
+        if (nextPreservedMeeting && nextPreservedMeeting.date < dueAfterCurrentMeeting) {
+          throw codedHttpException(
+            HttpStatus.CONFLICT,
+            'RECURRENCE_EDITED_APPEARANCE_CONFLICT',
+            'A preserved Recurring Topic appearance conflicts with the calculated schedule',
+          );
+        }
         const sectionId = topic.defaultSectionId;
         if (!sectionId || !(await manager.exists(AgendaSection, { where: { id: sectionId } }))) {
           throw codedHttpException(HttpStatus.BAD_REQUEST, 'RECURRENCE_CONFIGURATION_INVALID', 'Recurring Topic default section is invalid');
@@ -94,7 +109,7 @@ export class RecurrenceService {
           position,
           status: 'planned',
           source: 'recurrence',
-          agendaNote: topic.description ?? '',
+          agendaNote: reusableNotes.shift() ?? topic.description ?? '',
           noteEditedAt: null,
         }));
         nextDue = this.addInterval(meeting.date, topic.recurrenceInterval!, topic.recurrenceUnit!);

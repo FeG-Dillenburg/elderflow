@@ -175,7 +175,13 @@ const topicInput = (item: MeetingTopic, status: string): TopicInput => ({
   responsibleUserId: item.topic!.responsibleUserId,
   defaultSectionId: item.topic!.defaultSectionId,
   defaultPosition: item.topic!.defaultPosition,
-});
+  recurrenceFirstDueDate: item.topic!.recurrenceFirstDueDate,
+  recurrenceInterval: item.topic!.recurrenceInterval,
+  recurrenceUnit: item.topic!.recurrenceUnit,
+  membershipProcessStatus: item.topic!.membershipProcessStatus,
+  membershipStatusSignal: item.topic!.membershipStatusSignal,
+  godparents: item.topic!.godparents,
+} as TopicInput);
 const setTopicStatus = async (item: MeetingTopic, status: string) => {
   await api.updateTopic(item.topicId, topicInput(item, status));
   item.status = status === "done" ? "done" : item.status;

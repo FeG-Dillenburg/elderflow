@@ -49,6 +49,18 @@ const topic = ref<Topic | null>(null),
   taskVisible = ref(false),
   editVisible = ref(false);
 const assigneeOptions = computed(() => assignableUsers(users.value));
+const topicHistory = computed(() => [
+  ...appearances.value.map((item) => ({
+    kind: "appearance" as const,
+    date: item.meeting?.date ?? "",
+    item,
+  })),
+  ...skippedRecurrences.value.map((item) => ({
+    kind: "skip" as const,
+    date: item.meeting?.date ?? "",
+    item,
+  })),
+].sort((left, right) => right.date.localeCompare(left.date)));
 const task = reactive({
   title: "",
   description: "",
@@ -256,41 +268,40 @@ onMounted(load);
             </p>
           </section>
           <section>
-            <h2>{{ t("topicDetail.meetingHistory") }}</h2>
-            <RouterLink
-              v-for="item in appearances"
-              :key="item.id"
-              :to="`/meetings/${item.meetingId}`"
-              class="appearance"
-            >
-              {{
-                item.meeting ? meetingLabel(item.meeting) : t("common.meeting")
-              }}
-              <small>{{ item.section?.name }}</small>
-              <span
-                v-if="item.agendaNote"
-                class="appearance-note"
-                v-html="safe(item.agendaNote)"
-              />
-            </RouterLink>
-            <div
-              v-for="skip in skippedRecurrences"
-              :key="skip.id"
-              class="appearance skipped"
-            >
-              <RouterLink :to="`/meetings/${skip.meetingId}`">
-                {{ skip.meeting ? meetingLabel(skip.meeting) : t("common.meeting") }}
+              <h2>{{ t("topicDetail.topicHistory") }}</h2>
+            <template v-for="entry in topicHistory" :key="`${entry.kind}-${entry.item.id}`">
+              <RouterLink
+                v-if="entry.kind === 'appearance'"
+                :to="`/meetings/${entry.item.meetingId}`"
+                class="appearance"
+              >
+                {{ entry.item.meeting
+                  ? meetingLabel(entry.item.meeting)
+                  : t("common.meeting") }}
+                <small>{{ entry.item.section?.name }}</small>
+                <span
+                  v-if="entry.item.agendaNote"
+                  class="appearance-note"
+                  v-html="safe(entry.item.agendaNote)"
+                />
               </RouterLink>
-              <Tag :value="t('recurringTopic.skip')" severity="warn" />
-              <Button
-                v-if="canManage && skip.meeting?.status === 'planned'"
-                :label="t('recurringTopic.restore')"
-                size="small"
-                text
-                @click="restore(skip)"
-              />
-            </div>
-            <p v-if="!appearances.length" class="empty">
+              <div v-else class="appearance skipped">
+                <RouterLink :to="`/meetings/${entry.item.meetingId}`">
+                  {{ entry.item.meeting
+                    ? meetingLabel(entry.item.meeting)
+                    : t("common.meeting") }}
+                </RouterLink>
+                <Tag :value="t('recurringTopic.skipped')" severity="warn" />
+                <Button
+                  v-if="canManage && entry.item.meeting?.status === 'planned'"
+                  :label="t('recurringTopic.restore')"
+                  size="small"
+                  text
+                  @click="restore(entry.item)"
+                />
+              </div>
+            </template>
+            <p v-if="!topicHistory.length" class="empty">
               {{ t("topicDetail.noMeetings") }}
             </p>
           </section>

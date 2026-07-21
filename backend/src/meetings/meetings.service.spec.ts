@@ -107,6 +107,7 @@ describe("MeetingsService", () => {
     });
     expect(manager.save).toHaveBeenCalledWith(expect.anything(), [appearance]);
     expect(manager.save).toHaveBeenCalledWith(expect.anything(), meeting);
+    expect(recurrence.reconcile).toHaveBeenCalledWith(manager);
   });
 
   it("rejects completion by unrelated users and from any status except in-progress", async () => {
