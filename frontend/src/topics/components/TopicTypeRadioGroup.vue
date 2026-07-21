@@ -8,6 +8,7 @@ import type { TopicType } from "../topicTypes";
 const props = defineProps<{
   id: string;
   types?: readonly TopicType[];
+  disabled?: boolean;
 }>();
 const model = defineModel<TopicType>({ required: true });
 const { t } = useI18n();
@@ -20,7 +21,10 @@ const options = computed(() =>
 </script>
 
 <template>
-  <fieldset class="topic-type-selector">
+  <fieldset
+    class="topic-type-selector"
+    :class="{ disabled: props.disabled }"
+  >
     <legend>{{ t("topics.type") }}</legend>
     <div class="options">
       <label v-for="option in options" :key="option.value">
@@ -29,6 +33,7 @@ const options = computed(() =>
           :input-id="`${props.id}-${option.value}`"
           :name="props.id"
           :value="option.value"
+          :disabled="props.disabled"
         />
         <span>{{ option.label }}</span>
       </label>
@@ -62,5 +67,10 @@ const options = computed(() =>
   align-items: center;
   gap: 0.45rem;
   cursor: pointer;
+}
+
+.topic-type-selector.disabled .options label {
+  cursor: not-allowed;
+  opacity: 0.7;
 }
 </style>

@@ -5,6 +5,7 @@ import {
   ExceptionFilter,
   HttpException,
   HttpStatus,
+  Logger,
 } from '@nestjs/common';
 import { ValidationError } from 'class-validator';
 
@@ -13,6 +14,12 @@ interface ApiErrorPayload {
   code: string;
   message: string;
   params?: Record<string, unknown>;
+}
+
+interface RequestContext {
+  method?: string;
+  originalUrl?: string;
+  url?: string;
 }
 
 const diagnosticMessage = (response: string | object, fallback: string): string => {
@@ -25,9 +32,19 @@ const diagnosticMessage = (response: string | object, fallback: string): string 
 
 @Catch()
 export class ApiErrorFilter implements ExceptionFilter {
+  private readonly logger = new Logger(ApiErrorFilter.name);
+
   catch(exception: unknown, host: ArgumentsHost): void {
-    const response = host.switchToHttp().getResponse();
+    const http = host.switchToHttp();
+    const response = http.getResponse();
     const isHttpException = exception instanceof HttpException;
+    if (!isHttpException) {
+      const request = http.getRequest<RequestContext>();
+      const method = request.method ?? 'UNKNOWN';
+      const url = request.originalUrl ?? request.url ?? 'unknown route';
+      const stack = exception instanceof Error ? exception.stack : String(exception);
+      this.logger.error(`Unhandled exception during ${method} ${url}`, stack);
+    }
     const statusCode = isHttpException ? exception.getStatus() : HttpStatus.INTERNAL_SERVER_ERROR;
     const rawResponse = isHttpException ? exception.getResponse() : 'Internal server error';
     const provided = typeof rawResponse === 'object' ? rawResponse as Partial<ApiErrorPayload> : {};

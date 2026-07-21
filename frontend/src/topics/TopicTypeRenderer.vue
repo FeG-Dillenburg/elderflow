@@ -19,7 +19,9 @@ const renderer = computed<Component | null>(() => {
 </script>
 
 <template>
-  <component :is="renderer" v-if="renderer" v-bind="$attrs" />
+  <component :is="renderer" v-if="renderer" v-bind="$attrs">
+    <slot />
+  </component>
   <Message v-else severity="error">
     {{ t("topicTypes.unknown") }}
   </Message>

@@ -240,9 +240,21 @@ onMounted(load);
           :type="form.type"
           context="form"
           :model-value="form"
+          v-bind="form.type === 'new_membership' ? { initializeDefaults: true } : {}"
           @change="Object.assign(form, $event)"
-        />
-        <div class="row">
+        >
+          <label v-if="form.type === 'new_membership'">
+            <span>{{ t("topics.defaultSection") }}</span>
+            <Select
+              v-model="form.defaultSectionId"
+              :options="sections"
+              option-label="name"
+              option-value="id"
+              show-clear
+            />
+          </label>
+        </TopicTypeRenderer>
+        <div v-if="form.type !== 'new_membership'" class="row">
           <label>
             <span>{{ t("topics.followUpDate") }}</span>
             <DatePicker

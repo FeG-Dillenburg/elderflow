@@ -97,6 +97,8 @@ describe("TopicDetailView", () => {
     expect(wrapper.text()).toContain("7/20/2026");
     expect(wrapper.text()).toContain("Main");
     expect(wrapper.text()).toContain("Appearance-owned context");
+    expect(wrapper.findComponent({ name: "TopicEditDialog" }).props("typeLocked"))
+      .toBe(true);
   });
   it("handles updates and nullable/date task creation", async () => {
     const wrapper = await view();

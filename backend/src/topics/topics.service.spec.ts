@@ -286,7 +286,7 @@ describe("TopicsService", () => {
     });
     expect(topics.save).not.toHaveBeenCalled();
     expect(topics.findOne).toHaveBeenCalledWith(expect.objectContaining({
-      lock: { mode: "pessimistic_write" },
+      lock: { mode: "pessimistic_write", tables: ["topics"] },
     }));
   });
 

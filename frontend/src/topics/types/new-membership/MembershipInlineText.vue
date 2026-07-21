@@ -8,6 +8,8 @@ const props = defineProps<{
   value: string | null;
   label: string;
   multiline?: boolean;
+  hideLabel?: boolean;
+  compact?: boolean;
   save: (value: string | null) => Promise<unknown>;
 }>();
 const { t } = useI18n();
@@ -64,8 +66,12 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <label class="inline-field" :aria-busy="state === 'saving'">
-    <span>{{ label }}</span>
+  <label
+    class="inline-field"
+    :class="{ 'inline-field-compact': compact }"
+    :aria-busy="state === 'saving'"
+  >
+    <span v-if="!hideLabel">{{ label }}</span>
     <Textarea
       v-if="multiline"
       v-model="localValue"
@@ -82,7 +88,7 @@ onBeforeUnmount(() => {
       @input="schedule"
       @blur="save"
     />
-    <small role="status" aria-live="polite">
+    <small v-if="!compact || state !== 'idle'" role="status" aria-live="polite">
       <template v-if="state === 'saving'">{{ t("newMembershipTopic.saving") }}</template>
       <template v-else-if="state === 'saved'">{{ t("newMembershipTopic.saved") }}</template>
       <template v-else-if="state === 'error'">
@@ -114,6 +120,23 @@ small {
   min-height: 1rem;
   color: #68758a;
   font-size: 0.7rem;
+}
+
+.inline-field-compact {
+  display: flex;
+  align-items: stretch;
+  height: 100%;
+}
+
+.inline-field-compact small {
+  position: absolute;
+  top: 100%;
+  right: 0.5rem;
+  z-index: 2;
+  min-height: 0;
+  padding: 0.1rem 0.25rem;
+  border-radius: 0.2rem;
+  background: #ffffff;
 }
 
 button {

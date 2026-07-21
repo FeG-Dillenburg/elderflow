@@ -7,6 +7,7 @@ import { useI18n } from "vue-i18n";
 const props = defineProps<{
   item: MeetingTopic;
   readOnly: boolean;
+  label?: string;
   save: (note: string | null) => Promise<MeetingTopic>;
 }>();
 
@@ -110,7 +111,7 @@ onBeforeUnmount(() => {
         v-model="localNote"
         auto-resize
         rows="1"
-        :aria-label="t('personTopic.noteLabel')"
+        :aria-label="label ?? t('personTopic.noteLabel')"
         :style="{ '--inline-label-indent': inlineLabelIndent }"
         @input="scheduleSave"
         @blur="save"

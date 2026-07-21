@@ -12,10 +12,10 @@ defineProps<{ topic: Topic }>();
       {{ topic.name }}
     </RouterLink>
     <div class="summary">
-      <MembershipSignal :signal="topic.membershipStatusSignal ?? 'new'" />
-      <small v-if="topic.membershipProcessStatus">
-        {{ topic.membershipProcessStatus }}
-      </small>
+      <MembershipSignal
+        :signal="topic.membershipStatusSignal ?? 'new'"
+        :text="topic.membershipProcessStatus"
+      />
     </div>
   </div>
 </template>
@@ -30,14 +30,7 @@ defineProps<{ topic: Topic }>();
 .summary {
   display: flex;
   align-items: center;
-  gap: 0.45rem;
+  min-width: 0;
   margin-top: 0.25rem;
-}
-
-small {
-  overflow: hidden;
-  color: #68758a;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 </style>

@@ -53,7 +53,7 @@ export class TopicsService {
       const topic = await topics.findOne({
         where: { id },
         relations: { responsibleUser: true, defaultSection: true },
-        lock: { mode: 'pessimistic_write' },
+        lock: { mode: 'pessimistic_write', tables: ['topics'] },
       });
       if (!topic) throw codedHttpException(HttpStatus.NOT_FOUND, 'TOPIC_NOT_FOUND', 'Topic not found');
 

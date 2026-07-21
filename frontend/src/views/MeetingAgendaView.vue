@@ -813,7 +813,7 @@ onMounted(load);
 
 .agenda-topic-compact {
   padding: 0.35rem 0;
-  border-width: 0 0 1px;
+  border-width: 0;
   border-radius: 0;
   background: transparent;
 }

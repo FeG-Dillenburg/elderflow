@@ -1,44 +1,48 @@
 <script setup lang="ts">
+import { computed } from "vue";
 import Tag from "primevue/tag";
 import { useI18n } from "vue-i18n";
 import type { MembershipStatusSignal } from "../../../api/domain";
+import {
+  membershipSignalIcons,
+  membershipSignalStyles,
+} from "./membershipStatusPresentation";
 
-defineProps<{ signal: MembershipStatusSignal }>();
+const props = defineProps<{
+  signal: MembershipStatusSignal;
+  text?: string | null;
+}>();
 const { t } = useI18n();
+const signalLabel = computed(() => t(`newMembershipTopic.signals.${props.signal}`));
+const displayText = computed(() => props.text === undefined ? signalLabel.value : props.text ?? "");
+const accessibleLabel = computed(() => {
+  const meaning = t("newMembershipTopic.signalMeaning", { signal: signalLabel.value });
+  return displayText.value && displayText.value !== signalLabel.value
+    ? `${meaning}. ${displayText.value}`
+    : meaning;
+});
 </script>
 
 <template>
   <Tag
     class="membership-signal"
     :data-signal="signal"
-    :value="t(`newMembershipTopic.signals.${signal}`)"
-    :aria-label="t('newMembershipTopic.signalMeaning', { signal: t(`newMembershipTopic.signals.${signal}`) })"
+    :icon="membershipSignalIcons[signal]"
+    :style="membershipSignalStyles[signal]"
+    :value="displayText"
+    :aria-label="accessibleLabel"
   />
 </template>
 
 <style scoped>
-.membership-signal[data-signal="new"] {
-  --p-tag-background: #fee2e2;
-  --p-tag-color: #991b1b;
+.membership-signal {
+  max-width: 100%;
 }
 
-.membership-signal[data-signal="in_progress"] {
-  --p-tag-background: #dbeafe;
-  --p-tag-color: #1e40af;
+.membership-signal :deep(.p-tag-label) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.membership-signal[data-signal="nearly_finished"] {
-  --p-tag-background: #dcfce7;
-  --p-tag-color: #166534;
-}
-
-.membership-signal[data-signal="attention"] {
-  --p-tag-background: #fef9c3;
-  --p-tag-color: #854d0e;
-}
-
-.membership-signal[data-signal="paused"] {
-  --p-tag-background: #ffedd5;
-  --p-tag-color: #9a3412;
-}
 </style>
