@@ -1,6 +1,6 @@
 import { ValidationPipe } from '@nestjs/common';
 import { validationExceptionFactory } from '../../errors/api-error.filter';
-import { TopicDto } from './topic.dto';
+import { TopicDto, UpdateTopicFieldsDto } from './topic.dto';
 
 describe('Person Topic request shape', () => {
   const pipe = new ValidationPipe({
@@ -38,4 +38,27 @@ describe('Person Topic request shape', () => {
       });
     },
   );
+
+  it('accepts the typed New membership request shape', async () => {
+    await expect(pipe.transform({
+      name: 'Alex and Sam',
+      type: 'new_membership',
+      status: 'open',
+      responsibleUserId: null,
+      membershipProcessStatus: 'Introductory visit',
+      membershipStatusSignal: 'in_progress',
+      godparents: 'Taylor and Robin',
+    }, metadata)).resolves.toMatchObject({
+      type: 'new_membership',
+      membershipStatusSignal: 'in_progress',
+    });
+  });
+
+  it('validates a partial inline field write independently', async () => {
+    await expect(pipe.transform({
+      membershipStatusSignal: 'nearly_finished',
+    }, { type: 'body', metatype: UpdateTopicFieldsDto })).resolves.toEqual({
+      membershipStatusSignal: 'nearly_finished',
+    });
+  });
 });

@@ -1,6 +1,7 @@
 import { flushPromises, mount } from "@vue/test-utils";
 import { describe, expect, it, vi } from "vitest";
 import { api } from "../api/domain";
+import TopicTypeRadioGroup from "../topics/components/TopicTypeRadioGroup.vue";
 import TopicEditDialog from "./TopicEditDialog.vue";
 const stubs = {
   Button: true,
@@ -8,6 +9,7 @@ const stubs = {
   DatePicker: true,
   Dialog: true,
   InputText: true,
+  RadioButton: true,
   Select: true,
   RichTextEditor: true,
 };
@@ -24,6 +26,46 @@ const topic: any = {
   defaultPosition: 3,
 };
 describe("TopicEditDialog", () => {
+  it("submits and closes from the dialog footer save button", async () => {
+    vi.spyOn(api, "updateTopic").mockResolvedValue({} as any);
+    const wrapper = mount(TopicEditDialog, {
+      props: {
+        topic: {
+          ...topic,
+          type: "new_membership",
+          membershipProcessStatus: "Dangerous!",
+          membershipStatusSignal: "attention",
+          godparents: "Luke Skywalker",
+        },
+        users: [],
+        sections: [],
+        visible: true,
+      },
+      global: {
+        stubs: {
+          ...stubs,
+          Button: {
+            props: ["label"],
+            emits: ["click"],
+            template: "<button type='button' :data-label='label' @click='$emit(\"click\")'>{{ label }}</button>",
+          },
+          Dialog: {
+            template: "<div><slot /><slot name='footer' /></div>",
+          },
+          TopicTypeRadioGroup: true,
+          TopicTypeRenderer: true,
+        },
+      },
+    });
+
+    await wrapper.get('button[data-label="Save topic"]').trigger("click");
+    await flushPromises();
+
+    expect(api.updateTopic).toHaveBeenCalledOnce();
+    expect(wrapper.emitted("saved")).toHaveLength(1);
+    expect(wrapper.emitted("update:visible")?.[0]).toEqual([false]);
+  });
+
   it("repopulates all fields on prop changes and saves full mapped input", async () => {
     vi.spyOn(api, "updateTopic").mockResolvedValue({} as any);
     const wrapper = mount(TopicEditDialog, {
@@ -59,6 +101,30 @@ describe("TopicEditDialog", () => {
     expect(wrapper.emitted("update:visible")?.[0]).toEqual([false]);
   });
 
+  it("keeps the dialog open and reports a failed save", async () => {
+    vi.spyOn(api, "updateTopic").mockRejectedValue(new Error("Update rejected"));
+    const wrapper = mount(TopicEditDialog, {
+      props: { topic, users: [], sections: [], visible: true },
+      global: {
+        stubs: {
+          ...stubs,
+          Dialog: {
+            template: "<div><slot /><slot name='footer' /></div>",
+          },
+          Message: { template: "<div><slot /></div>" },
+          TopicTypeRadioGroup: true,
+          TopicTypeRenderer: true,
+        },
+      },
+    });
+
+    await expect((wrapper.vm as any).save()).resolves.toBeUndefined();
+
+    expect(wrapper.text()).toContain("Update rejected");
+    expect(wrapper.emitted("saved")).toBeUndefined();
+    expect(wrapper.emitted("update:visible")).toBeUndefined();
+  });
+
   it("edits a Person Topic without changing its discriminator", async () => {
     vi.spyOn(api, "updateTopic").mockResolvedValue({} as any);
     const wrapper = mount(TopicEditDialog, {
@@ -79,6 +145,35 @@ describe("TopicEditDialog", () => {
     expect(api.updateTopic).toHaveBeenCalledWith(
       "topic",
       expect.objectContaining({ type: "person", name: "Alex and Sam" }),
+    );
+  });
+
+  it("disables type choices after the Topic has appeared in a Meeting", () => {
+    const wrapper = mount(TopicEditDialog, {
+      props: {
+        topic,
+        users: [],
+        sections: [],
+        typeLocked: true,
+        visible: true,
+      },
+      global: {
+        stubs: {
+          ...stubs,
+          Dialog: { template: "<div><slot /><slot name='footer' /></div>" },
+          TopicTypeRenderer: true,
+        },
+      },
+    });
+
+    expect(wrapper.findComponent(TopicTypeRadioGroup).props("disabled"))
+      .toBe(true);
+    const radios = wrapper.findAllComponents({ name: "RadioButton" });
+    expect(radios.length).toBeGreaterThan(0);
+    expect(radios.every((radio) => radio.attributes("disabled") === "true"))
+      .toBe(true);
+    expect(wrapper.text()).toContain(
+      "The Topic type cannot be changed after the Topic has appeared in a Meeting.",
     );
   });
 });

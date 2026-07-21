@@ -14,6 +14,7 @@ import TopicTypeRadioGroup from "../topics/components/TopicTypeRadioGroup.vue";
 import TopicTypeBadge from "../topics/components/TopicTypeBadge.vue";
 import { canonicalTopicTypes } from "../topics/topicTypeRegistry";
 import { topicNameTranslationKey } from "../topics/topicTypes";
+import { toTopicInput } from "../topics/types/new-membership/topicInput";
 import {
   api,
   formatUser,
@@ -62,6 +63,9 @@ const empty = () => ({
   status: "open",
   followUpDate: null as Date | null,
   responsibleUserId: null as string | null,
+  membershipProcessStatus: null as string | null,
+  membershipStatusSignal: null as TopicInput["membershipStatusSignal"],
+  godparents: null as string | null,
   defaultSectionId: null as string | null,
   defaultPosition: null as number | null,
 });
@@ -93,10 +97,10 @@ const open = () => {
 const create = async () => {
   saving.value = true;
   try {
-    const input: TopicInput = {
+    const input = toTopicInput({
       ...form,
       followUpDate: toLocalDate(form.followUpDate),
-    };
+    });
     await api.createTopic(input);
     visible.value = false;
     await load();
@@ -236,9 +240,21 @@ onMounted(load);
           :type="form.type"
           context="form"
           :model-value="form"
+          v-bind="form.type === 'new_membership' ? { initializeDefaults: true } : {}"
           @change="Object.assign(form, $event)"
-        />
-        <div class="row">
+        >
+          <label v-if="form.type === 'new_membership'">
+            <span>{{ t("topics.defaultSection") }}</span>
+            <Select
+              v-model="form.defaultSectionId"
+              :options="sections"
+              option-label="name"
+              option-value="id"
+              show-clear
+            />
+          </label>
+        </TopicTypeRenderer>
+        <div v-if="form.type !== 'new_membership'" class="row">
           <label>
             <span>{{ t("topics.followUpDate") }}</span>
             <DatePicker

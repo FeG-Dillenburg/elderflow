@@ -12,6 +12,26 @@ import TopicTypeBadge from "./components/TopicTypeBadge.vue";
 
 describe("TopicTypeRenderer", () => {
   it.each(["form", "preparation", "agenda", "detail", "list"] as const)(
+    "dispatches New membership through its dedicated %s renderer",
+    (context) => {
+      const topic = { id: "topic", name: "Alex", type: "new_membership" } as any;
+      const contextProps = context === "form"
+        ? { modelValue: { type: "new_membership", membershipStatusSignal: "new" } }
+        : context === "agenda"
+          ? { item: { topic }, canEdit: false, users: [], saveField: vi.fn(), saveNote: vi.fn() }
+          : { topic };
+      const wrapper = mount(TopicTypeRenderer, {
+        shallow: true,
+        props: { type: "new_membership", context },
+        attrs: contextProps,
+      });
+      expect(wrapper.html()).toContain(
+        `new-membership-topic-${context === "form" ? "form-fields" : context}-stub`,
+      );
+    },
+  );
+
+  it.each(["form", "preparation", "agenda", "detail", "list"] as const)(
     "dispatches Generic through the %s context",
     (context) => {
       const topic = { id: "topic", name: "Topic", type: "generic" } as any;

@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { computed, reactive, watch } from "vue";
+import { computed, reactive, ref, watch } from "vue";
 import Button from "primevue/button";
 import DatePicker from "primevue/datepicker";
 import Dialog from "primevue/dialog";
 import InputText from "primevue/inputtext";
+import Message from "primevue/message";
 import Select from "primevue/select";
 import TopicTypeRadioGroup from "../topics/components/TopicTypeRadioGroup.vue";
 import {
@@ -21,14 +22,21 @@ import { assignableUsers } from "../auth/roles";
 import { useI18n } from "vue-i18n";
 import { dateInputFormat } from "../i18n";
 import { topicNameTranslationKey } from "../topics/topicTypes";
+import { toTopicInput } from "../topics/types/new-membership/topicInput";
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   topic: Topic;
   users: User[];
   sections: AgendaSection[];
-}>();
+  typeLocked?: boolean;
+}>(), {
+  typeLocked: false,
+});
 const emit = defineEmits<{ saved: [] }>();
 const visible = defineModel<boolean>("visible", { required: true });
+const formElement = ref<HTMLFormElement | null>(null);
+const saving = ref(false);
+const saveError = ref("");
 const responsibleUserOptions = computed(() => assignableUsers(props.users));
 const { t } = useI18n();
 const form = reactive({
@@ -38,6 +46,9 @@ const form = reactive({
   status: "open",
   followUpDate: null as Date | null,
   responsibleUserId: null as string | null,
+  membershipProcessStatus: null as string | null,
+  membershipStatusSignal: null as TopicInput["membershipStatusSignal"],
+  godparents: null as string | null,
   defaultSectionId: null as string | null,
   defaultPosition: null as number | null,
 });
@@ -63,20 +74,42 @@ watch(
         ? new Date(`${topic.followUpDate}T12:00:00`)
         : null,
       responsibleUserId: topic.responsibleUserId,
+      membershipProcessStatus: topic.membershipProcessStatus,
+      membershipStatusSignal: topic.membershipStatusSignal,
+      godparents: topic.godparents,
       defaultSectionId: topic.defaultSectionId,
       defaultPosition: topic.defaultPosition,
     }),
   { immediate: true },
 );
 
+watch(visible, (isVisible) => {
+  if (isVisible) saveError.value = "";
+});
+
 async function save(): Promise<void> {
-  const input: TopicInput = {
-    ...form,
-    followUpDate: toLocalDate(form.followUpDate),
-  };
-  await api.updateTopic(props.topic.id, input);
-  visible.value = false;
-  emit("saved");
+  if (saving.value) return;
+  saving.value = true;
+  saveError.value = "";
+  try {
+    const input = toTopicInput({
+      ...form,
+      followUpDate: toLocalDate(form.followUpDate),
+    });
+    await api.updateTopic(props.topic.id, input);
+    visible.value = false;
+    emit("saved");
+  } catch (error) {
+    saveError.value = error instanceof Error
+      ? error.message
+      : t("topicEdit.saveFailed");
+  } finally {
+    saving.value = false;
+  }
+}
+
+function submitForm(): void {
+  formElement.value?.requestSubmit();
 }
 </script>
 
@@ -87,12 +120,24 @@ async function save(): Promise<void> {
     :header="t('topicEdit.title')"
     :style="{ width: '46rem', maxWidth: 'calc(100vw - 2rem)' }"
   >
-    <form id="edit-topic" class="form" @submit.prevent="save">
+    <Message v-if="saveError" severity="error" role="alert">
+      {{ saveError }}
+    </Message>
+    <form ref="formElement" id="edit-topic" class="form" @submit.prevent="save">
       <TopicTypeRadioGroup
         id="edit-topic-type"
         v-model="form.type"
         :types="editableTopicTypes"
+        :disabled="props.typeLocked"
+        :aria-describedby="props.typeLocked ? 'edit-topic-type-lock-help' : undefined"
       />
+      <small
+        v-if="props.typeLocked"
+        id="edit-topic-type-lock-help"
+        class="field-help"
+      >
+        {{ t("topicEdit.typeLocked") }}
+      </small>
       <div class="row">
         <label>
           <span>{{ t(topicNameTranslationKey(form.type)) }}</span>
@@ -150,11 +195,17 @@ async function save(): Promise<void> {
     <template #footer>
       <Button
         :label="t('common.cancel')"
+        :disabled="saving"
         severity="secondary"
         text
         @click="visible = false"
       />
-      <Button :label="t('topicEdit.save')" type="submit" form="edit-topic" />
+      <Button
+        :label="t('topicEdit.save')"
+        :loading="saving"
+        type="button"
+        @click="submitForm"
+      />
     </template>
   </Dialog>
 </template>
@@ -171,6 +222,10 @@ async function save(): Promise<void> {
 .form label > span {
   font-size: 0.86rem;
   font-weight: 650;
+}
+.field-help {
+  margin-top: -0.5rem;
+  color: var(--p-text-muted-color);
 }
 .form :deep(input),
 .form :deep(.p-select),

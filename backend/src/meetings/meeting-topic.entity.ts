@@ -47,4 +47,13 @@ export class MeetingTopic {
 
   @Column({ name: 'responsible_user_display_name_snapshot', type: 'text', nullable: true })
   responsibleUserDisplayNameSnapshot: string | null;
+
+  @Column({ name: 'membership_process_status_snapshot', type: 'text', nullable: true })
+  membershipProcessStatusSnapshot: string | null;
+
+  @Column({ name: 'membership_status_signal_snapshot', type: 'text', nullable: true })
+  membershipStatusSignalSnapshot: string | null;
+
+  @Column({ name: 'godparents_snapshot', type: 'text', nullable: true })
+  godparentsSnapshot: string | null;
 }

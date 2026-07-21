@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { api, type AuthUser } from "../api/domain";
 import { auth } from "../auth/auth";
 import MeetingAgendaView from "./MeetingAgendaView.vue";
-import { saveMeetingTopicNote } from "../topics/meetingTopicNote";
+import { saveMeetingTopicNote } from "../topics/meetingTopicEdits";
 
 vi.mock("vue-router", () => ({
   RouterLink: { template: "<a><slot /></a>" },

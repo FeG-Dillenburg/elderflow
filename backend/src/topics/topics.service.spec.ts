@@ -219,9 +219,45 @@ describe("TopicsService", () => {
     });
   });
 
-  it("does not allow specialized type creation before its capability is enabled", async () => {
-    await expect(service.create({ type: "new_membership" } as any)).rejects.toMatchObject({
-      response: expect.objectContaining({ code: "TOPIC_TYPE_NOT_ENABLED" }),
+  it("creates a New membership Topic with the default signal", async () => {
+    const input = {
+      name: "Alex and Sam",
+      type: "new_membership",
+      status: "open",
+      membershipProcessStatus: "Introductory visit",
+      godparents: "Taylor and Robin",
+    } as any;
+    topics.create.mockImplementation((value: Topic) => value);
+    topics.save.mockImplementation(async (value: Topic) => value);
+
+    await expect(service.create(input)).resolves.toMatchObject({
+      membershipStatusSignal: "new",
+    });
+    expect(topics.create).toHaveBeenCalledWith(expect.objectContaining({
+      type: "new_membership",
+      membershipStatusSignal: "new",
+    }));
+  });
+
+  it("rejects membership fields on another Topic type with a stable code", async () => {
+    await expect(service.create({
+      name: "Budget",
+      type: "generic",
+      status: "open",
+      membershipStatusSignal: "new",
+    } as any)).rejects.toMatchObject({
+      response: expect.objectContaining({ code: "MEMBERSHIP_FIELDS_PROHIBITED" }),
+    });
+  });
+
+  it("rejects an invalid New membership signal with a stable code", async () => {
+    await expect(service.create({
+      name: "Alex",
+      type: "new_membership",
+      status: "open",
+      membershipStatusSignal: "purple",
+    } as any)).rejects.toMatchObject({
+      response: expect.objectContaining({ code: "MEMBERSHIP_SIGNAL_INVALID" }),
     });
   });
 
@@ -250,7 +286,7 @@ describe("TopicsService", () => {
     });
     expect(topics.save).not.toHaveBeenCalled();
     expect(topics.findOne).toHaveBeenCalledWith(expect.objectContaining({
-      lock: { mode: "pessimistic_write" },
+      lock: { mode: "pessimistic_write", tables: ["topics"] },
     }));
   });
 
@@ -271,5 +307,23 @@ describe("TopicsService", () => {
     });
     expect(appearances.exist).toHaveBeenCalledWith({ where: { topicId: "topic" } });
     expect(topics.save).toHaveBeenCalledTimes(1);
+  });
+
+  it("clears New membership fields when a pre-history Topic changes type", async () => {
+    topics.findOne.mockResolvedValue({
+      id: "topic",
+      type: "new_membership",
+      membershipProcessStatus: "Visit booked",
+      membershipStatusSignal: "in_progress",
+      godparents: "Taylor",
+    } as Topic);
+    topics.save.mockImplementation(async (value: Topic) => value);
+
+    await expect(service.update("topic", { type: "generic" })).resolves.toMatchObject({
+      type: "generic",
+      membershipProcessStatus: null,
+      membershipStatusSignal: null,
+      godparents: null,
+    });
   });
 });

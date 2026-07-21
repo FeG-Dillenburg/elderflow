@@ -15,7 +15,7 @@ import {
   topicAgendaClass,
   topicUsesPlannedDuration,
 } from "../topics/topicTypeRegistry";
-import { saveMeetingTopicNote } from "../topics/meetingTopicNote";
+import { saveMeetingTopicField, saveMeetingTopicNote } from "../topics/meetingTopicEdits";
 import { auth } from "../auth/auth";
 import { assignableUsers } from "../auth/roles";
 import { buildNumberedAgenda } from "../utils/agenda";
@@ -383,6 +383,9 @@ onMounted(load);
                 :item="item"
                 :number="`${t('meetingAgenda.agendaNumber')} ${sectionIndex + 1}.${itemIndex + 1}`"
                 :can-edit="canEdit"
+                :completed="isCompleted"
+                :users="users"
+                :save-field="saveMeetingTopicField(id, item)"
                 :recent-updates="recent(item)"
                 :update-editor-open="Boolean(openEditors[item.id])"
                 :update-text="updateEditors[item.id] ?? ''"
@@ -810,7 +813,7 @@ onMounted(load);
 
 .agenda-topic-compact {
   padding: 0.35rem 0;
-  border-width: 0 0 1px;
+  border-width: 0;
   border-radius: 0;
   background: transparent;
 }

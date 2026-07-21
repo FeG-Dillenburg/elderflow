@@ -8,6 +8,7 @@ import { Topic } from '../topics/topic.entity';
 import { Permission } from '../auth/permissions';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { User } from '../users/user.entity';
+import { UpdateTopicFieldsDto } from '../topics/dto/topic.dto';
 
 @Controller('api/meetings')
 @Permission('meetings')
@@ -27,6 +28,11 @@ export class MeetingsController {
   @Post(':id/topics') addTopic(@Param('id', ParseUUIDPipe) id: string, @Body() input: MeetingTopicDto): Promise<MeetingTopic> { return this.service.addTopic(id, input); }
   @Put(':id/topics/order') reorderTopics(@Param('id', ParseUUIDPipe) id: string, @Body() input: ReorderMeetingTopicsDto): Promise<MeetingTopic[]> { return this.service.reorderTopics(id, input.items); }
   @Put(':id/topics/:itemId') updateTopic(@Param('id', ParseUUIDPipe) id: string, @Param('itemId', ParseUUIDPipe) itemId: string, @Body() input: UpdateMeetingTopicDto): Promise<MeetingTopic> { return this.service.updateTopic(id, itemId, input); }
+  @Put(':id/topics/:itemId/fields') updateTopicFields(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('itemId', ParseUUIDPipe) itemId: string,
+    @Body() input: UpdateTopicFieldsDto,
+  ): Promise<Topic> { return this.service.updateTopicFields(id, itemId, input); }
   @Put(':id/topics/:itemId/note') updateTopicNote(
     @Param('id', ParseUUIDPipe) id: string,
     @Param('itemId', ParseUUIDPipe) itemId: string,

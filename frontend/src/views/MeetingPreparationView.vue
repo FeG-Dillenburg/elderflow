@@ -27,8 +27,9 @@ import {
 import { formatDate } from "../i18n";
 import { topicNameTranslationKey } from "../topics/topicTypes";
 import { assignableUsers } from "../auth/roles";
-import { saveMeetingTopicNote } from "../topics/meetingTopicNote";
+import { saveMeetingTopicField, saveMeetingTopicNote } from "../topics/meetingTopicEdits";
 import { topicUsesPlannedDuration } from "../topics/topicTypeRegistry";
+import { toTopicInput } from "../topics/types/new-membership/topicInput";
 
 interface AgendaGroup {
   section: AgendaSection;
@@ -65,6 +66,9 @@ const form = reactive({
   status: "open",
   followUpDate: null,
   responsibleUserId: null,
+  membershipProcessStatus: null,
+  membershipStatusSignal: null,
+  godparents: null,
   defaultSectionId: null as string | null,
   defaultPosition: null,
 });
@@ -238,7 +242,9 @@ const sectionDuration = (items: MeetingTopic[]) =>
 
 const createAndAdd = async () => {
   await withReload(async () => {
-    const topic = await api.createTopic(form as TopicInput);
+    const topic = await api.createTopic(toTopicInput({
+      ...form,
+    }));
     const sectionId = form.defaultSectionId || sections.value[0]?.id;
     if (sectionId)
       await api.addMeetingTopic(id, { topicId: topic.id, sectionId });
@@ -313,6 +319,8 @@ onMounted(load);
                       :topic="item.topic"
                       :item="item"
                       :read-only="readOnly"
+                      :users="responsibleUserOptions"
+                      :save-field="saveMeetingTopicField(id, item)"
                       :save-note="saveMeetingTopicNote(id, item)"
                     />
                     <small>
@@ -477,6 +485,7 @@ onMounted(load);
           :type="form.type"
           context="form"
           :model-value="form"
+          v-bind="form.type === 'new_membership' ? { initializeDefaults: true } : {}"
           @change="Object.assign(form, $event)"
         />
       </form>

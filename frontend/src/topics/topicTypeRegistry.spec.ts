@@ -22,8 +22,8 @@ describe("Topic type registry", () => {
     }
   });
 
-  it("exposes Generic and the complete Person capability for creation", () => {
-    expect(creatableTopicTypes()).toEqual(["generic", "person"]);
+  it("exposes each complete implemented capability for creation", () => {
+    expect(creatableTopicTypes()).toEqual(["generic", "person", "new_membership"]);
   });
 
   it("never falls back to Generic for an unknown server value", () => {
@@ -39,10 +39,15 @@ describe("Topic type registry", () => {
       "agenda-topic",
       "agenda-topic-standard",
     ]);
+    expect(topicAgendaClass("new_membership")).toEqual([
+      "agenda-topic",
+      "agenda-topic-compact",
+    ]);
   });
 
-  it("disables planned duration only for Person Topics", () => {
+  it("disables planned duration for compact type-specific appearances", () => {
     expect(topicUsesPlannedDuration("person")).toBe(false);
+    expect(topicUsesPlannedDuration("new_membership")).toBe(false);
     expect(topicUsesPlannedDuration("generic")).toBe(true);
   });
 });

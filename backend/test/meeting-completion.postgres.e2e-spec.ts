@@ -170,7 +170,6 @@ describeWithPostgres('Meeting completion with PostgreSQL (integration)', () => {
     const mutation = service.updateTopic(meeting.id, appearance.id, {
       sectionId: appearance.sectionId,
       position: appearance.position,
-      agendaNote: 'late mutation',
       plannedDuration: appearance.plannedDuration,
       status: appearance.status,
     });

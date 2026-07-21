@@ -9,11 +9,12 @@ const stubs = {
   Column: true,
   DataTable: true,
   DatePicker: true,
-  Dialog: true,
+  Dialog: { template: "<div><slot /><slot name=\"footer\" /></div>" },
   InputText: true,
   Message: true,
   Select: true,
   Tag: true,
+  TopicTypeRenderer: { template: '<div class="topic-type-renderer"><slot /></div>' },
   RichTextEditor: true,
 };
 describe("TopicsView", () => {
@@ -65,6 +66,18 @@ describe("TopicsView", () => {
       }),
     );
     expect(vm.visible).toBe(false);
+  });
+  it("moves Default section into New membership fields and omits follow-up date", async () => {
+    const wrapper = await view();
+    const form = wrapper.find("#topic-form");
+
+    expect(form.text()).toContain("Follow-up date");
+
+    (wrapper.vm as any).form.type = "new_membership";
+    await wrapper.vm.$nextTick();
+
+    expect(form.text()).not.toContain("Follow-up date");
+    expect(form.find(".topic-type-renderer").text()).toContain("Default section");
   });
   it("restores loading/saving flags and records errors", async () => {
     vi.spyOn(api, "topics").mockRejectedValueOnce(new Error("Load failed"));

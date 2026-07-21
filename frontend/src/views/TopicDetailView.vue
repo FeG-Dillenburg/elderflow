@@ -272,6 +272,7 @@ onMounted(load);
       v-model:visible="editVisible"
       :sections="sections"
       :topic="topic"
+      :type-locked="appearances.length > 0"
       :users="users"
       @saved="load"
     />

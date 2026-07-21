@@ -19,6 +19,16 @@ export const TOPIC_TYPES = [
 
 export type TopicType = (typeof TOPIC_TYPES)[number];
 
+export const MEMBERSHIP_STATUS_SIGNALS = [
+  'new',
+  'in_progress',
+  'nearly_finished',
+  'attention',
+  'paused',
+] as const;
+
+export type MembershipStatusSignal = (typeof MEMBERSHIP_STATUS_SIGNALS)[number];
+
 export const TOPIC_STATUSES = ['open', 'done', 'deferred', 'archived'] as const;
 
 @Entity({ name: 'topics' })
@@ -43,6 +53,15 @@ export class Topic {
 
   @Column({ name: 'responsible_user_id', type: 'uuid', nullable: true })
   responsibleUserId: string | null;
+
+  @Column({ name: 'membership_process_status', type: 'text', nullable: true })
+  membershipProcessStatus: string | null;
+
+  @Column({ name: 'membership_status_signal', type: 'text', nullable: true })
+  membershipStatusSignal: MembershipStatusSignal | null;
+
+  @Column({ type: 'text', nullable: true })
+  godparents: string | null;
 
   @ManyToOne(() => User, { nullable: true, onDelete: 'SET NULL' })
   @JoinColumn({ name: 'responsible_user_id' })

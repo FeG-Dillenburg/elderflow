@@ -2,6 +2,7 @@ import type { Component } from "vue";
 import { canonicalTopicTypes, resolveTopicType, type TopicType } from "./topicTypes";
 import { genericTopicRenderers } from "./types/generic";
 import { personTopicRenderers } from "./types/person";
+import { newMembershipTopicRenderers } from "./types/new-membership";
 
 export { canonicalTopicTypes, resolveTopicType } from "./topicTypes";
 
@@ -33,10 +34,10 @@ export const topicTypeRegistry: Record<TopicType, TopicTypeRegistration> = {
     renderers: personTopicRenderers,
   },
   new_membership: {
-    creationEnabled: false,
-    agendaPresentation: "standard",
-    usesPlannedDuration: true,
-    renderers: genericTopicRenderers,
+    creationEnabled: true,
+    agendaPresentation: "compact",
+    usesPlannedDuration: false,
+    renderers: newMembershipTopicRenderers,
   },
   recurring: {
     creationEnabled: false,

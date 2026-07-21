@@ -18,7 +18,7 @@ export const topicTypeTranslationKey = (value: string): string => {
 const topicNameTranslationKeys: Record<TopicType, string> = {
   generic: "common.name",
   person: "personTopic.nameLabel",
-  new_membership: "common.name",
+  new_membership: "newMembershipTopic.nameLabel",
   recurring: "common.name",
 };
 
