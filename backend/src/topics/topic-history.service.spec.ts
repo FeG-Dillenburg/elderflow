@@ -126,6 +126,57 @@ describe('TopicHistoryService', () => {
     }]);
   });
 
+  it('preserves empty completed snapshots after live values are added', async () => {
+    topics.findOne.mockResolvedValue({
+      id: 'topic',
+      type: 'new_membership',
+      name: 'Live name',
+      membershipProcessStatus: 'Added later',
+      membershipStatusSignal: 'attention',
+      godparents: 'Added later',
+      responsibleUser: { firstName: 'Later', lastName: 'Owner' },
+    });
+    appearances.find.mockResolvedValue([{
+      id: 'appearance',
+      meetingId: 'meeting',
+      meeting: { id: 'meeting', date: '2026-07-15', beginTime: '20:00:00', status: 'completed', title: null },
+      topicNameSnapshot: 'Recorded name',
+      responsibleUserDisplayNameSnapshot: null,
+      membershipProcessStatusSnapshot: null,
+      membershipStatusSignalSnapshot: 'new',
+      godparentsSnapshot: null,
+    }]);
+
+    await expect(service.getHistory('topic')).resolves.toMatchObject([{
+      topic: {
+        name: 'Recorded name',
+        responsibleUserDisplayName: null,
+        membershipProcessStatus: null,
+        membershipStatusSignal: 'new',
+        godparents: null,
+      },
+    }]);
+  });
+
+  it('keeps linked Minutes in a stable fallback group when the appearance is missing', async () => {
+    updates.find.mockResolvedValue([{
+      id: 'minute',
+      meetingId: 'meeting',
+      date: new Date('2026-07-15T20:10:00Z'),
+      text: 'Preserved minutes',
+      meeting: { id: 'meeting', date: '2026-07-15', beginTime: '20:00:00', status: 'completed', title: 'Council' },
+      createdBy: null,
+    }]);
+
+    await expect(service.getHistory('topic')).resolves.toMatchObject([{
+      id: 'meeting-appearance:missing:meeting',
+      kind: 'meeting_appearance',
+      appearanceId: null,
+      note: null,
+      minutes: [{ text: 'Preserved minutes' }],
+    }]);
+  });
+
   it('returns an empty collection and preserves the stable missing-Topic error', async () => {
     await expect(service.getHistory('topic')).resolves.toEqual([]);
     topics.findOne.mockResolvedValue(null);

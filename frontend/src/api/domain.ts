@@ -215,7 +215,7 @@ export interface TopicHistoryMeeting {
 
 export interface TopicHistoryTopicDisplay {
   type: TopicType;
-  name: string;
+  name: string | null;
   responsibleUserDisplayName: string | null;
   membershipProcessStatus: string | null;
   membershipStatusSignal: MembershipStatusSignal | null;
@@ -242,7 +242,7 @@ export type TopicHistoryEntry =
       id: string;
       kind: 'meeting_appearance';
       effectiveAt: string;
-      appearanceId: string;
+      appearanceId: string | null;
       meeting: TopicHistoryMeeting;
       section: Pick<AgendaSection, 'id' | 'name'> | null;
       topic: TopicHistoryTopicDisplay;

@@ -34,24 +34,9 @@ const { t } = useI18n();
 </template>
 
 <style scoped>
-.history-entry {
-  position: relative;
-  display: grid;
-  grid-template-columns: 2.25rem minmax(0, 1fr);
-  gap: 0.8rem;
-}
-
 .entry-icon {
-  z-index: 1;
-  display: grid;
-  width: 2.25rem;
-  height: 2.25rem;
-  place-items: center;
-  border: 4px solid #f7f9fc;
-  border-radius: 50%;
   background: #fff2d9;
   color: #9a6828;
-  font-size: 0.8rem;
 }
 
 .skip-card {

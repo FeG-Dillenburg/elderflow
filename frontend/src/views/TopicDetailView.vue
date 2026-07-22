@@ -41,6 +41,7 @@ const topic = ref<Topic | null>(null),
   users = ref<User[]>([]),
   sections = ref<AgendaSection[]>([]),
   error = ref(""),
+  historyError = ref(""),
   loading = ref(true),
   updateText = ref(""),
   taskVisible = ref(false),
@@ -56,28 +57,36 @@ const task = reactive({
 const load = async () => {
   loading.value = true;
   error.value = "";
+  historyError.value = "";
   try {
-    [
-      topic.value,
-      history.value,
-      tasks.value,
-      users.value,
-      sections.value,
-    ] = await Promise.all([
-      api.topic(id),
-      api.topicHistory(id),
-      api.tasks({
-        topicId: id,
-        status: "open",
-      }),
-      api.userDirectory(),
-      api.sections(),
-    ]);
-  } catch (e) {
-    error.value = e instanceof Error ? e.message : t("topicDetail.loadFailed");
-  } finally {
+    topic.value = await api.topic(id);
+  } catch {
+    error.value = t("topicDetail.loadFailed");
     loading.value = false;
+    return;
   }
+
+  const [historyResult, tasksResult, usersResult, sectionsResult] = await Promise.allSettled([
+    api.topicHistory(id),
+    api.tasks({
+      topicId: id,
+      status: "open",
+    }),
+    api.userDirectory(),
+    api.sections(),
+  ]);
+  if (historyResult.status === "fulfilled") {
+    history.value = historyResult.value;
+  } else {
+    historyError.value = t("topicHistory.loadFailed");
+  }
+  if (tasksResult.status === "fulfilled") tasks.value = tasksResult.value;
+  if (usersResult.status === "fulfilled") users.value = usersResult.value;
+  if (sectionsResult.status === "fulfilled") sections.value = sectionsResult.value;
+  if ([tasksResult, usersResult, sectionsResult].some((result) => result.status === "rejected")) {
+    error.value = t("topicDetail.loadFailed");
+  }
+  loading.value = false;
 };
 const addUpdate = async () => {
   if (!updateText.value) return;
@@ -163,7 +172,11 @@ onMounted(load);
                 @click="addUpdate"
               />
             </div>
-            <TopicHistoryTimeline :entries="history" :loading="loading" />
+            <TopicHistoryTimeline
+              :entries="history"
+              :error="historyError"
+              :loading="loading"
+            />
           </section>
         </main>
         <aside>

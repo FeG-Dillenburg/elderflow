@@ -113,5 +113,8 @@ describe('TopicHistoryTimeline', () => {
 
     await wrapper.setProps({ loading: false });
     expect(wrapper.text()).toContain('No Topic history has been recorded');
+
+    await wrapper.setProps({ error: 'Unable to load Topic history' });
+    expect(wrapper.get('[role="alert"]').text()).toContain('Unable to load Topic history');
   });
 });

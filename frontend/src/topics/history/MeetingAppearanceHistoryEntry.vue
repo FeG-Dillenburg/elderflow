@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import DOMPurify from "dompurify";
 import Tag from "primevue/tag";
 import { computed } from "vue";
 import { RouterLink } from "vue-router";
@@ -7,12 +6,12 @@ import { useI18n } from "vue-i18n";
 import { formatDate } from "../../i18n";
 import { meetingLabel, type TopicHistoryEntry } from "../../api/domain";
 import MembershipSignal from "../types/new-membership/MembershipSignal.vue";
+import { sanitizeHistoryRichText } from "./sanitizeHistoryRichText";
 
 const props = defineProps<{
   entry: Extract<TopicHistoryEntry, { kind: "meeting_appearance" }>;
 }>();
 const { t } = useI18n();
-const safe = (html: string | null) => DOMPurify.sanitize(html ?? "").replace(/&nbsp;|&#160;|\u00a0/gi, " ");
 const noteLabel = computed(() => props.entry.topic.type === "generic" || props.entry.topic.type === "recurring"
   ? t("topicHistory.meetingContext")
   : t("personTopic.noteLabel"));
@@ -44,7 +43,7 @@ const noteLabel = computed(() => props.entry.topic.type === "generic" || props.e
       <section class="topic-snapshot">
         <div>
           <span>{{ t("topicHistory.topicAtMeeting") }}</span>
-          <strong>{{ entry.topic.name }}</strong>
+          <strong>{{ entry.topic.name || t("common.none") }}</strong>
         </div>
         <div>
           <span>{{ t("topicDetail.responsible") }}</span>
@@ -69,13 +68,13 @@ const noteLabel = computed(() => props.entry.topic.type === "generic" || props.e
 
       <section v-if="entry.note" class="meeting-content">
         <h3>{{ noteLabel }}</h3>
-        <div class="rich-content" v-html="safe(entry.note)" />
+        <div class="rich-content" v-html="sanitizeHistoryRichText(entry.note)" />
       </section>
 
       <section v-if="entry.minutes.length" class="minutes-list">
         <h3>{{ t("topicHistory.minutes") }}</h3>
         <article v-for="minute in entry.minutes" :key="minute.id" class="minute">
-          <div class="rich-content" v-html="safe(minute.text)" />
+          <div class="rich-content" v-html="sanitizeHistoryRichText(minute.text)" />
           <p>
             <time :datetime="minute.effectiveAt">
               {{ formatDate(minute.effectiveAt, { timeStyle: "short" }) }}
@@ -89,24 +88,9 @@ const noteLabel = computed(() => props.entry.topic.type === "generic" || props.e
 </template>
 
 <style scoped>
-.history-entry {
-  position: relative;
-  display: grid;
-  grid-template-columns: 2.25rem minmax(0, 1fr);
-  gap: 0.8rem;
-}
-
 .entry-icon {
-  z-index: 1;
-  display: grid;
-  width: 2.25rem;
-  height: 2.25rem;
-  place-items: center;
-  border: 4px solid #f7f9fc;
-  border-radius: 50%;
   background: #dfe9fb;
   color: #41689f;
-  font-size: 0.8rem;
 }
 
 .meeting-card {

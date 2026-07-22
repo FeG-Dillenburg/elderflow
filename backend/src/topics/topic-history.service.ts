@@ -76,6 +76,13 @@ export class TopicHistoryService {
       meetingUpdates.delete(appearance.meetingId);
     }
 
+    for (const [meetingId, orphanedMinutes] of meetingUpdates) {
+      const meeting = orphanedMinutes.find((update) => update.meeting)?.meeting;
+      if (meeting) {
+        entries.push(this.missingAppearance(topic, meetingId, meeting, orphanedMinutes));
+      }
+    }
+
     for (const skip of skippedRecurrences) {
       if (skip.meeting) entries.push(this.skippedRecurrence(skip));
     }
@@ -103,12 +110,7 @@ export class TopicHistoryService {
     updates: TopicUpdate[],
   ): MeetingAppearanceHistoryEntry & { sortTime: number } {
     const meeting = this.meeting(appearance.meeting!);
-    const minutes = updates.map((update): TopicHistoryMinutesEntry => ({
-      id: update.id,
-      effectiveAt: update.date.toISOString(),
-      text: update.text,
-      createdByDisplayName: this.userDisplayName(update.createdBy),
-    })).sort((left, right) => left.effectiveAt.localeCompare(right.effectiveAt) || left.id.localeCompare(right.id));
+    const minutes = this.minutes(updates);
 
     return {
       id: `meeting-appearance:${appearance.id}`,
@@ -138,30 +140,64 @@ export class TopicHistoryService {
     };
   }
 
-  private topicDisplay(topic: Topic, appearance: MeetingTopic): TopicHistoryTopicDisplay {
-    const completed = appearance.meeting?.status === 'completed';
+  private missingAppearance(
+    topic: Topic,
+    meetingId: string,
+    meetingEntity: NonNullable<TopicUpdate['meeting']>,
+    updates: TopicUpdate[],
+  ): MeetingAppearanceHistoryEntry & { sortTime: number } {
+    const meeting = this.meeting(meetingEntity);
+    return {
+      id: `meeting-appearance:missing:${meetingId}`,
+      kind: 'meeting_appearance',
+      effectiveAt: this.meetingEffectiveAt(meeting),
+      sortTime: this.meetingSortTime(meeting),
+      appearanceId: null,
+      meeting,
+      section: null,
+      topic: this.topicDisplay(topic, undefined, meeting.status === 'completed'),
+      note: null,
+      minutes: this.minutes(updates),
+    };
+  }
+
+  private topicDisplay(
+    topic: Topic,
+    appearance?: MeetingTopic,
+    completedFallback = false,
+  ): TopicHistoryTopicDisplay {
+    const completed = appearance?.meeting?.status === 'completed' || completedFallback;
     return {
       type: topic.type,
-      name: completed ? appearance.topicNameSnapshot ?? topic.name : topic.name,
+      name: completed ? appearance?.topicNameSnapshot ?? null : topic.name,
       responsibleUserDisplayName: completed
-        ? appearance.responsibleUserDisplayNameSnapshot ?? this.userDisplayName(topic.responsibleUser)
+        ? appearance?.responsibleUserDisplayNameSnapshot ?? null
         : this.userDisplayName(topic.responsibleUser),
       membershipProcessStatus: topic.type === 'new_membership'
         ? completed
-          ? appearance.membershipProcessStatusSnapshot ?? topic.membershipProcessStatus
+          ? appearance?.membershipProcessStatusSnapshot ?? null
           : topic.membershipProcessStatus
         : null,
       membershipStatusSignal: topic.type === 'new_membership'
         ? completed
-          ? (appearance.membershipStatusSignalSnapshot as Topic['membershipStatusSignal']) ?? topic.membershipStatusSignal
+          ? (appearance?.membershipStatusSignalSnapshot as Topic['membershipStatusSignal']) ?? null
           : topic.membershipStatusSignal
         : null,
       godparents: topic.type === 'new_membership'
         ? completed
-          ? appearance.godparentsSnapshot ?? topic.godparents
+          ? appearance?.godparentsSnapshot ?? null
           : topic.godparents
         : null,
     };
+  }
+
+  private minutes(updates: TopicUpdate[]): TopicHistoryMinutesEntry[] {
+    return updates.map((update): TopicHistoryMinutesEntry => ({
+      id: update.id,
+      effectiveAt: update.date.toISOString(),
+      text: update.text,
+      createdByDisplayName: this.userDisplayName(update.createdBy),
+    })).sort((left, right) => left.effectiveAt.localeCompare(right.effectiveAt) || left.id.localeCompare(right.id));
   }
 
   private meeting(meeting: NonNullable<MeetingTopic['meeting']>): TopicHistoryMeeting {

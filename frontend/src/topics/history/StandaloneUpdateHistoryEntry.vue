@@ -1,15 +1,14 @@
 <script setup lang="ts">
-import DOMPurify from "dompurify";
 import Tag from "primevue/tag";
 import { useI18n } from "vue-i18n";
 import { formatDate } from "../../i18n";
 import type { TopicHistoryEntry } from "../../api/domain";
+import { sanitizeHistoryRichText } from "./sanitizeHistoryRichText";
 
 defineProps<{
   entry: Extract<TopicHistoryEntry, { kind: "standalone_update" }>;
 }>();
 const { t } = useI18n();
-const safe = (html: string) => DOMPurify.sanitize(html).replace(/&nbsp;|&#160;|\u00a0/gi, " ");
 </script>
 
 <template>
@@ -24,7 +23,7 @@ const safe = (html: string) => DOMPurify.sanitize(html).replace(/&nbsp;|&#160;|\
           {{ formatDate(entry.effectiveAt, { dateStyle: "medium", timeStyle: "short" }) }}
         </time>
       </header>
-      <div class="rich-content" v-html="safe(entry.text)" />
+      <div class="rich-content" v-html="sanitizeHistoryRichText(entry.text)" />
       <p class="entry-byline">
         {{ entry.createdByDisplayName || t("topicHistory.unknownAuthor") }}
       </p>
@@ -33,24 +32,9 @@ const safe = (html: string) => DOMPurify.sanitize(html).replace(/&nbsp;|&#160;|\
 </template>
 
 <style scoped>
-.history-entry {
-  position: relative;
-  display: grid;
-  grid-template-columns: 2.25rem minmax(0, 1fr);
-  gap: 0.8rem;
-}
-
 .entry-icon {
-  z-index: 1;
-  display: grid;
-  width: 2.25rem;
-  height: 2.25rem;
-  place-items: center;
-  border: 4px solid #f7f9fc;
-  border-radius: 50%;
   background: #e9eef8;
   color: #5673a5;
-  font-size: 0.8rem;
 }
 
 .entry-card {

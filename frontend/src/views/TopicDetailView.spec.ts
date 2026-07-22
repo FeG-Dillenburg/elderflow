@@ -204,11 +204,20 @@ describe("TopicDetailView", () => {
   it("reports failed loading", async () => {
     vi.spyOn(api, "topic").mockRejectedValueOnce(new Error("Unavailable"));
     const wrapper = await view();
-    expect((wrapper.vm as any).error).toBe("Unavailable");
+    expect((wrapper.vm as any).error).toBe("Unable to load topic");
   });
   it("uses the topic load fallback for non-Error failures", async () => {
     vi.spyOn(api, "topic").mockRejectedValueOnce("bad");
     const wrapper = await view();
     expect((wrapper.vm as any).error).toBe("Unable to load topic");
+  });
+  it("isolates a history failure behind a localized state", async () => {
+    vi.spyOn(api, "topicHistory").mockRejectedValueOnce(new Error("Database detail"));
+
+    const wrapper = await view();
+
+    expect(wrapper.text()).toContain("Topic");
+    expect(wrapper.text()).toContain("Unable to load Topic history");
+    expect(wrapper.text()).not.toContain("Database detail");
   });
 });

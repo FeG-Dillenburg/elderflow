@@ -9,8 +9,10 @@ import StandaloneUpdateHistoryEntry from "./StandaloneUpdateHistoryEntry.vue";
 withDefaults(defineProps<{
   entries: TopicHistoryEntry[];
   loading?: boolean;
+  error?: string;
 }>(), {
   loading: false,
+  error: "",
 });
 const { t } = useI18n();
 </script>
@@ -19,6 +21,10 @@ const { t } = useI18n();
   <div v-if="loading" class="history-state" role="status">
     <ProgressSpinner stroke-width="5" />
     <span>{{ t("topicHistory.loading") }}</span>
+  </div>
+  <div v-else-if="error" class="history-state history-error" role="alert">
+    <i class="pi pi-exclamation-circle" aria-hidden="true" />
+    <strong>{{ error }}</strong>
   </div>
   <div v-else-if="!entries.length" class="history-state history-empty">
     <i class="pi pi-clock" aria-hidden="true" />
@@ -84,6 +90,11 @@ const { t } = useI18n();
   color: #6680aa;
 }
 
+.history-error i {
+  color: #b42318;
+  font-size: 1.5rem;
+}
+
 .history-empty strong {
   color: #475569;
 }
@@ -93,3 +104,5 @@ const { t } = useI18n();
   font-size: 0.82rem;
 }
 </style>
+
+<style src="./history-entry.css"></style>
