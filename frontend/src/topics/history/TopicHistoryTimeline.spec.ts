@@ -1,0 +1,117 @@
+import { mount } from '@vue/test-utils';
+import { describe, expect, it } from 'vitest';
+import type { TopicHistoryEntry } from '../../api/domain';
+import TopicHistoryTimeline from './TopicHistoryTimeline.vue';
+
+const meeting = {
+  id: 'meeting',
+  title: 'Council',
+  date: '2026-07-15',
+  beginTime: '20:00:00',
+  status: 'completed',
+};
+
+describe('TopicHistoryTimeline', () => {
+  const options = {
+    global: {
+      stubs: {
+        RouterLink: { template: '<a><slot /></a>' },
+      },
+    },
+  };
+
+  it('renders mixed semantic entries in contract order and keeps Meeting contents together', () => {
+    const longNote = `<p>${'Long historical context '.repeat(30)}</p>`;
+    const entries: TopicHistoryEntry[] = [
+      {
+        id: 'update',
+        kind: 'standalone_update',
+        effectiveAt: '2026-07-16T09:00:00Z',
+        updateId: 'update',
+        text: '<p>Standalone progress</p>',
+        createdByDisplayName: 'Ada Lovelace',
+      },
+      {
+        id: 'appearance',
+        kind: 'meeting_appearance',
+        effectiveAt: '2026-07-15T20:00:00',
+        appearanceId: 'appearance',
+        meeting,
+        section: { id: 'section', name: 'People' },
+        topic: {
+          type: 'new_membership',
+          name: 'Recorded family',
+          responsibleUserDisplayName: 'Grace Hopper',
+          membershipProcessStatus: 'Welcome planned',
+          membershipStatusSignal: 'nearly_finished',
+          godparents: 'Alex and Robin',
+        },
+        note: longNote,
+        minutes: [
+          { id: 'first', effectiveAt: '2026-07-15T20:10:00Z', text: '<p>First minute</p>', createdByDisplayName: null },
+          { id: 'second', effectiveAt: '2026-07-15T20:20:00Z', text: '<p>Second minute</p>', createdByDisplayName: 'Ada Lovelace' },
+        ],
+      },
+      {
+        id: 'skip',
+        kind: 'skipped_recurrence',
+        effectiveAt: '2026-07-01T20:00:00',
+        skippedRecurrenceId: 'skip',
+        meeting: { ...meeting, id: 'skipped', title: null, date: '2026-07-01' },
+      },
+    ];
+
+    const wrapper = mount(TopicHistoryTimeline, { props: { entries }, ...options });
+    const text = wrapper.text();
+
+    expect(text.indexOf('Standalone progress')).toBeLessThan(text.indexOf('Council'));
+    expect(text.indexOf('Council')).toBeLessThan(text.indexOf('Skipped recurrence'));
+    expect(text.indexOf('Long historical context')).toBeLessThan(text.indexOf('First minute'));
+    expect(text.indexOf('First minute')).toBeLessThan(text.indexOf('Second minute'));
+    expect(text).toContain('Recorded family');
+    expect(text).toContain('Welcome planned');
+    expect(text).toContain('Alex and Robin');
+    expect(wrapper.find('[aria-label="Membership status: Nearly finished"]').exists()).toBe(true);
+    expect(wrapper.findAll('.history-entry')).toHaveLength(3);
+  });
+
+  it.each([
+    ['generic', 'Meeting context'],
+    ['person', 'Meeting topic note'],
+    ['recurring', 'Meeting context'],
+  ] as const)('renders the %s Meeting appearance with its type-aware note label', (type, label) => {
+    const entries: TopicHistoryEntry[] = [{
+      id: type,
+      kind: 'meeting_appearance',
+      effectiveAt: '2026-07-15T20:00:00',
+      appearanceId: type,
+      meeting,
+      section: null,
+      topic: {
+        type,
+        name: 'Historical topic',
+        responsibleUserDisplayName: null,
+        membershipProcessStatus: null,
+        membershipStatusSignal: null,
+        godparents: null,
+      },
+      note: '<p>One appearance note</p>',
+      minutes: [],
+    }];
+
+    const wrapper = mount(TopicHistoryTimeline, { props: { entries }, ...options });
+
+    expect(wrapper.text()).toContain(label);
+    expect(wrapper.text().match(/One appearance note/g)).toHaveLength(1);
+  });
+
+  it('renders localized loading and empty states', async () => {
+    const wrapper = mount(TopicHistoryTimeline, {
+      props: { entries: [], loading: true },
+    });
+    expect(wrapper.text()).toContain('Loading Topic history');
+
+    await wrapper.setProps({ loading: false });
+    expect(wrapper.text()).toContain('No Topic history has been recorded');
+  });
+});

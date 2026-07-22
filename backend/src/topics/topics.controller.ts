@@ -8,11 +8,16 @@ import { TopicsService } from './topics.service';
 import { MeetingTopic } from '../meetings/meeting-topic.entity';
 import { Permission } from '../auth/permissions';
 import { SkippedRecurrence } from '../recurrence/skipped-recurrence.entity';
+import { TopicHistoryService } from './topic-history.service';
+import { TopicHistoryEntry } from './topic-history';
 
 @Controller('api/topics')
 @Permission('topics')
 export class TopicsController {
-  constructor(private readonly service: TopicsService) {}
+  constructor(
+    private readonly service: TopicsService,
+    private readonly history: TopicHistoryService,
+  ) {}
 
   @Get()
   findAll(
@@ -43,6 +48,11 @@ export class TopicsController {
     @Body() input: TopicUpdateDto,
     @CurrentUser() user: User,
   ): Promise<TopicUpdate> { return this.service.addUpdate(id, input, user); }
+
+  @Get(':id/history')
+  topicHistory(@Param('id', ParseUUIDPipe) id: string): Promise<TopicHistoryEntry[]> {
+    return this.history.getHistory(id);
+  }
 
   @Get(':id/appearances')
   appearances(@Param('id', ParseUUIDPipe) id: string): Promise<MeetingTopic[]> {

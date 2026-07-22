@@ -205,6 +205,58 @@ export interface TopicUpdate {
   createdBy?: User | null;
 }
 
+export interface TopicHistoryMeeting {
+  id: string;
+  title: string | null;
+  date: string;
+  beginTime: string;
+  status: string;
+}
+
+export interface TopicHistoryTopicDisplay {
+  type: TopicType;
+  name: string;
+  responsibleUserDisplayName: string | null;
+  membershipProcessStatus: string | null;
+  membershipStatusSignal: MembershipStatusSignal | null;
+  godparents: string | null;
+}
+
+export interface TopicHistoryMinutesEntry {
+  id: string;
+  effectiveAt: string;
+  text: string;
+  createdByDisplayName: string | null;
+}
+
+export type TopicHistoryEntry =
+  | {
+      id: string;
+      kind: 'standalone_update';
+      effectiveAt: string;
+      updateId: string;
+      text: string;
+      createdByDisplayName: string | null;
+    }
+  | {
+      id: string;
+      kind: 'meeting_appearance';
+      effectiveAt: string;
+      appearanceId: string;
+      meeting: TopicHistoryMeeting;
+      section: Pick<AgendaSection, 'id' | 'name'> | null;
+      topic: TopicHistoryTopicDisplay;
+      note: string | null;
+      minutes: TopicHistoryMinutesEntry[];
+    }
+  | {
+      id: string;
+      kind: 'skipped_recurrence';
+      effectiveAt: string;
+      skippedRecurrenceId: string;
+      meeting: TopicHistoryMeeting;
+    };
+
 export interface Task {
   id: string;
   title: string;
@@ -281,6 +333,7 @@ export const api = {
   createTopic: (input: TopicInput) => request<Topic>('/api/topics', { method: 'POST', body: JSON.stringify(input) }),
   updateTopic: (id: string, input: TopicInput) => request<Topic>(`/api/topics/${id}`, { method: 'PUT', body: JSON.stringify(input) }),
   topicUpdates: (id: string) => request<TopicUpdate[]>(`/api/topics/${id}/updates`),
+  topicHistory: (id: string) => request<TopicHistoryEntry[]>(`/api/topics/${id}/history`),
   addTopicUpdate: (id: string, input: { text: string; type: string; meetingId?: string | null }) => request<TopicUpdate>(`/api/topics/${id}/updates`, { method: 'POST', body: JSON.stringify(input) }),
   topicAppearances: (id: string) => request<MeetingTopic[]>(`/api/topics/${id}/appearances`),
   skippedRecurrences: (id: string) => request<SkippedRecurrence[]>(`/api/topics/${id}/skipped-recurrences`),

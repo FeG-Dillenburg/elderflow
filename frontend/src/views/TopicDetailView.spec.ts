@@ -34,9 +34,10 @@ describe("TopicDetailView", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     vi.spyOn(api, "topic").mockResolvedValue(structuredClone(topic));
+    vi.spyOn(api, "topicHistory").mockResolvedValue([]);
     vi.spyOn(api, "topicUpdates").mockResolvedValue([]);
-    vi.spyOn(api, "tasks").mockResolvedValue([]);
     vi.spyOn(api, "topicAppearances").mockResolvedValue([]);
+    vi.spyOn(api, "tasks").mockResolvedValue([]);
     vi.spyOn(api, "userDirectory").mockResolvedValue([]);
     vi.spyOn(api, "sections").mockResolvedValue([]);
   });
@@ -47,14 +48,15 @@ describe("TopicDetailView", () => {
     await flushPromises();
     return wrapper;
   };
-  it("loads all six resources and sanitizes topic markup", async () => {
+  it("loads the unified history contract and sanitizes topic markup", async () => {
     const wrapper = await view();
-    expect(api.topicUpdates).toHaveBeenCalledWith("topic-1");
+    expect(api.topicHistory).toHaveBeenCalledWith("topic-1");
     expect(api.tasks).toHaveBeenCalledWith({
       topicId: "topic-1",
       status: "open",
     });
-    expect(api.topicAppearances).toHaveBeenCalledWith("topic-1");
+    expect(api.topicUpdates).not.toHaveBeenCalled();
+    expect(api.topicAppearances).not.toHaveBeenCalled();
     expect(wrapper.html()).not.toContain("onerror=");
   });
   it("renders populated updates, task dates, and meeting appearances", async () => {
@@ -65,14 +67,29 @@ describe("TopicDetailView", () => {
       defaultSection: { name: "Main" },
       isRecurring: true,
     });
-    vi.spyOn(api, "topicUpdates").mockResolvedValue([
+    vi.spyOn(api, "topicHistory").mockResolvedValue([
       {
-        id: "update",
-        type: "minute",
-        text: "<p>Minute</p>",
-        date: "2026-07-15T10:00:00Z",
-        createdBy: { firstName: "Ada", lastName: "Lovelace" },
-        meeting: { id: "meeting", title: "Council", date: "2026-07-15" },
+        id: "appearance",
+        kind: "meeting_appearance",
+        effectiveAt: "2026-07-15T20:00:00",
+        appearanceId: "appearance",
+        meeting: { id: "meeting", title: "Council", date: "2026-07-15", beginTime: "20:00:00", status: "completed" },
+        section: { id: "section", name: "Main" },
+        topic: {
+          type: "generic",
+          name: "Topic",
+          responsibleUserDisplayName: "Ada Lovelace",
+          membershipProcessStatus: null,
+          membershipStatusSignal: null,
+          godparents: null,
+        },
+        note: "Appearance-owned context",
+        minutes: [{
+          id: "minute",
+          effectiveAt: "2026-07-15T20:10:00Z",
+          text: "<p>Minute</p>",
+          createdByDisplayName: "Ada Lovelace",
+        }],
       },
     ] as any);
     vi.spyOn(api, "tasks").mockResolvedValue([
@@ -83,15 +100,6 @@ describe("TopicDetailView", () => {
         assignedTo: { firstName: "Ada", lastName: "Lovelace" },
       },
     ] as any);
-    vi.spyOn(api, "topicAppearances").mockResolvedValue([
-      {
-        id: "appearance",
-        meetingId: "meeting",
-        agendaNote: "Appearance-owned context",
-        meeting: { id: "meeting", title: "Council", date: "2026-07-15" },
-        section: { name: "Main" },
-      },
-    ] as any);
     const wrapper = await view();
     expect(wrapper.text()).toContain("Minute");
     expect(wrapper.text()).toContain("7/20/2026");
@@ -100,7 +108,7 @@ describe("TopicDetailView", () => {
     expect(wrapper.findComponent({ name: "TopicEditDialog" }).props("typeLocked"))
       .toBe(true);
   });
-  it("merges every Topic-history entry and orders same-day Meetings by start time", async () => {
+  it("renders every semantic history entry in the backend contract order", async () => {
     vi.spyOn(api, "topic").mockResolvedValue({
       ...topic,
       type: "recurring",
@@ -109,26 +117,41 @@ describe("TopicDetailView", () => {
       recurrenceInterval: 1,
       recurrenceUnit: "months",
     });
-    vi.spyOn(api, "topicUpdates").mockResolvedValue([{
-      id: "update",
-      type: "update",
-      text: "Middle update",
-      date: "2026-07-15T19:30:00",
-    }] as any);
-    vi.spyOn(api, "topicAppearances").mockResolvedValue([{
+    vi.spyOn(api, "topicHistory").mockResolvedValue([{
       id: "appearance",
-      meetingId: "late",
-      agendaNote: "Late appearance",
+      kind: "meeting_appearance",
+      effectiveAt: "2026-07-15T20:00:00",
+      appearanceId: "appearance",
       meeting: {
         id: "late",
         title: "Late meeting",
         date: "2026-07-15",
         beginTime: "20:00:00",
+        status: "completed",
       },
-    }] as any);
-    vi.spyOn(api, "skippedRecurrences").mockResolvedValue([{
+      section: null,
+      topic: {
+        type: "recurring",
+        name: "Topic",
+        responsibleUserDisplayName: null,
+        membershipProcessStatus: null,
+        membershipStatusSignal: null,
+        godparents: null,
+      },
+      note: "Late appearance",
+      minutes: [],
+    }, {
+      id: "update",
+      kind: "standalone_update",
+      effectiveAt: "2026-07-15T19:30:00",
+      updateId: "update",
+      text: "Middle update",
+      createdByDisplayName: null,
+    }, {
       id: "skip",
-      meetingId: "early",
+      kind: "skipped_recurrence",
+      effectiveAt: "2026-07-15T18:00:00",
+      skippedRecurrenceId: "skip",
       meeting: {
         id: "early",
         title: "Early meeting",
@@ -141,23 +164,10 @@ describe("TopicDetailView", () => {
     const wrapper = await view();
     const text = wrapper.text();
 
-    expect(api.skippedRecurrences).toHaveBeenCalledWith("topic-1");
     expect(text.indexOf("Late meeting")).toBeLessThan(text.indexOf("Middle update"));
     expect(text.indexOf("Middle update")).toBeLessThan(text.indexOf("Early meeting"));
-    expect(wrapper.findAll("tag-stub").map((tag) => tag.attributes("value")))
-      .toContain("Skipped recurrence");
+    expect(text).toContain("intentionally left out");
     expect(text.match(/Topic history/g)).toHaveLength(2);
-  });
-
-  it("restores a skipped recurrence and reloads the unified history", async () => {
-    vi.spyOn(api, "restoreRecurrence").mockResolvedValue(undefined);
-    const wrapper = await view();
-    const skip = { meetingId: "meeting" } as any;
-
-    await (wrapper.vm as any).restore(skip);
-
-    expect(api.restoreRecurrence).toHaveBeenCalledWith("meeting", "topic-1");
-    expect(api.topic).toHaveBeenCalledTimes(2);
   });
   it("handles updates and nullable/date task creation", async () => {
     const wrapper = await view();

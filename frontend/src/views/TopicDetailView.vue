@@ -1,32 +1,30 @@
 <script lang="ts" setup>
 import { computed, onMounted, reactive, ref } from "vue";
-import { RouterLink, useRoute } from "vue-router";
-import DOMPurify from "dompurify";
+import { useRoute } from "vue-router";
 import Button from "primevue/button";
 import DatePicker from "primevue/datepicker";
 import Dialog from "primevue/dialog";
 import InputText from "primevue/inputtext";
 import Message from "primevue/message";
+import ProgressSpinner from "primevue/progressspinner";
 import Select from "primevue/select";
 import Tag from "primevue/tag";
 import RichTextEditor from "../components/RichTextEditor.vue";
 import TopicEditDialog from "../components/TopicEditDialog.vue";
 import TopicTypeRenderer from "../topics/TopicTypeRenderer.vue";
+import TopicHistoryTimeline from "../topics/history/TopicHistoryTimeline.vue";
 import { topicTypeTranslationKey } from "../topics/topicTypes";
 import { auth } from "../auth/auth";
 import { assignableUsers } from "../auth/roles";
 import {
   api,
   formatUser,
-  meetingLabel,
   toLocalDate,
   type AgendaSection,
-  type MeetingTopic,
-  type SkippedRecurrence,
   type Task,
   type TaskInput,
   type Topic,
-  type TopicUpdate,
+  type TopicHistoryEntry,
   type User,
 } from "../api/domain";
 import { useI18n } from "vue-i18n";
@@ -38,36 +36,17 @@ const { t } = useI18n();
 const route = useRoute();
 const id = route.params.id as string;
 const topic = ref<Topic | null>(null),
-  updates = ref<TopicUpdate[]>([]),
+  history = ref<TopicHistoryEntry[]>([]),
   tasks = ref<Task[]>([]),
-  appearances = ref<MeetingTopic[]>([]),
-  skippedRecurrences = ref<SkippedRecurrence[]>([]),
   users = ref<User[]>([]),
   sections = ref<AgendaSection[]>([]),
   error = ref(""),
+  loading = ref(true),
   updateText = ref(""),
   taskVisible = ref(false),
   editVisible = ref(false);
 const assigneeOptions = computed(() => assignableUsers(users.value));
-const meetingTimestamp = (item: { date: string; beginTime?: string | null } | undefined) =>
-  item ? new Date(`${item.date}T${item.beginTime ?? "00:00:00"}`).getTime() : 0;
-const topicHistory = computed(() => [
-  ...updates.value.map((item) => ({
-    kind: "update" as const,
-    timestamp: new Date(item.date).getTime(),
-    item,
-  })),
-  ...appearances.value.map((item) => ({
-    kind: "appearance" as const,
-    timestamp: meetingTimestamp(item.meeting),
-    item,
-  })),
-  ...skippedRecurrences.value.map((item) => ({
-    kind: "skip" as const,
-    timestamp: meetingTimestamp(item.meeting),
-    item,
-  })),
-].sort((left, right) => right.timestamp - left.timestamp));
+const hasAppearances = computed(() => history.value.some((entry) => entry.kind === "meeting_appearance"));
 const task = reactive({
   title: "",
   description: "",
@@ -75,30 +54,29 @@ const task = reactive({
   dueDate: null as Date | null,
 });
 const load = async () => {
+  loading.value = true;
+  error.value = "";
   try {
     [
       topic.value,
-      updates.value,
+      history.value,
       tasks.value,
-      appearances.value,
       users.value,
       sections.value,
     ] = await Promise.all([
       api.topic(id),
-      api.topicUpdates(id),
+      api.topicHistory(id),
       api.tasks({
         topicId: id,
         status: "open",
       }),
-      api.topicAppearances(id),
       api.userDirectory(),
       api.sections(),
     ]);
-    skippedRecurrences.value = topic.value?.type === "recurring"
-      ? await api.skippedRecurrences(id)
-      : [];
   } catch (e) {
     error.value = e instanceof Error ? e.message : t("topicDetail.loadFailed");
+  } finally {
+    loading.value = false;
   }
 };
 const addUpdate = async () => {
@@ -127,21 +105,15 @@ const addTask = async () => {
   });
   await load();
 };
-const safe = (html: string | null | undefined) =>
-  DOMPurify.sanitize(html ?? "").replace(/&nbsp;|&#160;|\u00a0/gi, " ");
-const restore = async (skip: SkippedRecurrence) => {
-  try {
-    await api.restoreRecurrence(skip.meetingId, id);
-    await load();
-  } catch (cause) {
-    error.value = cause instanceof Error ? cause.message : t("topicDetail.loadFailed");
-  }
-};
 onMounted(load);
 </script>
 <template>
   <section class="page">
     <Message v-if="error" severity="error">{{ error }}</Message>
+    <div v-if="loading && !topic" class="page-loading" role="status">
+      <ProgressSpinner stroke-width="5" />
+      <span>{{ t("topicHistory.loading") }}</span>
+    </div>
     <template v-if="topic">
       <header class="topic-header">
         <div>
@@ -179,7 +151,7 @@ onMounted(load);
             <div class="section-heading">
               <h2>{{ t("topicDetail.topicHistory") }}</h2>
               <span>
-                {{ t("topicDetail.entries", { count: topicHistory.length }) }}
+                {{ t("topicDetail.entries", { count: history.length }) }}
               </span>
             </div>
             <div v-if="canManage" class="new-update">
@@ -191,78 +163,7 @@ onMounted(load);
                 @click="addUpdate"
               />
             </div>
-            <div class="feed">
-              <article
-                v-for="entry in topicHistory"
-                :key="`${entry.kind}-${entry.item.id}`"
-              >
-                <div class="feed-mark" />
-                <div v-if="entry.kind === 'update'">
-                  <div class="feed-meta">
-                    <Tag
-                      :value="t(`labels.${entry.item.type}`)"
-                      severity="secondary"
-                    />
-                    <span>
-                      {{
-                        formatDate(entry.item.date, {
-                          dateStyle: "short",
-                          timeStyle: "short",
-                        })
-                      }}
-                      · {{ formatUser(entry.item.createdBy) }}
-                    </span>
-                    <RouterLink
-                      v-if="entry.item.meeting"
-                      :to="`/meetings/${entry.item.meeting.id}`"
-                    >
-                      {{ meetingLabel(entry.item.meeting) }}
-                    </RouterLink>
-                  </div>
-                  <div class="rich" v-html="safe(entry.item.text)" />
-                </div>
-                <RouterLink
-                  v-else-if="entry.kind === 'appearance'"
-                  :to="`/meetings/${entry.item.meetingId}`"
-                  class="history-appearance"
-                >
-                  <span class="feed-meta">
-                    <Tag :value="t('common.meeting')" severity="secondary" />
-                    <span>
-                      {{ entry.item.meeting
-                        ? meetingLabel(entry.item.meeting)
-                        : t("common.meeting") }}
-                    </span>
-                    <small>{{ entry.item.section?.name }}</small>
-                  </span>
-                  <span
-                    v-if="entry.item.agendaNote"
-                    class="appearance-note"
-                    v-html="safe(entry.item.agendaNote)"
-                  />
-                </RouterLink>
-                <div v-else class="history-skip">
-                  <div class="feed-meta">
-                    <Tag :value="t('recurringTopic.skipped')" severity="warn" />
-                    <RouterLink :to="`/meetings/${entry.item.meetingId}`">
-                      {{ entry.item.meeting
-                        ? meetingLabel(entry.item.meeting)
-                        : t("common.meeting") }}
-                    </RouterLink>
-                    <Button
-                      v-if="canManage && entry.item.meeting?.status === 'planned'"
-                      :label="t('recurringTopic.restore')"
-                      size="small"
-                      text
-                      @click="restore(entry.item)"
-                    />
-                  </div>
-                </div>
-              </article>
-              <p v-if="!topicHistory.length" class="empty">
-                {{ t("topicDetail.noHistory") }}
-              </p>
-            </div>
+            <TopicHistoryTimeline :entries="history" :loading="loading" />
           </section>
         </main>
         <aside>
@@ -322,7 +223,7 @@ onMounted(load);
       v-model:visible="editVisible"
       :sections="sections"
       :topic="topic"
-      :type-locked="appearances.length > 0"
+      :type-locked="hasAppearances"
       :users="users"
       @saved="load"
     />
@@ -462,43 +363,18 @@ onMounted(load);
   justify-self: end;
 }
 
-.feed article {
+.page-loading {
   display: grid;
-  grid-template-columns: 10px 1fr;
-  gap: 0.7rem;
-  padding-bottom: 1rem;
-}
-
-.feed-mark {
-  width: 8px;
-  height: 8px;
-  margin-top: 0.45rem;
-  border-radius: 50%;
-  background: #7895c6;
-}
-
-.feed-meta {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-  margin-bottom: 0.4rem;
+  min-height: 20rem;
+  place-content: center;
+  justify-items: center;
+  gap: 0.8rem;
   color: #718096;
-  font-size: 0.75rem;
 }
 
-.feed-meta a {
-  color: #536f9f;
-}
-
-.history-appearance {
-  display: block;
-  color: inherit;
-  text-decoration: none;
-}
-
-.rich :deep(p) {
-  margin: 0.25rem 0;
+.page-loading :deep(.p-progressspinner) {
+  width: 2.4rem;
+  height: 2.4rem;
 }
 
 .topic-grid aside {
@@ -524,35 +400,17 @@ onMounted(load);
   font-weight: 650;
 }
 
-.task,
-.appearance {
+.task {
   display: block;
   padding: 0.65rem 0;
   border-bottom: 1px solid #edf0f4;
 }
 
-.task small,
-.appearance small {
+.task small {
   display: block;
   margin-top: 0.2rem;
   color: #718096;
   font-size: 0.75rem;
-}
-
-.appearance {
-  text-decoration: none;
-  font-weight: 650;
-}
-
-.appearance-note {
-  display: block;
-  margin-top: 0.35rem;
-  color: #4a5568;
-  font-weight: 400;
-}
-
-.appearance-note :deep(p) {
-  margin: 0;
 }
 
 .empty {
