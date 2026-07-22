@@ -17,6 +17,7 @@ const context = await loadApplicationContext({
   installation: api.installation,
   currentUser: api.me,
   hasSession: hadSession,
+  allowDevelopmentIdentity: import.meta.env.DEV,
   browserLanguages: navigator.languages,
 });
 if (context.installation) {
