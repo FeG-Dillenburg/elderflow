@@ -4,6 +4,7 @@ import { RouterLink } from "vue-router";
 import DOMPurify from "dompurify";
 import Button from "primevue/button";
 import RichTextEditor from "../../../components/RichTextEditor.vue";
+import TopicDoneButton from "../../TopicDoneButton.vue";
 import type { MeetingTopic, TopicUpdate } from "../../../api/domain";
 import { formatUser } from "../../../api/domain";
 import { formatDate } from "../../../i18n";
@@ -110,11 +111,9 @@ const safe = (html: string | null | undefined) => DOMPurify.sanitize(html ?? "")
           text
           @click="toggleDeferred"
         />
-        <Button
-          :label="t('meetingAgenda.markDone')"
-          severity="success"
-          text
-          @click="markDone"
+        <TopicDoneButton
+          :done="item.topic?.status === 'done'"
+          @toggle="markDone"
         />
       </span>
     </div>

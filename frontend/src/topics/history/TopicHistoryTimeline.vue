@@ -8,6 +8,7 @@ import StandaloneUpdateHistoryEntry from "./StandaloneUpdateHistoryEntry.vue";
 
 withDefaults(defineProps<{
   entries: TopicHistoryEntry[];
+  currentTopicName?: string;
   loading?: boolean;
   error?: string;
 }>(), {
@@ -39,6 +40,7 @@ const { t } = useI18n();
       />
       <MeetingAppearanceHistoryEntry
         v-else-if="entry.kind === 'meeting_appearance'"
+        :current-topic-name="currentTopicName"
         :entry="entry"
       />
       <SkippedRecurrenceHistoryEntry

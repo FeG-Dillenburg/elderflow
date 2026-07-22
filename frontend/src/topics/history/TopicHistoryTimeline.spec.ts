@@ -105,6 +105,42 @@ describe('TopicHistoryTimeline', () => {
     expect(wrapper.text().match(/One appearance note/g)).toHaveLength(1);
   });
 
+  it('shows the historical Topic name only when it differs from the current name', async () => {
+    const entries: TopicHistoryEntry[] = [{
+      id: 'appearance',
+      kind: 'meeting_appearance',
+      effectiveAt: '2026-07-15T20:00:00',
+      appearanceId: 'appearance',
+      meeting,
+      section: null,
+      topic: {
+        type: 'generic',
+        name: 'Historical topic',
+        responsibleUserDisplayName: null,
+        membershipProcessStatus: null,
+        membershipStatusSignal: null,
+        godparents: null,
+      },
+      note: null,
+      minutes: [],
+    }];
+    const wrapper = mount(TopicHistoryTimeline, {
+      props: {
+        entries,
+        currentTopicName: 'Historical topic',
+      },
+      ...options,
+    });
+
+    expect(wrapper.text()).not.toContain('Topic at this Meeting');
+    expect(wrapper.text()).not.toContain('Historical topic');
+
+    await wrapper.setProps({ currentTopicName: 'Renamed topic' });
+
+    expect(wrapper.text()).toContain('Topic at this Meeting');
+    expect(wrapper.text()).toContain('Historical topic');
+  });
+
   it('renders localized loading and empty states', async () => {
     const wrapper = mount(TopicHistoryTimeline, {
       props: { entries: [], loading: true },

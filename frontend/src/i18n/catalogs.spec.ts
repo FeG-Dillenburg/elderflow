@@ -13,4 +13,9 @@ describe('translation catalogs', () => {
   it('keeps German in exact parity with the canonical English key schema', () => {
     expect(keys(de).sort()).toEqual(keys(en).sort());
   });
+
+  it('uses compact localized feedback for completed Topics', () => {
+    expect(en.meetingAgenda.markedDone).toBe('done');
+    expect(de.meetingAgenda.markedDone).toBe('erledigt');
+  });
 });

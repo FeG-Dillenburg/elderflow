@@ -41,7 +41,7 @@ describe("Recurring Topic renderers", () => {
 
     expect(wrapper.text()).toContain("TOP 2.1");
     expect(wrapper.text()).toContain("Quarterly review");
-    expect(wrapper.findComponent({ name: "PersonTopicNote" }).exists()).toBe(true);
+    expect(wrapper.findComponent({ name: "RecurringTopicNote" }).exists()).toBe(true);
     expect(wrapper.text()).not.toContain("Recent updates");
   });
 
@@ -56,7 +56,7 @@ describe("Recurring Topic renderers", () => {
       },
       global: { stubs: { RouterLink: { template: "<a><slot /></a>" } } },
     });
-    const note = editable.findComponent({ name: "PersonTopicNote" });
+    const note = editable.findComponent({ name: "RecurringTopicNote" });
 
     await note.props("save")("Saved note");
 
@@ -73,7 +73,7 @@ describe("Recurring Topic renderers", () => {
       global: { stubs: { RouterLink: { template: "<a><slot /></a>" } } },
     });
 
-    expect(completed.findComponent({ name: "PersonTopicNote" }).props("readOnly"))
+    expect(completed.findComponent({ name: "RecurringTopicNote" }).props("readOnly"))
       .toBe(true);
   });
 });

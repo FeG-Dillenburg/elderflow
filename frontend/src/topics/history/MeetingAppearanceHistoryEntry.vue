@@ -10,8 +10,11 @@ import { sanitizeHistoryRichText } from "./sanitizeHistoryRichText";
 
 const props = defineProps<{
   entry: Extract<TopicHistoryEntry, { kind: "meeting_appearance" }>;
+  currentTopicName?: string;
 }>();
 const { t } = useI18n();
+const showTopicName = computed(() => props.currentTopicName === undefined
+  || props.entry.topic.name !== props.currentTopicName);
 const noteLabel = computed(() => props.entry.topic.type === "generic" || props.entry.topic.type === "recurring"
   ? t("topicHistory.meetingContext")
   : t("personTopic.noteLabel"));
@@ -40,8 +43,8 @@ const noteLabel = computed(() => props.entry.topic.type === "generic" || props.e
         <Tag :value="t(`labels.${entry.meeting.status}`)" severity="secondary" />
       </header>
 
-      <section class="topic-snapshot">
-        <div>
+      <section class="topic-snapshot" :class="{ 'single-value': !showTopicName }">
+        <div v-if="showTopicName">
           <span>{{ t("topicHistory.topicAtMeeting") }}</span>
           <strong>{{ entry.topic.name || t("common.none") }}</strong>
         </div>
@@ -168,6 +171,10 @@ const noteLabel = computed(() => props.entry.topic.type === "generic" || props.e
 .topic-snapshot {
   grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
   border-bottom: 1px solid #edf1f5;
+}
+
+.topic-snapshot.single-value {
+  grid-template-columns: 1fr;
 }
 
 .membership-snapshot {

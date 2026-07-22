@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { nextTick, onBeforeUnmount, onMounted, ref, useSlots, watch } from "vue";
+import { nextTick, onBeforeUnmount, onMounted, ref, useSlots } from "vue";
 import Textarea from "primevue/textarea";
 import type { MeetingTopic } from "../../../api/domain";
 import { useI18n } from "vue-i18n";
+import { useMeetingTopicNoteAutosave } from "../../useMeetingTopicNoteAutosave";
 
 const props = defineProps<{
   item: MeetingTopic;
@@ -13,66 +14,16 @@ const props = defineProps<{
 
 const { t } = useI18n();
 const slots = useSlots();
-const localNote = ref(props.item.agendaNote ?? "");
-const persistedNote = ref(props.item.agendaNote ?? "");
-const state = ref<"idle" | "saving" | "saved" | "error">("idle");
-const error = ref("");
-const saving = ref(false);
 const inlineLabel = ref<HTMLElement>();
 const inlineLabelIndent = ref("0px");
-let timer: ReturnType<typeof setTimeout> | undefined;
-let queuedNote: string | null | undefined;
 let labelObserver: ResizeObserver | undefined;
 
-const clearTimer = () => {
-  if (timer) clearTimeout(timer);
-  timer = undefined;
-};
-
-const drain = async () => {
-  if (saving.value) return;
-  while (queuedNote !== undefined) {
-    const note = queuedNote;
-    queuedNote = undefined;
-    if ((note ?? "") === persistedNote.value) continue;
-    saving.value = true;
-    state.value = "saving";
-    error.value = "";
-    try {
-      await props.save(note);
-      persistedNote.value = note ?? "";
-      state.value = "saved";
-    } catch (cause) {
-      error.value = cause instanceof Error ? cause.message : t("personTopic.noteSaveFailed");
-      state.value = "error";
-      queuedNote = undefined;
-      break;
-    } finally {
-      saving.value = false;
-    }
-  }
-};
-
-const save = () => {
-  clearTimer();
-  queuedNote = localNote.value.trim() ? localNote.value : null;
-  void drain();
-};
-
-const scheduleSave = () => {
-  state.value = "idle";
-  clearTimer();
-  timer = setTimeout(save, 600);
-};
-
-watch(
-  () => props.item.agendaNote,
-  (note) => {
-    const next = note ?? "";
-    if (localNote.value === persistedNote.value) localNote.value = next;
-    persistedNote.value = next;
-  },
-);
+const { localNote, state, error, saving, save, scheduleSave } =
+  useMeetingTopicNoteAutosave({
+    source: () => props.item.agendaNote,
+    save: (note) => props.save(note),
+    saveFailedMessage: () => t("personTopic.noteSaveFailed"),
+  });
 
 const measureInlineLabel = () => {
   const width = inlineLabel.value?.getBoundingClientRect().width ?? 0;
@@ -90,7 +41,6 @@ onMounted(async () => {
 });
 
 onBeforeUnmount(() => {
-  clearTimer();
   labelObserver?.disconnect();
 });
 </script>

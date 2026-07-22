@@ -173,6 +173,7 @@ onMounted(load);
               />
             </div>
             <TopicHistoryTimeline
+              :current-topic-name="topic.name"
               :entries="history"
               :error="historyError"
               :loading="loading"
