@@ -15,6 +15,8 @@ import { MeetingSnapshotRegistry } from './meeting-snapshot-contributor';
 import { lockedMutableMeeting } from './meeting-mutation-boundary';
 import { UpdateTopicFieldsDto } from '../topics/dto/topic.dto';
 import { normalizedMembershipTopicState } from '../topics/membership-topic-state';
+import { RecurrenceService } from '../recurrence/recurrence.service';
+import { SkippedRecurrence } from '../recurrence/skipped-recurrence.entity';
 
 export interface MeetingDetail extends Meeting {
   participants: MeetingUser[];
@@ -33,6 +35,7 @@ export class MeetingsService {
     @InjectRepository(Task) private readonly tasks: Repository<Task>,
     @InjectRepository(AgendaSection) private readonly sections: Repository<AgendaSection>,
     private readonly snapshots: MeetingSnapshotRegistry,
+    private readonly recurrence: RecurrenceService,
   ) {}
 
   async complete(id: string, user: User): Promise<Meeting> {
@@ -75,7 +78,9 @@ export class MeetingsService {
         await manager.save(MeetingTopic, appearances);
       }
       meeting.status = 'completed';
-      return manager.save(Meeting, meeting);
+      const saved = await manager.save(Meeting, meeting);
+      await this.recurrence.reconcile(manager);
+      return saved;
     });
   }
 
@@ -93,24 +98,7 @@ export class MeetingsService {
     }
     return this.dataSource.transaction(async (manager) => {
       const meeting = await manager.save(Meeting, manager.create(Meeting, input));
-      const recurringTopics = await manager.find(Topic, {
-        where: { type: 'recurring', status: 'open' },
-        order: { defaultPosition: 'ASC' },
-      });
-      const fallbackSection = await manager.findOne(AgendaSection, { where: { isDefault: true }, order: { position: 'ASC' } });
-      for (const [index, topic] of recurringTopics.entries()) {
-        const sectionId = topic.defaultSectionId ?? fallbackSection?.id;
-        if (sectionId) {
-          await manager.findOne(Topic, { where: { id: topic.id }, lock: { mode: 'pessimistic_write' } });
-          await manager.save(MeetingTopic, manager.create(MeetingTopic, {
-            meetingId: meeting.id,
-            topicId: topic.id,
-            sectionId,
-            position: topic.defaultPosition ?? index + 1,
-            status: 'planned',
-          }));
-        }
-      }
+      await this.recurrence.reconcile(manager);
       return meeting;
     });
   }
@@ -125,7 +113,9 @@ export class MeetingsService {
           'Complete an in-progress Meeting through the completion action',
         );
       }
-      return manager.save(Meeting, Object.assign(meeting, input));
+      const saved = await manager.save(Meeting, Object.assign(meeting, input));
+      await this.recurrence.reconcile(manager);
+      return saved;
     });
   }
 
@@ -236,15 +226,21 @@ export class MeetingsService {
           order: { meeting: { date: 'DESC', beginTime: 'DESC' } },
         })
         : null;
-      return manager.save(MeetingTopic, manager.create(MeetingTopic, {
+      const appearance = await manager.save(MeetingTopic, manager.create(MeetingTopic, {
         ...input,
         meetingId,
         position,
         status: 'planned',
+        source: 'manual',
+        noteEditedAt: input.agendaNote !== undefined ? new Date() : null,
         agendaNote: input.agendaNote !== undefined
           ? input.agendaNote
-          : previousPersonAppearance?.agendaNote ?? null,
+          : topic.type === 'recurring'
+            ? topic.description ?? ''
+            : previousPersonAppearance?.agendaNote ?? null,
       }));
+      await this.recurrence.reconcile(manager);
+      return appearance;
     });
   }
 
@@ -330,14 +326,39 @@ export class MeetingsService {
         );
       }
       appearance.agendaNote = agendaNote;
-      return manager.save(MeetingTopic, appearance);
+      appearance.noteEditedAt = new Date();
+      const saved = await manager.save(MeetingTopic, appearance);
+      await this.recurrence.reconcile(manager);
+      return saved;
     });
   }
 
   async removeTopic(meetingId: string, id: string): Promise<void> {
     await this.dataSource.transaction(async (manager) => {
       await lockedMutableMeeting(manager, meetingId);
-      await manager.delete(MeetingTopic, { id, meetingId });
+      const appearance = await manager.findOneBy(MeetingTopic, { id, meetingId });
+      if (!appearance) throw codedHttpException(HttpStatus.NOT_FOUND, 'AGENDA_TOPIC_NOT_FOUND', 'Agenda topic not found');
+      if (appearance.source === 'recurrence') {
+        const existing = await manager.findOneBy(SkippedRecurrence, { topicId: appearance.topicId, meetingId });
+        if (!existing) {
+          await manager.save(SkippedRecurrence, manager.create(SkippedRecurrence, {
+            topicId: appearance.topicId,
+            meetingId,
+          }));
+        }
+      }
+      await manager.remove(MeetingTopic, appearance);
+      await this.recurrence.reconcile(manager);
+    });
+  }
+
+  async restoreRecurrence(meetingId: string, topicId: string): Promise<void> {
+    await this.dataSource.transaction(async (manager) => {
+      await lockedMutableMeeting(manager, meetingId);
+      const skip = await manager.findOneBy(SkippedRecurrence, { topicId, meetingId });
+      if (!skip) throw codedHttpException(HttpStatus.NOT_FOUND, 'SKIPPED_RECURRENCE_NOT_FOUND', 'Skipped recurrence not found');
+      await manager.remove(SkippedRecurrence, skip);
+      await this.recurrence.reconcile(manager);
     });
   }
 

@@ -39,4 +39,8 @@ export class MeetingsController {
     @Body() input: UpdateMeetingTopicNoteDto,
   ): Promise<MeetingTopic> { return this.service.updateTopicNote(id, itemId, input.agendaNote ?? null); }
   @Delete(':id/topics/:itemId') removeTopic(@Param('id', ParseUUIDPipe) id: string, @Param('itemId', ParseUUIDPipe) itemId: string): Promise<void> { return this.service.removeTopic(id, itemId); }
+  @Post(':id/recurrences/:topicId/restore') restoreRecurrence(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('topicId', ParseUUIDPipe) topicId: string,
+  ): Promise<void> { return this.service.restoreRecurrence(id, topicId); }
 }

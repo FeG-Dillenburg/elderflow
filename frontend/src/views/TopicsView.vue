@@ -68,6 +68,9 @@ const empty = () => ({
   godparents: null as string | null,
   defaultSectionId: null as string | null,
   defaultPosition: null as number | null,
+  recurrenceFirstDueDate: null as string | null,
+  recurrenceInterval: null as number | null,
+  recurrenceUnit: null as "weeks" | "months" | null,
 });
 const form = reactive(empty());
 const load = async () => {
@@ -243,7 +246,9 @@ onMounted(load);
           v-bind="form.type === 'new_membership' ? { initializeDefaults: true } : {}"
           @change="Object.assign(form, $event)"
         >
-          <label v-if="form.type === 'new_membership'">
+          <label
+            v-if="form.type === 'new_membership' || form.type === 'recurring'"
+          >
             <span>{{ t("topics.defaultSection") }}</span>
             <Select
               v-model="form.defaultSectionId"
@@ -254,7 +259,10 @@ onMounted(load);
             />
           </label>
         </TopicTypeRenderer>
-        <div v-if="form.type !== 'new_membership'" class="row">
+        <div
+          v-if="form.type !== 'new_membership' && form.type !== 'recurring'"
+          class="row"
+        >
           <label>
             <span>{{ t("topics.followUpDate") }}</span>
             <DatePicker

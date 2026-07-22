@@ -3,6 +3,8 @@ import { Topic } from '../topics/topic.entity';
 import { Column, Entity, JoinColumn, ManyToOne, PrimaryGeneratedColumn, Unique } from 'typeorm';
 import { Meeting } from './meeting.entity';
 
+export type AgendaAppearanceSource = 'manual' | 'recurrence';
+
 @Entity({ name: 'meeting_topics' })
 @Unique(['meetingId', 'topicId'])
 export class MeetingTopic {
@@ -35,6 +37,12 @@ export class MeetingTopic {
 
   @Column({ name: 'agenda_note', type: 'text', nullable: true })
   agendaNote: string | null;
+
+  @Column({ type: 'text', default: 'manual' })
+  source: AgendaAppearanceSource;
+
+  @Column({ name: 'note_edited_at', type: 'timestamptz', nullable: true })
+  noteEditedAt: Date | null;
 
   @Column({ name: 'planned_duration', type: 'integer', nullable: true })
   plannedDuration: number | null;

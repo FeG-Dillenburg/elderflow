@@ -10,6 +10,7 @@ describe("MeetingsService", () => {
     findOne: jest.fn(),
     findOneBy: jest.fn(),
     delete: jest.fn(),
+    remove: jest.fn(),
   };
   const dataSource = { transaction: jest.fn((fn) => fn(manager)) };
   const meetings = {
@@ -38,6 +39,7 @@ describe("MeetingsService", () => {
   const tasks = { find: jest.fn() };
   const sections = {};
   const snapshots = { apply: jest.fn() };
+  const recurrence = { reconcile: jest.fn() };
   const service = new MeetingsService(
     dataSource as any,
     meetings as any,
@@ -48,6 +50,7 @@ describe("MeetingsService", () => {
     tasks as any,
     sections as any,
     snapshots as any,
+    recurrence as any,
   );
   beforeEach(() => {
     jest.clearAllMocks();
@@ -57,6 +60,9 @@ describe("MeetingsService", () => {
     manager.findOne.mockReset();
     manager.findOneBy.mockReset();
     manager.delete.mockReset();
+    manager.remove.mockReset();
+    recurrence.reconcile.mockReset();
+    recurrence.reconcile.mockResolvedValue(undefined);
     snapshots.apply.mockReset();
     snapshots.apply.mockResolvedValue(undefined);
     manager.save.mockImplementation(async (_type, value) => value);
@@ -101,6 +107,7 @@ describe("MeetingsService", () => {
     });
     expect(manager.save).toHaveBeenCalledWith(expect.anything(), [appearance]);
     expect(manager.save).toHaveBeenCalledWith(expect.anything(), meeting);
+    expect(recurrence.reconcile).toHaveBeenCalledWith(manager);
   });
 
   it("rejects completion by unrelated users and from any status except in-progress", async () => {
@@ -137,6 +144,7 @@ describe("MeetingsService", () => {
       tasks as any,
       sections as any,
       extensibleSnapshots as any,
+      recurrence as any,
     );
     const meeting = {
       id: "meeting",
@@ -345,55 +353,17 @@ describe("MeetingsService", () => {
     meetings.findOne.mockResolvedValue(null);
     await expect(service.findOne("missing")).rejects.toThrow(NotFoundException);
   });
-  it("creates recurring agenda items using defaults, fallback, and one-based positions", async () => {
+  it("reconciles recurring Topics after Meeting creation", async () => {
     manager.create.mockImplementation((_type, value) => value);
     manager.save.mockImplementation(async (_type, value) => ({
       id: value.id ?? "meeting",
       ...value,
     }));
-    manager.find.mockResolvedValue([
-      { id: "one", defaultSectionId: "section", defaultPosition: 4 },
-      { id: "two", defaultSectionId: null, defaultPosition: null },
-      { id: "skip", defaultSectionId: null, defaultPosition: null },
-    ]);
-    manager.findOne.mockResolvedValueOnce({ id: "fallback" });
     await expect(service.create({ title: null } as any)).resolves.toMatchObject(
       { id: "meeting" },
     );
     expect(dataSource.transaction).toHaveBeenCalled();
-    expect(manager.find).toHaveBeenCalledWith(expect.anything(), {
-      where: { type: "recurring", status: "open" },
-      order: { defaultPosition: "ASC" },
-    });
-    expect(manager.findOne).toHaveBeenCalledWith(expect.anything(), {
-      where: { isDefault: true },
-      order: { position: "ASC" },
-    });
-    expect(manager.save).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.objectContaining({
-        topicId: "one",
-        sectionId: "section",
-        position: 4,
-        status: "planned",
-      }),
-    );
-    expect(manager.save).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.objectContaining({
-        topicId: "two",
-        sectionId: "fallback",
-        position: 2,
-      }),
-    );
-    expect(manager.save).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.objectContaining({
-        topicId: "skip",
-        sectionId: "fallback",
-        position: 3,
-      }),
-    );
+    expect(recurrence.reconcile).toHaveBeenCalledWith(manager);
   });
   it("rejects creating a Meeting directly in the completed state", async () => {
     await expect(service.create({ status: "completed" } as any)).rejects.toMatchObject({
@@ -605,11 +575,9 @@ describe("MeetingsService", () => {
     await expect(
       service.updateTopic("meeting", "item", {} as any),
     ).rejects.toThrow(NotFoundException);
+    manager.findOneBy.mockResolvedValue({ id: "item", meetingId: "meeting", source: "manual" });
     await service.removeTopic("meeting", "item");
-    expect(manager.delete).toHaveBeenCalledWith(expect.anything(), {
-      id: "item",
-      meetingId: "meeting",
-    });
+    expect(manager.remove).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ id: "item" }));
     meetings.findOneBy.mockResolvedValue({ date: "2026-07-20" });
     meetingTopics.find.mockResolvedValue([{ topicId: "present" }]);
     topics.find.mockResolvedValue([{ id: "present" }, { id: "suggest" }]);
@@ -628,5 +596,37 @@ describe("MeetingsService", () => {
     await expect(service.suggestions("missing")).rejects.toThrow(
       NotFoundException,
     );
+  });
+
+  it("records an automatic removal as a skip and restores it transactionally", async () => {
+    const appearance = {
+      id: "appearance",
+      meetingId: "meeting",
+      topicId: "topic",
+      source: "recurrence",
+    };
+    manager.findOne.mockResolvedValue({ id: "meeting", status: "planned" });
+    manager.findOneBy
+      .mockResolvedValueOnce(appearance)
+      .mockResolvedValueOnce(null);
+
+    await service.removeTopic("meeting", "appearance");
+
+    expect(manager.save).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ meetingId: "meeting", topicId: "topic" }),
+    );
+    expect(manager.remove).toHaveBeenCalledWith(expect.anything(), appearance);
+    expect(recurrence.reconcile).toHaveBeenCalledWith(manager);
+
+    const skip = { id: "skip", meetingId: "meeting", topicId: "topic" };
+    manager.findOne.mockResolvedValue({ id: "meeting", status: "planned" });
+    manager.findOneBy.mockResolvedValue(skip);
+    recurrence.reconcile.mockClear();
+
+    await service.restoreRecurrence("meeting", "topic");
+
+    expect(manager.remove).toHaveBeenCalledWith(expect.anything(), skip);
+    expect(recurrence.reconcile).toHaveBeenCalledWith(manager);
   });
 });

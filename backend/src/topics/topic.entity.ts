@@ -19,6 +19,9 @@ export const TOPIC_TYPES = [
 
 export type TopicType = (typeof TOPIC_TYPES)[number];
 
+export const RECURRENCE_UNITS = ['weeks', 'months'] as const;
+export type RecurrenceUnit = (typeof RECURRENCE_UNITS)[number];
+
 export const MEMBERSHIP_STATUS_SIGNALS = [
   'new',
   'in_progress',
@@ -67,9 +70,6 @@ export class Topic {
   @JoinColumn({ name: 'responsible_user_id' })
   responsibleUser?: User | null;
 
-  @Column({ name: 'is_recurring', type: 'boolean', default: false, select: false })
-  isRecurring: boolean;
-
   @Column({ name: 'default_section_id', type: 'uuid', nullable: true })
   defaultSectionId: string | null;
 
@@ -79,6 +79,17 @@ export class Topic {
 
   @Column({ name: 'default_position', type: 'integer', nullable: true })
   defaultPosition: number | null;
+
+  @Column({ name: 'recurrence_first_due_date', type: 'date', nullable: true })
+  recurrenceFirstDueDate: string | null;
+
+  @Column({ name: 'recurrence_interval', type: 'integer', nullable: true })
+  recurrenceInterval: number | null;
+
+  @Column({ name: 'recurrence_unit', type: 'text', nullable: true })
+  recurrenceUnit: RecurrenceUnit | null;
+
+  nextDueDate?: string | null;
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;

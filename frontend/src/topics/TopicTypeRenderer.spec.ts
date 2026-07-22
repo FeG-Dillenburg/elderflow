@@ -97,6 +97,26 @@ describe("TopicTypeRenderer", () => {
     );
   });
 
+  it("labels a recurring preparation suggestion as Recurring", () => {
+    const wrapper = mount(TopicTypeRenderer, {
+      props: { type: "recurring", context: "preparation" },
+      attrs: {
+        topic: {
+          id: "topic",
+          name: "Financial report",
+          type: "recurring",
+        },
+        showType: true,
+      },
+      global: {
+        stubs: { RouterLink: { template: "<a><slot /></a>" } },
+      },
+    });
+
+    expect(wrapper.text()).toContain("Recurring");
+    expect(wrapper.text()).not.toContain("Person");
+  });
+
   it("renders the snapshotted responsible display name for a completed appearance", () => {
     const wrapper = mount(GenericTopicAgenda, {
       props: {

@@ -10,6 +10,8 @@ import { Task } from '../src/tasks/task.entity';
 import { TopicUpdate } from '../src/topics/topic-update.entity';
 import { Topic } from '../src/topics/topic.entity';
 import { User } from '../src/users/user.entity';
+import { RecurrenceService } from '../src/recurrence/recurrence.service';
+import { SkippedRecurrence } from '../src/recurrence/skipped-recurrence.entity';
 
 const databaseUrl = process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL;
 const describeWithPostgres = databaseUrl ? describe : describe.skip;
@@ -32,7 +34,7 @@ describeWithPostgres('Meeting completion with PostgreSQL (integration)', () => {
       type: 'postgres',
       url: databaseUrl,
       schema,
-      entities: [User, AgendaSection, Topic, TopicUpdate, Meeting, MeetingUser, MeetingTopic, Task],
+      entities: [User, AgendaSection, Topic, TopicUpdate, Meeting, MeetingUser, MeetingTopic, Task, SkippedRecurrence],
       synchronize: true,
     });
     await database.initialize();
@@ -47,6 +49,7 @@ describeWithPostgres('Meeting completion with PostgreSQL (integration)', () => {
       database.getRepository(Task),
       database.getRepository(AgendaSection),
       snapshots,
+      new RecurrenceService(),
     );
   });
 
@@ -101,9 +104,11 @@ describeWithPostgres('Meeting completion with PostgreSQL (integration)', () => {
       status: 'open',
       followUpDate: null,
       responsibleUserId: responsible.id,
-      isRecurring: false,
       defaultSectionId: section.id,
       defaultPosition: 1,
+      recurrenceFirstDueDate: null,
+      recurrenceInterval: null,
+      recurrenceUnit: null,
     });
     meeting = await database.getRepository(Meeting).save({
       title: null,

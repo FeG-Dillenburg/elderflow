@@ -200,6 +200,26 @@ describe("MeetingPreparationView", () => {
     await vm.createAndAdd();
     expect(vm.newVisible).toBe(false);
   });
+  it("labels an automatic recurrence removal as a skip and reports API conflicts", async () => {
+    const recurringMeeting = structuredClone(meeting);
+    recurringMeeting.agenda[0].source = "recurrence";
+    recurringMeeting.agenda[0].topic.type = "recurring";
+    vi.spyOn(api, "meeting").mockResolvedValueOnce(recurringMeeting);
+    const wrapper = await view();
+    const item = (wrapper.vm as any).meeting.agenda[0];
+
+    expect(wrapper.find('[aria-label="Skip recurrence"]').exists()).toBe(true);
+
+    vi.spyOn(api, "removeMeetingTopic").mockRejectedValueOnce(
+      new Error("A preserved recurring appearance conflicts with this change"),
+    );
+    await (wrapper.vm as any).remove(item);
+
+    expect(api.removeMeetingTopic).toHaveBeenCalledWith("meeting-1", item.id);
+    expect((wrapper.vm as any).error).toBe(
+      "A preserved recurring appearance conflicts with this change",
+    );
+  });
   it("saves positive durations and clears zero or missing durations", async () => {
     const wrapper = await view();
     const vm: any = wrapper.vm;

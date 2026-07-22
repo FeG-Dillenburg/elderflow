@@ -15,6 +15,7 @@ import { TopicUpdate } from '../src/topics/topic-update.entity';
 import { Topic } from '../src/topics/topic.entity';
 import { TopicsController } from '../src/topics/topics.controller';
 import { TopicsService } from '../src/topics/topics.service';
+import { RecurrenceService } from '../src/recurrence/recurrence.service';
 
 const MEETING_ID = '00000000-0000-4000-8000-000000000001';
 const USER_ID = '00000000-0000-4000-8000-000000000002';
@@ -83,6 +84,7 @@ describe('Meeting completion lifecycle (e2e)', () => {
         MeetingSnapshotRegistry,
         MeetingsService,
         TopicsService,
+        { provide: RecurrenceService, useValue: { reconcile: jest.fn(), nextDueDate: jest.fn() } },
         { provide: DataSource, useValue: dataSource },
         { provide: getRepositoryToken(Meeting), useValue: repository },
         { provide: getRepositoryToken(MeetingUser), useValue: repository },

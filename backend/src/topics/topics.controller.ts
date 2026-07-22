@@ -7,6 +7,7 @@ import { TopicUpdate } from './topic-update.entity';
 import { TopicsService } from './topics.service';
 import { MeetingTopic } from '../meetings/meeting-topic.entity';
 import { Permission } from '../auth/permissions';
+import { SkippedRecurrence } from '../recurrence/skipped-recurrence.entity';
 
 @Controller('api/topics')
 @Permission('topics')
@@ -46,5 +47,10 @@ export class TopicsController {
   @Get(':id/appearances')
   appearances(@Param('id', ParseUUIDPipe) id: string): Promise<MeetingTopic[]> {
     return this.service.getAppearances(id);
+  }
+
+  @Get(':id/skipped-recurrences')
+  skippedRecurrences(@Param('id', ParseUUIDPipe) id: string): Promise<SkippedRecurrence[]> {
+    return this.service.getSkippedRecurrences(id);
   }
 }

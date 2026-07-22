@@ -13,16 +13,18 @@ export const loadApplicationContext = async <TUser extends LanguageUser>({
   installation,
   currentUser,
   hasSession,
+  allowDevelopmentIdentity = false,
   browserLanguages,
 }: {
   installation: () => Promise<InstallationInformation>;
   currentUser: () => Promise<TUser>;
   hasSession: boolean;
+  allowDevelopmentIdentity?: boolean;
   browserLanguages: readonly string[];
 }): Promise<{ installation: InstallationInformation | null; user: TUser | null; language: SupportedLanguage }> => {
   const [installationResult, userResult] = await Promise.allSettled([
     installation(),
-    hasSession ? currentUser() : Promise.resolve(null),
+    hasSession || allowDevelopmentIdentity ? currentUser() : Promise.resolve(null),
   ]);
   if (installationResult.status === 'rejected') {
     return { installation: null, user: null, language: 'en' };

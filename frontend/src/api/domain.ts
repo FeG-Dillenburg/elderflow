@@ -3,6 +3,8 @@ import { localizeApiError, type ApiErrorPayload } from '../i18n/api-errors';
 import { formatDate, translate } from '../i18n';
 import type { TopicType } from '../topics/topicTypes';
 export type { TopicType } from '../topics/topicTypes';
+export type RecurrenceUnit = 'weeks' | 'months';
+export type AgendaAppearanceSource = 'manual' | 'recurrence';
 
 export const membershipStatusSignals = ['new', 'in_progress', 'nearly_finished', 'attention', 'paused'] as const;
 export type MembershipStatusSignal = (typeof membershipStatusSignals)[number];
@@ -49,6 +51,7 @@ interface TopicBase {
   defaultSectionId: string | null;
   defaultSection?: AgendaSection | null;
   defaultPosition: number | null;
+  nextDueDate?: string | null;
   createdAt: string;
   updatedAt: string;
   updates?: TopicUpdate[];
@@ -60,16 +63,36 @@ type MembershipTopicFields = {
   membershipProcessStatus: string | null;
   membershipStatusSignal: MembershipStatusSignal;
   godparents: string | null;
+  recurrenceFirstDueDate: null;
+  recurrenceInterval: null;
+  recurrenceUnit: null;
 };
 
 type NonMembershipTopicFields = {
-  type: Exclude<TopicType, 'new_membership'>;
+  type: Exclude<TopicType, 'new_membership' | 'recurring'>;
+  membershipProcessStatus: null;
+  membershipStatusSignal: null;
+  godparents: null;
+  recurrenceFirstDueDate: null;
+  recurrenceInterval: null;
+  recurrenceUnit: null;
+};
+
+type RecurringTopicFields = {
+  type: 'recurring';
+  followUpDate: null;
+  defaultSectionId: string;
+  recurrenceFirstDueDate: string;
+  recurrenceInterval: number;
+  recurrenceUnit: RecurrenceUnit;
   membershipProcessStatus: null;
   membershipStatusSignal: null;
   godparents: null;
 };
 
-export type Topic = TopicBase & (MembershipTopicFields | NonMembershipTopicFields);
+export type Topic = TopicBase & (
+  MembershipTopicFields | NonMembershipTopicFields | RecurringTopicFields
+);
 
 interface TopicInputBase {
   name: string;
@@ -86,17 +109,35 @@ type MembershipTopicInputFields = {
   membershipProcessStatus?: string | null;
   membershipStatusSignal?: MembershipStatusSignal | null;
   godparents?: string | null;
+  recurrenceFirstDueDate?: null;
+  recurrenceInterval?: null;
+  recurrenceUnit?: null;
 };
 
 type NonMembershipTopicInputFields = {
-  type: Exclude<TopicType, 'new_membership'>;
+  type: Exclude<TopicType, 'new_membership' | 'recurring'>;
+  membershipProcessStatus?: null;
+  membershipStatusSignal?: null;
+  godparents?: null;
+  recurrenceFirstDueDate?: null;
+  recurrenceInterval?: null;
+  recurrenceUnit?: null;
+};
+
+type RecurringTopicInputFields = {
+  type: 'recurring';
+  defaultSectionId: string;
+  followUpDate: null;
+  recurrenceFirstDueDate: string;
+  recurrenceInterval: number;
+  recurrenceUnit: RecurrenceUnit;
   membershipProcessStatus?: null;
   membershipStatusSignal?: null;
   godparents?: null;
 };
 
 export type TopicInput = TopicInputBase & (
-  MembershipTopicInputFields | NonMembershipTopicInputFields
+  MembershipTopicInputFields | NonMembershipTopicInputFields | RecurringTopicInputFields
 );
 
 export interface Meeting {
@@ -133,6 +174,8 @@ export interface MeetingTopic {
   topic?: Topic;
   position: number;
   agendaNote: string | null;
+  source?: AgendaAppearanceSource;
+  noteEditedAt?: string | null;
   plannedDuration: number | null;
   status: string;
   topicNameSnapshot?: string | null;
@@ -141,6 +184,14 @@ export interface MeetingTopic {
   membershipStatusSignalSnapshot?: MembershipStatusSignal | null;
   godparentsSnapshot?: string | null;
   meeting?: Meeting;
+}
+
+export interface SkippedRecurrence {
+  id: string;
+  topicId: string;
+  meetingId: string;
+  meeting?: Meeting;
+  createdAt: string;
 }
 
 export interface TopicUpdate {
@@ -232,6 +283,7 @@ export const api = {
   topicUpdates: (id: string) => request<TopicUpdate[]>(`/api/topics/${id}/updates`),
   addTopicUpdate: (id: string, input: { text: string; type: string; meetingId?: string | null }) => request<TopicUpdate>(`/api/topics/${id}/updates`, { method: 'POST', body: JSON.stringify(input) }),
   topicAppearances: (id: string) => request<MeetingTopic[]>(`/api/topics/${id}/appearances`),
+  skippedRecurrences: (id: string) => request<SkippedRecurrence[]>(`/api/topics/${id}/skipped-recurrences`),
   meetings: () => request<Meeting[]>('/api/meetings'),
   meeting: (id: string) => request<Meeting>(`/api/meetings/${id}`),
   createMeeting: (input: MeetingInput) => request<Meeting>('/api/meetings', { method: 'POST', body: JSON.stringify(input) }),
@@ -246,6 +298,7 @@ export const api = {
   updateMeetingTopicFields: (meetingId: string, itemId: string, input: TopicFieldPatch) => request<Topic>(`/api/meetings/${meetingId}/topics/${itemId}/fields`, { method: 'PUT', body: JSON.stringify(input) }),
   updateMeetingTopicNote: (meetingId: string, itemId: string, agendaNote: string | null) => request<MeetingTopic>(`/api/meetings/${meetingId}/topics/${itemId}/note`, { method: 'PUT', body: JSON.stringify({ agendaNote }) }),
   removeMeetingTopic: (meetingId: string, itemId: string) => request<void>(`/api/meetings/${meetingId}/topics/${itemId}`, { method: 'DELETE' }),
+  restoreRecurrence: (meetingId: string, topicId: string) => request<void>(`/api/meetings/${meetingId}/recurrences/${topicId}/restore`, { method: 'POST' }),
   tasks: (filters: Record<string, string | boolean | undefined> = {}) => request<Task[]>(`/api/tasks${query(filters)}`),
   createTask: (input: TaskInput) => request<Task>('/api/tasks', { method: 'POST', body: JSON.stringify(input) }),
   updateTask: (id: string, input: TaskInput) => request<Task>(`/api/tasks/${id}`, { method: 'PUT', body: JSON.stringify(input) }),

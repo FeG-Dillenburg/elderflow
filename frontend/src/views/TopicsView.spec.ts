@@ -67,13 +67,19 @@ describe("TopicsView", () => {
     );
     expect(vm.visible).toBe(false);
   });
-  it("moves Default section into New membership fields and omits follow-up date", async () => {
+  it("moves Default section into type fields when their ordering is type-specific", async () => {
     const wrapper = await view();
     const form = wrapper.find("#topic-form");
 
     expect(form.text()).toContain("Follow-up date");
 
     (wrapper.vm as any).form.type = "new_membership";
+    await wrapper.vm.$nextTick();
+
+    expect(form.text()).not.toContain("Follow-up date");
+    expect(form.find(".topic-type-renderer").text()).toContain("Default section");
+
+    (wrapper.vm as any).form.type = "recurring";
     await wrapper.vm.$nextTick();
 
     expect(form.text()).not.toContain("Follow-up date");

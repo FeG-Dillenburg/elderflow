@@ -22,6 +22,7 @@ import {
   toLocalDate,
   type AgendaSection,
   type MeetingTopic,
+  type SkippedRecurrence,
   type Task,
   type TaskInput,
   type Topic,
@@ -40,6 +41,7 @@ const topic = ref<Topic | null>(null),
   updates = ref<TopicUpdate[]>([]),
   tasks = ref<Task[]>([]),
   appearances = ref<MeetingTopic[]>([]),
+  skippedRecurrences = ref<SkippedRecurrence[]>([]),
   users = ref<User[]>([]),
   sections = ref<AgendaSection[]>([]),
   error = ref(""),
@@ -47,6 +49,25 @@ const topic = ref<Topic | null>(null),
   taskVisible = ref(false),
   editVisible = ref(false);
 const assigneeOptions = computed(() => assignableUsers(users.value));
+const meetingTimestamp = (item: { date: string; beginTime?: string | null } | undefined) =>
+  item ? new Date(`${item.date}T${item.beginTime ?? "00:00:00"}`).getTime() : 0;
+const topicHistory = computed(() => [
+  ...updates.value.map((item) => ({
+    kind: "update" as const,
+    timestamp: new Date(item.date).getTime(),
+    item,
+  })),
+  ...appearances.value.map((item) => ({
+    kind: "appearance" as const,
+    timestamp: meetingTimestamp(item.meeting),
+    item,
+  })),
+  ...skippedRecurrences.value.map((item) => ({
+    kind: "skip" as const,
+    timestamp: meetingTimestamp(item.meeting),
+    item,
+  })),
+].sort((left, right) => right.timestamp - left.timestamp));
 const task = reactive({
   title: "",
   description: "",
@@ -73,6 +94,9 @@ const load = async () => {
       api.userDirectory(),
       api.sections(),
     ]);
+    skippedRecurrences.value = topic.value?.type === "recurring"
+      ? await api.skippedRecurrences(id)
+      : [];
   } catch (e) {
     error.value = e instanceof Error ? e.message : t("topicDetail.loadFailed");
   }
@@ -105,6 +129,14 @@ const addTask = async () => {
 };
 const safe = (html: string | null | undefined) =>
   DOMPurify.sanitize(html ?? "").replace(/&nbsp;|&#160;|\u00a0/gi, " ");
+const restore = async (skip: SkippedRecurrence) => {
+  try {
+    await api.restoreRecurrence(skip.meetingId, id);
+    await load();
+  } catch (cause) {
+    error.value = cause instanceof Error ? cause.message : t("topicDetail.loadFailed");
+  }
+};
 onMounted(load);
 </script>
 <template>
@@ -145,9 +177,9 @@ onMounted(load);
           />
           <section>
             <div class="section-heading">
-              <h2>{{ t("topicDetail.updates") }}</h2>
+              <h2>{{ t("topicDetail.topicHistory") }}</h2>
               <span>
-                {{ t("topicDetail.entries", { count: updates.length }) }}
+                {{ t("topicDetail.entries", { count: topicHistory.length }) }}
               </span>
             </div>
             <div v-if="canManage" class="new-update">
@@ -160,35 +192,75 @@ onMounted(load);
               />
             </div>
             <div class="feed">
-              <article v-for="update in updates" :key="update.id">
+              <article
+                v-for="entry in topicHistory"
+                :key="`${entry.kind}-${entry.item.id}`"
+              >
                 <div class="feed-mark" />
-                <div>
+                <div v-if="entry.kind === 'update'">
                   <div class="feed-meta">
                     <Tag
-                      :value="t(`labels.${update.type}`)"
+                      :value="t(`labels.${entry.item.type}`)"
                       severity="secondary"
                     />
                     <span>
                       {{
-                        formatDate(update.date, {
+                        formatDate(entry.item.date, {
                           dateStyle: "short",
                           timeStyle: "short",
                         })
                       }}
-                      · {{ formatUser(update.createdBy) }}
+                      · {{ formatUser(entry.item.createdBy) }}
                     </span>
                     <RouterLink
-                      v-if="update.meeting"
-                      :to="`/meetings/${update.meeting.id}`"
+                      v-if="entry.item.meeting"
+                      :to="`/meetings/${entry.item.meeting.id}`"
                     >
-                      {{ meetingLabel(update.meeting) }}
+                      {{ meetingLabel(entry.item.meeting) }}
                     </RouterLink>
                   </div>
-                  <div class="rich" v-html="safe(update.text)" />
+                  <div class="rich" v-html="safe(entry.item.text)" />
+                </div>
+                <RouterLink
+                  v-else-if="entry.kind === 'appearance'"
+                  :to="`/meetings/${entry.item.meetingId}`"
+                  class="history-appearance"
+                >
+                  <span class="feed-meta">
+                    <Tag :value="t('common.meeting')" severity="secondary" />
+                    <span>
+                      {{ entry.item.meeting
+                        ? meetingLabel(entry.item.meeting)
+                        : t("common.meeting") }}
+                    </span>
+                    <small>{{ entry.item.section?.name }}</small>
+                  </span>
+                  <span
+                    v-if="entry.item.agendaNote"
+                    class="appearance-note"
+                    v-html="safe(entry.item.agendaNote)"
+                  />
+                </RouterLink>
+                <div v-else class="history-skip">
+                  <div class="feed-meta">
+                    <Tag :value="t('recurringTopic.skipped')" severity="warn" />
+                    <RouterLink :to="`/meetings/${entry.item.meetingId}`">
+                      {{ entry.item.meeting
+                        ? meetingLabel(entry.item.meeting)
+                        : t("common.meeting") }}
+                    </RouterLink>
+                    <Button
+                      v-if="canManage && entry.item.meeting?.status === 'planned'"
+                      :label="t('recurringTopic.restore')"
+                      size="small"
+                      text
+                      @click="restore(entry.item)"
+                    />
+                  </div>
                 </div>
               </article>
-              <p v-if="!updates.length" class="empty">
-                {{ t("topicDetail.noUpdates") }}
+              <p v-if="!topicHistory.length" class="empty">
+                {{ t("topicDetail.noHistory") }}
               </p>
             </div>
           </section>
@@ -240,28 +312,6 @@ onMounted(load);
             </article>
             <p v-if="!tasks.length" class="empty">
               {{ t("topicDetail.noTasks") }}
-            </p>
-          </section>
-          <section>
-            <h2>{{ t("topicDetail.meetingHistory") }}</h2>
-            <RouterLink
-              v-for="item in appearances"
-              :key="item.id"
-              :to="`/meetings/${item.meetingId}`"
-              class="appearance"
-            >
-              {{
-                item.meeting ? meetingLabel(item.meeting) : t("common.meeting")
-              }}
-              <small>{{ item.section?.name }}</small>
-              <span
-                v-if="item.agendaNote"
-                class="appearance-note"
-                v-html="safe(item.agendaNote)"
-              />
-            </RouterLink>
-            <p v-if="!appearances.length" class="empty">
-              {{ t("topicDetail.noMeetings") }}
             </p>
           </section>
         </aside>
@@ -439,6 +489,12 @@ onMounted(load);
 
 .feed-meta a {
   color: #536f9f;
+}
+
+.history-appearance {
+  display: block;
+  color: inherit;
+  text-decoration: none;
 }
 
 .rich :deep(p) {
