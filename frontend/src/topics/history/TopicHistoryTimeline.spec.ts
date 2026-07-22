@@ -71,7 +71,13 @@ describe('TopicHistoryTimeline', () => {
     expect(text).toContain('Recorded family');
     expect(text).toContain('Welcome planned');
     expect(text).toContain('Alex and Robin');
-    expect(wrapper.find('[aria-label="Membership status: Nearly finished"]').exists()).toBe(true);
+    const topicSnapshot = wrapper.get('.topic-snapshot');
+    const statusPill = topicSnapshot.get('.membership-signal');
+    expect(topicSnapshot.text()).toContain('Grace Hopper');
+    expect(statusPill.text()).toBe('Welcome planned');
+    expect(statusPill.get('.p-tag-icon').classes()).toContain('pi-check');
+    expect(statusPill.attributes('aria-label')).toContain('Nearly finished');
+    expect(wrapper.get('.membership-snapshot').text()).toBe('Godparent(s)Alex and Robin');
     expect(wrapper.findAll('.history-entry')).toHaveLength(3);
   });
 

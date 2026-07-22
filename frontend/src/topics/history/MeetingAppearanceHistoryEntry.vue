@@ -43,7 +43,14 @@ const noteLabel = computed(() => props.entry.topic.type === "generic" || props.e
         <Tag :value="t(`labels.${entry.meeting.status}`)" severity="secondary" />
       </header>
 
-      <section class="topic-snapshot" :class="{ 'single-value': !showTopicName }">
+      <section
+        class="topic-snapshot"
+        :class="{
+          'single-value': !showTopicName && entry.topic.type !== 'new_membership',
+          'membership-summary': entry.topic.type === 'new_membership',
+          'has-topic-name': showTopicName,
+        }"
+      >
         <div v-if="showTopicName">
           <span>{{ t("topicHistory.topicAtMeeting") }}</span>
           <strong>{{ entry.topic.name || t("common.none") }}</strong>
@@ -52,17 +59,16 @@ const noteLabel = computed(() => props.entry.topic.type === "generic" || props.e
           <span>{{ t("topicDetail.responsible") }}</span>
           <strong>{{ entry.topic.responsibleUserDisplayName || t("common.unassigned") }}</strong>
         </div>
+        <div v-if="entry.topic.type === 'new_membership'">
+          <span>{{ t("common.status") }}</span>
+          <MembershipSignal
+            :signal="entry.topic.membershipStatusSignal ?? 'new'"
+            :text="entry.topic.membershipProcessStatus || t('common.none')"
+          />
+        </div>
       </section>
 
       <section v-if="entry.topic.type === 'new_membership'" class="membership-snapshot">
-        <div>
-          <span>{{ t("newMembershipTopic.processStatus") }}</span>
-          <strong>{{ entry.topic.membershipProcessStatus || t("common.none") }}</strong>
-        </div>
-        <div>
-          <span>{{ t("newMembershipTopic.signal") }}</span>
-          <MembershipSignal :signal="entry.topic.membershipStatusSignal ?? 'new'" />
-        </div>
         <div>
           <span>{{ t("newMembershipTopic.godparents") }}</span>
           <strong>{{ entry.topic.godparents || t("common.none") }}</strong>
@@ -177,8 +183,16 @@ const noteLabel = computed(() => props.entry.topic.type === "generic" || props.e
   grid-template-columns: 1fr;
 }
 
+.topic-snapshot.membership-summary {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.topic-snapshot.membership-summary.has-topic-name {
+  grid-template-columns: minmax(0, 1.4fr) repeat(2, minmax(0, 1fr));
+}
+
 .membership-snapshot {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: 1fr;
   border-bottom: 1px solid #edf1f5;
 }
 
