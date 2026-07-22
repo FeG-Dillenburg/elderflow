@@ -98,7 +98,7 @@ describe("domain API client", () => {
       plannedDuration: 10,
       status: "planned",
       ignored: "x",
-    } as any);
+    } as any, { deferred: true });
     await api.deleteSection("section");
     expect(fetch.mock.calls.map((call) => [call[0], call[1]?.method])).toEqual([
       ["http://localhost:3000/api/topics/topic", undefined],
@@ -111,6 +111,7 @@ describe("domain API client", () => {
       position: 2,
       plannedDuration: 10,
       status: "planned",
+      deferred: true,
     });
   });
   it("serializes an optional insertion position and complete transactional reorder payload", async () => {

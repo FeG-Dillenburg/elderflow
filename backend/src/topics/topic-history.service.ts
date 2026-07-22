@@ -118,6 +118,7 @@ export class TopicHistoryService {
       effectiveAt: this.meetingEffectiveAt(meeting),
       sortTime: this.meetingSortTime(meeting),
       appearanceId: appearance.id,
+      deferredAt: appearance.deferredAt?.toISOString() ?? null,
       meeting,
       section: appearance.section
         ? { id: appearance.section.id, name: appearance.section.name }
@@ -153,6 +154,7 @@ export class TopicHistoryService {
       effectiveAt: this.meetingEffectiveAt(meeting),
       sortTime: this.meetingSortTime(meeting),
       appearanceId: null,
+      deferredAt: null,
       meeting,
       section: null,
       topic: this.topicDisplay(topic, undefined, meeting.status === 'completed'),

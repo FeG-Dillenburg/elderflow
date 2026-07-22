@@ -176,6 +176,7 @@ export interface MeetingTopic {
   agendaNote: string | null;
   source?: AgendaAppearanceSource;
   noteEditedAt?: string | null;
+  deferredAt?: string | null;
   plannedDuration: number | null;
   status: string;
   topicNameSnapshot?: string | null;
@@ -243,6 +244,7 @@ export type TopicHistoryEntry =
       kind: 'meeting_appearance';
       effectiveAt: string;
       appearanceId: string | null;
+      deferredAt: string | null;
       meeting: TopicHistoryMeeting;
       section: Pick<AgendaSection, 'id' | 'name'> | null;
       topic: TopicHistoryTopicDisplay;
@@ -347,7 +349,7 @@ export const api = {
   removeParticipant: (meetingId: string, userId: string) => request<void>(`/api/meetings/${meetingId}/participants/${userId}`, { method: 'DELETE' }),
   addMeetingTopic: (meetingId: string, input: { topicId: string; sectionId: string; position?: number }) => request<MeetingTopic>(`/api/meetings/${meetingId}/topics`, { method: 'POST', body: JSON.stringify(input) }),
   reorderMeetingTopics: (meetingId: string, items: Array<{ id: string; sectionId: string; position: number }>) => request<MeetingTopic[]>(`/api/meetings/${meetingId}/topics/order`, { method: 'PUT', body: JSON.stringify({ items }) }),
-  updateMeetingTopic: (meetingId: string, item: MeetingTopic) => request<MeetingTopic>(`/api/meetings/${meetingId}/topics/${item.id}`, { method: 'PUT', body: JSON.stringify({ sectionId: item.sectionId, position: item.position, plannedDuration: item.plannedDuration, status: item.status }) }),
+  updateMeetingTopic: (meetingId: string, item: MeetingTopic, options?: { deferred?: boolean }) => request<MeetingTopic>(`/api/meetings/${meetingId}/topics/${item.id}`, { method: 'PUT', body: JSON.stringify({ sectionId: item.sectionId, position: item.position, plannedDuration: item.plannedDuration, status: item.status, deferred: options?.deferred }) }),
   updateMeetingTopicFields: (meetingId: string, itemId: string, input: TopicFieldPatch) => request<Topic>(`/api/meetings/${meetingId}/topics/${itemId}/fields`, { method: 'PUT', body: JSON.stringify(input) }),
   updateMeetingTopicNote: (meetingId: string, itemId: string, agendaNote: string | null) => request<MeetingTopic>(`/api/meetings/${meetingId}/topics/${itemId}/note`, { method: 'PUT', body: JSON.stringify({ agendaNote }) }),
   removeMeetingTopic: (meetingId: string, itemId: string) => request<void>(`/api/meetings/${meetingId}/topics/${itemId}`, { method: 'DELETE' }),

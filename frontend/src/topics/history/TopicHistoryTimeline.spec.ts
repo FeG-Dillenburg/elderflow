@@ -35,6 +35,7 @@ describe('TopicHistoryTimeline', () => {
         id: 'appearance',
         kind: 'meeting_appearance',
         effectiveAt: '2026-07-15T20:00:00',
+        deferredAt: '2026-07-15T20:30:00.000Z',
         appearanceId: 'appearance',
         meeting,
         section: { id: 'section', name: 'People' },
@@ -78,6 +79,7 @@ describe('TopicHistoryTimeline', () => {
     expect(statusPill.get('.p-tag-icon').classes()).toContain('pi-check');
     expect(statusPill.attributes('aria-label')).toContain('Nearly finished');
     expect(wrapper.get('.membership-snapshot').text()).toBe('Godparent(s)Alex and Robin');
+    expect(wrapper.get('.deferred-marker').text()).toBe('Deferred');
     expect(wrapper.findAll('.history-entry')).toHaveLength(3);
   });
 
@@ -91,6 +93,7 @@ describe('TopicHistoryTimeline', () => {
       kind: 'meeting_appearance',
       effectiveAt: '2026-07-15T20:00:00',
       appearanceId: type,
+      deferredAt: null,
       meeting,
       section: null,
       topic: {
@@ -117,6 +120,7 @@ describe('TopicHistoryTimeline', () => {
       kind: 'meeting_appearance',
       effectiveAt: '2026-07-15T20:00:00',
       appearanceId: 'appearance',
+      deferredAt: null,
       meeting,
       section: null,
       topic: {

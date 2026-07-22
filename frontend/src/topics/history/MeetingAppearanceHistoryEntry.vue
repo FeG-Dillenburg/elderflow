@@ -29,10 +29,15 @@ const noteLabel = computed(() => props.entry.topic.type === "generic" || props.e
       <header class="meeting-header">
         <div>
           <p class="meeting-kicker">{{ t("common.meeting") }}</p>
-          <RouterLink :to="`/meetings/${entry.meeting.id}`" class="meeting-link">
-            {{ meetingLabel(entry.meeting) }}
-            <i class="pi pi-arrow-up-right" aria-hidden="true" />
-          </RouterLink>
+          <div class="meeting-reference">
+            <RouterLink :to="`/meetings/${entry.meeting.id}`" class="meeting-link">
+              {{ meetingLabel(entry.meeting) }}
+              <i class="pi pi-arrow-up-right" aria-hidden="true" />
+            </RouterLink>
+            <span v-if="entry.deferredAt" class="deferred-marker">
+              {{ t("meetingAgenda.deferred") }}
+            </span>
+          </div>
           <p class="meeting-meta">
             <time :datetime="entry.effectiveAt">
               {{ formatDate(entry.effectiveAt, { dateStyle: "medium", timeStyle: "short" }) }}
@@ -143,6 +148,19 @@ const noteLabel = computed(() => props.entry.topic.type === "generic" || props.e
   font-size: 1.05rem;
   font-weight: 750;
   text-decoration: none;
+}
+
+.meeting-reference {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.4rem 0.65rem;
+}
+
+.deferred-marker {
+  color: #c53d3d;
+  font-size: 0.78rem;
+  font-weight: 800;
 }
 
 .meeting-link:hover {

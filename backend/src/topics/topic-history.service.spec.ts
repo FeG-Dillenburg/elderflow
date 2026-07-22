@@ -76,6 +76,7 @@ describe('TopicHistoryService', () => {
     appearances.find.mockResolvedValue([{
       id: 'appearance',
       meetingId: 'meeting',
+      deferredAt: new Date('2026-07-15T20:30:00Z'),
       meeting: { id: 'meeting', date: '2026-07-15', beginTime: '20:00:00', status: 'in_progress', title: 'Council' },
       section: null,
       agendaNote: 'Preparation context',
@@ -85,6 +86,7 @@ describe('TopicHistoryService', () => {
 
     expect(entry).toMatchObject({
       kind: 'meeting_appearance',
+      deferredAt: '2026-07-15T20:30:00.000Z',
       note: 'Preparation context',
       topic: { name: 'Live topic', responsibleUserDisplayName: 'Live Owner' },
       minutes: [

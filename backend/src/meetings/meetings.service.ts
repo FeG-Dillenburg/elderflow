@@ -276,7 +276,11 @@ export class MeetingsService {
       await lockedMutableMeeting(manager, meetingId);
       const item = await manager.findOneBy(MeetingTopic, { id, meetingId });
       if (!item) throw codedHttpException(HttpStatus.NOT_FOUND, 'AGENDA_TOPIC_NOT_FOUND', 'Agenda topic not found');
-      return manager.save(MeetingTopic, Object.assign(item, input));
+      const { deferred, ...changes } = input;
+      Object.assign(item, changes);
+      if (deferred === true && !item.deferredAt) item.deferredAt = new Date();
+      if (deferred === false) item.deferredAt = null;
+      return manager.save(MeetingTopic, item);
     });
   }
 

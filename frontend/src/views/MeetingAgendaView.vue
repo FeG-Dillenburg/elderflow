@@ -185,16 +185,23 @@ const topicInput = (item: MeetingTopic, status: string): TopicInput => ({
 const setTopicStatus = async (item: MeetingTopic, status: string) => {
   error.value = "";
   try {
+    const wasDeferred = item.topic?.status === "deferred";
     await api.updateTopic(item.topicId, topicInput(item, status));
     const appearanceStatus = status === "done"
       ? "done"
       : item.status === "done"
         ? "planned"
         : item.status;
-    await api.updateMeetingTopic(id, {
+    const appearance = {
       ...item,
       status: appearanceStatus,
-    });
+    };
+    const deferred = status === "deferred" ? true : wasDeferred ? false : undefined;
+    if (deferred === undefined) {
+      await api.updateMeetingTopic(id, appearance);
+    } else {
+      await api.updateMeetingTopic(id, appearance, { deferred });
+    }
     if (item.topic) item.topic.status = status;
     item.status = appearanceStatus;
     await load();

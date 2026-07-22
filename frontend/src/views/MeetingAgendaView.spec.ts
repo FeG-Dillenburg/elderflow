@@ -231,11 +231,21 @@ describe("MeetingAgendaView", () => {
       "topic-1",
       expect.objectContaining({ status: "deferred" }),
     );
+    expect(api.updateMeetingTopic).toHaveBeenLastCalledWith(
+      "meeting-1",
+      expect.anything(),
+      { deferred: true },
+    );
     item.topic.status = "deferred";
     await vm.toggleDeferred(item);
     expect(api.updateTopic).toHaveBeenLastCalledWith(
       "topic-1",
       expect.objectContaining({ status: "open" }),
+    );
+    expect(api.updateMeetingTopic).toHaveBeenLastCalledWith(
+      "meeting-1",
+      expect.anything(),
+      { deferred: false },
     );
     await vm.toggleDone(item);
     expect(api.updateTopic).toHaveBeenLastCalledWith(

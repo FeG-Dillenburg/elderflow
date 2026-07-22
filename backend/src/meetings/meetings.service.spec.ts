@@ -598,6 +598,39 @@ describe("MeetingsService", () => {
     );
   });
 
+  it("records and clears when a Topic was deferred in this Meeting", async () => {
+    manager.findOne.mockResolvedValue({ id: "meeting", status: "in_progress" });
+    const appearance = { id: "item", meetingId: "meeting", deferredAt: null };
+    manager.findOneBy.mockResolvedValue(appearance);
+
+    await service.updateTopic("meeting", "item", {
+      sectionId: "section",
+      position: 1,
+      status: "planned",
+      deferred: true,
+    });
+
+    expect(appearance.deferredAt).toEqual(expect.any(Date));
+    const deferredAt = appearance.deferredAt;
+
+    await service.updateTopic("meeting", "item", {
+      sectionId: "section",
+      position: 2,
+      status: "planned",
+    });
+
+    expect(appearance.deferredAt).toBe(deferredAt);
+
+    await service.updateTopic("meeting", "item", {
+      sectionId: "section",
+      position: 1,
+      status: "planned",
+      deferred: false,
+    });
+
+    expect(appearance.deferredAt).toBeNull();
+  });
+
   it("records an automatic removal as a skip and restores it transactionally", async () => {
     const appearance = {
       id: "appearance",
