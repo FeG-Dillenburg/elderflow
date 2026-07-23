@@ -110,7 +110,8 @@ export class TopicHistoryService {
     updates: TopicUpdate[],
   ): MeetingAppearanceHistoryEntry & { sortTime: number } {
     const meeting = this.meeting(appearance.meeting!);
-    const meetingMinutes = this.minutes(updates);
+    const { meetingMinutes, legacyMinutesEntries } =
+      this.classifiedMinutes(topic, updates);
 
     return {
       id: `meeting-appearance:${appearance.id}`,
@@ -127,6 +128,7 @@ export class TopicHistoryService {
       preparationContext: topic.type === 'person' ? null : appearance.agendaNote,
       personNote: topic.type === 'person' ? appearance.agendaNote : null,
       meetingMinutes,
+      legacyMinutesEntries,
     };
   }
 
@@ -149,6 +151,8 @@ export class TopicHistoryService {
     updates: TopicUpdate[],
   ): MeetingAppearanceHistoryEntry & { sortTime: number } {
     const meeting = this.meeting(meetingEntity);
+    const { meetingMinutes, legacyMinutesEntries } =
+      this.classifiedMinutes(topic, updates);
     return {
       id: `meeting-appearance:missing:${meetingId}`,
       kind: 'meeting_appearance',
@@ -161,7 +165,8 @@ export class TopicHistoryService {
       topic: this.topicDisplay(topic, undefined, meeting.status === 'completed'),
       preparationContext: null,
       personNote: null,
-      meetingMinutes: this.minutes(updates),
+      meetingMinutes,
+      legacyMinutesEntries,
     };
   }
 
@@ -202,6 +207,22 @@ export class TopicHistoryService {
       text: update.text,
       createdByDisplayName: this.userDisplayName(update.createdBy),
     })).sort((left, right) => left.effectiveAt.localeCompare(right.effectiveAt) || left.id.localeCompare(right.id));
+  }
+
+  private classifiedMinutes(
+    topic: Topic,
+    updates: TopicUpdate[],
+  ): Pick<MeetingAppearanceHistoryEntry, 'meetingMinutes' | 'legacyMinutesEntries'> {
+    const minutes = this.minutes(updates);
+    return topic.type === 'person'
+      ? {
+        meetingMinutes: null,
+        legacyMinutesEntries: minutes,
+      }
+      : {
+        meetingMinutes: minutes[minutes.length - 1] ?? null,
+        legacyMinutesEntries: minutes.slice(0, -1),
+      };
   }
 
   private meeting(meeting: NonNullable<MeetingTopic['meeting']>): TopicHistoryMeeting {

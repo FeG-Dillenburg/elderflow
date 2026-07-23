@@ -43,7 +43,7 @@ const canManage = computed(
 );
 const isCompleted = computed(() => meeting.value?.status === "completed");
 const canEdit = computed(() => canManage.value && !isCompleted.value);
-const canFinish = computed(() => {
+const canControlInProgressMeeting = computed(() => {
   const userId = auth.state.user?.id;
   return Boolean(
     canManage.value &&
@@ -53,16 +53,8 @@ const canFinish = computed(() => {
         userId === meeting.value.minuteTakerId),
   );
 });
-const canWriteMinutes = computed(() => {
-  const userId = auth.state.user?.id;
-  return Boolean(
-    canManage.value &&
-      userId &&
-      meeting.value?.status === "in_progress" &&
-      (userId === meeting.value.meetingLeaderId ||
-        userId === meeting.value.minuteTakerId),
-  );
-});
+const canFinish = canControlInProgressMeeting;
+const canWriteMinutes = canControlInProgressMeeting;
 const { t } = useI18n();
 
 const route = useRoute();

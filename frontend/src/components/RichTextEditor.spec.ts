@@ -1,5 +1,5 @@
 import { shallowMount } from "@vue/test-utils";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import RichTextEditor from "./RichTextEditor.vue";
 
 describe("RichTextEditor", () => {
@@ -13,5 +13,25 @@ describe("RichTextEditor", () => {
     });
 
     expect(wrapper.emitted("blur")).toHaveLength(1);
+  });
+
+  it("applies an accessible name and description to the editable root", async () => {
+    const setAttribute = vi.fn();
+    const wrapper = shallowMount(RichTextEditor, {
+      props: {
+        ariaLabel: "Meeting minutes",
+        ariaDescription: "Minutes recorded during the Meeting.",
+      },
+    });
+
+    await wrapper.getComponent({ name: "Editor" }).vm.$emit("load", {
+      instance: { root: { setAttribute } },
+    });
+
+    expect(setAttribute).toHaveBeenCalledWith("aria-label", "Meeting minutes");
+    expect(setAttribute).toHaveBeenCalledWith(
+      "aria-description",
+      "Minutes recorded during the Meeting.",
+    );
   });
 });

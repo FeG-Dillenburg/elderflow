@@ -6,7 +6,7 @@ import { Task } from '../tasks/task.entity';
 import { Topic } from '../topics/topic.entity';
 import { TopicUpdate } from '../topics/topic-update.entity';
 import { MeetingDto, MeetingParticipantDto, MeetingTopicDto, MeetingTopicOrderItemDto, UpdateMeetingTopicDto } from './dto/meeting.dto';
-import { MeetingTopic, VersionedMeetingText } from './meeting-topic.entity';
+import { MeetingAppearanceTexts, MeetingTopic } from './meeting-topic.entity';
 import { MeetingUser } from './meeting-user.entity';
 import { Meeting } from './meeting.entity';
 import { codedHttpException } from '../errors/coded-http.exception';
@@ -352,7 +352,7 @@ export class MeetingsService {
     id: string,
     text: string | null,
     version: number,
-  ): Promise<MeetingTopic> {
+  ): Promise<MeetingAppearanceTexts> {
     return this.dataSource.transaction(async (manager) => {
       const { meeting, appearance } = await this.lockedTextAppearance(manager, meetingId, id);
       if (meeting.status !== 'planned') {
@@ -373,7 +373,14 @@ export class MeetingsService {
       appearance.agendaNote = text;
       appearance.noteEditedAt = new Date();
       appearance.noteVersion += 1;
-      return manager.save(MeetingTopic, appearance);
+      const saved = await manager.save(MeetingTopic, appearance);
+      await this.recurrence.reconcile(manager);
+      const meetingMinutes = await this.currentMeetingMinutes(
+        manager,
+        saved.topicId,
+        meetingId,
+      );
+      return this.appearanceTexts(saved, meetingMinutes);
     });
   }
 
@@ -382,7 +389,7 @@ export class MeetingsService {
     id: string,
     text: string | null,
     version: number,
-  ): Promise<MeetingTopic> {
+  ): Promise<MeetingAppearanceTexts> {
     return this.dataSource.transaction(async (manager) => {
       const { appearance } = await this.lockedTextAppearance(manager, meetingId, id);
       if (appearance.topic?.type !== 'person') {
@@ -396,7 +403,8 @@ export class MeetingsService {
       appearance.agendaNote = text;
       appearance.noteEditedAt = new Date();
       appearance.noteVersion += 1;
-      return manager.save(MeetingTopic, appearance);
+      const saved = await manager.save(MeetingTopic, appearance);
+      return this.appearanceTexts(saved, null);
     });
   }
 
@@ -405,7 +413,7 @@ export class MeetingsService {
     id: string,
     input: { text: string; version: number | null },
     user: User,
-  ): Promise<VersionedMeetingText> {
+  ): Promise<MeetingAppearanceTexts> {
     return this.dataSource.transaction(async (manager) => {
       const meeting = await lockedMutableMeeting(manager, meetingId);
       if (meeting.status !== 'in_progress') {
@@ -468,11 +476,7 @@ export class MeetingsService {
           date: new Date(),
           version: 1,
         }));
-      return {
-        id: saved.id ?? null,
-        text: saved.text,
-        version: saved.version,
-      };
+      return this.appearanceTexts(appearance, saved);
     });
   }
 
@@ -505,6 +509,46 @@ export class MeetingsService {
         'Meeting text changed; retry with the latest version',
       );
     }
+  }
+
+  private async currentMeetingMinutes(
+    manager: EntityManager,
+    topicId: string,
+    meetingId: string,
+  ): Promise<TopicUpdate | null> {
+    return manager.findOne(TopicUpdate, {
+      where: { topicId, meetingId },
+      order: { date: 'DESC', id: 'DESC' },
+    });
+  }
+
+  private appearanceTexts(
+    appearance: MeetingTopic,
+    meetingMinutes: TopicUpdate | null,
+  ): MeetingAppearanceTexts {
+    const appearanceText = {
+      id: appearance.id,
+      text: appearance.agendaNote,
+      version: appearance.noteVersion,
+    };
+    const minutesText = meetingMinutes
+      ? {
+        id: meetingMinutes.id ?? null,
+        text: meetingMinutes.text,
+        version: meetingMinutes.version,
+      }
+      : null;
+    return appearance.topic?.type === 'person'
+      ? {
+        preparationContext: null,
+        personNote: appearanceText,
+        meetingMinutes: null,
+      }
+      : {
+        preparationContext: appearanceText,
+        personNote: null,
+        meetingMinutes: minutesText,
+      };
   }
 
   async removeTopic(meetingId: string, id: string): Promise<void> {

@@ -90,10 +90,10 @@ describe('TopicHistoryService', () => {
       preparationContext: 'Preparation context',
       personNote: null,
       topic: { name: 'Live topic', responsibleUserDisplayName: 'Live Owner' },
-      meetingMinutes: [
+      legacyMinutesEntries: [
         { id: 'early', text: 'First', createdByDisplayName: 'Ada Lovelace' },
-        { id: 'late', text: 'Second', createdByDisplayName: null },
       ],
+      meetingMinutes: { id: 'late', text: 'Second', createdByDisplayName: null },
     });
   });
 
@@ -177,7 +177,8 @@ describe('TopicHistoryService', () => {
       appearanceId: null,
       preparationContext: null,
       personNote: null,
-      meetingMinutes: [{ text: 'Preserved minutes' }],
+      legacyMinutesEntries: [],
+      meetingMinutes: { text: 'Preserved minutes' },
     }]);
   });
 
@@ -204,7 +205,8 @@ describe('TopicHistoryService', () => {
     await expect(service.getHistory('person')).resolves.toMatchObject([{
       preparationContext: null,
       personNote: 'One combined note',
-      meetingMinutes: [],
+      legacyMinutesEntries: [],
+      meetingMinutes: null,
     }]);
   });
 

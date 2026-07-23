@@ -85,12 +85,13 @@ describe("TopicDetailView", () => {
         },
         preparationContext: "Appearance-owned context",
         personNote: null,
-        meetingMinutes: [{
+        meetingMinutes: {
           id: "minute",
           effectiveAt: "2026-07-15T20:10:00Z",
           text: "<p>Minute</p>",
           createdByDisplayName: "Ada Lovelace",
-        }],
+        },
+        legacyMinutesEntries: [],
       },
     ] as any);
     vi.spyOn(api, "tasks").mockResolvedValue([
@@ -141,7 +142,8 @@ describe("TopicDetailView", () => {
       },
       preparationContext: "Late appearance",
       personNote: null,
-      meetingMinutes: [],
+      meetingMinutes: null,
+      legacyMinutesEntries: [],
     }, {
       id: "update",
       kind: "standalone_update",

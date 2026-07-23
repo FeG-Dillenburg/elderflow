@@ -24,9 +24,13 @@ describe("semantic Meeting text saves", () => {
   it("sends the current preparation version and advances local state from the response", async () => {
     const appearance = item();
     vi.spyOn(api, "updateMeetingPreparationContext").mockResolvedValue({
-      ...appearance,
-      agendaNote: "Revised context",
-      noteVersion: 3,
+      preparationContext: {
+        id: "appearance",
+        text: "Revised context",
+        version: 3,
+      },
+      personNote: null,
+      meetingMinutes: null,
     });
 
     await saveMeetingPreparationContext("meeting", appearance)("Revised context");
@@ -50,9 +54,9 @@ describe("semantic Meeting text saves", () => {
       personNote: { id: "appearance", text: "Earlier", version: 1 },
     };
     vi.spyOn(api, "updatePersonMeetingNote").mockResolvedValue({
-      ...appearance,
-      agendaNote: "Current",
-      noteVersion: 2,
+      preparationContext: null,
+      personNote: { id: "appearance", text: "Current", version: 2 },
+      meetingMinutes: null,
     });
 
     await savePersonMeetingNote("meeting", appearance)("Current");
@@ -64,9 +68,13 @@ describe("semantic Meeting text saves", () => {
   it("creates then versions the one current Meeting-minutes value", async () => {
     const appearance = item();
     vi.spyOn(api, "updateMeetingMinutes").mockResolvedValue({
-      id: "minute",
-      text: "Recorded",
-      version: 1,
+      preparationContext: appearance.preparationContext ?? null,
+      personNote: null,
+      meetingMinutes: {
+        id: "minute",
+        text: "Recorded",
+        version: 1,
+      },
     });
 
     await saveMeetingMinutes("meeting", appearance)("Recorded");

@@ -8,7 +8,7 @@ import {
   UpdateMeetingTextDto,
   UpdateMeetingTopicDto,
 } from './dto/meeting.dto';
-import { MeetingTopic } from './meeting-topic.entity';
+import { MeetingAppearanceTexts, MeetingTopic } from './meeting-topic.entity';
 import { MeetingUser } from './meeting-user.entity';
 import { Meeting } from './meeting.entity';
 import { MeetingDetail, MeetingsService } from './meetings.service';
@@ -45,14 +45,14 @@ export class MeetingsController {
     @Param('id', ParseUUIDPipe) id: string,
     @Param('itemId', ParseUUIDPipe) itemId: string,
     @Body() input: UpdateMeetingTextDto,
-  ): Promise<MeetingTopic> {
+  ): Promise<MeetingAppearanceTexts> {
     return this.service.updatePreparationContext(id, itemId, input.text ?? null, input.version);
   }
   @Put(':id/topics/:itemId/person-note') updatePersonNote(
     @Param('id', ParseUUIDPipe) id: string,
     @Param('itemId', ParseUUIDPipe) itemId: string,
     @Body() input: UpdateMeetingTextDto,
-  ): Promise<MeetingTopic> {
+  ): Promise<MeetingAppearanceTexts> {
     return this.service.updatePersonNote(id, itemId, input.text ?? null, input.version);
   }
   @Put(':id/topics/:itemId/minutes') updateMeetingMinutes(

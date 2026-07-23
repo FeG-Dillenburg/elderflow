@@ -171,6 +171,12 @@ export interface VersionedMeetingText {
   version: number;
 }
 
+export interface MeetingAppearanceTexts {
+  preparationContext: VersionedMeetingText | null;
+  personNote: VersionedMeetingText | null;
+  meetingMinutes: VersionedMeetingText | null;
+}
+
 export interface MeetingTopic {
   id: string;
   meetingId: string;
@@ -260,7 +266,8 @@ export type TopicHistoryEntry =
       topic: TopicHistoryTopicDisplay;
       preparationContext: string | null;
       personNote: string | null;
-      meetingMinutes: TopicHistoryMinutesEntry[];
+      meetingMinutes: TopicHistoryMinutesEntry | null;
+      legacyMinutesEntries: TopicHistoryMinutesEntry[];
     }
   | {
       id: string;
@@ -366,7 +373,7 @@ export const api = {
     meetingId: string,
     itemId: string,
     input: { text: string | null; version: number },
-  ) => request<MeetingTopic>(`/api/meetings/${meetingId}/topics/${itemId}/preparation-context`, {
+  ) => request<MeetingAppearanceTexts>(`/api/meetings/${meetingId}/topics/${itemId}/preparation-context`, {
     method: 'PUT',
     body: JSON.stringify(input),
   }),
@@ -374,7 +381,7 @@ export const api = {
     meetingId: string,
     itemId: string,
     input: { text: string | null; version: number },
-  ) => request<MeetingTopic>(`/api/meetings/${meetingId}/topics/${itemId}/person-note`, {
+  ) => request<MeetingAppearanceTexts>(`/api/meetings/${meetingId}/topics/${itemId}/person-note`, {
     method: 'PUT',
     body: JSON.stringify(input),
   }),
@@ -382,7 +389,7 @@ export const api = {
     meetingId: string,
     itemId: string,
     input: { text: string; version: number | null },
-  ) => request<VersionedMeetingText>(`/api/meetings/${meetingId}/topics/${itemId}/minutes`, {
+  ) => request<MeetingAppearanceTexts>(`/api/meetings/${meetingId}/topics/${itemId}/minutes`, {
     method: 'PUT',
     body: JSON.stringify(input),
   }),

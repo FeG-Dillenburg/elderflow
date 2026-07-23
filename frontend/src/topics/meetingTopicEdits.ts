@@ -1,9 +1,19 @@
 import {
   api,
+  type MeetingAppearanceTexts,
   type MeetingTopic,
   type Topic,
   type TopicFieldPatch,
 } from "../api/domain";
+
+const applyAppearanceTexts = (
+  item: MeetingTopic,
+  saved: MeetingAppearanceTexts,
+): void => {
+  item.preparationContext = saved.preparationContext;
+  item.personNote = saved.personNote;
+  item.meetingMinutes = saved.meetingMinutes;
+};
 
 export const saveMeetingPreparationContext =
   (meetingId: string, item: MeetingTopic) =>
@@ -14,14 +24,10 @@ export const saveMeetingPreparationContext =
       item.id,
       { text, version },
     );
-    item.agendaNote = saved.agendaNote;
-    item.noteVersion = saved.noteVersion;
-    item.preparationContext = {
-      id: item.id,
-      text: saved.agendaNote,
-      version: saved.noteVersion ?? version + 1,
-    };
-    return saved;
+    applyAppearanceTexts(item, saved);
+    item.agendaNote = saved.preparationContext?.text ?? null;
+    item.noteVersion = saved.preparationContext?.version ?? version + 1;
+    return item;
   };
 
 export const savePersonMeetingNote =
@@ -33,14 +39,10 @@ export const savePersonMeetingNote =
       item.id,
       { text, version },
     );
-    item.agendaNote = saved.agendaNote;
-    item.noteVersion = saved.noteVersion;
-    item.personNote = {
-      id: item.id,
-      text: saved.agendaNote,
-      version: saved.noteVersion ?? version + 1,
-    };
-    return saved;
+    applyAppearanceTexts(item, saved);
+    item.agendaNote = saved.personNote?.text ?? null;
+    item.noteVersion = saved.personNote?.version ?? version + 1;
+    return item;
   };
 
 export const saveMeetingMinutes =
@@ -50,7 +52,7 @@ export const saveMeetingMinutes =
       text: text ?? "",
       version: item.meetingMinutes?.version ?? null,
     });
-    item.meetingMinutes = saved;
+    applyAppearanceTexts(item, saved);
     return item;
   };
 

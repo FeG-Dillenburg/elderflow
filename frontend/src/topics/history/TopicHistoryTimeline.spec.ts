@@ -49,10 +49,10 @@ describe('TopicHistoryTimeline', () => {
         },
         preparationContext: longNote,
         personNote: null,
-        meetingMinutes: [
+        legacyMinutesEntries: [
           { id: 'first', effectiveAt: '2026-07-15T20:10:00Z', text: '<p>First minute</p>', createdByDisplayName: null },
-          { id: 'second', effectiveAt: '2026-07-15T20:20:00Z', text: '<p>Second minute</p>', createdByDisplayName: 'Ada Lovelace' },
         ],
+        meetingMinutes: { id: 'second', effectiveAt: '2026-07-15T20:20:00Z', text: '<p>Second minute</p>', createdByDisplayName: 'Ada Lovelace' },
       },
       {
         id: 'skip',
@@ -102,7 +102,8 @@ describe('TopicHistoryTimeline', () => {
       },
       preparationContext: null,
       personNote: null,
-      meetingMinutes: [],
+      meetingMinutes: null,
+      legacyMinutesEntries: [],
     }];
 
     const wrapper = mount(TopicHistoryTimeline, {
@@ -111,6 +112,8 @@ describe('TopicHistoryTimeline', () => {
     });
 
     expect(wrapper.get('.deferred-marker').text()).toBe('Deferred');
+    expect(wrapper.text()).toContain('No preparation context recorded');
+    expect(wrapper.text()).toContain('No Meeting minutes recorded');
     expect(wrapper.text()).not.toContain('Responsible');
     expect(wrapper.text()).not.toContain('Grace Hopper');
     expect(wrapper.find('.topic-snapshot').exists()).toBe(false);
@@ -139,13 +142,48 @@ describe('TopicHistoryTimeline', () => {
       },
       preparationContext: type === 'person' ? null : '<p>One appearance note</p>',
       personNote: type === 'person' ? '<p>One appearance note</p>' : null,
-      meetingMinutes: [],
+      meetingMinutes: null,
+      legacyMinutesEntries: [],
     }];
 
     const wrapper = mount(TopicHistoryTimeline, { props: { entries }, ...options });
 
     expect(wrapper.text()).toContain(label);
     expect(wrapper.text().match(/One appearance note/g)).toHaveLength(1);
+  });
+
+  it('keeps legacy Meeting-linked Minutes visible for a Person appearance', () => {
+    const entries: TopicHistoryEntry[] = [{
+      id: 'person',
+      kind: 'meeting_appearance',
+      effectiveAt: '2026-07-15T20:00:00',
+      appearanceId: 'person',
+      deferredAt: null,
+      meeting,
+      section: null,
+      topic: {
+        type: 'person',
+        name: 'Historical person',
+        responsibleUserDisplayName: null,
+        membershipProcessStatus: null,
+        membershipStatusSignal: null,
+        godparents: null,
+      },
+      preparationContext: null,
+      personNote: '<p>One Person note</p>',
+      meetingMinutes: null,
+      legacyMinutesEntries: [{
+        id: 'legacy',
+        effectiveAt: '2026-07-15T20:10:00Z',
+        text: '<p>Preserved legacy Minutes</p>',
+        createdByDisplayName: null,
+      }],
+    }];
+
+    const wrapper = mount(TopicHistoryTimeline, { props: { entries }, ...options });
+
+    expect(wrapper.text()).toContain('One Person note');
+    expect(wrapper.text()).toContain('Preserved legacy Minutes');
   });
 
   it('shows the historical Topic name only when it differs from the current name', async () => {
@@ -167,7 +205,8 @@ describe('TopicHistoryTimeline', () => {
       },
       preparationContext: null,
       personNote: null,
-      meetingMinutes: [],
+      meetingMinutes: null,
+      legacyMinutesEntries: [],
     }];
     const wrapper = mount(TopicHistoryTimeline, {
       props: {

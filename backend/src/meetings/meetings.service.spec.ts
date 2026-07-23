@@ -246,9 +246,15 @@ describe("MeetingsService", () => {
       "Current context",
       2,
     )).resolves.toMatchObject({
-      agendaNote: "Current context",
-      noteVersion: 3,
+      preparationContext: {
+        id: "appearance",
+        text: "Current context",
+        version: 3,
+      },
+      personNote: null,
+      meetingMinutes: null,
     });
+    expect(recurrence.reconcile).toHaveBeenCalledWith(manager);
 
     manager.findOne
       .mockResolvedValueOnce({ id: "meeting", status: "planned" })
@@ -280,7 +286,11 @@ describe("MeetingsService", () => {
       "appearance",
       "Current note",
       0,
-    )).resolves.toMatchObject({ agendaNote: "Current note", noteVersion: 1 });
+    )).resolves.toMatchObject({
+      preparationContext: null,
+      personNote: { id: "appearance", text: "Current note", version: 1 },
+      meetingMinutes: null,
+    });
 
     manager.findOne
       .mockResolvedValueOnce({ id: "meeting", status: "planned" })
@@ -318,7 +328,11 @@ describe("MeetingsService", () => {
       "appearance",
       { text: "First Minutes", version: null },
       { id: "taker" } as any,
-    )).resolves.toMatchObject({ text: "First Minutes", version: 1 });
+    )).resolves.toMatchObject({
+      preparationContext: expect.objectContaining({ id: "appearance" }),
+      personNote: null,
+      meetingMinutes: { text: "First Minutes", version: 1 },
+    });
     expect(manager.create).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
       topicId: "topic",
       meetingId: "meeting",
@@ -340,7 +354,9 @@ describe("MeetingsService", () => {
       "appearance",
       { text: "Revised", version: 3 },
       { id: "leader" } as any,
-    )).resolves.toMatchObject({ id: "current", text: "Revised", version: 4 });
+    )).resolves.toMatchObject({
+      meetingMinutes: { id: "current", text: "Revised", version: 4 },
+    });
     expect(earlier.text).toBe("Earlier");
   });
 

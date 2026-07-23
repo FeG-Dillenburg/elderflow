@@ -2,9 +2,9 @@
 import DOMPurify from "dompurify";
 import { watch } from "vue";
 import { useI18n } from "vue-i18n";
-import RichTextEditor from "../../components/RichTextEditor.vue";
 import type { MeetingTopic } from "../../api/domain";
 import { useMeetingTopicNoteAutosave } from "../useMeetingTopicNoteAutosave";
+import MeetingTextEditor from "./MeetingTextEditor.vue";
 
 const props = withDefaults(defineProps<{
   item: MeetingTopic;
@@ -53,31 +53,14 @@ watch(minutes.localNote, minutes.scheduleSave);
         {{ t("meetingTexts.preparationContext") }}
       </h4>
       <template v-if="mode === 'preparation'">
-        <RichTextEditor
+        <MeetingTextEditor
           v-model="preparation.localNote.value"
-          :placeholder="t('meetingTexts.preparationContext')"
-          height="100px"
-          @blur="preparation.save"
+          :label="t('meetingTexts.preparationContext')"
+          :description="t('meetingTexts.preparationDescription')"
+          :state="preparation.state.value"
+          :error="preparation.error.value"
+          @save="preparation.save"
         />
-        <span
-          v-if="preparation.state.value !== 'error'"
-          class="save-feedback"
-          role="status"
-          aria-live="polite"
-        >
-          <template v-if="preparation.state.value === 'saving'">
-            {{ t("meetingTexts.saving") }}
-          </template>
-          <template v-else-if="preparation.state.value === 'saved'">
-            {{ t("meetingTexts.saved") }}
-          </template>
-        </span>
-        <span v-else class="save-feedback error" role="alert">
-          {{ preparation.error.value }}
-          <button type="button" @click="preparation.save">
-            {{ t("meetingTexts.retry") }}
-          </button>
-        </span>
       </template>
       <div
         v-else-if="preparation.localNote.value"
@@ -97,31 +80,14 @@ watch(minutes.localNote, minutes.scheduleSave);
         {{ t("meetingTexts.meetingMinutes") }}
       </h4>
       <template v-if="mode === 'active' && canWriteMinutes">
-        <RichTextEditor
+        <MeetingTextEditor
           v-model="minutes.localNote.value"
-          :placeholder="t('meetingTexts.meetingMinutes')"
-          height="100px"
-          @blur="minutes.save"
+          :label="t('meetingTexts.meetingMinutes')"
+          :description="t('meetingTexts.minutesDescription')"
+          :state="minutes.state.value"
+          :error="minutes.error.value"
+          @save="minutes.save"
         />
-        <span
-          v-if="minutes.state.value !== 'error'"
-          class="save-feedback"
-          role="status"
-          aria-live="polite"
-        >
-          <template v-if="minutes.state.value === 'saving'">
-            {{ t("meetingTexts.saving") }}
-          </template>
-          <template v-else-if="minutes.state.value === 'saved'">
-            {{ t("meetingTexts.saved") }}
-          </template>
-        </span>
-        <span v-else class="save-feedback error" role="alert">
-          {{ minutes.error.value }}
-          <button type="button" @click="minutes.save">
-            {{ t("meetingTexts.retry") }}
-          </button>
-        </span>
       </template>
       <div
         v-else-if="minutes.localNote.value"
@@ -172,28 +138,8 @@ h4 {
   margin: 0.25rem 0;
 }
 
-.empty-text,
-.save-feedback {
+.empty-text {
   color: #6c7b8f;
   font-size: 0.75rem;
-}
-
-.save-feedback {
-  display: block;
-  min-height: 1rem;
-}
-
-.save-feedback.error {
-  color: #b42318;
-}
-
-.save-feedback button {
-  border: 0;
-  padding: 0 0.2rem;
-  color: inherit;
-  background: transparent;
-  font: inherit;
-  text-decoration: underline;
-  cursor: pointer;
 }
 </style>

@@ -11,6 +11,12 @@ export interface VersionedMeetingText {
   version: number;
 }
 
+export interface MeetingAppearanceTexts {
+  preparationContext: VersionedMeetingText | null;
+  personNote: VersionedMeetingText | null;
+  meetingMinutes: VersionedMeetingText | null;
+}
+
 @Entity({ name: 'meeting_topics' })
 @Unique(['meetingId', 'topicId'])
 export class MeetingTopic {

@@ -4,7 +4,12 @@ import { computed } from "vue";
 import { useI18n } from "vue-i18n";
 
 const props = withDefaults(
-  defineProps<{ placeholder?: string; height?: string }>(),
+  defineProps<{
+    placeholder?: string;
+    height?: string;
+    ariaLabel?: string;
+    ariaDescription?: string;
+  }>(),
   {
     height: "160px",
   },
@@ -19,6 +24,14 @@ const model = defineModel<string>({ default: "" });
 const onSelectionChange = (event: { range: unknown | null }) => {
   if (event.range === null) emit("blur");
 };
+const onLoad = (event: { instance: { root: HTMLElement } }) => {
+  if (props.ariaLabel) {
+    event.instance.root.setAttribute("aria-label", props.ariaLabel);
+  }
+  if (props.ariaDescription) {
+    event.instance.root.setAttribute("aria-description", props.ariaDescription);
+  }
+};
 </script>
 
 <template>
@@ -27,6 +40,7 @@ const onSelectionChange = (event: { range: unknown | null }) => {
     :placeholder="resolvedPlaceholder"
     :editor-style="{ height: props.height }"
     @selection-change="onSelectionChange"
+    @load="onLoad"
   >
     <template #toolbar>
       <span class="ql-formats">

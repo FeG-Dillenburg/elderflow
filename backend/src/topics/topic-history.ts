@@ -44,7 +44,8 @@ export interface MeetingAppearanceHistoryEntry {
   topic: TopicHistoryTopicDisplay;
   preparationContext: string | null;
   personNote: string | null;
-  meetingMinutes: TopicHistoryMinutesEntry[];
+  meetingMinutes: TopicHistoryMinutesEntry | null;
+  legacyMinutesEntries: TopicHistoryMinutesEntry[];
 }
 
 export interface SkippedRecurrenceHistoryEntry {

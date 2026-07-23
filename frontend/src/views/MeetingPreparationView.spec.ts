@@ -261,9 +261,13 @@ describe("MeetingPreparationView", () => {
     const appearance = vm.grouped[1].items[0];
     appearance.personNote = { id: appearance.id, text: null, version: 0 };
     vi.spyOn(api, "updatePersonMeetingNote").mockResolvedValue({
-      ...appearance,
-      agendaNote: "Saved context",
-      noteVersion: 1,
+      preparationContext: null,
+      personNote: {
+        id: appearance.id,
+        text: "Saved context",
+        version: 1,
+      },
+      meetingMinutes: null,
     });
 
     const result = await savePersonMeetingNote("meeting-1", appearance)("Saved context");

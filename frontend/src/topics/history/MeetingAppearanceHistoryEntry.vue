@@ -28,6 +28,10 @@ const appearanceNote = computed(() => props.entry.topic.type === "person"
 const noteLabel = computed(() => props.entry.topic.type === "person"
   ? t("personTopic.noteLabel")
   : t("meetingTexts.preparationContext"));
+const minutesEntries = computed(() => [
+  ...props.entry.legacyMinutesEntries,
+  ...(props.entry.meetingMinutes ? [props.entry.meetingMinutes] : []),
+]);
 </script>
 
 <template>
@@ -92,14 +96,28 @@ const noteLabel = computed(() => props.entry.topic.type === "person"
         </div>
       </section>
 
-      <section v-if="appearanceNote" class="meeting-content">
+      <section
+        v-if="entry.topic.type !== 'person' || appearanceNote"
+        class="meeting-content"
+      >
         <h3>{{ noteLabel }}</h3>
-        <div class="rich-content" v-html="sanitizeHistoryRichText(appearanceNote)" />
+        <div
+          v-if="appearanceNote"
+          class="rich-content"
+          v-html="sanitizeHistoryRichText(appearanceNote)"
+        />
+        <p v-else class="empty-text">{{ t("meetingTexts.noPreparationContext") }}</p>
       </section>
 
-      <section v-if="entry.meetingMinutes.length" class="minutes-list">
+      <section
+        v-if="entry.topic.type !== 'person' || minutesEntries.length"
+        class="minutes-list"
+      >
         <h3>{{ t("meetingTexts.meetingMinutes") }}</h3>
-        <article v-for="minute in entry.meetingMinutes" :key="minute.id" class="minute">
+        <p v-if="!minutesEntries.length" class="empty-text">
+          {{ t("meetingTexts.noMeetingMinutes") }}
+        </p>
+        <article v-for="minute in minutesEntries" :key="minute.id" class="minute">
           <div class="rich-content" v-html="sanitizeHistoryRichText(minute.text)" />
           <p>
             <time :datetime="minute.effectiveAt">

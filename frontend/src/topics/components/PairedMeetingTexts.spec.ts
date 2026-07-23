@@ -102,6 +102,58 @@ describe("PairedMeetingTexts", () => {
     expect(saveMinutes).toHaveBeenCalledTimes(2);
   });
 
+  it("keeps newer Minutes input while an earlier autosave response is pending", async () => {
+    let resolveFirstSave!: () => void;
+    const firstSave = new Promise<void>((resolve) => {
+      resolveFirstSave = resolve;
+    });
+    const saveMinutes = vi.fn()
+      .mockImplementationOnce(() => firstSave)
+      .mockResolvedValueOnce({});
+    const wrapper = mount(PairedMeetingTexts, {
+      props: {
+        item: item(),
+        mode: "active",
+        canWriteMinutes: true,
+        savePreparation: vi.fn(),
+        saveMinutes,
+      },
+      global: { stubs: { RichTextEditor } },
+    });
+
+    const editor = wrapper.get("textarea");
+    await editor.setValue("<p>Earlier draft</p>");
+    await editor.trigger("blur");
+    await editor.setValue("<p>Newer draft</p>");
+    await editor.trigger("blur");
+
+    resolveFirstSave();
+    await flushPromises();
+
+    expect(saveMinutes.mock.calls).toEqual([
+      ["<p>Earlier draft</p>"],
+      ["<p>Newer draft</p>"],
+    ]);
+    expect((editor.element as HTMLTextAreaElement).value).toBe("<p>Newer draft</p>");
+  });
+
+  it("shows localized empty states for both values in a paired history state", () => {
+    const empty = item();
+    empty.preparationContext.text = null;
+    const wrapper = mount(PairedMeetingTexts, {
+      props: {
+        item: empty,
+        mode: "completed",
+        savePreparation: vi.fn(),
+        saveMinutes: vi.fn(),
+      },
+      global: { stubs: { RichTextEditor } },
+    });
+
+    expect(wrapper.text()).toContain("No preparation context recorded");
+    expect(wrapper.text()).toContain("No Meeting minutes recorded");
+  });
+
   it("renders both values read-only after completion", () => {
     const completed = item();
     completed.meetingMinutes = {
