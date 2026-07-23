@@ -35,7 +35,7 @@ describe('TopicHistoryTimeline', () => {
         id: 'appearance',
         kind: 'meeting_appearance',
         effectiveAt: '2026-07-15T20:00:00',
-        deferredAt: '2026-07-15T20:30:00.000Z',
+        deferredAt: null,
         appearanceId: 'appearance',
         meeting,
         section: { id: 'section', name: 'People' },
@@ -79,8 +79,39 @@ describe('TopicHistoryTimeline', () => {
     expect(statusPill.get('.p-tag-icon').classes()).toContain('pi-check');
     expect(statusPill.attributes('aria-label')).toContain('Nearly finished');
     expect(wrapper.get('.membership-snapshot').text()).toBe('Godparent(s)Alex and Robin');
-    expect(wrapper.get('.deferred-marker').text()).toBe('Deferred');
     expect(wrapper.findAll('.history-entry')).toHaveLength(3);
+  });
+
+  it('prominently marks a deferred Meeting and omits its responsible person', () => {
+    const entries: TopicHistoryEntry[] = [{
+      id: 'deferred-appearance',
+      kind: 'meeting_appearance',
+      effectiveAt: '2026-07-15T20:00:00',
+      appearanceId: 'deferred-appearance',
+      deferredAt: '2026-07-15T20:30:00.000Z',
+      meeting,
+      section: null,
+      topic: {
+        type: 'generic',
+        name: 'Deferred topic',
+        responsibleUserDisplayName: 'Grace Hopper',
+        membershipProcessStatus: null,
+        membershipStatusSignal: null,
+        godparents: null,
+      },
+      note: null,
+      minutes: [],
+    }];
+
+    const wrapper = mount(TopicHistoryTimeline, {
+      props: { entries, currentTopicName: 'Deferred topic' },
+      ...options,
+    });
+
+    expect(wrapper.get('.deferred-marker').text()).toBe('Deferred');
+    expect(wrapper.text()).not.toContain('Responsible');
+    expect(wrapper.text()).not.toContain('Grace Hopper');
+    expect(wrapper.find('.topic-snapshot').exists()).toBe(false);
   });
 
   it.each([

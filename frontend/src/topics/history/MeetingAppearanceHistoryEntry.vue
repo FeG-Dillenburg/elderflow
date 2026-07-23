@@ -15,6 +15,13 @@ const props = defineProps<{
 const { t } = useI18n();
 const showTopicName = computed(() => props.currentTopicName === undefined
   || props.entry.topic.name !== props.currentTopicName);
+const showResponsible = computed(() => !props.entry.deferredAt);
+const showTopicSnapshot = computed(() => showTopicName.value
+  || showResponsible.value
+  || props.entry.topic.type === "new_membership");
+const topicSnapshotValueCount = computed(() => Number(showTopicName.value)
+  + Number(showResponsible.value)
+  + Number(props.entry.topic.type === "new_membership"));
 const noteLabel = computed(() => props.entry.topic.type === "generic" || props.entry.topic.type === "recurring"
   ? t("topicHistory.meetingContext")
   : t("personTopic.noteLabel"));
@@ -49,18 +56,20 @@ const noteLabel = computed(() => props.entry.topic.type === "generic" || props.e
       </header>
 
       <section
+        v-if="showTopicSnapshot"
         class="topic-snapshot"
         :class="{
-          'single-value': !showTopicName && entry.topic.type !== 'new_membership',
+          'single-value': topicSnapshotValueCount === 1,
           'membership-summary': entry.topic.type === 'new_membership',
           'has-topic-name': showTopicName,
+          'without-responsible': !showResponsible,
         }"
       >
         <div v-if="showTopicName">
           <span>{{ t("topicHistory.topicAtMeeting") }}</span>
           <strong>{{ entry.topic.name || t("common.none") }}</strong>
         </div>
-        <div>
+        <div v-if="showResponsible">
           <span>{{ t("topicDetail.responsible") }}</span>
           <strong>{{ entry.topic.responsibleUserDisplayName || t("common.unassigned") }}</strong>
         </div>
@@ -159,8 +168,8 @@ const noteLabel = computed(() => props.entry.topic.type === "generic" || props.e
 
 .deferred-marker {
   color: #c53d3d;
-  font-size: 0.78rem;
-  font-weight: 800;
+  font-size: 1.05rem;
+  font-weight: 750;
 }
 
 .meeting-link:hover {
@@ -207,6 +216,14 @@ const noteLabel = computed(() => props.entry.topic.type === "generic" || props.e
 
 .topic-snapshot.membership-summary.has-topic-name {
   grid-template-columns: minmax(0, 1.4fr) repeat(2, minmax(0, 1fr));
+}
+
+.topic-snapshot.membership-summary.without-responsible {
+  grid-template-columns: 1fr;
+}
+
+.topic-snapshot.membership-summary.has-topic-name.without-responsible {
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
 }
 
 .membership-snapshot {
