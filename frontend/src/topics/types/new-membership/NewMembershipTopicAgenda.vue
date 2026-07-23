@@ -1,8 +1,7 @@
 <script setup lang="ts">
-import Button from "primevue/button";
-import { useI18n } from "vue-i18n";
 import type { MeetingTopic, Topic, TopicFieldPatch, User } from "../../../api/domain";
 import NewMembershipTopicAppearance from "./NewMembershipTopicAppearance.vue";
+import TopicDoneButton from "../../TopicDoneButton.vue";
 
 defineProps<{
   item: MeetingTopic;
@@ -13,7 +12,6 @@ defineProps<{
   saveNote: (note: string | null) => Promise<MeetingTopic>;
   markDone?: () => Promise<void>;
 }>();
-const { t } = useI18n();
 </script>
 
 <template>
@@ -26,13 +24,18 @@ const { t } = useI18n();
       :save-field="saveField"
       :save-note="saveNote"
     />
-    <div v-if="canEdit && item.topic?.membershipStatusSignal === 'nearly_finished'" class="lifecycle-actions">
-      <Button
-        :label="t('meetingAgenda.markDone')"
-        severity="success"
-        text
+    <div
+      v-if="
+        canEdit &&
+        (item.topic?.membershipStatusSignal === 'nearly_finished' ||
+          item.topic?.status === 'done')
+      "
+      class="lifecycle-actions"
+    >
+      <TopicDoneButton
+        :done="item.topic?.status === 'done'"
         size="small"
-        @click="markDone"
+        @toggle="markDone"
       />
     </div>
   </div>

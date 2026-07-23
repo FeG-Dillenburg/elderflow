@@ -1,9 +1,8 @@
 <script setup lang="ts">
-import Button from "primevue/button";
 import { RouterLink } from "vue-router";
 import type { MeetingTopic } from "../../../api/domain";
-import { useI18n } from "vue-i18n";
 import PersonTopicNote from "./PersonTopicNote.vue";
+import TopicDoneButton from "../../TopicDoneButton.vue";
 
 defineOptions({ inheritAttrs: false });
 
@@ -14,7 +13,6 @@ defineProps<{
   markDone?: () => Promise<void>;
 }>();
 
-const { t } = useI18n();
 </script>
 
 <template>
@@ -32,12 +30,10 @@ const { t } = useI18n();
         </template>
       </PersonTopicNote>
       <span v-if="canEdit" class="lifecycle-actions">
-        <Button
-          :label="t('meetingAgenda.markDone')"
-          severity="success"
-          text
+        <TopicDoneButton
+          :done="item.topic?.status === 'done'"
           size="small"
-          @click="markDone"
+          @toggle="markDone"
         />
       </span>
     </div>

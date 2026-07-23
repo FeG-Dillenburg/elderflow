@@ -244,20 +244,15 @@ describe("TopicTypeRenderer", () => {
         stubs: {
           RouterLink: { template: "<a><slot /></a>" },
           PersonTopicNote: true,
-          Button: {
-            inheritAttrs: false,
-            props: ["label"],
-            emits: ["click"],
-            template: '<button @click="$emit(\'click\')">{{ label }}</button>',
-          },
         },
       },
     });
 
-    const buttons = wrapper.findAll("button");
-    expect(buttons).toHaveLength(1);
+    const button = wrapper.findComponent({ name: "TopicDoneButton" });
+    expect(button.exists()).toBe(true);
+    expect(button.props("done")).toBe(false);
     expect(wrapper.text()).not.toContain("Defer");
-    await buttons[0].trigger("click");
+    await button.vm.$emit("toggle");
     expect(markDone).toHaveBeenCalledOnce();
   });
 

@@ -10,6 +10,7 @@ describe('MeetingsController completion boundary', () => {
   let app: INestApplication;
   const service = {
     complete: jest.fn(),
+    updateTopic: jest.fn(),
     updateTopicFields: jest.fn(),
     updateTopicNote: jest.fn(),
   };
@@ -96,6 +97,30 @@ describe('MeetingsController completion boundary', () => {
       meetingId,
       appearanceId,
       { membershipStatusSignal: 'attention' },
+    );
+  });
+
+  it('accepts a validated deferral intent on the Meeting appearance update', async () => {
+    const meetingId = '00000000-0000-4000-8000-000000000001';
+    const appearanceId = '00000000-0000-4000-8000-000000000003';
+    const appearance = { id: appearanceId, deferredAt: '2026-07-15T20:30:00.000Z' };
+    service.updateTopic.mockResolvedValue(appearance);
+
+    await request(app.getHttpServer())
+      .put(`/api/meetings/${meetingId}/topics/${appearanceId}`)
+      .send({
+        sectionId: '00000000-0000-4000-8000-000000000004',
+        position: 1,
+        status: 'planned',
+        deferred: true,
+      })
+      .expect(200)
+      .expect(appearance);
+
+    expect(service.updateTopic).toHaveBeenCalledWith(
+      meetingId,
+      appearanceId,
+      expect.objectContaining({ deferred: true }),
     );
   });
 

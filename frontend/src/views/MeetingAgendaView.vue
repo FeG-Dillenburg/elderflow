@@ -183,13 +183,36 @@ const topicInput = (item: MeetingTopic, status: string): TopicInput => ({
   godparents: item.topic!.godparents,
 } as TopicInput);
 const setTopicStatus = async (item: MeetingTopic, status: string) => {
-  await api.updateTopic(item.topicId, topicInput(item, status));
-  item.status = status === "done" ? "done" : item.status;
-  await api.updateMeetingTopic(id, item);
-  await load();
+  error.value = "";
+  try {
+    const wasDeferred = item.topic?.status === "deferred";
+    await api.updateTopic(item.topicId, topicInput(item, status));
+    const appearanceStatus = status === "done"
+      ? "done"
+      : item.status === "done"
+        ? "planned"
+        : item.status;
+    const appearance = {
+      ...item,
+      status: appearanceStatus,
+    };
+    const deferred = status === "deferred" ? true : wasDeferred ? false : undefined;
+    if (deferred === undefined) {
+      await api.updateMeetingTopic(id, appearance);
+    } else {
+      await api.updateMeetingTopic(id, appearance, { deferred });
+    }
+    if (item.topic) item.topic.status = status;
+    item.status = appearanceStatus;
+    await load();
+  } catch {
+    error.value = t("meetingAgenda.topicStatusFailed");
+  }
 };
 const toggleDeferred = (item: MeetingTopic) =>
   setTopicStatus(item, item.topic?.status === "deferred" ? "open" : "deferred");
+const toggleDone = (item: MeetingTopic) =>
+  setTopicStatus(item, item.topic?.status === "done" ? "open" : "done");
 const move = async (
   items: MeetingTopic[],
   index: number,
@@ -401,7 +424,7 @@ onMounted(load);
                 :add-update="() => addUpdate(item)"
                 :save-note="saveMeetingTopicNote(id, item)"
                 :toggle-deferred="() => toggleDeferred(item)"
-                :mark-done="() => setTopicStatus(item, 'done')"
+                :mark-done="() => toggleDone(item)"
               />
               <div v-if="canEdit" class="topic-actions">
                 <Button

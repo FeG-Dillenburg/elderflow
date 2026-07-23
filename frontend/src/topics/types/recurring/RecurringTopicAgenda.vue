@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { RouterLink } from "vue-router";
 import type { MeetingTopic } from "../../../api/domain";
-import PersonTopicNote from "../person/PersonTopicNote.vue";
+import RecurringTopicNote from "./RecurringTopicNote.vue";
 import { useI18n } from "vue-i18n";
 
 defineOptions({ inheritAttrs: false });
@@ -21,7 +21,7 @@ const { t } = useI18n();
       <RouterLink :to="`/topics/${item.topicId}`" class="topic-name">
         {{ item.topicNameSnapshot ?? item.topic?.name }}
       </RouterLink>
-      <PersonTopicNote
+      <RecurringTopicNote
         :item="item"
         :read-only="!canEdit"
         :save="saveNote"

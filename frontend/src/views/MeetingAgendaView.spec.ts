@@ -219,7 +219,7 @@ describe("MeetingAgendaView", () => {
     await vm.removeParticipant("user-1");
     expect(api.removeParticipant).toHaveBeenCalledWith("meeting-1", "user-1");
   });
-  it("defers, completes, moves, and saves a meeting with local date/time mapping", async () => {
+  it("defers, toggles completion, moves, and saves a meeting with local date/time mapping", async () => {
     const wrapper = await view();
     const vm: any = wrapper.vm;
     vi.spyOn(api, "updateTopic").mockResolvedValue({} as any);
@@ -231,14 +231,39 @@ describe("MeetingAgendaView", () => {
       "topic-1",
       expect.objectContaining({ status: "deferred" }),
     );
+    expect(api.updateMeetingTopic).toHaveBeenLastCalledWith(
+      "meeting-1",
+      expect.anything(),
+      { deferred: true },
+    );
     item.topic.status = "deferred";
     await vm.toggleDeferred(item);
     expect(api.updateTopic).toHaveBeenLastCalledWith(
       "topic-1",
       expect.objectContaining({ status: "open" }),
     );
-    await vm.setTopicStatus(item, "done");
+    expect(api.updateMeetingTopic).toHaveBeenLastCalledWith(
+      "meeting-1",
+      expect.anything(),
+      { deferred: false },
+    );
+    await vm.toggleDone(item);
+    expect(api.updateTopic).toHaveBeenLastCalledWith(
+      "topic-1",
+      expect.objectContaining({ status: "done" }),
+    );
     expect(api.updateMeetingTopic).toHaveBeenCalled();
+    item.topic.status = "done";
+    item.status = "done";
+    await vm.toggleDone(item);
+    expect(api.updateTopic).toHaveBeenLastCalledWith(
+      "topic-1",
+      expect.objectContaining({ status: "open" }),
+    );
+    expect(api.updateMeetingTopic).toHaveBeenLastCalledWith(
+      "meeting-1",
+      expect.objectContaining({ status: "planned" }),
+    );
     const other = { ...item, id: "item-2", position: 2 };
     await vm.move([item, other], 0, 1);
     expect(api.updateMeetingTopic).toHaveBeenCalledWith(
@@ -288,6 +313,18 @@ describe("MeetingAgendaView", () => {
     );
     expect(appearance.agendaNote).toBe("Saved note");
     expect(api.meeting).toHaveBeenCalledTimes(1);
+  });
+  it("reports a localized Topic status failure without updating the Meeting appearance", async () => {
+    const wrapper = await view();
+    const vm: any = wrapper.vm;
+    vi.spyOn(api, "updateTopic").mockRejectedValueOnce(new Error("Database detail"));
+    vi.spyOn(api, "updateMeetingTopic").mockResolvedValue({} as any);
+
+    await vm.toggleDone(vm.meeting.agenda[0]);
+
+    expect(wrapper.text()).toContain("Unable to change the Topic status");
+    expect(wrapper.text()).not.toContain("Database detail");
+    expect(api.updateMeetingTopic).not.toHaveBeenCalled();
   });
   it("excludes Person Topics from planned section duration", async () => {
     const personMeeting = structuredClone(meeting);

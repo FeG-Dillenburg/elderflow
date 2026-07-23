@@ -84,7 +84,7 @@ describe("New membership Topic renderers", () => {
     wrapper.unmount();
   });
 
-  it("shows Done only at nearly finished and omits TOP numbering", () => {
+  it("shows a toggle at nearly finished, reflects completion, and omits TOP numbering", async () => {
     const base = {
       canEdit: true,
       users: [],
@@ -95,17 +95,26 @@ describe("New membership Topic renderers", () => {
     const early = mount(NewMembershipTopicAgenda, {
       shallow: true,
       props: { ...base, item: { topic: topic("in_progress") } as any },
-      global: { stubs: { Button: { props: ["label"], template: "<button>{{ label }}</button>" } } },
     });
     const ready = mount(NewMembershipTopicAgenda, {
       shallow: true,
       props: { ...base, item: { topic: topic("nearly_finished") } as any },
-      global: { stubs: { Button: { props: ["label"], template: "<button>{{ label }}</button>" } } },
     });
 
-    expect(early.text()).not.toContain("Mark done");
-    expect(ready.text()).toContain("Mark done");
+    expect(early.findComponent({ name: "TopicDoneButton" }).exists()).toBe(false);
+    expect(ready.findComponent({ name: "TopicDoneButton" }).props("done")).toBe(false);
     expect(ready.text()).not.toContain("TOP");
+
+    await ready.setProps({
+      item: {
+        topic: {
+          ...topic("nearly_finished"),
+          status: "done",
+        },
+      } as any,
+    });
+
+    expect(ready.findComponent({ name: "TopicDoneButton" }).props("done")).toBe(true);
   });
 
   it("renders completed values from snapshots instead of later live state", () => {

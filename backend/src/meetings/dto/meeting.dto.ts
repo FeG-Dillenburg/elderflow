@@ -1,5 +1,5 @@
 import { Type } from 'class-transformer';
-import { ArrayNotEmpty, IsArray, IsIn, IsInt, IsNotEmpty, IsOptional, IsString, IsUUID, Min, ValidateNested } from 'class-validator';
+import { ArrayNotEmpty, IsArray, IsBoolean, IsIn, IsInt, IsNotEmpty, IsOptional, IsString, IsUUID, Min, ValidateNested } from 'class-validator';
 
 export class MeetingDto {
   @IsOptional() @IsString() title?: string | null;
@@ -30,6 +30,7 @@ export class UpdateMeetingTopicDto {
   @IsInt() @Min(1) position: number;
   @IsOptional() @IsInt() @Min(1) plannedDuration?: number | null;
   @IsIn(['planned', 'discussed', 'skipped', 'moved', 'done']) status: string;
+  @IsOptional() @IsBoolean() deferred?: boolean;
 }
 
 export class UpdateMeetingTopicNoteDto {

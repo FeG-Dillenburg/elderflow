@@ -1,0 +1,17 @@
+.history-entry {
+  position: relative;
+  display: grid;
+  grid-template-columns: 2.25rem minmax(0, 1fr);
+  gap: 0.8rem;
+}
+
+.history-entry .entry-icon {
+  z-index: 1;
+  display: grid;
+  width: 2.25rem;
+  height: 2.25rem;
+  place-items: center;
+  border: 4px solid #f7f9fc;
+  border-radius: 50%;
+  font-size: 0.8rem;
+}
