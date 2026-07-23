@@ -47,8 +47,9 @@ describe('TopicHistoryTimeline', () => {
           membershipStatusSignal: 'nearly_finished',
           godparents: 'Alex and Robin',
         },
-        note: longNote,
-        minutes: [
+        preparationContext: longNote,
+        personNote: null,
+        meetingMinutes: [
           { id: 'first', effectiveAt: '2026-07-15T20:10:00Z', text: '<p>First minute</p>', createdByDisplayName: null },
           { id: 'second', effectiveAt: '2026-07-15T20:20:00Z', text: '<p>Second minute</p>', createdByDisplayName: 'Ada Lovelace' },
         ],
@@ -99,8 +100,9 @@ describe('TopicHistoryTimeline', () => {
         membershipStatusSignal: null,
         godparents: null,
       },
-      note: null,
-      minutes: [],
+      preparationContext: null,
+      personNote: null,
+      meetingMinutes: [],
     }];
 
     const wrapper = mount(TopicHistoryTimeline, {
@@ -115,9 +117,9 @@ describe('TopicHistoryTimeline', () => {
   });
 
   it.each([
-    ['generic', 'Meeting context'],
+    ['generic', 'Preparation context'],
     ['person', 'Meeting topic note'],
-    ['recurring', 'Meeting context'],
+    ['recurring', 'Preparation context'],
   ] as const)('renders the %s Meeting appearance with its type-aware note label', (type, label) => {
     const entries: TopicHistoryEntry[] = [{
       id: type,
@@ -135,8 +137,9 @@ describe('TopicHistoryTimeline', () => {
         membershipStatusSignal: null,
         godparents: null,
       },
-      note: '<p>One appearance note</p>',
-      minutes: [],
+      preparationContext: type === 'person' ? null : '<p>One appearance note</p>',
+      personNote: type === 'person' ? '<p>One appearance note</p>' : null,
+      meetingMinutes: [],
     }];
 
     const wrapper = mount(TopicHistoryTimeline, { props: { entries }, ...options });
@@ -162,8 +165,9 @@ describe('TopicHistoryTimeline', () => {
         membershipStatusSignal: null,
         godparents: null,
       },
-      note: null,
-      minutes: [],
+      preparationContext: null,
+      personNote: null,
+      meetingMinutes: [],
     }];
     const wrapper = mount(TopicHistoryTimeline, {
       props: {

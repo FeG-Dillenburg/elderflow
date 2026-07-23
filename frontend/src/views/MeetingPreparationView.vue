@@ -27,7 +27,12 @@ import {
 import { formatDate } from "../i18n";
 import { topicNameTranslationKey } from "../topics/topicTypes";
 import { assignableUsers } from "../auth/roles";
-import { saveMeetingTopicField, saveMeetingTopicNote } from "../topics/meetingTopicEdits";
+import {
+  saveMeetingMinutes,
+  saveMeetingPreparationContext,
+  saveMeetingTopicField,
+  savePersonMeetingNote,
+} from "../topics/meetingTopicEdits";
 import { topicUsesPlannedDuration } from "../topics/topicTypeRegistry";
 import { toTopicInput } from "../topics/types/new-membership/topicInput";
 
@@ -322,9 +327,12 @@ onMounted(load);
                       :topic="item.topic"
                       :item="item"
                       :read-only="readOnly"
+                      :meeting-status="meeting.status"
                       :users="responsibleUserOptions"
                       :save-field="saveMeetingTopicField(id, item)"
-                      :save-note="saveMeetingTopicNote(id, item)"
+                      :save-note="savePersonMeetingNote(id, item)"
+                      :save-preparation-context="saveMeetingPreparationContext(id, item)"
+                      :save-minutes="saveMeetingMinutes(id, item)"
                     />
                     <small>
                       {{ statusLabel(item.topic?.status) }}

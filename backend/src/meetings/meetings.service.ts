@@ -1,12 +1,12 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, In, LessThan, LessThanOrEqual, Repository } from 'typeorm';
+import { DataSource, EntityManager, In, LessThan, LessThanOrEqual, Repository } from 'typeorm';
 import { AgendaSection } from '../agenda-sections/agenda-section.entity';
 import { Task } from '../tasks/task.entity';
 import { Topic } from '../topics/topic.entity';
 import { TopicUpdate } from '../topics/topic-update.entity';
 import { MeetingDto, MeetingParticipantDto, MeetingTopicDto, MeetingTopicOrderItemDto, UpdateMeetingTopicDto } from './dto/meeting.dto';
-import { MeetingTopic } from './meeting-topic.entity';
+import { MeetingTopic, VersionedMeetingText } from './meeting-topic.entity';
 import { MeetingUser } from './meeting-user.entity';
 import { Meeting } from './meeting.entity';
 import { codedHttpException } from '../errors/coded-http.exception';
@@ -148,6 +148,35 @@ export class MeetingsService {
         }),
       ]);
       for (const item of agenda) {
+        const meetingMinutes = updates
+          .filter((update) => update.topicId === item.topicId && update.meetingId === id)
+          .sort((left, right) =>
+            right.date.getTime() - left.date.getTime() || right.id.localeCompare(left.id))[0];
+        Object.assign(item, item.topic?.type === 'person'
+          ? {
+            preparationContext: null,
+            personNote: {
+              id: item.id,
+              text: item.agendaNote,
+              version: item.noteVersion,
+            },
+            meetingMinutes: null,
+          }
+          : {
+            preparationContext: {
+              id: item.id,
+              text: item.agendaNote,
+              version: item.noteVersion,
+            },
+            personNote: null,
+            meetingMinutes: meetingMinutes
+              ? {
+                id: meetingMinutes.id,
+                text: meetingMinutes.text,
+                version: meetingMinutes.version,
+              }
+              : null,
+          });
         Object.assign(item.topic!, {
           updates: updates.filter((update) =>
             update.topicId === item.topicId &&
@@ -318,10 +347,86 @@ export class MeetingsService {
     });
   }
 
-  async updateTopicNote(meetingId: string, id: string, agendaNote: string | null): Promise<MeetingTopic> {
+  async updatePreparationContext(
+    meetingId: string,
+    id: string,
+    text: string | null,
+    version: number,
+  ): Promise<MeetingTopic> {
     return this.dataSource.transaction(async (manager) => {
-      await lockedMutableMeeting(manager, meetingId);
-      const appearance = await manager.findOneBy(MeetingTopic, { id, meetingId });
+      const { meeting, appearance } = await this.lockedTextAppearance(manager, meetingId, id);
+      if (meeting.status !== 'planned') {
+        throw codedHttpException(
+          HttpStatus.CONFLICT,
+          'MEETING_PREPARATION_CONTEXT_READ_ONLY',
+          'Preparation context can only be changed while the Meeting is planned',
+        );
+      }
+      if (appearance.topic?.type === 'person') {
+        throw codedHttpException(
+          HttpStatus.BAD_REQUEST,
+          'MEETING_TEXT_TOPIC_TYPE_INVALID',
+          'Person Topics use one Meeting topic note',
+        );
+      }
+      this.assertTextVersion(appearance.noteVersion, version);
+      appearance.agendaNote = text;
+      appearance.noteEditedAt = new Date();
+      appearance.noteVersion += 1;
+      return manager.save(MeetingTopic, appearance);
+    });
+  }
+
+  async updatePersonNote(
+    meetingId: string,
+    id: string,
+    text: string | null,
+    version: number,
+  ): Promise<MeetingTopic> {
+    return this.dataSource.transaction(async (manager) => {
+      const { appearance } = await this.lockedTextAppearance(manager, meetingId, id);
+      if (appearance.topic?.type !== 'person') {
+        throw codedHttpException(
+          HttpStatus.BAD_REQUEST,
+          'MEETING_TEXT_TOPIC_TYPE_INVALID',
+          'Only Person Topics use a single Meeting topic note',
+        );
+      }
+      this.assertTextVersion(appearance.noteVersion, version);
+      appearance.agendaNote = text;
+      appearance.noteEditedAt = new Date();
+      appearance.noteVersion += 1;
+      return manager.save(MeetingTopic, appearance);
+    });
+  }
+
+  async updateMeetingMinutes(
+    meetingId: string,
+    id: string,
+    input: { text: string; version: number | null },
+    user: User,
+  ): Promise<VersionedMeetingText> {
+    return this.dataSource.transaction(async (manager) => {
+      const meeting = await lockedMutableMeeting(manager, meetingId);
+      if (meeting.status !== 'in_progress') {
+        throw codedHttpException(
+          HttpStatus.CONFLICT,
+          'MEETING_MINUTES_STATUS_INVALID',
+          'Meeting minutes can only be changed while the Meeting is in progress',
+        );
+      }
+      if (user.id !== meeting.meetingLeaderId && user.id !== meeting.minuteTakerId) {
+        throw codedHttpException(
+          HttpStatus.FORBIDDEN,
+          'MEETING_MINUTES_FORBIDDEN',
+          'Only the Meeting leader or Minute taker can change Meeting minutes',
+        );
+      }
+      const appearance = await manager.findOne(MeetingTopic, {
+        where: { id, meetingId },
+        relations: { topic: true },
+        lock: { mode: 'pessimistic_write' },
+      });
       if (!appearance) {
         throw codedHttpException(
           HttpStatus.NOT_FOUND,
@@ -329,12 +434,77 @@ export class MeetingsService {
           'Agenda topic not found',
         );
       }
-      appearance.agendaNote = agendaNote;
-      appearance.noteEditedAt = new Date();
-      const saved = await manager.save(MeetingTopic, appearance);
-      await this.recurrence.reconcile(manager);
-      return saved;
+      if (appearance.topic?.type === 'person') {
+        throw codedHttpException(
+          HttpStatus.BAD_REQUEST,
+          'MEETING_TEXT_TOPIC_TYPE_INVALID',
+          'Person Topics do not have a separate Meeting-minutes value',
+        );
+      }
+      const minutes = await manager.find(TopicUpdate, {
+        where: { topicId: appearance.topicId, meetingId },
+        order: { date: 'DESC', id: 'DESC' },
+        lock: { mode: 'pessimistic_write' },
+      });
+      const current = minutes[0];
+      if ((current?.version ?? null) !== input.version) {
+        throw codedHttpException(
+          HttpStatus.CONFLICT,
+          'MEETING_TEXT_STALE',
+          'Meeting text changed; retry with the latest version',
+        );
+      }
+      const saved = current
+        ? await manager.save(TopicUpdate, Object.assign(current, {
+          text: input.text,
+          version: current.version + 1,
+        }))
+        : await manager.save(TopicUpdate, manager.create(TopicUpdate, {
+          topicId: appearance.topicId,
+          meetingId,
+          text: input.text,
+          type: 'minute',
+          createdById: user.id,
+          date: new Date(),
+          version: 1,
+        }));
+      return {
+        id: saved.id ?? null,
+        text: saved.text,
+        version: saved.version,
+      };
     });
+  }
+
+  private async lockedTextAppearance(
+    manager: EntityManager,
+    meetingId: string,
+    id: string,
+  ): Promise<{ meeting: Meeting; appearance: MeetingTopic }> {
+    const meeting = await lockedMutableMeeting(manager, meetingId);
+    const appearance = await manager.findOne(MeetingTopic, {
+      where: { id, meetingId },
+      relations: { topic: true },
+      lock: { mode: 'pessimistic_write' },
+    });
+    if (!appearance) {
+      throw codedHttpException(
+        HttpStatus.NOT_FOUND,
+        'AGENDA_TOPIC_NOT_FOUND',
+        'Agenda topic not found',
+      );
+    }
+    return { meeting, appearance };
+  }
+
+  private assertTextVersion(current: number, requested: number): void {
+    if (current !== requested) {
+      throw codedHttpException(
+        HttpStatus.CONFLICT,
+        'MEETING_TEXT_STALE',
+        'Meeting text changed; retry with the latest version',
+      );
+    }
   }
 
   async removeTopic(meetingId: string, id: string): Promise<void> {

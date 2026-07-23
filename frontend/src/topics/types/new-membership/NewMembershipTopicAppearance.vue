@@ -12,8 +12,8 @@ import {
   type TopicFieldPatch,
   type User,
 } from "../../../api/domain";
-import PersonTopicNote from "../person/PersonTopicNote.vue";
 import MembershipInlineText from "./MembershipInlineText.vue";
+import PairedMeetingTexts from "../../components/PairedMeetingTexts.vue";
 import {
   membershipSignalIcons,
   membershipSignalStyles,
@@ -25,7 +25,10 @@ const props = defineProps<{
   completed?: boolean;
   users: User[];
   saveField: (patch: TopicFieldPatch) => Promise<Topic>;
-  saveNote: (note: string | null) => Promise<MeetingTopic>;
+  meetingTextMode?: "preparation" | "active" | "completed";
+  canWriteMinutes?: boolean;
+  savePreparationContext?: (note: string | null) => Promise<unknown>;
+  saveMinutes?: (note: string | null) => Promise<unknown>;
 }>();
 const { t } = useI18n();
 const liveTopic = computed(() => props.item.topic!);
@@ -100,6 +103,10 @@ const display = computed(() => !props.completed ? {
   signal: props.item.membershipStatusSignalSnapshot ?? "new",
   godparents: props.item.godparentsSnapshot,
 });
+const savePreparation = (text: string | null) =>
+  props.savePreparationContext?.(text) ?? Promise.resolve();
+const saveCurrentMinutes = (text: string | null) =>
+  props.saveMinutes?.(text) ?? Promise.resolve();
 </script>
 
 <template>
@@ -206,12 +213,12 @@ const display = computed(() => !props.completed ? {
         </small>
       </div>
       <div class="note-field">
-        <span>{{ t("newMembershipTopic.note") }}</span>
-        <PersonTopicNote
+        <PairedMeetingTexts
           :item="item"
-          :read-only="!canEdit"
-          :label="t('newMembershipTopic.note')"
-          :save="saveNote"
+          :mode="meetingTextMode ?? (completed ? 'completed' : 'preparation')"
+          :can-write-minutes="canWriteMinutes"
+          :save-preparation="savePreparation"
+          :save-minutes="saveCurrentMinutes"
         />
       </div>
     </div>
@@ -419,13 +426,6 @@ const display = computed(() => !props.completed ? {
   gap: 0.2rem;
   min-width: 0;
   padding: 0.55rem 0.75rem 0.2rem;
-}
-
-.note-field > span {
-  color: #5f6b7c;
-  font-size: 0.78rem;
-  font-style: italic;
-  font-weight: 600;
 }
 
 .note-field :deep(textarea) {

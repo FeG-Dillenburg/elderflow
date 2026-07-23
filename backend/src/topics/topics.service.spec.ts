@@ -74,15 +74,13 @@ describe("TopicsService", () => {
     );
   });
 
-  it("rejects a Minutes entry linked to a completed Meeting with a stable error", async () => {
-    manager.findOne.mockResolvedValue({ id: "meeting", status: "completed" });
-
+  it("keeps Meeting minutes behind the semantic appearance endpoint", async () => {
     await expect(service.addUpdate(
       "topic-id",
-      { text: "Late change", type: "minute", meetingId: "meeting" },
+      { text: "Meeting text", type: "minute", meetingId: "meeting" },
       { id: "user-id" } as User,
     )).rejects.toMatchObject({
-      response: expect.objectContaining({ code: "MEETING_COMPLETED_IMMUTABLE" }),
+      response: expect.objectContaining({ code: "MEETING_MINUTES_ENDPOINT_REQUIRED" }),
     });
     expect(updates.save).not.toHaveBeenCalled();
   });

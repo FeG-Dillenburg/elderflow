@@ -3,12 +3,12 @@ import { computed } from "vue";
 import { RouterLink } from "vue-router";
 import DOMPurify from "dompurify";
 import Button from "primevue/button";
-import RichTextEditor from "../../../components/RichTextEditor.vue";
 import TopicDoneButton from "../../TopicDoneButton.vue";
 import type { MeetingTopic, TopicUpdate } from "../../../api/domain";
 import { formatUser } from "../../../api/domain";
 import { formatDate } from "../../../i18n";
 import { useI18n } from "vue-i18n";
+import PairedMeetingTexts from "../../components/PairedMeetingTexts.vue";
 
 defineOptions({ inheritAttrs: false });
 
@@ -17,22 +17,25 @@ const props = defineProps<{
   number?: string;
   canEdit?: boolean;
   recentUpdates?: TopicUpdate[];
-  updateEditorOpen?: boolean;
-  updateText?: string;
-  setUpdateText?: (value: string) => void;
-  openUpdateEditor?: () => void;
-  closeUpdateEditor?: () => void;
-  addUpdate?: () => Promise<void>;
   toggleDeferred?: () => Promise<void>;
   markDone?: () => Promise<void>;
+  meetingStatus?: string;
+  canWriteMinutes?: boolean;
+  savePreparationContext?: (text: string | null) => Promise<unknown>;
+  saveMinutes?: (text: string | null) => Promise<unknown>;
 }>();
 
 const { t } = useI18n();
-const editorText = computed({
-  get: () => props.updateText ?? "",
-  set: (value: string) => props.setUpdateText?.(value),
-});
 const safe = (html: string | null | undefined) => DOMPurify.sanitize(html ?? "");
+const meetingTextMode = computed(() => props.meetingStatus === "in_progress"
+  ? "active"
+  : props.meetingStatus === "completed"
+    ? "completed"
+    : "preparation");
+const savePreparation = (text: string | null) =>
+  props.savePreparationContext?.(text) ?? Promise.resolve();
+const saveCurrentMinutes = (text: string | null) =>
+  props.saveMinutes?.(text) ?? Promise.resolve();
 </script>
 
 <template>
@@ -52,10 +55,12 @@ const safe = (html: string | null | undefined) => DOMPurify.sanitize(html ?? "")
         {{ item.plannedDuration }} {{ t("common.minuteShort") }}
       </div>
     </div>
-    <div
-      v-if="item.agendaNote"
-      class="agenda-note"
-      v-html="safe(item.agendaNote)"
+    <PairedMeetingTexts
+      :item="item"
+      :mode="meetingTextMode"
+      :can-write-minutes="canWriteMinutes"
+      :save-preparation="savePreparation"
+      :save-minutes="saveCurrentMinutes"
     />
     <div v-if="recentUpdates?.length" class="updates">
       <p class="section-label">{{ t("meetingAgenda.recentUpdates") }}</p>
@@ -80,29 +85,8 @@ const safe = (html: string | null | undefined) => DOMPurify.sanitize(html ?? "")
         </small>
       </p>
     </div>
-    <div v-if="canEdit && updateEditorOpen" class="quick-update">
-      <RichTextEditor v-model="editorText" height="100px" />
-      <div class="quick-update-actions">
-        <Button
-          :label="t('common.cancel')"
-          severity="secondary"
-          text
-          @click="closeUpdateEditor"
-        />
-        <Button
-          icon="pi pi-check"
-          :label="t('meetingAgenda.saveMinute')"
-          @click="addUpdate"
-        />
-      </div>
-    </div>
-    <div v-else-if="canEdit" class="topic-footer">
-      <Button
-        icon="pi pi-plus"
-        :label="t('meetingAgenda.addMinute')"
-        text
-        @click="openUpdateEditor"
-      />
+    <div v-if="canEdit" class="topic-footer">
+      <span />
       <span>
         <Button
           :aria-pressed="item.topic?.status === 'deferred'"
@@ -152,11 +136,6 @@ h3 {
   margin: 0.25rem 0 0;
 }
 
-.agenda-note {
-  margin: 0.8rem 0 0 72px;
-  color: #4a5568;
-}
-
 .section-label {
   margin: 0.9rem 0 0.45rem;
   color: #607dae;
@@ -195,25 +174,6 @@ h3 {
   padding-top: 0.45rem;
 }
 
-.quick-update {
-  display: grid;
-  gap: 0.5rem;
-  margin-top: 0.9rem;
-  width: 100%;
-}
-
-.quick-update :deep(.p-editor) {
-  width: 100%;
-  min-width: 0;
-}
-
-.quick-update-actions {
-  display: flex;
-  justify-content: end;
-  gap: 0.4rem;
-  margin-top: 0.5rem;
-}
-
 @media (max-width: 700px) {
   .topic-heading {
     grid-template-columns: 1fr;
@@ -223,7 +183,6 @@ h3 {
     padding: 0;
   }
 
-  .agenda-note,
   .updates,
   .tasks,
   .topic-footer {

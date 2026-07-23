@@ -110,7 +110,7 @@ export class TopicHistoryService {
     updates: TopicUpdate[],
   ): MeetingAppearanceHistoryEntry & { sortTime: number } {
     const meeting = this.meeting(appearance.meeting!);
-    const minutes = this.minutes(updates);
+    const meetingMinutes = this.minutes(updates);
 
     return {
       id: `meeting-appearance:${appearance.id}`,
@@ -124,8 +124,9 @@ export class TopicHistoryService {
         ? { id: appearance.section.id, name: appearance.section.name }
         : null,
       topic: this.topicDisplay(topic, appearance),
-      note: appearance.agendaNote,
-      minutes,
+      preparationContext: topic.type === 'person' ? null : appearance.agendaNote,
+      personNote: topic.type === 'person' ? appearance.agendaNote : null,
+      meetingMinutes,
     };
   }
 
@@ -158,8 +159,9 @@ export class TopicHistoryService {
       meeting,
       section: null,
       topic: this.topicDisplay(topic, undefined, meeting.status === 'completed'),
-      note: null,
-      minutes: this.minutes(updates),
+      preparationContext: null,
+      personNote: null,
+      meetingMinutes: this.minutes(updates),
     };
   }
 

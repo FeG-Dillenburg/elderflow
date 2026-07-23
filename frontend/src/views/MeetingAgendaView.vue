@@ -15,7 +15,12 @@ import {
   topicAgendaClass,
   topicUsesPlannedDuration,
 } from "../topics/topicTypeRegistry";
-import { saveMeetingTopicField, saveMeetingTopicNote } from "../topics/meetingTopicEdits";
+import {
+  saveMeetingMinutes,
+  saveMeetingPreparationContext,
+  saveMeetingTopicField,
+  savePersonMeetingNote,
+} from "../topics/meetingTopicEdits";
 import { auth } from "../auth/auth";
 import { assignableUsers } from "../auth/roles";
 import { buildNumberedAgenda } from "../utils/agenda";
@@ -48,6 +53,16 @@ const canFinish = computed(() => {
         userId === meeting.value.minuteTakerId),
   );
 });
+const canWriteMinutes = computed(() => {
+  const userId = auth.state.user?.id;
+  return Boolean(
+    canManage.value &&
+      userId &&
+      meeting.value?.status === "in_progress" &&
+      (userId === meeting.value.meetingLeaderId ||
+        userId === meeting.value.minuteTakerId),
+  );
+});
 const { t } = useI18n();
 
 const route = useRoute();
@@ -62,8 +77,6 @@ const meeting = ref<Meeting | null>(null),
   finishVisible = ref(false),
   finishing = ref(false),
   finishError = ref("");
-const updateEditors = reactive<Record<string, string>>({});
-const openEditors = reactive<Record<string, boolean>>({});
 const participant = reactive({
   userId: null as string | null,
   attendanceStatus: "present",
@@ -125,33 +138,11 @@ const recent = (item: MeetingTopic) => {
   const timestamp = (date: string) => new Date(date).getTime();
   const updates = [...(item.topic?.updates ?? [])];
 
-  if (meeting.value?.status === "completed") {
-    return updates
-      .filter((update) => update.meetingId === id)
-      .sort((left, right) => timestamp(left.date) - timestamp(right.date));
-  }
-
   return updates
-    .filter((update) => timestamp(update.date) >= cutoff)
+    .filter((update) => !update.meetingId && timestamp(update.date) >= cutoff)
     .sort((left, right) => timestamp(right.date) - timestamp(left.date))
     .slice(0, 3)
     .sort((left, right) => timestamp(left.date) - timestamp(right.date));
-};
-const addUpdate = async (item: MeetingTopic) => {
-  const text = updateEditors[item.id];
-  if (!text) return;
-  await api.addTopicUpdate(item.topicId, {
-    text,
-    type: "minute",
-    meetingId: id,
-  });
-  updateEditors[item.id] = "";
-  openEditors[item.id] = false;
-  await load();
-};
-const openUpdateEditor = (itemId: string) => {
-  updateEditors[itemId] ??= "";
-  openEditors[itemId] = true;
 };
 const addParticipant = async () => {
   if (!participant.userId) return;
@@ -412,17 +403,15 @@ onMounted(load);
                 :item="item"
                 :number="`${t('meetingAgenda.agendaNumber')} ${sectionIndex + 1}.${itemIndex + 1}`"
                 :can-edit="canEdit"
+                :can-write-minutes="canWriteMinutes"
                 :completed="isCompleted"
+                :meeting-status="meeting.status"
                 :users="users"
                 :save-field="saveMeetingTopicField(id, item)"
                 :recent-updates="recent(item)"
-                :update-editor-open="Boolean(openEditors[item.id])"
-                :update-text="updateEditors[item.id] ?? ''"
-                :set-update-text="(value: string) => (updateEditors[item.id] = value)"
-                :open-update-editor="() => openUpdateEditor(item.id)"
-                :close-update-editor="() => (openEditors[item.id] = false)"
-                :add-update="() => addUpdate(item)"
-                :save-note="saveMeetingTopicNote(id, item)"
+                :save-note="savePersonMeetingNote(id, item)"
+                :save-preparation-context="saveMeetingPreparationContext(id, item)"
+                :save-minutes="saveMeetingMinutes(id, item)"
                 :toggle-deferred="() => toggleDeferred(item)"
                 :mark-done="() => toggleDone(item)"
               />

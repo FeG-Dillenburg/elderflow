@@ -176,7 +176,7 @@ describe("MeetingsService", () => {
     ["agenda ordering", () => service.reorderTopics("meeting", [])],
     ["agenda values", () => service.updateTopic("meeting", "appearance", { plannedDuration: 20 } as any)],
     ["Topic type fields", () => service.updateTopicFields("meeting", "appearance", { membershipProcessStatus: "changed" })],
-    ["Meeting topic notes", () => service.updateTopicNote("meeting", "appearance", "changed")],
+    ["preparation context", () => service.updatePreparationContext("meeting", "appearance", "changed", 0)],
     ["agenda removal", () => service.removeTopic("meeting", "appearance")],
   ])("rejects changes to completed %s with a stable error", async (_label, mutate) => {
     manager.findOne.mockResolvedValue({ id: "meeting", status: "completed" });
@@ -184,28 +184,6 @@ describe("MeetingsService", () => {
     await expect(mutate()).rejects.toMatchObject({
       response: expect.objectContaining({ code: "MEETING_COMPLETED_IMMUTABLE" }),
     });
-  });
-
-  it("saves a Meeting topic note on its specific appearance and returns the saved state", async () => {
-    const appearance = {
-      id: "appearance",
-      meetingId: "meeting",
-      agendaNote: "Earlier note",
-    };
-    manager.findOne.mockResolvedValue({ id: "meeting", status: "in_progress" });
-    manager.findOneBy.mockResolvedValue(appearance);
-
-    await expect(
-      service.updateTopicNote("meeting", "appearance", "Current note"),
-    ).resolves.toMatchObject({ agendaNote: "Current note" });
-    expect(manager.findOneBy).toHaveBeenCalledWith(expect.anything(), {
-      id: "appearance",
-      meetingId: "meeting",
-    });
-    expect(manager.save).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.objectContaining({ agendaNote: "Current note" }),
-    );
   });
 
   it("updates fields only through an appearance belonging to the mutable Meeting", async () => {
@@ -239,16 +217,208 @@ describe("MeetingsService", () => {
     );
   });
 
-  it("rejects a note write for a missing appearance with a stable error", async () => {
-    manager.findOne.mockResolvedValue({ id: "meeting", status: "planned" });
-    manager.findOneBy.mockResolvedValue(null);
+  it("rejects a preparation-context write for a missing appearance with a stable error", async () => {
+    manager.findOne.mockResolvedValueOnce({ id: "meeting", status: "planned" }).mockResolvedValueOnce(null);
 
     await expect(
-      service.updateTopicNote("meeting", "missing", "Note"),
+      service.updatePreparationContext("meeting", "missing", "Note", 0),
     ).rejects.toMatchObject({
       response: expect.objectContaining({ code: "AGENDA_TOPIC_NOT_FOUND" }),
     });
     expect(manager.save).not.toHaveBeenCalled();
+  });
+
+  it("writes preparation context only in a planned Meeting and rejects stale versions", async () => {
+    const appearance = {
+      id: "appearance",
+      meetingId: "meeting",
+      agendaNote: "Earlier context",
+      noteVersion: 2,
+      topic: { type: "generic" },
+    };
+    manager.findOne
+      .mockResolvedValueOnce({ id: "meeting", status: "planned" })
+      .mockResolvedValueOnce(appearance);
+
+    await expect(service.updatePreparationContext(
+      "meeting",
+      "appearance",
+      "Current context",
+      2,
+    )).resolves.toMatchObject({
+      agendaNote: "Current context",
+      noteVersion: 3,
+    });
+
+    manager.findOne
+      .mockResolvedValueOnce({ id: "meeting", status: "planned" })
+      .mockResolvedValueOnce({ ...appearance, noteVersion: 4 });
+    await expect(service.updatePreparationContext(
+      "meeting",
+      "appearance",
+      "Stale context",
+      2,
+    )).rejects.toMatchObject({
+      response: expect.objectContaining({ code: "MEETING_TEXT_STALE" }),
+    });
+  });
+
+  it("keeps Person notes writable in planned and in-progress Meetings but rejects paired semantics", async () => {
+    const person = {
+      id: "appearance",
+      meetingId: "meeting",
+      agendaNote: "Earlier note",
+      noteVersion: 0,
+      topic: { type: "person" },
+    };
+    manager.findOne
+      .mockResolvedValueOnce({ id: "meeting", status: "in_progress" })
+      .mockResolvedValueOnce(person);
+
+    await expect(service.updatePersonNote(
+      "meeting",
+      "appearance",
+      "Current note",
+      0,
+    )).resolves.toMatchObject({ agendaNote: "Current note", noteVersion: 1 });
+
+    manager.findOne
+      .mockResolvedValueOnce({ id: "meeting", status: "planned" })
+      .mockResolvedValueOnce({ ...person, topic: { type: "generic" } });
+    await expect(service.updatePersonNote(
+      "meeting",
+      "appearance",
+      "Wrong semantics",
+      1,
+    )).rejects.toMatchObject({
+      response: expect.objectContaining({ code: "MEETING_TEXT_TOPIC_TYPE_INVALID" }),
+    });
+  });
+
+  it("creates and updates one current Meeting-minutes value while preserving earlier entries", async () => {
+    const meeting = {
+      id: "meeting",
+      status: "in_progress",
+      meetingLeaderId: "leader",
+      minuteTakerId: "taker",
+    };
+    const appearance = {
+      id: "appearance",
+      meetingId: "meeting",
+      topicId: "topic",
+      topic: { type: "generic" },
+    };
+    manager.findOne
+      .mockResolvedValueOnce(meeting)
+      .mockResolvedValueOnce(appearance);
+    manager.find.mockResolvedValueOnce([]);
+
+    await expect(service.updateMeetingMinutes(
+      "meeting",
+      "appearance",
+      { text: "First Minutes", version: null },
+      { id: "taker" } as any,
+    )).resolves.toMatchObject({ text: "First Minutes", version: 1 });
+    expect(manager.create).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      topicId: "topic",
+      meetingId: "meeting",
+      text: "First Minutes",
+      type: "minute",
+      createdById: "taker",
+      version: 1,
+    }));
+
+    const earlier = { id: "earlier", date: new Date("2026-07-23T18:00:00Z"), text: "Earlier", version: 0 };
+    const current = { id: "current", date: new Date("2026-07-23T19:00:00Z"), text: "Current", version: 3 };
+    manager.findOne
+      .mockResolvedValueOnce(meeting)
+      .mockResolvedValueOnce(appearance);
+    manager.find.mockResolvedValueOnce([current, earlier]);
+
+    await expect(service.updateMeetingMinutes(
+      "meeting",
+      "appearance",
+      { text: "Revised", version: 3 },
+      { id: "leader" } as any,
+    )).resolves.toMatchObject({ id: "current", text: "Revised", version: 4 });
+    expect(earlier.text).toBe("Earlier");
+  });
+
+  it("rejects Minutes writes for the wrong status, role, Topic type, and version", async () => {
+    manager.findOne.mockResolvedValueOnce({
+      id: "meeting",
+      status: "planned",
+      meetingLeaderId: "leader",
+      minuteTakerId: "taker",
+    });
+    await expect(service.updateMeetingMinutes(
+      "meeting",
+      "appearance",
+      { text: "Too early", version: null },
+      { id: "taker" } as any,
+    )).rejects.toMatchObject({
+      response: expect.objectContaining({ code: "MEETING_MINUTES_STATUS_INVALID" }),
+    });
+
+    manager.findOne.mockResolvedValueOnce({
+      id: "meeting",
+      status: "in_progress",
+      meetingLeaderId: "leader",
+      minuteTakerId: "taker",
+    });
+    await expect(service.updateMeetingMinutes(
+      "meeting",
+      "appearance",
+      { text: "Forbidden", version: null },
+      { id: "other" } as any,
+    )).rejects.toMatchObject({
+      response: expect.objectContaining({ code: "MEETING_MINUTES_FORBIDDEN" }),
+    });
+
+    manager.findOne
+      .mockResolvedValueOnce({
+        id: "meeting",
+        status: "in_progress",
+        meetingLeaderId: "leader",
+        minuteTakerId: "taker",
+      })
+      .mockResolvedValueOnce({
+        id: "appearance",
+        topicId: "person",
+        topic: { type: "person" },
+      });
+    await expect(service.updateMeetingMinutes(
+      "meeting",
+      "appearance",
+      { text: "Not for Person", version: null },
+      { id: "taker" } as any,
+    )).rejects.toMatchObject({
+      response: expect.objectContaining({ code: "MEETING_TEXT_TOPIC_TYPE_INVALID" }),
+    });
+
+    manager.findOne
+      .mockResolvedValueOnce({
+        id: "meeting",
+        status: "in_progress",
+        meetingLeaderId: "leader",
+        minuteTakerId: "taker",
+      })
+      .mockResolvedValueOnce({
+        id: "appearance",
+        topicId: "topic",
+        topic: { type: "generic" },
+      });
+    manager.find.mockResolvedValueOnce([
+      { id: "current", text: "Current", version: 2, date: new Date() },
+    ]);
+    await expect(service.updateMeetingMinutes(
+      "meeting",
+      "appearance",
+      { text: "Stale", version: 1 },
+      { id: "taker" } as any,
+    )).rejects.toMatchObject({
+      response: expect.objectContaining({ code: "MEETING_TEXT_STALE" }),
+    });
   });
 
   it("rejects bypassing the completion lifecycle through the general Meeting update", async () => {
@@ -300,6 +470,70 @@ describe("MeetingsService", () => {
     await service.findOne("empty");
     expect(updates.find).toHaveBeenCalledTimes(1);
     expect(tasks.find).toHaveBeenCalledTimes(1);
+  });
+
+  it("exposes semantic paired texts and the one current Minutes value with Meeting detail", async () => {
+    const generic: any = {
+      id: "generic-appearance",
+      topicId: "generic",
+      agendaNote: "Preparation context",
+      noteVersion: 2,
+      topic: { type: "generic" },
+    };
+    const person: any = {
+      id: "person-appearance",
+      topicId: "person",
+      agendaNote: "One Person note",
+      noteVersion: 4,
+      topic: { type: "person" },
+    };
+    meetings.findOne.mockResolvedValue({ id: "meeting", status: "in_progress" });
+    participants.find.mockResolvedValue([]);
+    meetingTopics.find.mockResolvedValue([generic, person]);
+    updates.find.mockResolvedValue([
+      {
+        id: "older",
+        topicId: "generic",
+        meetingId: "meeting",
+        date: new Date("2026-07-23T18:00:00Z"),
+        text: "Older Minutes",
+        version: 0,
+      },
+      {
+        id: "current",
+        topicId: "generic",
+        meetingId: "meeting",
+        date: new Date("2026-07-23T19:00:00Z"),
+        text: "Current Minutes",
+        version: 3,
+      },
+    ]);
+    tasks.find.mockResolvedValue([]);
+
+    const result = await service.findOne("meeting");
+
+    expect(result.agenda[0]).toMatchObject({
+      preparationContext: {
+        id: "generic-appearance",
+        text: "Preparation context",
+        version: 2,
+      },
+      personNote: null,
+      meetingMinutes: {
+        id: "current",
+        text: "Current Minutes",
+        version: 3,
+      },
+    });
+    expect(result.agenda[1]).toMatchObject({
+      preparationContext: null,
+      personNote: {
+        id: "person-appearance",
+        text: "One Person note",
+        version: 4,
+      },
+      meetingMinutes: null,
+    });
   });
 
   it("renders completed Meeting appearances from snapshots instead of live Topic display values", async () => {

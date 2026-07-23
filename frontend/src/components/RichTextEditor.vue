@@ -10,11 +10,15 @@ const props = withDefaults(
   },
 );
 const { t } = useI18n();
+const emit = defineEmits<{ blur: [] }>();
 const resolvedPlaceholder = computed(
   () => props.placeholder ?? t("topicDetail.addUpdate"),
 );
 
 const model = defineModel<string>({ default: "" });
+const onSelectionChange = (event: { range: unknown | null }) => {
+  if (event.range === null) emit("blur");
+};
 </script>
 
 <template>
@@ -22,6 +26,7 @@ const model = defineModel<string>({ default: "" });
     v-model="model"
     :placeholder="resolvedPlaceholder"
     :editor-style="{ height: props.height }"
+    @selection-change="onSelectionChange"
   >
     <template #toolbar>
       <span class="ql-formats">

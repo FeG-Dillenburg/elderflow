@@ -87,9 +87,10 @@ describe('TopicHistoryService', () => {
     expect(entry).toMatchObject({
       kind: 'meeting_appearance',
       deferredAt: '2026-07-15T20:30:00.000Z',
-      note: 'Preparation context',
+      preparationContext: 'Preparation context',
+      personNote: null,
       topic: { name: 'Live topic', responsibleUserDisplayName: 'Live Owner' },
-      minutes: [
+      meetingMinutes: [
         { id: 'early', text: 'First', createdByDisplayName: 'Ada Lovelace' },
         { id: 'late', text: 'Second', createdByDisplayName: null },
       ],
@@ -174,8 +175,36 @@ describe('TopicHistoryService', () => {
       id: 'meeting-appearance:missing:meeting',
       kind: 'meeting_appearance',
       appearanceId: null,
-      note: null,
-      minutes: [{ text: 'Preserved minutes' }],
+      preparationContext: null,
+      personNote: null,
+      meetingMinutes: [{ text: 'Preserved minutes' }],
+    }]);
+  });
+
+  it('exposes a Person appearance note without inventing paired preparation or Minutes semantics', async () => {
+    topics.findOne.mockResolvedValue({
+      id: 'person',
+      type: 'person',
+      name: 'Alex',
+      responsibleUser: null,
+    });
+    appearances.find.mockResolvedValue([{
+      id: 'appearance',
+      meetingId: 'meeting',
+      agendaNote: 'One combined note',
+      meeting: {
+        id: 'meeting',
+        date: '2026-07-15',
+        beginTime: '20:00:00',
+        status: 'in_progress',
+        title: null,
+      },
+    }]);
+
+    await expect(service.getHistory('person')).resolves.toMatchObject([{
+      preparationContext: null,
+      personNote: 'One combined note',
+      meetingMinutes: [],
     }]);
   });
 

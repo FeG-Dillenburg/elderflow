@@ -7,7 +7,6 @@ import { TOPIC_TYPES, Topic, TopicType } from './topic.entity';
 import { codedHttpException } from '../errors/coded-http.exception';
 import { TopicUpdate } from './topic-update.entity';
 import { MeetingTopic } from '../meetings/meeting-topic.entity';
-import { lockedMutableMeeting } from '../meetings/meeting-mutation-boundary';
 import { normalizedMembershipTopicState } from './membership-topic-state';
 import { RecurrenceService } from '../recurrence/recurrence.service';
 import { SkippedRecurrence } from '../recurrence/skipped-recurrence.entity';
@@ -170,11 +169,14 @@ export class TopicsService {
   }
 
   async addUpdate(topicId: string, input: TopicUpdateDto, user: User): Promise<TopicUpdate> {
+    if (input.meetingId) {
+      throw codedHttpException(
+        HttpStatus.BAD_REQUEST,
+        'MEETING_MINUTES_ENDPOINT_REQUIRED',
+        'Meeting minutes must be changed through their Meeting appearance',
+      );
+    }
     return this.topics.manager.transaction(async (manager) => {
-      if (input.meetingId) {
-        await lockedMutableMeeting(manager, input.meetingId);
-      }
-
       const topic = await manager.getRepository(Topic).findOne({
         where: { id: topicId },
         relations: { responsibleUser: true, defaultSection: true },

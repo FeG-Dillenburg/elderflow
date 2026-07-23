@@ -2,7 +2,7 @@ import { flushPromises, mount } from "@vue/test-utils";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { api } from "../api/domain";
 import MeetingPreparationView from "./MeetingPreparationView.vue";
-import { saveMeetingTopicNote } from "../topics/meetingTopicEdits";
+import { savePersonMeetingNote } from "../topics/meetingTopicEdits";
 
 vi.mock("vue-router", () => ({
   RouterLink: { template: "<a><slot /></a>" },
@@ -259,17 +259,19 @@ describe("MeetingPreparationView", () => {
     const wrapper = await view();
     const vm: any = wrapper.vm;
     const appearance = vm.grouped[1].items[0];
-    vi.spyOn(api, "updateMeetingTopicNote").mockResolvedValue({
+    appearance.personNote = { id: appearance.id, text: null, version: 0 };
+    vi.spyOn(api, "updatePersonMeetingNote").mockResolvedValue({
       ...appearance,
       agendaNote: "Saved context",
+      noteVersion: 1,
     });
 
-    const result = await saveMeetingTopicNote("meeting-1", appearance)("Saved context");
+    const result = await savePersonMeetingNote("meeting-1", appearance)("Saved context");
 
-    expect(api.updateMeetingTopicNote).toHaveBeenCalledWith(
+    expect(api.updatePersonMeetingNote).toHaveBeenCalledWith(
       "meeting-1",
       appearance.id,
-      "Saved context",
+      { text: "Saved context", version: 0 },
     );
     expect(appearance.agendaNote).toBe("Saved context");
     expect(result.agendaNote).toBe("Saved context");

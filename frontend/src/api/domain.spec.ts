@@ -144,17 +144,20 @@ describe("domain API client", () => {
     );
     expect(fetch.mock.calls[0][1]?.body).toBeUndefined();
   });
-  it("writes only a Meeting appearance note through its narrow endpoint", async () => {
-    const fetch = vi.fn().mockResolvedValue(response({ agendaNote: "Context" }));
+  it("writes versioned preparation context through its semantic endpoint", async () => {
+    const fetch = vi.fn().mockResolvedValue(response({ agendaNote: "Context", noteVersion: 2 }));
     vi.stubGlobal("fetch", fetch);
 
-    await api.updateMeetingTopicNote("meeting", "appearance", "Context");
+    await api.updateMeetingPreparationContext("meeting", "appearance", {
+      text: "Context",
+      version: 1,
+    });
 
     expect(fetch).toHaveBeenCalledWith(
-      "http://localhost:3000/api/meetings/meeting/topics/appearance/note",
+      "http://localhost:3000/api/meetings/meeting/topics/appearance/preparation-context",
       expect.objectContaining({
         method: "PUT",
-        body: JSON.stringify({ agendaNote: "Context" }),
+        body: JSON.stringify({ text: "Context", version: 1 }),
       }),
     );
   });

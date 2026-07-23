@@ -22,9 +22,12 @@ const showTopicSnapshot = computed(() => showTopicName.value
 const topicSnapshotValueCount = computed(() => Number(showTopicName.value)
   + Number(showResponsible.value)
   + Number(props.entry.topic.type === "new_membership"));
-const noteLabel = computed(() => props.entry.topic.type === "generic" || props.entry.topic.type === "recurring"
-  ? t("topicHistory.meetingContext")
-  : t("personTopic.noteLabel"));
+const appearanceNote = computed(() => props.entry.topic.type === "person"
+  ? props.entry.personNote
+  : props.entry.preparationContext);
+const noteLabel = computed(() => props.entry.topic.type === "person"
+  ? t("personTopic.noteLabel")
+  : t("meetingTexts.preparationContext"));
 </script>
 
 <template>
@@ -89,14 +92,14 @@ const noteLabel = computed(() => props.entry.topic.type === "generic" || props.e
         </div>
       </section>
 
-      <section v-if="entry.note" class="meeting-content">
+      <section v-if="appearanceNote" class="meeting-content">
         <h3>{{ noteLabel }}</h3>
-        <div class="rich-content" v-html="sanitizeHistoryRichText(entry.note)" />
+        <div class="rich-content" v-html="sanitizeHistoryRichText(appearanceNote)" />
       </section>
 
-      <section v-if="entry.minutes.length" class="minutes-list">
-        <h3>{{ t("topicHistory.minutes") }}</h3>
-        <article v-for="minute in entry.minutes" :key="minute.id" class="minute">
+      <section v-if="entry.meetingMinutes.length" class="minutes-list">
+        <h3>{{ t("meetingTexts.meetingMinutes") }}</h3>
+        <article v-for="minute in entry.meetingMinutes" :key="minute.id" class="minute">
           <div class="rich-content" v-html="sanitizeHistoryRichText(minute.text)" />
           <p>
             <time :datetime="minute.effectiveAt">

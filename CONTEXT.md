@@ -65,8 +65,16 @@ The origin of a Topic's appearance in a Meeting, either Manual or Recurrence; it
 _Avoid_: Topic type, creator; Themenart, Ersteller
 
 **Meeting topic note (Sitzungsthemennotiz)**:
-The single editable text attached to a Topic's appearance in one Meeting, which may be written during preparation or during the Meeting.
+The single editable text attached to a Person Topic's appearance in one Meeting, which may be written during preparation or during the Meeting. Other Topic types use separate Preparation context and Meeting-minutes text.
 _Avoid_: Update, Minutes entry; Aktualisierung, Protokolleintrag
+
+**Preparation context (Vorbereitungskontext)**:
+The single editable text prepared for a Generic, New membership, or Recurring Topic appearance before its Meeting. It becomes read-only when the Meeting starts and remains paired with that appearance's Meeting-minutes text in Topic history.
+_Avoid_: Meeting topic note, Update, Minutes entry; Sitzungsthemennotiz, Aktualisierung, Protokolleintrag
+
+**Meeting-minutes text (Sitzungsprotokolltext)**:
+The single current Minutes value edited directly for a Generic, New membership, or Recurring Topic appearance while its Meeting is in progress. Earlier legacy Minutes entries remain separately preserved in chronological order.
+_Avoid_: Preparation context, standalone Update, complete Meeting minutes; Vorbereitungskontext, eigenständige Aktualisierung, vollständiges Sitzungsprotokoll
 
 **Meeting topic snapshot (Sitzungsthemenstand)**:
 The values preserved for a Topic appearance when its Meeting is completed, used to render that Meeting without later Topic changes rewriting its history.
@@ -89,7 +97,7 @@ A topic-history entry recorded outside a meeting.
 _Avoid_: Minutes entry; Protokolleintrag
 
 **Topic history (Themenverlauf)**:
-The chronological record of a Topic's standalone Updates, Meeting appearances, and Skipped recurrences, including Meeting topic notes, Minutes entries, and completed-Meeting snapshots where applicable.
+The chronological record of a Topic's standalone Updates, Meeting appearances, and Skipped recurrences, including paired Preparation context and Meeting-minutes text, Person Meeting topic notes, legacy Minutes entries, and completed-Meeting snapshots where applicable.
 _Avoid_: Activity log, Meeting history; Aktivitätsprotokoll, Sitzungshistorie
 
 **Task (Aufgabe)**:

@@ -42,8 +42,9 @@ export interface MeetingAppearanceHistoryEntry {
   meeting: TopicHistoryMeeting;
   section: { id: string; name: string } | null;
   topic: TopicHistoryTopicDisplay;
-  note: string | null;
-  minutes: TopicHistoryMinutesEntry[];
+  preparationContext: string | null;
+  personNote: string | null;
+  meetingMinutes: TopicHistoryMinutesEntry[];
 }
 
 export interface SkippedRecurrenceHistoryEntry {

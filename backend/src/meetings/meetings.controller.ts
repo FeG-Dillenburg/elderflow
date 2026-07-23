@@ -1,5 +1,13 @@
 import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Post, Put } from '@nestjs/common';
-import { MeetingDto, MeetingParticipantDto, MeetingTopicDto, ReorderMeetingTopicsDto, UpdateMeetingTopicDto, UpdateMeetingTopicNoteDto } from './dto/meeting.dto';
+import {
+  MeetingDto,
+  MeetingParticipantDto,
+  MeetingTopicDto,
+  ReorderMeetingTopicsDto,
+  UpdateMeetingMinutesDto,
+  UpdateMeetingTextDto,
+  UpdateMeetingTopicDto,
+} from './dto/meeting.dto';
 import { MeetingTopic } from './meeting-topic.entity';
 import { MeetingUser } from './meeting-user.entity';
 import { Meeting } from './meeting.entity';
@@ -33,11 +41,28 @@ export class MeetingsController {
     @Param('itemId', ParseUUIDPipe) itemId: string,
     @Body() input: UpdateTopicFieldsDto,
   ): Promise<Topic> { return this.service.updateTopicFields(id, itemId, input); }
-  @Put(':id/topics/:itemId/note') updateTopicNote(
+  @Put(':id/topics/:itemId/preparation-context') updatePreparationContext(
     @Param('id', ParseUUIDPipe) id: string,
     @Param('itemId', ParseUUIDPipe) itemId: string,
-    @Body() input: UpdateMeetingTopicNoteDto,
-  ): Promise<MeetingTopic> { return this.service.updateTopicNote(id, itemId, input.agendaNote ?? null); }
+    @Body() input: UpdateMeetingTextDto,
+  ): Promise<MeetingTopic> {
+    return this.service.updatePreparationContext(id, itemId, input.text ?? null, input.version);
+  }
+  @Put(':id/topics/:itemId/person-note') updatePersonNote(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('itemId', ParseUUIDPipe) itemId: string,
+    @Body() input: UpdateMeetingTextDto,
+  ): Promise<MeetingTopic> {
+    return this.service.updatePersonNote(id, itemId, input.text ?? null, input.version);
+  }
+  @Put(':id/topics/:itemId/minutes') updateMeetingMinutes(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('itemId', ParseUUIDPipe) itemId: string,
+    @Body() input: UpdateMeetingMinutesDto,
+    @CurrentUser() user: User,
+  ) {
+    return this.service.updateMeetingMinutes(id, itemId, input, user);
+  }
   @Delete(':id/topics/:itemId') removeTopic(@Param('id', ParseUUIDPipe) id: string, @Param('itemId', ParseUUIDPipe) itemId: string): Promise<void> { return this.service.removeTopic(id, itemId); }
   @Post(':id/recurrences/:topicId/restore') restoreRecurrence(
     @Param('id', ParseUUIDPipe) id: string,

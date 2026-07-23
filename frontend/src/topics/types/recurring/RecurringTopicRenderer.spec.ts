@@ -23,7 +23,7 @@ describe("Recurring Topic renderers", () => {
     expect(wrapper.text()).toContain("Next due: 10/31/2026");
   });
 
-  it("keeps TOP numbering and the appearance note without rendering earlier updates", () => {
+  it("keeps TOP numbering and paired appearance texts without rendering earlier updates", () => {
     const wrapper = mount(RecurringTopicAgenda, {
       shallow: true,
       props: {
@@ -34,46 +34,52 @@ describe("Recurring Topic renderers", () => {
         } as any,
         number: "TOP 2.1",
         canEdit: true,
-        saveNote: vi.fn(),
+        savePreparationContext: vi.fn(),
+        saveMinutes: vi.fn(),
       },
       global: { stubs: { RouterLink: { template: "<a><slot /></a>" } } },
     });
 
     expect(wrapper.text()).toContain("TOP 2.1");
     expect(wrapper.text()).toContain("Quarterly review");
-    expect(wrapper.findComponent({ name: "RecurringTopicNote" }).exists()).toBe(true);
+    expect(wrapper.findComponent({ name: "PairedMeetingTexts" }).props("mode"))
+      .toBe("preparation");
     expect(wrapper.text()).not.toContain("Recent updates");
   });
 
-  it("passes recurring appearance autosave through and makes completed content read-only", async () => {
-    const saveNote = vi.fn().mockResolvedValue({ agendaNote: "Saved note" });
+  it("passes recurring paired autosave through and makes completed content read-only", async () => {
+    const savePreparationContext = vi.fn().mockResolvedValue({ agendaNote: "Saved note" });
+    const saveMinutes = vi.fn();
     const editable = mount(RecurringTopicAgenda, {
       shallow: true,
       props: {
         item: { topic, topicId: topic.id, agendaNote: "Draft" } as any,
         canEdit: true,
-        saveNote,
+        meetingStatus: "in_progress",
+        canWriteMinutes: true,
+        savePreparationContext,
+        saveMinutes,
       },
       global: { stubs: { RouterLink: { template: "<a><slot /></a>" } } },
     });
-    const note = editable.findComponent({ name: "RecurringTopicNote" });
+    const texts = editable.findComponent({ name: "PairedMeetingTexts" });
 
-    await note.props("save")("Saved note");
-
-    expect(saveNote).toHaveBeenCalledWith("Saved note");
-    expect(note.props("readOnly")).toBe(false);
+    expect(texts.props("mode")).toBe("active");
+    expect(texts.props("canWriteMinutes")).toBe(true);
 
     const completed = mount(RecurringTopicAgenda, {
       shallow: true,
       props: {
         item: { topic, topicId: topic.id, agendaNote: "Final" } as any,
         canEdit: false,
-        saveNote,
+        meetingStatus: "completed",
+        savePreparationContext,
+        saveMinutes,
       },
       global: { stubs: { RouterLink: { template: "<a><slot /></a>" } } },
     });
 
-    expect(completed.findComponent({ name: "RecurringTopicNote" }).props("readOnly"))
-      .toBe(true);
+    expect(completed.findComponent({ name: "PairedMeetingTexts" }).props("mode"))
+      .toBe("completed");
   });
 });
