@@ -275,7 +275,7 @@ const minutesEntries = computed(() => [
 
 .meeting-content,
 .minutes-list {
-  padding: 1rem 1.1rem;
+  padding: 0.65rem 1.1rem;
 }
 
 .meeting-content + .minutes-list {
@@ -293,12 +293,11 @@ const minutesEntries = computed(() => [
 }
 
 .minute {
-  padding: 0.7rem 0 0.7rem 0.9rem;
-  border-left: 2px solid #d5dfed;
+  padding: 0.15rem 0;
 }
 
 .minute + .minute {
-  margin-top: 0.4rem;
+  margin-top: 0.6rem;
 }
 
 .minute p {
