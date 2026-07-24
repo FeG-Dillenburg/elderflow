@@ -1,3 +1,5 @@
+import { protectedPrototypeEn } from "./protectedPrototype";
+
 export default {
   common: {
     add: 'Add', cancel: 'Cancel', close: 'Close', create: 'Create', delete: 'Delete', edit: 'Edit', save: 'Save', loading: 'Loading…',
@@ -18,6 +20,7 @@ export default {
     checkFailed: 'Unable to check setup status', verifyFailed: 'Unable to verify setup password', createFailed: 'Unable to create the initial user', defaultLanguage: 'Installation default language',
   },
   login: { title: 'Welcome back', description: 'Sign in to continue to your workspace.', submit: 'Sign in', failed: 'Unable to sign in' },
+  protectedPrototype: protectedPrototypeEn,
   profile: {
     eyebrow: 'Account', title: 'Your profile', description: 'Update your personal details, language, or choose a new password.', firstName: 'First name',
     lastName: 'Last name', newPassword: 'New password', save: 'Save profile', updated: 'Profile updated.', failed: 'Unable to update profile',

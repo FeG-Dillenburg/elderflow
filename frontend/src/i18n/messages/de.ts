@@ -1,3 +1,5 @@
+import { protectedPrototypeDe } from "./protectedPrototype";
+
 const de = {
   common: {
     add: 'Hinzufügen', cancel: 'Abbrechen', close: 'Schließen', create: 'Erstellen', delete: 'Löschen', edit: 'Bearbeiten', save: 'Speichern', loading: 'Wird geladen…',
@@ -18,6 +20,7 @@ const de = {
     checkFailed: 'Der Einrichtungsstatus konnte nicht geprüft werden', verifyFailed: 'Das Einrichtungspasswort konnte nicht geprüft werden', createFailed: 'Der erste Benutzer konnte nicht erstellt werden', defaultLanguage: 'Installationsstandardsprache',
   },
   login: { title: 'Willkommen zurück', description: 'Anmelden, um zum Arbeitsbereich zu gelangen.', submit: 'Anmelden', failed: 'Anmeldung fehlgeschlagen' },
+  protectedPrototype: protectedPrototypeDe,
   profile: {
     eyebrow: 'Konto', title: 'Eigenes Profil', description: 'Persönliche Angaben und Sprache aktualisieren oder ein neues Passwort wählen.', firstName: 'Vorname',
     lastName: 'Nachname', newPassword: 'Neues Passwort', save: 'Profil speichern', updated: 'Profil aktualisiert.', failed: 'Profil konnte nicht aktualisiert werden',

@@ -7,6 +7,12 @@ import { installation, setupRedirect } from '../installation';
 const router = createRouter({
   history: createWebHistory(),
   routes: [
+    {
+      path: '/prototype/protected-text-unlock',
+      name: 'protected-text-unlock-prototype',
+      component: () => import('../views/ProtectedTextUnlockPrototypeView.vue'),
+      meta: { public: true },
+    },
     { path: '/setup/', alias: '/setup', name: 'setup', component: () => import('../views/SetupView.vue'), meta: { public: true } },
     { path: '/login', name: 'login', component: () => import('../views/LoginView.vue'), meta: { public: true } },
     { path: '/', name: 'dashboard', component: DashboardView, meta: { permission: 'dashboard' } },

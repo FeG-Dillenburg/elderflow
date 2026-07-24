@@ -12,14 +12,26 @@ import { bindPrimeVueLocale, i18n, primeVueLocale, setLanguage } from './i18n';
 import { loadApplicationContext } from './i18n/initialize';
 import { installation } from './installation';
 
-const hadSession = Boolean(getSessionToken());
-const context = await loadApplicationContext({
-  installation: api.installation,
-  currentUser: api.me,
-  hasSession: hadSession,
-  allowDevelopmentIdentity: import.meta.env.DEV,
-  browserLanguages: navigator.languages,
-});
+const prototypeRoute =
+  import.meta.env.DEV &&
+  window.location.pathname.startsWith("/prototype/protected-text-unlock");
+const hadSession = prototypeRoute ? false : Boolean(getSessionToken());
+const context = prototypeRoute
+  ? {
+      installation: {
+        setupRequired: false,
+        defaultLanguage: "en" as const,
+      },
+      user: null,
+      language: "en" as const,
+    }
+  : await loadApplicationContext({
+      installation: api.installation,
+      currentUser: api.me,
+      hasSession: hadSession,
+      allowDevelopmentIdentity: import.meta.env.DEV,
+      browserLanguages: navigator.languages,
+    });
 if (context.installation) {
   installation.setupRequired = context.installation.setupRequired;
   installation.defaultLanguage = context.installation.defaultLanguage;
