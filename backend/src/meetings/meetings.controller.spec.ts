@@ -15,6 +15,7 @@ describe('MeetingsController completion boundary', () => {
     updatePreparationContext: jest.fn(),
     updatePersonNote: jest.fn(),
     updateMeetingMinutes: jest.fn(),
+    suggestions: jest.fn(),
   };
   const currentUser = { id: '00000000-0000-4000-8000-000000000002' };
 
@@ -48,6 +49,18 @@ describe('MeetingsController completion boundary', () => {
       .expect(meeting);
 
     expect(service.complete).toHaveBeenCalledWith(meeting.id, currentUser);
+  });
+
+  it('requests future suggestions only through an explicit boolean query', async () => {
+    const meetingId = '00000000-0000-4000-8000-000000000001';
+    service.suggestions.mockResolvedValue([]);
+
+    await request(app.getHttpServer())
+      .get(`/api/meetings/${meetingId}/suggestions?future=true`)
+      .expect(200)
+      .expect([]);
+
+    expect(service.suggestions).toHaveBeenCalledWith(meetingId, true);
   });
 
   it('writes only independently validated fields through the appearance endpoint', async () => {

@@ -87,6 +87,40 @@ describe("MeetingPreparationView", () => {
     await flushPromises();
     expect((failed.vm as any).error).toBe("No meeting");
   });
+  it("loads future suggestions only after the toggle and renders them below it", async () => {
+    vi.mocked(api.meetingSuggestions).mockImplementation(async (_id, options) =>
+      options?.future
+        ? [{ id: "future", name: "Future", type: "generic" } as any]
+        : [{ id: "due", name: "Due", type: "generic" } as any]);
+    const wrapper = await view();
+    const vm: any = wrapper.vm;
+
+    expect(api.meetingSuggestions).toHaveBeenCalledTimes(1);
+    expect(api.meetingSuggestions).toHaveBeenCalledWith("meeting-1");
+    expect(vm.visibleSuggestionLists).toHaveLength(1);
+    expect(wrapper.get(".future-topics-toggle").attributes("label"))
+      .toBe("Show future topics");
+
+    await vm.toggleFutureTopics();
+    await flushPromises();
+
+    expect(api.meetingSuggestions).toHaveBeenLastCalledWith(
+      "meeting-1",
+      { future: true },
+    );
+    expect(vm.visibleSuggestionLists).toHaveLength(2);
+    expect(vm.visibleSuggestionLists[1][0].id).toBe("future");
+    expect(wrapper.get(".future-topics-toggle").attributes("label"))
+      .toBe("Hide future topics");
+    expect(wrapper.html().indexOf("future-topics-toggle"))
+      .toBeLessThan(wrapper.html().indexOf("future-suggestions"));
+
+    await vm.toggleFutureTopics();
+
+    expect(vm.showFutureTopics).toBe(false);
+    expect(vm.visibleSuggestionLists).toHaveLength(1);
+    expect(api.meetingSuggestions).toHaveBeenCalledTimes(2);
+  });
   it("configures writable agenda and clone-only suggestion drag lists with handles", async () => {
     const wrapper = await view();
     const vm: any = wrapper.vm;

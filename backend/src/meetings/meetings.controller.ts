@@ -1,4 +1,16 @@
-import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Post, Put } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  DefaultValuePipe,
+  Delete,
+  Get,
+  Param,
+  ParseBoolPipe,
+  ParseUUIDPipe,
+  Post,
+  Put,
+  Query,
+} from '@nestjs/common';
 import {
   MeetingDto,
   MeetingParticipantDto,
@@ -30,7 +42,10 @@ export class MeetingsController {
   ): Promise<Meeting> { return this.service.complete(id, user); }
   @Get(':id') findOne(@Param('id', ParseUUIDPipe) id: string): Promise<MeetingDetail> { return this.service.findOne(id); }
   @Put(':id') update(@Param('id', ParseUUIDPipe) id: string, @Body() input: MeetingDto): Promise<Meeting> { return this.service.update(id, input); }
-  @Get(':id/suggestions') suggestions(@Param('id', ParseUUIDPipe) id: string): Promise<Topic[]> { return this.service.suggestions(id); }
+  @Get(':id/suggestions') suggestions(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query('future', new DefaultValuePipe(false), ParseBoolPipe) future: boolean,
+  ): Promise<Topic[]> { return this.service.suggestions(id, future); }
   @Post(':id/participants') addParticipant(@Param('id', ParseUUIDPipe) id: string, @Body() input: MeetingParticipantDto): Promise<MeetingUser> { return this.service.addParticipant(id, input); }
   @Delete(':id/participants/:userId') removeParticipant(@Param('id', ParseUUIDPipe) id: string, @Param('userId', ParseUUIDPipe) userId: string): Promise<void> { return this.service.removeParticipant(id, userId); }
   @Post(':id/topics') addTopic(@Param('id', ParseUUIDPipe) id: string, @Body() input: MeetingTopicDto): Promise<MeetingTopic> { return this.service.addTopic(id, input); }

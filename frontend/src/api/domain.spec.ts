@@ -85,6 +85,17 @@ describe("domain API client", () => {
       expect.any(Object),
     );
   });
+  it("requests future Meeting suggestions explicitly", async () => {
+    const fetch = vi.fn().mockResolvedValue(response([]));
+    vi.stubGlobal("fetch", fetch);
+
+    await api.meetingSuggestions("meeting", { future: true });
+
+    expect(fetch).toHaveBeenCalledWith(
+      "http://localhost:3000/api/meetings/meeting/suggestions?future=true",
+      expect.any(Object),
+    );
+  });
   it("sends representative GET/POST/PUT/DELETE requests and a mutable meeting-topic payload", async () => {
     const fetch = vi.fn().mockResolvedValue(response({}));
     vi.stubGlobal("fetch", fetch);

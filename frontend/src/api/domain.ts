@@ -368,7 +368,10 @@ export const api = {
   createMeeting: (input: MeetingInput) => request<Meeting>('/api/meetings', { method: 'POST', body: JSON.stringify(input) }),
   updateMeeting: (id: string, input: MeetingInput) => request<Meeting>(`/api/meetings/${id}`, { method: 'PUT', body: JSON.stringify(input) }),
   completeMeeting: (id: string) => request<Meeting>(`/api/meetings/${id}/complete`, { method: 'POST' }),
-  meetingSuggestions: (id: string) => request<Topic[]>(`/api/meetings/${id}/suggestions`),
+  meetingSuggestions: (id: string, options?: { future?: boolean }) =>
+    request<Topic[]>(`/api/meetings/${id}/suggestions${query({
+      future: options?.future ? true : undefined,
+    })}`),
   addParticipant: (meetingId: string, input: { userId: string; attendanceStatus: string }) => request<MeetingParticipant>(`/api/meetings/${meetingId}/participants`, { method: 'POST', body: JSON.stringify(input) }),
   removeParticipant: (meetingId: string, userId: string) => request<void>(`/api/meetings/${meetingId}/participants/${userId}`, { method: 'DELETE' }),
   addMeetingTopic: (meetingId: string, input: { topicId: string; sectionId: string; position?: number }) => request<MeetingTopic>(`/api/meetings/${meetingId}/topics`, { method: 'POST', body: JSON.stringify(input) }),

@@ -1,6 +1,6 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, EntityManager, In, LessThan, LessThanOrEqual, Repository } from 'typeorm';
+import { DataSource, EntityManager, In, LessThan, Repository } from 'typeorm';
 import { AgendaSection } from '../agenda-sections/agenda-section.entity';
 import { Task } from '../tasks/task.entity';
 import { Topic } from '../topics/topic.entity';
@@ -624,20 +624,41 @@ export class MeetingsService {
     });
   }
 
-  async suggestions(meetingId: string): Promise<Topic[]> {
+  async suggestions(meetingId: string, future = false): Promise<Topic[]> {
     const meeting = await this.meetings.findOneBy({ id: meetingId });
     if (!meeting) throw codedHttpException(HttpStatus.NOT_FOUND, 'MEETING_NOT_FOUND', 'Meeting not found');
     const existing = await this.meetingTopics.find({ where: { meetingId } });
     const excluded = existing.map((item) => item.topicId);
     const candidates = await this.topics.find({
-      where: [
-        { status: 'open' },
-        { status: 'deferred', followUpDate: LessThanOrEqual(meeting.date) },
-      ],
+      where: { status: In(['open', 'deferred']) },
       relations: { responsibleUser: true, defaultSection: true },
       order: { followUpDate: 'ASC', updatedAt: 'DESC' },
     });
-    return candidates.filter((topic) => !excluded.includes(topic.id));
+    const available = candidates.filter((topic) => !excluded.includes(topic.id));
+    const recurringTopicIds = available
+      .filter((topic) => topic.type === 'recurring')
+      .map((topic) => topic.id);
+    const recurringAppearances = recurringTopicIds.length
+      ? await this.meetingTopics.find({
+        where: { topicId: In(recurringTopicIds) },
+        relations: { meeting: true },
+      })
+      : [];
+    for (const topic of available) {
+      if (topic.type !== 'recurring') continue;
+      topic.nextDueDate = this.recurrence.nextDueDate(
+        topic,
+        recurringAppearances
+          .filter((appearance) => appearance.topicId === topic.id)
+          .map((appearance) => appearance.meeting!.date),
+      );
+    }
+    return available.filter((topic) => {
+      const dueDate = topic.type === 'recurring'
+        ? topic.nextDueDate
+        : topic.followUpDate;
+      return future === Boolean(dueDate && dueDate > meeting.date);
+    });
   }
 
 }

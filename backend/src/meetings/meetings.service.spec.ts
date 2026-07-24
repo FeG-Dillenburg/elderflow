@@ -1,5 +1,5 @@
 import { BadRequestException, ConflictException, ForbiddenException, NotFoundException } from "@nestjs/common";
-import { In, LessThan, LessThanOrEqual, QueryFailedError } from "typeorm";
+import { In, LessThan, QueryFailedError } from "typeorm";
 import { MeetingsService } from "./meetings.service";
 
 describe("MeetingsService", () => {
@@ -39,7 +39,7 @@ describe("MeetingsService", () => {
   const tasks = { find: jest.fn() };
   const sections = {};
   const snapshots = { apply: jest.fn() };
-  const recurrence = { reconcile: jest.fn() };
+  const recurrence = { reconcile: jest.fn(), nextDueDate: jest.fn() };
   const service = new MeetingsService(
     dataSource as any,
     meetings as any,
@@ -63,6 +63,7 @@ describe("MeetingsService", () => {
     manager.remove.mockReset();
     recurrence.reconcile.mockReset();
     recurrence.reconcile.mockResolvedValue(undefined);
+    recurrence.nextDueDate.mockReset();
     snapshots.apply.mockReset();
     snapshots.apply.mockResolvedValue(undefined);
     manager.save.mockImplementation(async (_type, value) => value);
@@ -1006,16 +1007,42 @@ describe("MeetingsService", () => {
     await service.removeTopic("meeting", "item");
     expect(manager.remove).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ id: "item" }));
     meetings.findOneBy.mockResolvedValue({ date: "2026-07-20" });
-    meetingTopics.find.mockResolvedValue([{ topicId: "present" }]);
-    topics.find.mockResolvedValue([{ id: "present" }, { id: "suggest" }]);
+    meetingTopics.find.mockImplementation(async (options: any) =>
+      options.where?.meetingId
+        ? [{ topicId: "present" }]
+        : [
+          { topicId: "recurring-due", meeting: { date: "2026-06-01" } },
+          { topicId: "recurring-future", meeting: { date: "2026-07-15" } },
+        ]);
+    topics.find.mockResolvedValue([
+      { id: "present", type: "generic", followUpDate: null },
+      { id: "available", type: "generic", followUpDate: null },
+      { id: "follow-up-due", type: "generic", followUpDate: "2026-07-20" },
+      { id: "follow-up-future", type: "generic", followUpDate: "2026-07-21" },
+      { id: "recurring-due", type: "recurring" },
+      { id: "recurring-future", type: "recurring" },
+    ]);
+    recurrence.nextDueDate.mockImplementation((topic: any) =>
+      topic.id === "recurring-due" ? "2026-07-20" : "2026-08-01");
     await expect(service.suggestions("meeting")).resolves.toEqual([
-      { id: "suggest" },
+      { id: "available", type: "generic", followUpDate: null },
+      { id: "follow-up-due", type: "generic", followUpDate: "2026-07-20" },
+      {
+        id: "recurring-due",
+        type: "recurring",
+        nextDueDate: "2026-07-20",
+      },
+    ]);
+    await expect(service.suggestions("meeting", true)).resolves.toEqual([
+      { id: "follow-up-future", type: "generic", followUpDate: "2026-07-21" },
+      {
+        id: "recurring-future",
+        type: "recurring",
+        nextDueDate: "2026-08-01",
+      },
     ]);
     expect(topics.find).toHaveBeenCalledWith({
-      where: [
-        { status: "open" },
-        { status: "deferred", followUpDate: LessThanOrEqual("2026-07-20") },
-      ],
+      where: { status: In(["open", "deferred"]) },
       relations: { responsibleUser: true, defaultSection: true },
       order: { followUpDate: "ASC", updatedAt: "DESC" },
     });
