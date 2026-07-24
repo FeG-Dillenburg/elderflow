@@ -24,6 +24,13 @@ describe('App', () => {
     for (const path of ['/', '/meetings', '/topics', '/tasks', '/users', '/agenda-sections', '/profile']) {
       expect(wrapper.html()).toContain(`href="${path}"`);
     }
+    expect(wrapper.get('.brand-icon').attributes('src')).toMatch(
+      /^(?:\/elderflow-logo\.svg|data:image\/svg\+xml)/,
+    );
+    expect(wrapper.get('.brand-wordmark').attributes()).toMatchObject({
+      alt: 'Elderflow',
+      src: '/elderflow-wordmark-white.png',
+    });
   });
 
   it('hides forbidden content navigation for an IT admin', () => {

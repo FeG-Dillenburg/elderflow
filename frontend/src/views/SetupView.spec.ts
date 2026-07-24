@@ -18,6 +18,19 @@ describe('SetupView', () => {
     installation.defaultLanguage = null;
   });
 
+  it('shows the colorful Elderflow wordmark', () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ setupRequired: true, defaultLanguage: null }),
+    }));
+    const wrapper = mount(SetupView, { global: { stubs } });
+
+    expect(wrapper.get('.brand-wordmark').attributes()).toMatchObject({
+      alt: 'Elderflow',
+      src: '/elderflow-wordmark-color.png',
+    });
+  });
+
   it('shows the required message when the system already has a user', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
       ok: true,
