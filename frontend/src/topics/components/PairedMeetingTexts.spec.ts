@@ -40,8 +40,9 @@ describe("PairedMeetingTexts", () => {
       global: { stubs: { RichTextEditor } },
     });
 
-    expect(wrapper.text()).toContain("Preparation context");
+    expect(wrapper.find("h4").exists()).toBe(false);
     expect(wrapper.text()).not.toContain("Meeting minutes");
+    expect(wrapper.get("textarea").attributes("aria-label")).toBe("Preparation context");
     await wrapper.get("textarea").setValue("<p>Revised context</p>");
     await wrapper.get("textarea").trigger("blur");
     await flushPromises();
@@ -65,6 +66,7 @@ describe("PairedMeetingTexts", () => {
     });
 
     expect(wrapper.get(".preparation-context").text()).toContain("Prepared context");
+    expect(wrapper.find("h4").exists()).toBe(false);
     expect(wrapper.findAll("textarea")).toHaveLength(1);
     expect(wrapper.get("textarea").attributes("aria-label")).toBe("Meeting minutes");
     await wrapper.get("textarea").setValue("<p>Decision recorded</p>");
@@ -137,9 +139,9 @@ describe("PairedMeetingTexts", () => {
     expect((editor.element as HTMLTextAreaElement).value).toBe("<p>Newer draft</p>");
   });
 
-  it("shows localized empty states for both values in a paired history state", () => {
+  it("omits an empty preparation context outside preparation mode", () => {
     const empty = item();
-    empty.preparationContext.text = null;
+    empty.preparationContext.text = "<p><br></p>";
     const wrapper = mount(PairedMeetingTexts, {
       props: {
         item: empty,
@@ -150,7 +152,8 @@ describe("PairedMeetingTexts", () => {
       global: { stubs: { RichTextEditor } },
     });
 
-    expect(wrapper.text()).toContain("No preparation context recorded");
+    expect(wrapper.find(".preparation-context").exists()).toBe(false);
+    expect(wrapper.text()).not.toContain("No preparation context recorded");
     expect(wrapper.text()).toContain("No Meeting minutes recorded");
   });
 

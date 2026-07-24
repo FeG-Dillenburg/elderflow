@@ -79,4 +79,25 @@ describe("paired Topic renderers", () => {
     const texts = wrapper.getComponent({ name: "PairedMeetingTexts" });
     expect(texts.props("mode")).toBe("active");
   });
+
+  it("renders recent Generic updates before the paired Meeting texts", () => {
+    const wrapper = shallowMount(GenericTopicAgenda, {
+      props: {
+        item: item("generic"),
+        canEdit: true,
+        meetingStatus: "in_progress",
+        recentUpdates: [{
+          id: "update",
+          text: "Earlier update",
+          date: "2026-07-19T18:43:00Z",
+        }],
+        ...saves,
+      } as any,
+    });
+    const html = wrapper.html();
+
+    expect(html.indexOf("Earlier update")).toBeLessThan(
+      html.indexOf("paired-meeting-texts-stub"),
+    );
+  });
 });

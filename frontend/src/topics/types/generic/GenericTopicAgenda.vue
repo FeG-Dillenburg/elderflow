@@ -55,13 +55,6 @@ const saveCurrentMinutes = (text: string | null) =>
         {{ item.plannedDuration }} {{ t("common.minuteShort") }}
       </div>
     </div>
-    <PairedMeetingTexts
-      :item="item"
-      :mode="meetingTextMode"
-      :can-write-minutes="canWriteMinutes"
-      :save-preparation="savePreparation"
-      :save-minutes="saveCurrentMinutes"
-    />
     <div v-if="recentUpdates?.length" class="updates">
       <p class="section-label">{{ t("meetingAgenda.recentUpdates") }}</p>
       <div v-for="update in recentUpdates" :key="update.id" class="update">
@@ -72,6 +65,13 @@ const saveCurrentMinutes = (text: string | null) =>
         </small>
       </div>
     </div>
+    <PairedMeetingTexts
+      :item="item"
+      :mode="meetingTextMode"
+      :can-write-minutes="canWriteMinutes"
+      :save-preparation="savePreparation"
+      :save-minutes="saveCurrentMinutes"
+    />
     <div v-if="item.topic?.tasks?.length" class="tasks">
       <p class="section-label">{{ t("meetingAgenda.openTasks") }}</p>
       <p v-for="task in item.topic.tasks" :key="task.id">
