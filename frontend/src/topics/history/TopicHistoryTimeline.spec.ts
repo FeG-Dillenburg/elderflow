@@ -199,6 +199,7 @@ describe('TopicHistoryTimeline', () => {
 
     expect(wrapper.text()).toContain('One Person note');
     expect(wrapper.text()).toContain('Preserved legacy Minutes');
+    expect(wrapper.get('.meeting-content').classes()).toContain('person-note');
   });
 
   it('shows the historical Topic name only when it differs from the current name', async () => {

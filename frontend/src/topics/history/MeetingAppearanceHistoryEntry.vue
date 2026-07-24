@@ -111,6 +111,7 @@ const minutesEntries = computed(() => [
       <section
         v-if="entry.topic.type !== 'person' || appearanceNote"
         class="meeting-content"
+        :class="{ 'person-note': entry.topic.type === 'person' }"
       >
         <div
           v-if="appearanceNote"
@@ -306,6 +307,11 @@ const minutesEntries = computed(() => [
 
 .rich-content :deep(p) {
   margin: 0.25rem 0;
+}
+
+.meeting-content.person-note .rich-content {
+  padding-top: 0.25rem;
+  margin-bottom: 0.625rem;
 }
 
 .minute {
