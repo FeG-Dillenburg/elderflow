@@ -35,8 +35,11 @@ async function submit(): Promise<void> {
 <template>
   <main class="login-page">
     <section class="login-card">
-      <div class="brand-mark">E</div>
-      <p class="eyebrow">ElderFlow</p>
+      <img
+        class="brand-wordmark"
+        src="/elderflow-wordmark-color.png"
+        :alt="t('brand.name')"
+      />
       <h1>{{ t("login.title") }}</h1>
       <p class="description">{{ t("login.description") }}</p>
       <form class="login-form" @submit.prevent="submit">
@@ -85,23 +88,13 @@ async function submit(): Promise<void> {
   background: #fff;
   box-shadow: 0 24px 60px rgb(15 23 42 / 10%);
 }
-.brand-mark {
-  display: grid;
-  width: 2.8rem;
-  height: 2.8rem;
-  place-items: center;
-  border-radius: 0.75rem;
-  background: #315a9b;
-  color: #fff;
-  font-weight: 800;
-}
-.eyebrow {
-  margin: 1.25rem 0 0.35rem;
-  color: #5572a7;
-  font-size: 0.75rem;
-  font-weight: 700;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
+
+.brand-wordmark {
+  display: block;
+  width: 12rem;
+  max-width: 100%;
+  height: auto;
+  margin-bottom: 1.25rem;
 }
 h1 {
   margin: 0;

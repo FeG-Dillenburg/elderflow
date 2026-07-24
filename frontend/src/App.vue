@@ -66,8 +66,17 @@ async function logout(): Promise<void> {
   <div v-if="auth.state.user && !isSetupRoute" class="app-shell">
     <aside class="sidebar">
       <div class="brand">
-        <span class="brand-mark">E</span>
-        <span>ElderFlow</span>
+        <img
+          class="brand-icon"
+          src="/elderflow-logo.svg"
+          alt=""
+          aria-hidden="true"
+        />
+        <img
+          class="brand-wordmark"
+          src="/elderflow-wordmark-white.png"
+          :alt="t('brand.name')"
+        />
       </div>
       <nav :aria-label="t('nav.main')">
         <RouterLink
@@ -158,13 +167,14 @@ async function logout(): Promise<void> {
   font-weight: 750;
 }
 
-.brand-mark {
-  display: grid;
+.brand-icon {
   width: 2.1rem;
   height: 2.1rem;
-  place-items: center;
-  border-radius: 0.65rem;
-  background: #7094d6;
+}
+
+.brand-wordmark {
+  width: 7rem;
+  height: auto;
 }
 
 nav {

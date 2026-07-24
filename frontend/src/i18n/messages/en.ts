@@ -5,6 +5,7 @@ export default {
     description: 'Description', email: 'Email', password: 'Password', role: 'Role', user: 'User', meeting: 'Meeting', topic: 'Topic', task: 'Task',
     search: 'Search', all: 'All', optional: 'Optional', minutes: 'Minutes', minuteShort: 'min.', back: 'Back', continue: 'Continue', confirm: 'Confirm', open: 'Open', default: 'Default', at: 'at',
   },
+  brand: { name: 'Elderflow' },
   languages: { installationDefault: 'Use installation default', en: 'English', de: 'German', label: 'Language' },
   editor: { bold: 'Bold', italic: 'Italic', underline: 'Underline', orderedList: 'Numbered list', bulletList: 'Bulleted list', link: 'Insert link' },
   nav: { main: 'Main navigation', dashboard: 'Dashboard', meetings: 'Meetings', topics: 'Topics', tasks: 'Open tasks', users: 'Users', sections: 'Agenda sections', signOut: 'Sign out' },

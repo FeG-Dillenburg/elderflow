@@ -5,6 +5,7 @@ const de = {
     description: 'Beschreibung', email: 'E-Mail-Adresse', password: 'Passwort', role: 'Rolle', user: 'Benutzer', meeting: 'Sitzung', topic: 'Thema', task: 'Aufgabe',
     search: 'Suchen', all: 'Alle', optional: 'Optional', minutes: 'Minuten', minuteShort: 'Min.', back: 'Zurück', continue: 'Weiter', confirm: 'Bestätigen', open: 'Offen', default: 'Standard', at: 'um',
   },
+  brand: { name: 'Elderflow' },
   languages: { installationDefault: 'Installationsstandard verwenden', en: 'Englisch', de: 'Deutsch', label: 'Sprache' },
   editor: { bold: 'Fett', italic: 'Kursiv', underline: 'Unterstrichen', orderedList: 'Nummerierte Liste', bulletList: 'Aufzählung', link: 'Link einfügen' },
   nav: { main: 'Hauptnavigation', dashboard: 'Übersicht', meetings: 'Sitzungen', topics: 'Themen', tasks: 'Offene Aufgaben', users: 'Benutzer', sections: 'Tagesordnungsabschnitte', signOut: 'Abmelden' },
