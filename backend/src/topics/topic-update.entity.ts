@@ -31,6 +31,9 @@ export class TopicUpdate {
   @Column({ type: 'text', default: 'update' })
   type: string;
 
+  @Column({ type: 'integer', default: 0 })
+  version: number;
+
   @Column({ name: 'created_by_id', type: 'uuid', nullable: true })
   createdById: string | null;
 

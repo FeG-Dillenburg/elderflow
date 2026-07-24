@@ -8,6 +8,7 @@ import { MeetingCompletionSnapshots1720000006000 } from './1720000006000-Meeting
 import { NewMembershipTopics1720000007000 } from './1720000007000-NewMembershipTopics';
 import { RecurringTopics1720000008000 } from './1720000008000-RecurringTopics';
 import { MeetingTopicDeferrals1720000009000 } from './1720000009000-MeetingTopicDeferrals';
+import { MeetingAppearanceTexts1720000010000 } from './1720000010000-MeetingAppearanceTexts';
 
 export const migrations = [
   CreateUsers1720000000000,
@@ -20,4 +21,5 @@ export const migrations = [
   NewMembershipTopics1720000007000,
   RecurringTopics1720000008000,
   MeetingTopicDeferrals1720000009000,
+  MeetingAppearanceTexts1720000010000,
 ];

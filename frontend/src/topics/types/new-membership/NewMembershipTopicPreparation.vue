@@ -1,27 +1,35 @@
 <script setup lang="ts">
+import { computed } from "vue";
 import type { MeetingTopic, Topic, TopicFieldPatch, User } from "../../../api/domain";
 import NewMembershipTopicAppearance from "./NewMembershipTopicAppearance.vue";
 import NewMembershipTopicList from "./NewMembershipTopicList.vue";
 
-defineProps<{
+const props = defineProps<{
   topic: Topic;
   item?: MeetingTopic;
   readOnly?: boolean;
+  meetingStatus?: string;
   users?: User[];
   saveField?: (patch: TopicFieldPatch) => Promise<Topic>;
-  saveNote?: (note: string | null) => Promise<MeetingTopic>;
+  savePreparationContext?: (note: string | null) => Promise<unknown>;
+  saveMinutes?: (note: string | null) => Promise<unknown>;
 }>();
+const preparationReadOnly = computed(() => Boolean(
+  props.readOnly || (props.meetingStatus && props.meetingStatus !== "planned"),
+));
 </script>
 
 <template>
   <NewMembershipTopicAppearance
-    v-if="item && saveField && saveNote"
+    v-if="item && saveField && savePreparationContext && saveMinutes"
     :item="item"
-    :can-edit="!readOnly"
-    :completed="readOnly"
+    :can-edit="!preparationReadOnly"
+    :completed="preparationReadOnly"
     :users="users ?? []"
     :save-field="saveField"
-    :save-note="saveNote"
+    :meeting-text-mode="preparationReadOnly ? 'completed' : 'preparation'"
+    :save-preparation-context="savePreparationContext"
+    :save-minutes="saveMinutes"
   />
   <NewMembershipTopicList v-else :topic="topic" />
 </template>

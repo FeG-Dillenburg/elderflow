@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { api, type AuthUser } from "../api/domain";
 import { auth } from "../auth/auth";
 import MeetingAgendaView from "./MeetingAgendaView.vue";
-import { saveMeetingTopicNote } from "../topics/meetingTopicEdits";
+import { savePersonMeetingNote } from "../topics/meetingTopicEdits";
 
 vi.mock("vue-router", () => ({
   RouterLink: { template: "<a><slot /></a>" },
@@ -152,7 +152,7 @@ describe("MeetingAgendaView", () => {
       (wrapper.vm as any).recent(item).map((update: any) => update.id),
     ).toEqual(["b", "c", "d"]);
   });
-  it("shows all and only this completed Meeting's Minutes entries without a rolling cutoff", async () => {
+  it("keeps standalone Updates separate from paired Meeting minutes", async () => {
     const completedMeeting = structuredClone(meeting);
     completedMeeting.status = "completed";
     completedMeeting.agenda[0].topic.updates = [
@@ -165,9 +165,8 @@ describe("MeetingAgendaView", () => {
     const wrapper = await view();
     const vm: any = wrapper.vm;
 
-    expect(vm.recent(vm.meeting.agenda[0]).map((update: any) => update.id)).toEqual([
-      "own-old-minute",
-    ]);
+    expect(vm.recent(vm.meeting.agenda[0]).map((update: any) => update.id))
+      .toEqual(["later-update"]);
   });
   it("passes completed Person snapshots to a read-only agenda renderer", async () => {
     const completedMeeting = structuredClone(meeting);
@@ -187,27 +186,11 @@ describe("MeetingAgendaView", () => {
       agendaNote: "Recorded note",
     });
   });
-  it("adds a minute, manages participants, and makes blank input a no-op", async () => {
+  it("manages Meeting participants independently of paired Minutes editing", async () => {
     const wrapper = await view();
     const vm: any = wrapper.vm;
-    vi.spyOn(api, "addTopicUpdate").mockResolvedValue({} as any);
     vi.spyOn(api, "addParticipant").mockResolvedValue({} as any);
     vi.spyOn(api, "removeParticipant").mockResolvedValue(undefined);
-    vm.openUpdateEditor("item-1");
-    expect(vm.openEditors["item-1"]).toBe(true);
-    vm.updateEditors["item-1"] = "";
-    await vm.addUpdate(vm.meeting.agenda[0]);
-    expect(api.addTopicUpdate).not.toHaveBeenCalled();
-    vm.updateEditors["item-1"] = "<p>Minute</p>";
-    vm.openEditors["item-1"] = true;
-    await vm.addUpdate(vm.meeting.agenda[0]);
-    expect(api.addTopicUpdate).toHaveBeenCalledWith("topic-1", {
-      text: "<p>Minute</p>",
-      type: "minute",
-      meetingId: "meeting-1",
-    });
-    expect(vm.updateEditors["item-1"]).toBe("");
-    expect(vm.openEditors["item-1"]).toBe(false);
     await vm.addParticipant();
     expect(api.addParticipant).not.toHaveBeenCalled();
     vm.participant.userId = "user-1";
@@ -299,17 +282,23 @@ describe("MeetingAgendaView", () => {
     const wrapper = await view();
     const vm: any = wrapper.vm;
     const appearance = vm.meeting.agenda[0];
-    vi.spyOn(api, "updateMeetingTopicNote").mockResolvedValue({
-      ...appearance,
-      agendaNote: "Saved note",
+    appearance.personNote = { id: appearance.id, text: null, version: 0 };
+    vi.spyOn(api, "updatePersonMeetingNote").mockResolvedValue({
+      preparationContext: null,
+      personNote: {
+        id: appearance.id,
+        text: "Saved note",
+        version: 1,
+      },
+      meetingMinutes: null,
     });
 
-    await saveMeetingTopicNote("meeting-1", appearance)("Saved note");
+    await savePersonMeetingNote("meeting-1", appearance)("Saved note");
 
-    expect(api.updateMeetingTopicNote).toHaveBeenCalledWith(
+    expect(api.updatePersonMeetingNote).toHaveBeenCalledWith(
       "meeting-1",
       "item-1",
-      "Saved note",
+      { text: "Saved note", version: 0 },
     );
     expect(appearance.agendaNote).toBe("Saved note");
     expect(api.meeting).toHaveBeenCalledTimes(1);

@@ -22,9 +22,13 @@ const showTopicSnapshot = computed(() => showTopicName.value
 const topicSnapshotValueCount = computed(() => Number(showTopicName.value)
   + Number(showResponsible.value)
   + Number(props.entry.topic.type === "new_membership"));
-const noteLabel = computed(() => props.entry.topic.type === "generic" || props.entry.topic.type === "recurring"
-  ? t("topicHistory.meetingContext")
-  : t("personTopic.noteLabel"));
+const appearanceNote = computed(() => props.entry.topic.type === "person"
+  ? props.entry.personNote
+  : props.entry.preparationContext);
+const minutesEntries = computed(() => [
+  ...props.entry.legacyMinutesEntries,
+  ...(props.entry.meetingMinutes ? [props.entry.meetingMinutes] : []),
+]);
 </script>
 
 <template>
@@ -45,14 +49,29 @@ const noteLabel = computed(() => props.entry.topic.type === "generic" || props.e
               {{ t("meetingAgenda.deferred") }}
             </span>
           </div>
-          <p class="meeting-meta">
-            <time :datetime="entry.effectiveAt">
-              {{ formatDate(entry.effectiveAt, { dateStyle: "medium", timeStyle: "short" }) }}
-            </time>
-            <span v-if="entry.section">{{ entry.section.name }}</span>
-          </p>
         </div>
         <Tag :value="t(`labels.${entry.meeting.status}`)" severity="secondary" />
+        <p class="meeting-meta">
+          <time :datetime="entry.effectiveAt">
+            {{ formatDate(entry.effectiveAt, { dateStyle: "medium", timeStyle: "short" }) }}
+          </time>
+          <span
+            v-if="entry.section || entry.meeting.minuteTakerDisplayName"
+            class="meeting-details"
+          >
+            <span v-if="entry.section" class="meeting-section">
+              {{ entry.section.name }}
+            </span>
+            <span
+              v-if="entry.meeting.minuteTakerDisplayName"
+              class="meeting-minute-taker"
+              :class="{ 'after-section': entry.section }"
+            >
+              {{ t("meetingAgenda.minuteTaker") }}:
+              {{ entry.meeting.minuteTakerDisplayName }}
+            </span>
+          </span>
+        </p>
       </header>
 
       <section
@@ -89,14 +108,27 @@ const noteLabel = computed(() => props.entry.topic.type === "generic" || props.e
         </div>
       </section>
 
-      <section v-if="entry.note" class="meeting-content">
-        <h3>{{ noteLabel }}</h3>
-        <div class="rich-content" v-html="sanitizeHistoryRichText(entry.note)" />
+      <section
+        v-if="entry.topic.type !== 'person' || appearanceNote"
+        class="meeting-content"
+        :class="{ 'person-note': entry.topic.type === 'person' }"
+      >
+        <div
+          v-if="appearanceNote"
+          class="rich-content"
+          v-html="sanitizeHistoryRichText(appearanceNote)"
+        />
+        <p v-else class="empty-text">{{ t("meetingTexts.noPreparationContext") }}</p>
       </section>
 
-      <section v-if="entry.minutes.length" class="minutes-list">
-        <h3>{{ t("topicHistory.minutes") }}</h3>
-        <article v-for="minute in entry.minutes" :key="minute.id" class="minute">
+      <section
+        v-if="entry.topic.type !== 'person' || minutesEntries.length"
+        class="minutes-list"
+      >
+        <p v-if="!minutesEntries.length" class="empty-text">
+          {{ t("meetingTexts.noMeetingMinutes") }}
+        </p>
+        <article v-for="minute in minutesEntries" :key="minute.id" class="minute">
           <div class="rich-content" v-html="sanitizeHistoryRichText(minute.text)" />
           <p>
             <time :datetime="minute.effectiveAt">
@@ -126,10 +158,10 @@ const noteLabel = computed(() => props.entry.topic.type === "generic" || props.e
 }
 
 .meeting-header {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: flex-start;
-  justify-content: space-between;
-  gap: 1rem;
+  gap: 0 1rem;
   padding: 1rem 1.1rem;
   border-bottom: 1px solid #e8edf3;
   background: linear-gradient(135deg, #f7faff, #fff);
@@ -181,14 +213,22 @@ const noteLabel = computed(() => props.entry.topic.type === "generic" || props.e
 }
 
 .meeting-meta {
+  grid-column: 1 / -1;
   display: flex;
-  flex-wrap: wrap;
-  gap: 0.65rem;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.2rem;
   color: #718096;
   font-size: 0.76rem;
 }
 
-.meeting-meta span::before {
+.meeting-details {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 0.65rem;
+}
+
+.meeting-minute-taker.after-section::before {
   margin-right: 0.65rem;
   content: "·";
 }
@@ -252,19 +292,11 @@ const noteLabel = computed(() => props.entry.topic.type === "generic" || props.e
 
 .meeting-content,
 .minutes-list {
-  padding: 1rem 1.1rem;
+  padding: 0 1.1rem;
 }
 
 .meeting-content + .minutes-list {
   border-top: 1px solid #edf1f5;
-}
-
-h3 {
-  margin: 0 0 0.65rem;
-  color: #526378;
-  font-size: 0.74rem;
-  letter-spacing: 0.03em;
-  text-transform: uppercase;
 }
 
 .rich-content {
@@ -277,13 +309,21 @@ h3 {
   margin: 0.25rem 0;
 }
 
+.meeting-content.person-note .rich-content {
+  padding-top: 0.25rem;
+  margin-bottom: 0.625rem;
+}
+
 .minute {
-  padding: 0.7rem 0 0.7rem 0.9rem;
-  border-left: 2px solid #d5dfed;
+  padding: 0;
+}
+
+.minute:last-child {
+  margin-bottom: 10px;
 }
 
 .minute + .minute {
-  margin-top: 0.4rem;
+  margin-top: 0.6rem;
 }
 
 .minute p {
@@ -295,6 +335,10 @@ h3 {
 }
 
 @media (max-width: 620px) {
+  .meeting-details {
+    flex-wrap: wrap;
+  }
+
   .topic-snapshot,
   .membership-snapshot {
     grid-template-columns: 1fr;

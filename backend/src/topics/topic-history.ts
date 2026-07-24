@@ -6,6 +6,7 @@ export interface TopicHistoryMeeting {
   date: string;
   beginTime: string;
   status: string;
+  minuteTakerDisplayName: string | null;
 }
 
 export interface TopicHistoryTopicDisplay {
@@ -42,8 +43,10 @@ export interface MeetingAppearanceHistoryEntry {
   meeting: TopicHistoryMeeting;
   section: { id: string; name: string } | null;
   topic: TopicHistoryTopicDisplay;
-  note: string | null;
-  minutes: TopicHistoryMinutesEntry[];
+  preparationContext: string | null;
+  personNote: string | null;
+  meetingMinutes: TopicHistoryMinutesEntry | null;
+  legacyMinutesEntries: TopicHistoryMinutesEntry[];
 }
 
 export interface SkippedRecurrenceHistoryEntry {

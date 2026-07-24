@@ -5,6 +5,23 @@ import { Meeting } from './meeting.entity';
 
 export type AgendaAppearanceSource = 'manual' | 'recurrence';
 
+export interface VersionedMeetingText {
+  id: string | null;
+  text: string | null;
+  version: number;
+}
+
+export interface MeetingAppearanceTexts {
+  preparationContext: VersionedMeetingText | null;
+  personNote: VersionedMeetingText | null;
+  meetingMinutes: VersionedMeetingText | null;
+}
+
+export interface PreviousMeetingTexts {
+  preparationContext: string | null;
+  meetingMinutes: string | null;
+}
+
 @Entity({ name: 'meeting_topics' })
 @Unique(['meetingId', 'topicId'])
 export class MeetingTopic {
@@ -44,6 +61,9 @@ export class MeetingTopic {
   @Column({ name: 'note_edited_at', type: 'timestamptz', nullable: true })
   noteEditedAt: Date | null;
 
+  @Column({ name: 'note_version', type: 'integer', default: 0 })
+  noteVersion: number;
+
   @Column({ name: 'planned_duration', type: 'integer', nullable: true })
   plannedDuration: number | null;
 
@@ -67,4 +87,12 @@ export class MeetingTopic {
 
   @Column({ name: 'godparents_snapshot', type: 'text', nullable: true })
   godparentsSnapshot: string | null;
+
+  preparationContext?: VersionedMeetingText | null;
+
+  personNote?: VersionedMeetingText | null;
+
+  meetingMinutes?: VersionedMeetingText | null;
+
+  previousMeetingTexts?: PreviousMeetingTexts | null;
 }

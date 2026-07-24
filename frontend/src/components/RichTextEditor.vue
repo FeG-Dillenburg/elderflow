@@ -4,17 +4,34 @@ import { computed } from "vue";
 import { useI18n } from "vue-i18n";
 
 const props = withDefaults(
-  defineProps<{ placeholder?: string; height?: string }>(),
+  defineProps<{
+    placeholder?: string;
+    height?: string;
+    ariaLabel?: string;
+    ariaDescription?: string;
+  }>(),
   {
     height: "160px",
   },
 );
 const { t } = useI18n();
+const emit = defineEmits<{ blur: [] }>();
 const resolvedPlaceholder = computed(
   () => props.placeholder ?? t("topicDetail.addUpdate"),
 );
 
 const model = defineModel<string>({ default: "" });
+const onSelectionChange = (event: { range: unknown | null }) => {
+  if (event.range === null) emit("blur");
+};
+const onLoad = (event: { instance: { root: HTMLElement } }) => {
+  if (props.ariaLabel) {
+    event.instance.root.setAttribute("aria-label", props.ariaLabel);
+  }
+  if (props.ariaDescription) {
+    event.instance.root.setAttribute("aria-description", props.ariaDescription);
+  }
+};
 </script>
 
 <template>
@@ -22,6 +39,8 @@ const model = defineModel<string>({ default: "" });
     v-model="model"
     :placeholder="resolvedPlaceholder"
     :editor-style="{ height: props.height }"
+    @selection-change="onSelectionChange"
+    @load="onLoad"
   >
     <template #toolbar>
       <span class="ql-formats">

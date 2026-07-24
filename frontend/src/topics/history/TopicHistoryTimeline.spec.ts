@@ -9,6 +9,7 @@ const meeting = {
   date: '2026-07-15',
   beginTime: '20:00:00',
   status: 'completed',
+  minuteTakerDisplayName: 'Ada Lovelace',
 };
 
 describe('TopicHistoryTimeline', () => {
@@ -47,11 +48,12 @@ describe('TopicHistoryTimeline', () => {
           membershipStatusSignal: 'nearly_finished',
           godparents: 'Alex and Robin',
         },
-        note: longNote,
-        minutes: [
+        preparationContext: longNote,
+        personNote: null,
+        legacyMinutesEntries: [
           { id: 'first', effectiveAt: '2026-07-15T20:10:00Z', text: '<p>First minute</p>', createdByDisplayName: null },
-          { id: 'second', effectiveAt: '2026-07-15T20:20:00Z', text: '<p>Second minute</p>', createdByDisplayName: 'Ada Lovelace' },
         ],
+        meetingMinutes: { id: 'second', effectiveAt: '2026-07-15T20:20:00Z', text: '<p>Second minute</p>', createdByDisplayName: 'Ada Lovelace' },
       },
       {
         id: 'skip',
@@ -69,6 +71,15 @@ describe('TopicHistoryTimeline', () => {
     expect(text.indexOf('Council')).toBeLessThan(text.indexOf('Skipped recurrence'));
     expect(text.indexOf('Long historical context')).toBeLessThan(text.indexOf('First minute'));
     expect(text.indexOf('First minute')).toBeLessThan(text.indexOf('Second minute'));
+    expect(text).toContain('Minute taker: Ada Lovelace');
+    const meetingMeta = wrapper.get('.meeting-meta');
+    expect(meetingMeta.get('.meeting-section').text()).toBe('People');
+    expect(meetingMeta.get('.meeting-minute-taker').text()).toBe(
+      'Minute taker: Ada Lovelace',
+    );
+    expect(wrapper.get('.minutes-list').text()).not.toContain('Minute taker');
+    expect(text).not.toContain('Preparation context');
+    expect(wrapper.find('h3').exists()).toBe(false);
     expect(text).toContain('Recorded family');
     expect(text).toContain('Welcome planned');
     expect(text).toContain('Alex and Robin');
@@ -99,8 +110,10 @@ describe('TopicHistoryTimeline', () => {
         membershipStatusSignal: null,
         godparents: null,
       },
-      note: null,
-      minutes: [],
+      preparationContext: null,
+      personNote: null,
+      meetingMinutes: null,
+      legacyMinutesEntries: [],
     }];
 
     const wrapper = mount(TopicHistoryTimeline, {
@@ -109,16 +122,18 @@ describe('TopicHistoryTimeline', () => {
     });
 
     expect(wrapper.get('.deferred-marker').text()).toBe('Deferred');
+    expect(wrapper.text()).toContain('No preparation context recorded');
+    expect(wrapper.text()).toContain('No Meeting minutes recorded');
     expect(wrapper.text()).not.toContain('Responsible');
     expect(wrapper.text()).not.toContain('Grace Hopper');
     expect(wrapper.find('.topic-snapshot').exists()).toBe(false);
   });
 
   it.each([
-    ['generic', 'Meeting context'],
-    ['person', 'Meeting topic note'],
-    ['recurring', 'Meeting context'],
-  ] as const)('renders the %s Meeting appearance with its type-aware note label', (type, label) => {
+    'generic',
+    'person',
+    'recurring',
+  ] as const)('renders the %s Meeting appearance without section titles', (type) => {
     const entries: TopicHistoryEntry[] = [{
       id: type,
       kind: 'meeting_appearance',
@@ -135,14 +150,56 @@ describe('TopicHistoryTimeline', () => {
         membershipStatusSignal: null,
         godparents: null,
       },
-      note: '<p>One appearance note</p>',
-      minutes: [],
+      preparationContext: type === 'person' ? null : '<p>One appearance note</p>',
+      personNote: type === 'person' ? '<p>One appearance note</p>' : null,
+      meetingMinutes: null,
+      legacyMinutesEntries: [],
     }];
 
     const wrapper = mount(TopicHistoryTimeline, { props: { entries }, ...options });
 
-    expect(wrapper.text()).toContain(label);
     expect(wrapper.text().match(/One appearance note/g)).toHaveLength(1);
+    expect(wrapper.text()).not.toContain('Preparation context');
+    expect(wrapper.text()).not.toContain('Meeting topic note');
+    expect(wrapper.find('h3').exists()).toBe(false);
+    expect(wrapper.findAll('.meeting-content + .minutes-list')).toHaveLength(
+      type === 'person' ? 0 : 1,
+    );
+  });
+
+  it('keeps legacy Meeting-linked Minutes visible for a Person appearance', () => {
+    const entries: TopicHistoryEntry[] = [{
+      id: 'person',
+      kind: 'meeting_appearance',
+      effectiveAt: '2026-07-15T20:00:00',
+      appearanceId: 'person',
+      deferredAt: null,
+      meeting,
+      section: null,
+      topic: {
+        type: 'person',
+        name: 'Historical person',
+        responsibleUserDisplayName: null,
+        membershipProcessStatus: null,
+        membershipStatusSignal: null,
+        godparents: null,
+      },
+      preparationContext: null,
+      personNote: '<p>One Person note</p>',
+      meetingMinutes: null,
+      legacyMinutesEntries: [{
+        id: 'legacy',
+        effectiveAt: '2026-07-15T20:10:00Z',
+        text: '<p>Preserved legacy Minutes</p>',
+        createdByDisplayName: null,
+      }],
+    }];
+
+    const wrapper = mount(TopicHistoryTimeline, { props: { entries }, ...options });
+
+    expect(wrapper.text()).toContain('One Person note');
+    expect(wrapper.text()).toContain('Preserved legacy Minutes');
+    expect(wrapper.get('.meeting-content').classes()).toContain('person-note');
   });
 
   it('shows the historical Topic name only when it differs from the current name', async () => {
@@ -162,8 +219,10 @@ describe('TopicHistoryTimeline', () => {
         membershipStatusSignal: null,
         godparents: null,
       },
-      note: null,
-      minutes: [],
+      preparationContext: null,
+      personNote: null,
+      meetingMinutes: null,
+      legacyMinutesEntries: [],
     }];
     const wrapper = mount(TopicHistoryTimeline, {
       props: {

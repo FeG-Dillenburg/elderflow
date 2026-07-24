@@ -33,8 +33,14 @@ export class UpdateMeetingTopicDto {
   @IsOptional() @IsBoolean() deferred?: boolean;
 }
 
-export class UpdateMeetingTopicNoteDto {
-  @IsOptional() @IsString() agendaNote?: string | null;
+export class UpdateMeetingTextDto {
+  @IsOptional() @IsString() text?: string | null;
+  @IsInt() @Min(0) version: number;
+}
+
+export class UpdateMeetingMinutesDto {
+  @IsString() text: string;
+  @IsOptional() @IsInt() @Min(0) version: number | null;
 }
 
 export class MeetingTopicOrderItemDto {

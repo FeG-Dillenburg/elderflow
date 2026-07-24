@@ -165,6 +165,23 @@ export interface MeetingParticipant {
   user?: User;
 }
 
+export interface VersionedMeetingText {
+  id: string | null;
+  text: string | null;
+  version: number;
+}
+
+export interface MeetingAppearanceTexts {
+  preparationContext: VersionedMeetingText | null;
+  personNote: VersionedMeetingText | null;
+  meetingMinutes: VersionedMeetingText | null;
+}
+
+export interface PreviousMeetingTexts {
+  preparationContext: string | null;
+  meetingMinutes: string | null;
+}
+
 export interface MeetingTopic {
   id: string;
   meetingId: string;
@@ -174,6 +191,11 @@ export interface MeetingTopic {
   topic?: Topic;
   position: number;
   agendaNote: string | null;
+  noteVersion?: number;
+  preparationContext?: VersionedMeetingText | null;
+  personNote?: VersionedMeetingText | null;
+  meetingMinutes?: VersionedMeetingText | null;
+  previousMeetingTexts?: PreviousMeetingTexts | null;
   source?: AgendaAppearanceSource;
   noteEditedAt?: string | null;
   deferredAt?: string | null;
@@ -212,6 +234,7 @@ export interface TopicHistoryMeeting {
   date: string;
   beginTime: string;
   status: string;
+  minuteTakerDisplayName: string | null;
 }
 
 export interface TopicHistoryTopicDisplay {
@@ -248,8 +271,10 @@ export type TopicHistoryEntry =
       meeting: TopicHistoryMeeting;
       section: Pick<AgendaSection, 'id' | 'name'> | null;
       topic: TopicHistoryTopicDisplay;
-      note: string | null;
-      minutes: TopicHistoryMinutesEntry[];
+      preparationContext: string | null;
+      personNote: string | null;
+      meetingMinutes: TopicHistoryMinutesEntry | null;
+      legacyMinutesEntries: TopicHistoryMinutesEntry[];
     }
   | {
       id: string;
@@ -344,14 +369,40 @@ export const api = {
   createMeeting: (input: MeetingInput) => request<Meeting>('/api/meetings', { method: 'POST', body: JSON.stringify(input) }),
   updateMeeting: (id: string, input: MeetingInput) => request<Meeting>(`/api/meetings/${id}`, { method: 'PUT', body: JSON.stringify(input) }),
   completeMeeting: (id: string) => request<Meeting>(`/api/meetings/${id}/complete`, { method: 'POST' }),
-  meetingSuggestions: (id: string) => request<Topic[]>(`/api/meetings/${id}/suggestions`),
+  meetingSuggestions: (id: string, options?: { future?: boolean }) =>
+    request<Topic[]>(`/api/meetings/${id}/suggestions${query({
+      future: options?.future ? true : undefined,
+    })}`),
   addParticipant: (meetingId: string, input: { userId: string; attendanceStatus: string }) => request<MeetingParticipant>(`/api/meetings/${meetingId}/participants`, { method: 'POST', body: JSON.stringify(input) }),
   removeParticipant: (meetingId: string, userId: string) => request<void>(`/api/meetings/${meetingId}/participants/${userId}`, { method: 'DELETE' }),
   addMeetingTopic: (meetingId: string, input: { topicId: string; sectionId: string; position?: number }) => request<MeetingTopic>(`/api/meetings/${meetingId}/topics`, { method: 'POST', body: JSON.stringify(input) }),
   reorderMeetingTopics: (meetingId: string, items: Array<{ id: string; sectionId: string; position: number }>) => request<MeetingTopic[]>(`/api/meetings/${meetingId}/topics/order`, { method: 'PUT', body: JSON.stringify({ items }) }),
   updateMeetingTopic: (meetingId: string, item: MeetingTopic, options?: { deferred?: boolean }) => request<MeetingTopic>(`/api/meetings/${meetingId}/topics/${item.id}`, { method: 'PUT', body: JSON.stringify({ sectionId: item.sectionId, position: item.position, plannedDuration: item.plannedDuration, status: item.status, deferred: options?.deferred }) }),
   updateMeetingTopicFields: (meetingId: string, itemId: string, input: TopicFieldPatch) => request<Topic>(`/api/meetings/${meetingId}/topics/${itemId}/fields`, { method: 'PUT', body: JSON.stringify(input) }),
-  updateMeetingTopicNote: (meetingId: string, itemId: string, agendaNote: string | null) => request<MeetingTopic>(`/api/meetings/${meetingId}/topics/${itemId}/note`, { method: 'PUT', body: JSON.stringify({ agendaNote }) }),
+  updateMeetingPreparationContext: (
+    meetingId: string,
+    itemId: string,
+    input: { text: string | null; version: number },
+  ) => request<MeetingAppearanceTexts>(`/api/meetings/${meetingId}/topics/${itemId}/preparation-context`, {
+    method: 'PUT',
+    body: JSON.stringify(input),
+  }),
+  updatePersonMeetingNote: (
+    meetingId: string,
+    itemId: string,
+    input: { text: string | null; version: number },
+  ) => request<MeetingAppearanceTexts>(`/api/meetings/${meetingId}/topics/${itemId}/person-note`, {
+    method: 'PUT',
+    body: JSON.stringify(input),
+  }),
+  updateMeetingMinutes: (
+    meetingId: string,
+    itemId: string,
+    input: { text: string; version: number | null },
+  ) => request<MeetingAppearanceTexts>(`/api/meetings/${meetingId}/topics/${itemId}/minutes`, {
+    method: 'PUT',
+    body: JSON.stringify(input),
+  }),
   removeMeetingTopic: (meetingId: string, itemId: string) => request<void>(`/api/meetings/${meetingId}/topics/${itemId}`, { method: 'DELETE' }),
   restoreRecurrence: (meetingId: string, topicId: string) => request<void>(`/api/meetings/${meetingId}/recurrences/${topicId}/restore`, { method: 'POST' }),
   tasks: (filters: Record<string, string | boolean | undefined> = {}) => request<Task[]>(`/api/tasks${query(filters)}`),

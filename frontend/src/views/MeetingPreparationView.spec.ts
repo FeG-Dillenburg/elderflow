@@ -2,7 +2,7 @@ import { flushPromises, mount } from "@vue/test-utils";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { api } from "../api/domain";
 import MeetingPreparationView from "./MeetingPreparationView.vue";
-import { saveMeetingTopicNote } from "../topics/meetingTopicEdits";
+import { savePersonMeetingNote } from "../topics/meetingTopicEdits";
 
 vi.mock("vue-router", () => ({
   RouterLink: { template: "<a><slot /></a>" },
@@ -86,6 +86,40 @@ describe("MeetingPreparationView", () => {
     });
     await flushPromises();
     expect((failed.vm as any).error).toBe("No meeting");
+  });
+  it("loads future suggestions only after the toggle and renders them below it", async () => {
+    vi.mocked(api.meetingSuggestions).mockImplementation(async (_id, options) =>
+      options?.future
+        ? [{ id: "future", name: "Future", type: "generic" } as any]
+        : [{ id: "due", name: "Due", type: "generic" } as any]);
+    const wrapper = await view();
+    const vm: any = wrapper.vm;
+
+    expect(api.meetingSuggestions).toHaveBeenCalledTimes(1);
+    expect(api.meetingSuggestions).toHaveBeenCalledWith("meeting-1");
+    expect(vm.visibleSuggestionLists).toHaveLength(1);
+    expect(wrapper.get(".future-topics-toggle").attributes("label"))
+      .toBe("Show future topics");
+
+    await vm.toggleFutureTopics();
+    await flushPromises();
+
+    expect(api.meetingSuggestions).toHaveBeenLastCalledWith(
+      "meeting-1",
+      { future: true },
+    );
+    expect(vm.visibleSuggestionLists).toHaveLength(2);
+    expect(vm.visibleSuggestionLists[1][0].id).toBe("future");
+    expect(wrapper.get(".future-topics-toggle").attributes("label"))
+      .toBe("Hide future topics");
+    expect(wrapper.html().indexOf("future-topics-toggle"))
+      .toBeLessThan(wrapper.html().indexOf("future-suggestions"));
+
+    await vm.toggleFutureTopics();
+
+    expect(vm.showFutureTopics).toBe(false);
+    expect(vm.visibleSuggestionLists).toHaveLength(1);
+    expect(api.meetingSuggestions).toHaveBeenCalledTimes(2);
   });
   it("configures writable agenda and clone-only suggestion drag lists with handles", async () => {
     const wrapper = await view();
@@ -259,17 +293,23 @@ describe("MeetingPreparationView", () => {
     const wrapper = await view();
     const vm: any = wrapper.vm;
     const appearance = vm.grouped[1].items[0];
-    vi.spyOn(api, "updateMeetingTopicNote").mockResolvedValue({
-      ...appearance,
-      agendaNote: "Saved context",
+    appearance.personNote = { id: appearance.id, text: null, version: 0 };
+    vi.spyOn(api, "updatePersonMeetingNote").mockResolvedValue({
+      preparationContext: null,
+      personNote: {
+        id: appearance.id,
+        text: "Saved context",
+        version: 1,
+      },
+      meetingMinutes: null,
     });
 
-    const result = await saveMeetingTopicNote("meeting-1", appearance)("Saved context");
+    const result = await savePersonMeetingNote("meeting-1", appearance)("Saved context");
 
-    expect(api.updateMeetingTopicNote).toHaveBeenCalledWith(
+    expect(api.updatePersonMeetingNote).toHaveBeenCalledWith(
       "meeting-1",
       appearance.id,
-      "Saved context",
+      { text: "Saved context", version: 0 },
     );
     expect(appearance.agendaNote).toBe("Saved context");
     expect(result.agendaNote).toBe("Saved context");

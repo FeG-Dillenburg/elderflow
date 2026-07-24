@@ -185,7 +185,8 @@ describe("New membership Topic renderers", () => {
       "Godparent(s)",
       "Status",
     ]);
-    expect(wrapper.find(".note-field > span").text()).toBe("Note");
+    expect(wrapper.findComponent({ name: "PairedMeetingTexts" }).props("mode"))
+      .toBe("preparation");
 
     await wrapper.find(".signal-trigger").trigger("click");
     const options = wrapper.findAll('[role="menuitemradio"]');

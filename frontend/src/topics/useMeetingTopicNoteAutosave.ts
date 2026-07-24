@@ -1,11 +1,9 @@
 import { onBeforeUnmount, ref, type Ref, watch } from "vue";
-import type { MeetingTopic } from "../api/domain";
-
 type SaveState = "idle" | "saving" | "saved" | "error";
 
 export const useMeetingTopicNoteAutosave = (options: {
   source: () => string | null | undefined;
-  save: (note: string | null) => Promise<MeetingTopic>;
+  save: (note: string | null) => Promise<unknown>;
   saveFailedMessage: () => string;
   normalize?: (note: string) => string | null;
 }): {

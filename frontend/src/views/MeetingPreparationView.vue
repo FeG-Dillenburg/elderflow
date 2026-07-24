@@ -27,7 +27,12 @@ import {
 import { formatDate } from "../i18n";
 import { topicNameTranslationKey } from "../topics/topicTypes";
 import { assignableUsers } from "../auth/roles";
-import { saveMeetingTopicField, saveMeetingTopicNote } from "../topics/meetingTopicEdits";
+import {
+  saveMeetingMinutes,
+  saveMeetingPreparationContext,
+  saveMeetingTopicField,
+  savePersonMeetingNote,
+} from "../topics/meetingTopicEdits";
 import { topicUsesPlannedDuration } from "../topics/topicTypeRegistry";
 import { toTopicInput } from "../topics/types/new-membership/topicInput";
 
@@ -48,6 +53,9 @@ const meeting = ref<Meeting | null>(null);
 const readOnly = computed(() => meeting.value?.status === "completed");
 const sections = ref<AgendaSection[]>([]);
 const suggestions = ref<Topic[]>([]);
+const futureSuggestions = ref<Topic[]>([]);
+const showFutureTopics = ref(false);
+const futureTopicsLoading = ref(false);
 const users = ref<User[]>([]);
 const responsibleUserOptions = computed(() => assignableUsers(users.value));
 const grouped = ref<AgendaGroup[]>([]);
@@ -59,6 +67,9 @@ const agendaGroup = { name: "agenda-topics", pull: true, put: true };
 const suggestionGroup = { name: "agenda-topics", pull: "clone", put: false };
 let temporaryKey = 0;
 const durationSaveQueues = new Map<string, Promise<void>>();
+const visibleSuggestionLists = computed(() => showFutureTopics.value
+  ? [suggestions.value, futureSuggestions.value]
+  : [suggestions.value]);
 const form = reactive({
   name: "",
   description: null as string | null,
@@ -91,16 +102,26 @@ const initialiseGroups = () => {
 
 const load = async () => {
   try {
-    const [loadedMeeting, loadedSections, loadedSuggestions, loadedUsers] =
+    const [
+      loadedMeeting,
+      loadedSections,
+      loadedSuggestions,
+      loadedUsers,
+      loadedFutureSuggestions,
+    ] =
       await Promise.all([
         api.meeting(id),
         api.sections(),
         api.meetingSuggestions(id),
         api.userDirectory(),
+        showFutureTopics.value
+          ? api.meetingSuggestions(id, { future: true })
+          : Promise.resolve([]),
       ]);
     meeting.value = loadedMeeting;
     sections.value = loadedSections;
     suggestions.value = loadedSuggestions;
+    futureSuggestions.value = loadedFutureSuggestions;
     users.value = loadedUsers;
     initialiseGroups();
   } catch (cause) {
@@ -108,6 +129,28 @@ const load = async () => {
       cause instanceof Error
         ? cause.message
         : t("meetingPreparation.loadFailed");
+  }
+};
+
+const toggleFutureTopics = async () => {
+  if (showFutureTopics.value) {
+    showFutureTopics.value = false;
+    futureSuggestions.value = [];
+    return;
+  }
+  futureTopicsLoading.value = true;
+  error.value = "";
+  try {
+    futureSuggestions.value = await api.meetingSuggestions(id, {
+      future: true,
+    });
+    showFutureTopics.value = true;
+  } catch (cause) {
+    error.value = cause instanceof Error
+      ? cause.message
+      : t("meetingPreparation.futureLoadFailed");
+  } finally {
+    futureTopicsLoading.value = false;
   }
 };
 
@@ -322,9 +365,12 @@ onMounted(load);
                       :topic="item.topic"
                       :item="item"
                       :read-only="readOnly"
+                      :meeting-status="meeting.status"
                       :users="responsibleUserOptions"
                       :save-field="saveMeetingTopicField(id, item)"
-                      :save-note="saveMeetingTopicNote(id, item)"
+                      :save-note="savePersonMeetingNote(id, item)"
+                      :save-preparation-context="saveMeetingPreparationContext(id, item)"
+                      :save-minutes="saveMeetingMinutes(id, item)"
                     />
                     <small>
                       {{ statusLabel(item.topic?.status) }}
@@ -397,58 +443,80 @@ onMounted(load);
               @click="newVisible = true"
             />
           </div>
-          <Draggable
-            :list="suggestions"
-            :group="suggestionGroup"
-            :clone="cloneSuggestion"
-            item-key="id"
-            handle=".drag-handle"
-            :sort="false"
-            :disabled="pending"
+          <template
+            v-for="(suggestionList, suggestionListIndex) in visibleSuggestionLists"
+            :key="suggestionListIndex === 0 ? 'due' : 'future'"
           >
-            <template #item="{ element: topic }">
-              <article class="suggestion">
-                <div class="suggestion-title">
-                  <button
-                    class="drag-handle"
-                    type="button"
-                    :aria-label="t('meetingPreparation.drag')"
-                    :title="t('meetingPreparation.drag')"
-                  >
-                    <span v-for="dot in 6" :key="dot" />
-                  </button>
-                  <div>
-                    <TopicTypeRenderer
-                      :type="topic.type"
-                      context="preparation"
-                      :topic="topic"
-                      show-type
-                    />
+            <Draggable
+              :class="{ 'future-suggestions': suggestionListIndex === 1 }"
+              :list="suggestionList"
+              :group="suggestionGroup"
+              :clone="cloneSuggestion"
+              item-key="id"
+              handle=".drag-handle"
+              :sort="false"
+              :disabled="pending"
+            >
+              <template #item="{ element: topic }">
+                <article class="suggestion">
+                  <div class="suggestion-title">
+                    <button
+                      class="drag-handle"
+                      type="button"
+                      :aria-label="t('meetingPreparation.drag')"
+                      :title="t('meetingPreparation.drag')"
+                    >
+                      <span v-for="dot in 6" :key="dot" />
+                    </button>
+                    <div>
+                      <TopicTypeRenderer
+                        :type="topic.type"
+                        context="preparation"
+                        :topic="topic"
+                        show-type
+                      />
+                    </div>
                   </div>
-                </div>
-                <Select
-                  v-model="selectedSections[topic.id]"
-                  :options="sections"
-                  :placeholder="
-                    topic.defaultSection?.name ||
-                    t('meetingPreparation.chooseSection')
-                  "
-                  option-label="name"
-                  option-value="id"
-                />
-                <Button
-                  icon="pi pi-plus"
-                  :label="t('meetingPreparation.addToAgenda')"
-                  outlined
-                  :disabled="pending"
-                  @click="add(topic)"
-                />
-              </article>
-            </template>
-          </Draggable>
-          <p v-if="!suggestions.length" class="empty">
-            {{ t("meetingPreparation.allAdded") }}
-          </p>
+                  <Select
+                    v-model="selectedSections[topic.id]"
+                    :options="sections"
+                    :placeholder="
+                      topic.defaultSection?.name ||
+                      t('meetingPreparation.chooseSection')
+                    "
+                    option-label="name"
+                    option-value="id"
+                  />
+                  <Button
+                    icon="pi pi-plus"
+                    :label="t('meetingPreparation.addToAgenda')"
+                    outlined
+                    :disabled="pending"
+                    @click="add(topic)"
+                  />
+                </article>
+              </template>
+            </Draggable>
+            <p v-if="!suggestionList.length" class="empty">
+              {{
+                suggestionListIndex === 0
+                  ? t("meetingPreparation.allAdded")
+                  : t("meetingPreparation.noFutureTopics")
+              }}
+            </p>
+            <Button
+              v-if="suggestionListIndex === 0"
+              class="future-topics-toggle"
+              :label="showFutureTopics
+                ? t('meetingPreparation.hideFutureTopics')
+                : t('meetingPreparation.showFutureTopics')"
+              :loading="futureTopicsLoading"
+              :disabled="pending || futureTopicsLoading"
+              severity="secondary"
+              outlined
+              @click="toggleFutureTopics"
+            />
+          </template>
         </aside>
       </div>
     </template>
@@ -681,6 +749,10 @@ onMounted(load);
   padding: 0.8rem;
   border-radius: 0.6rem;
   background: #fff;
+}
+.future-topics-toggle {
+  width: 100%;
+  margin: 0.2rem 0 0.7rem;
 }
 .suggestion-title {
   justify-content: flex-start;

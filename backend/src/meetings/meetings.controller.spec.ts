@@ -12,7 +12,10 @@ describe('MeetingsController completion boundary', () => {
     complete: jest.fn(),
     updateTopic: jest.fn(),
     updateTopicFields: jest.fn(),
-    updateTopicNote: jest.fn(),
+    updatePreparationContext: jest.fn(),
+    updatePersonNote: jest.fn(),
+    updateMeetingMinutes: jest.fn(),
+    suggestions: jest.fn(),
   };
   const currentUser = { id: '00000000-0000-4000-8000-000000000002' };
 
@@ -48,34 +51,16 @@ describe('MeetingsController completion boundary', () => {
     expect(service.complete).toHaveBeenCalledWith(meeting.id, currentUser);
   });
 
-  it('writes only the note field through the appearance-note HTTP endpoint', async () => {
-    const appearance = {
-      id: '00000000-0000-4000-8000-000000000003',
-      meetingId: '00000000-0000-4000-8000-000000000001',
-      agendaNote: 'Private context',
-    };
-    service.updateTopicNote.mockResolvedValue(appearance);
+  it('requests future suggestions only through an explicit boolean query', async () => {
+    const meetingId = '00000000-0000-4000-8000-000000000001';
+    service.suggestions.mockResolvedValue([]);
 
     await request(app.getHttpServer())
-      .put(`/api/meetings/${appearance.meetingId}/topics/${appearance.id}/note`)
-      .send({ agendaNote: appearance.agendaNote })
+      .get(`/api/meetings/${meetingId}/suggestions?future=true`)
       .expect(200)
-      .expect(appearance);
+      .expect([]);
 
-    expect(service.updateTopicNote).toHaveBeenCalledWith(
-      appearance.meetingId,
-      appearance.id,
-      appearance.agendaNote,
-    );
-  });
-
-  it('rejects unrelated fields on the appearance-note HTTP endpoint', async () => {
-    await request(app.getHttpServer())
-      .put('/api/meetings/00000000-0000-4000-8000-000000000001/topics/00000000-0000-4000-8000-000000000003/note')
-      .send({ agendaNote: 'Note', membershipProcessStatus: 'Started' })
-      .expect(400);
-
-    expect(service.updateTopicNote).not.toHaveBeenCalled();
+    expect(service.suggestions).toHaveBeenCalledWith(meetingId, true);
   });
 
   it('writes only independently validated fields through the appearance endpoint', async () => {
@@ -124,12 +109,75 @@ describe('MeetingsController completion boundary', () => {
     );
   });
 
-  it('protects the appearance-note endpoint with Meeting authorization', () => {
-    const permission = new Reflector().getAllAndOverride(
+  it('protects semantic Meeting-text endpoints with Meeting authorization', () => {
+    const preparationPermission = new Reflector().getAllAndOverride(
       PERMISSION_CATEGORY_KEY,
-      [MeetingsController.prototype.updateTopicNote, MeetingsController],
+      [MeetingsController.prototype.updatePreparationContext, MeetingsController],
+    );
+    const minutesPermission = new Reflector().getAllAndOverride(
+      PERMISSION_CATEGORY_KEY,
+      [MeetingsController.prototype.updateMeetingMinutes, MeetingsController],
     );
 
-    expect(permission).toBe('meetings');
+    expect(preparationPermission).toBe('meetings');
+    expect(minutesPermission).toBe('meetings');
+  });
+
+  it('exposes semantic, versioned endpoints for preparation context, Person notes, and Meeting minutes', async () => {
+    const meetingId = '00000000-0000-4000-8000-000000000001';
+    const appearanceId = '00000000-0000-4000-8000-000000000003';
+    service.updatePreparationContext.mockResolvedValue({ id: appearanceId });
+    service.updatePersonNote.mockResolvedValue({ id: appearanceId });
+    service.updateMeetingMinutes.mockResolvedValue({
+      id: '00000000-0000-4000-8000-000000000004',
+      text: 'Minutes',
+      version: 1,
+    });
+
+    await request(app.getHttpServer())
+      .put(`/api/meetings/${meetingId}/topics/${appearanceId}/preparation-context`)
+      .send({ text: 'Context', version: 2 })
+      .expect(200);
+    expect(service.updatePreparationContext).toHaveBeenCalledWith(
+      meetingId,
+      appearanceId,
+      'Context',
+      2,
+    );
+
+    await request(app.getHttpServer())
+      .put(`/api/meetings/${meetingId}/topics/${appearanceId}/person-note`)
+      .send({ text: 'Person note', version: 3 })
+      .expect(200);
+    expect(service.updatePersonNote).toHaveBeenCalledWith(
+      meetingId,
+      appearanceId,
+      'Person note',
+      3,
+    );
+
+    await request(app.getHttpServer())
+      .put(`/api/meetings/${meetingId}/topics/${appearanceId}/minutes`)
+      .send({ text: 'Minutes', version: null })
+      .expect(200);
+    expect(service.updateMeetingMinutes).toHaveBeenCalledWith(
+      meetingId,
+      appearanceId,
+      { text: 'Minutes', version: null },
+      currentUser,
+    );
+  });
+
+  it('rejects invalid semantic Meeting-text payloads', async () => {
+    const base = '/api/meetings/00000000-0000-4000-8000-000000000001/topics/00000000-0000-4000-8000-000000000003';
+
+    await request(app.getHttpServer())
+      .put(`${base}/preparation-context`)
+      .send({ text: 'Context', version: -1 })
+      .expect(400);
+    await request(app.getHttpServer())
+      .put(`${base}/minutes`)
+      .send({ text: 42, version: null })
+      .expect(400);
   });
 });

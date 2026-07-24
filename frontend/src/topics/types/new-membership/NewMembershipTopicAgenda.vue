@@ -1,17 +1,30 @@
 <script setup lang="ts">
+import { computed } from "vue";
 import type { MeetingTopic, Topic, TopicFieldPatch, User } from "../../../api/domain";
 import NewMembershipTopicAppearance from "./NewMembershipTopicAppearance.vue";
 import TopicDoneButton from "../../TopicDoneButton.vue";
 
-defineProps<{
+const props = defineProps<{
   item: MeetingTopic;
   canEdit: boolean;
   completed?: boolean;
   users: User[];
   saveField: (patch: TopicFieldPatch) => Promise<Topic>;
-  saveNote: (note: string | null) => Promise<MeetingTopic>;
+  meetingStatus?: string;
+  canWriteMinutes?: boolean;
+  savePreparationContext?: (note: string | null) => Promise<unknown>;
+  saveMinutes?: (note: string | null) => Promise<unknown>;
   markDone?: () => Promise<void>;
 }>();
+const meetingTextMode = computed(() => props.meetingStatus === "in_progress"
+  ? "active"
+  : props.meetingStatus === "completed"
+    ? "completed"
+    : "preparation");
+const savePreparation = (text: string | null) =>
+  props.savePreparationContext?.(text) ?? Promise.resolve();
+const saveCurrentMinutes = (text: string | null) =>
+  props.saveMinutes?.(text) ?? Promise.resolve();
 </script>
 
 <template>
@@ -22,7 +35,10 @@ defineProps<{
       :completed="completed"
       :users="users"
       :save-field="saveField"
-      :save-note="saveNote"
+      :meeting-text-mode="meetingTextMode"
+      :can-write-minutes="canWriteMinutes"
+      :save-preparation-context="savePreparation"
+      :save-minutes="saveCurrentMinutes"
     />
     <div
       v-if="

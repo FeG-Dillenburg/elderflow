@@ -40,16 +40,16 @@ export class TopicHistoryService {
     const [updates, appearances, skippedRecurrences] = await Promise.all([
       this.updates.find({
         where: { topicId },
-        relations: { createdBy: true, meeting: true },
+        relations: { createdBy: true, meeting: { minuteTaker: true } },
       }),
       this.appearances.find({
         where: { topicId },
-        relations: { meeting: true, section: true },
+        relations: { meeting: { minuteTaker: true }, section: true },
       }),
       topic.type === 'recurring'
         ? this.skippedRecurrences.find({
           where: { topicId },
-          relations: { meeting: true },
+          relations: { meeting: { minuteTaker: true } },
         })
         : Promise.resolve([]),
     ]);
@@ -110,7 +110,8 @@ export class TopicHistoryService {
     updates: TopicUpdate[],
   ): MeetingAppearanceHistoryEntry & { sortTime: number } {
     const meeting = this.meeting(appearance.meeting!);
-    const minutes = this.minutes(updates);
+    const { meetingMinutes, legacyMinutesEntries } =
+      this.classifiedMinutes(topic, updates);
 
     return {
       id: `meeting-appearance:${appearance.id}`,
@@ -124,8 +125,10 @@ export class TopicHistoryService {
         ? { id: appearance.section.id, name: appearance.section.name }
         : null,
       topic: this.topicDisplay(topic, appearance),
-      note: appearance.agendaNote,
-      minutes,
+      preparationContext: topic.type === 'person' ? null : appearance.agendaNote,
+      personNote: topic.type === 'person' ? appearance.agendaNote : null,
+      meetingMinutes,
+      legacyMinutesEntries,
     };
   }
 
@@ -148,6 +151,8 @@ export class TopicHistoryService {
     updates: TopicUpdate[],
   ): MeetingAppearanceHistoryEntry & { sortTime: number } {
     const meeting = this.meeting(meetingEntity);
+    const { meetingMinutes, legacyMinutesEntries } =
+      this.classifiedMinutes(topic, updates);
     return {
       id: `meeting-appearance:missing:${meetingId}`,
       kind: 'meeting_appearance',
@@ -158,8 +163,10 @@ export class TopicHistoryService {
       meeting,
       section: null,
       topic: this.topicDisplay(topic, undefined, meeting.status === 'completed'),
-      note: null,
-      minutes: this.minutes(updates),
+      preparationContext: null,
+      personNote: null,
+      meetingMinutes,
+      legacyMinutesEntries,
     };
   }
 
@@ -202,6 +209,22 @@ export class TopicHistoryService {
     })).sort((left, right) => left.effectiveAt.localeCompare(right.effectiveAt) || left.id.localeCompare(right.id));
   }
 
+  private classifiedMinutes(
+    topic: Topic,
+    updates: TopicUpdate[],
+  ): Pick<MeetingAppearanceHistoryEntry, 'meetingMinutes' | 'legacyMinutesEntries'> {
+    const minutes = this.minutes(updates);
+    return topic.type === 'person'
+      ? {
+        meetingMinutes: null,
+        legacyMinutesEntries: minutes,
+      }
+      : {
+        meetingMinutes: minutes[minutes.length - 1] ?? null,
+        legacyMinutesEntries: minutes.slice(0, -1),
+      };
+  }
+
   private meeting(meeting: NonNullable<MeetingTopic['meeting']>): TopicHistoryMeeting {
     return {
       id: meeting.id,
@@ -209,6 +232,7 @@ export class TopicHistoryService {
       date: meeting.date,
       beginTime: meeting.beginTime,
       status: meeting.status,
+      minuteTakerDisplayName: this.userDisplayName(meeting.minuteTaker),
     };
   }
 

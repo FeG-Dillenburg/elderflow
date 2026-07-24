@@ -92,9 +92,15 @@ describe('Topic history contract (e2e)', () => {
     expect(response.body).toEqual([expect.objectContaining({
       kind: 'meeting_appearance',
       meeting: expect.objectContaining({ id: MEETING_ID, status: 'completed' }),
-      note: '<p>Appearance note</p>',
+      preparationContext: type === 'person' ? null : '<p>Appearance note</p>',
+      personNote: type === 'person' ? '<p>Appearance note</p>' : null,
       topic: expect.objectContaining({ type, name: `Recorded ${name}` }),
-      minutes: [expect.objectContaining({ text: '<p>Recorded minutes</p>' })],
+      meetingMinutes: type === 'person'
+        ? null
+        : expect.objectContaining({ text: '<p>Recorded minutes</p>' }),
+      legacyMinutesEntries: type === 'person'
+        ? [expect.objectContaining({ text: '<p>Recorded minutes</p>' })]
+        : [],
     })]);
     if (type === 'new_membership') {
       expect(response.body[0].topic).toMatchObject({

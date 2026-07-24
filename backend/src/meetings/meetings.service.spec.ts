@@ -1,5 +1,5 @@
 import { BadRequestException, ConflictException, ForbiddenException, NotFoundException } from "@nestjs/common";
-import { In, LessThanOrEqual } from "typeorm";
+import { In, LessThan, QueryFailedError } from "typeorm";
 import { MeetingsService } from "./meetings.service";
 
 describe("MeetingsService", () => {
@@ -39,7 +39,7 @@ describe("MeetingsService", () => {
   const tasks = { find: jest.fn() };
   const sections = {};
   const snapshots = { apply: jest.fn() };
-  const recurrence = { reconcile: jest.fn() };
+  const recurrence = { reconcile: jest.fn(), nextDueDate: jest.fn() };
   const service = new MeetingsService(
     dataSource as any,
     meetings as any,
@@ -63,6 +63,7 @@ describe("MeetingsService", () => {
     manager.remove.mockReset();
     recurrence.reconcile.mockReset();
     recurrence.reconcile.mockResolvedValue(undefined);
+    recurrence.nextDueDate.mockReset();
     snapshots.apply.mockReset();
     snapshots.apply.mockResolvedValue(undefined);
     manager.save.mockImplementation(async (_type, value) => value);
@@ -176,7 +177,7 @@ describe("MeetingsService", () => {
     ["agenda ordering", () => service.reorderTopics("meeting", [])],
     ["agenda values", () => service.updateTopic("meeting", "appearance", { plannedDuration: 20 } as any)],
     ["Topic type fields", () => service.updateTopicFields("meeting", "appearance", { membershipProcessStatus: "changed" })],
-    ["Meeting topic notes", () => service.updateTopicNote("meeting", "appearance", "changed")],
+    ["preparation context", () => service.updatePreparationContext("meeting", "appearance", "changed", 0)],
     ["agenda removal", () => service.removeTopic("meeting", "appearance")],
   ])("rejects changes to completed %s with a stable error", async (_label, mutate) => {
     manager.findOne.mockResolvedValue({ id: "meeting", status: "completed" });
@@ -184,28 +185,6 @@ describe("MeetingsService", () => {
     await expect(mutate()).rejects.toMatchObject({
       response: expect.objectContaining({ code: "MEETING_COMPLETED_IMMUTABLE" }),
     });
-  });
-
-  it("saves a Meeting topic note on its specific appearance and returns the saved state", async () => {
-    const appearance = {
-      id: "appearance",
-      meetingId: "meeting",
-      agendaNote: "Earlier note",
-    };
-    manager.findOne.mockResolvedValue({ id: "meeting", status: "in_progress" });
-    manager.findOneBy.mockResolvedValue(appearance);
-
-    await expect(
-      service.updateTopicNote("meeting", "appearance", "Current note"),
-    ).resolves.toMatchObject({ agendaNote: "Current note" });
-    expect(manager.findOneBy).toHaveBeenCalledWith(expect.anything(), {
-      id: "appearance",
-      meetingId: "meeting",
-    });
-    expect(manager.save).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.objectContaining({ agendaNote: "Current note" }),
-    );
   });
 
   it("updates fields only through an appearance belonging to the mutable Meeting", async () => {
@@ -239,16 +218,315 @@ describe("MeetingsService", () => {
     );
   });
 
-  it("rejects a note write for a missing appearance with a stable error", async () => {
-    manager.findOne.mockResolvedValue({ id: "meeting", status: "planned" });
-    manager.findOneBy.mockResolvedValue(null);
+  it("rejects a preparation-context write for a missing appearance with a stable error", async () => {
+    manager.findOne.mockResolvedValueOnce({ id: "meeting", status: "planned" }).mockResolvedValueOnce(null);
 
     await expect(
-      service.updateTopicNote("meeting", "missing", "Note"),
+      service.updatePreparationContext("meeting", "missing", "Note", 0),
     ).rejects.toMatchObject({
       response: expect.objectContaining({ code: "AGENDA_TOPIC_NOT_FOUND" }),
     });
     expect(manager.save).not.toHaveBeenCalled();
+  });
+
+  it("writes preparation context only in a planned Meeting and rejects stale versions", async () => {
+    const appearance = {
+      id: "appearance",
+      meetingId: "meeting",
+      agendaNote: "Earlier context",
+      noteVersion: 2,
+      topic: { type: "generic" },
+    };
+    manager.findOne
+      .mockResolvedValueOnce({ id: "meeting", status: "planned" })
+      .mockResolvedValueOnce(appearance);
+
+    await expect(service.updatePreparationContext(
+      "meeting",
+      "appearance",
+      "Current context",
+      2,
+    )).resolves.toMatchObject({
+      preparationContext: {
+        id: "appearance",
+        text: "Current context",
+        version: 3,
+      },
+      personNote: null,
+      meetingMinutes: null,
+    });
+    expect(recurrence.reconcile).toHaveBeenCalledWith(manager);
+
+    manager.findOne
+      .mockResolvedValueOnce({ id: "meeting", status: "planned" })
+      .mockResolvedValueOnce({ ...appearance, noteVersion: 4 });
+    await expect(service.updatePreparationContext(
+      "meeting",
+      "appearance",
+      "Stale context",
+      2,
+    )).rejects.toMatchObject({
+      response: expect.objectContaining({ code: "MEETING_TEXT_STALE" }),
+    });
+  });
+
+  it("scopes the preparation-context lock through the Topic join", async () => {
+    const meeting = { id: "meeting", status: "planned" };
+    const appearance = {
+      id: "appearance",
+      meetingId: "meeting",
+      topicId: "topic",
+      agendaNote: "Earlier context",
+      noteVersion: 0,
+      topic: { type: "generic" },
+    };
+    manager.findOne.mockImplementation(async (entity, options) => {
+      if (entity.name === "Meeting") return meeting;
+      if (
+        entity.name === "MeetingTopic" &&
+        options.relations?.topic &&
+        options.lock?.mode === "pessimistic_write" &&
+        !options.lock.tables
+      ) {
+        throw new QueryFailedError(
+          "SELECT ... LEFT JOIN topics ... FOR UPDATE",
+          [],
+          new Error(
+            "FOR UPDATE cannot be applied to the nullable side of an outer join",
+          ),
+        );
+      }
+      if (entity.name === "TopicUpdate") return null;
+      return appearance;
+    });
+
+    await expect(service.updatePreparationContext(
+      "meeting",
+      "appearance",
+      "Current context",
+      0,
+    )).resolves.toMatchObject({
+      preparationContext: {
+        text: "Current context",
+        version: 1,
+      },
+    });
+  });
+
+  it("keeps Person notes writable in planned and in-progress Meetings but rejects paired semantics", async () => {
+    const person = {
+      id: "appearance",
+      meetingId: "meeting",
+      agendaNote: "Earlier note",
+      noteVersion: 0,
+      topic: { type: "person" },
+    };
+    manager.findOne
+      .mockResolvedValueOnce({ id: "meeting", status: "in_progress" })
+      .mockResolvedValueOnce(person);
+
+    await expect(service.updatePersonNote(
+      "meeting",
+      "appearance",
+      "Current note",
+      0,
+    )).resolves.toMatchObject({
+      preparationContext: null,
+      personNote: { id: "appearance", text: "Current note", version: 1 },
+      meetingMinutes: null,
+    });
+
+    manager.findOne
+      .mockResolvedValueOnce({ id: "meeting", status: "planned" })
+      .mockResolvedValueOnce({ ...person, topic: { type: "generic" } });
+    await expect(service.updatePersonNote(
+      "meeting",
+      "appearance",
+      "Wrong semantics",
+      1,
+    )).rejects.toMatchObject({
+      response: expect.objectContaining({ code: "MEETING_TEXT_TOPIC_TYPE_INVALID" }),
+    });
+  });
+
+  it("creates and updates one current Meeting-minutes value while preserving earlier entries", async () => {
+    const meeting = {
+      id: "meeting",
+      status: "in_progress",
+      meetingLeaderId: "leader",
+      minuteTakerId: "taker",
+    };
+    const appearance = {
+      id: "appearance",
+      meetingId: "meeting",
+      topicId: "topic",
+      topic: { type: "generic" },
+    };
+    manager.findOne
+      .mockResolvedValueOnce(meeting)
+      .mockResolvedValueOnce(appearance);
+    manager.find.mockResolvedValueOnce([]);
+
+    await expect(service.updateMeetingMinutes(
+      "meeting",
+      "appearance",
+      { text: "First Minutes", version: null },
+      { id: "taker" } as any,
+    )).resolves.toMatchObject({
+      preparationContext: expect.objectContaining({ id: "appearance" }),
+      personNote: null,
+      meetingMinutes: { text: "First Minutes", version: 1 },
+    });
+    expect(manager.create).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      topicId: "topic",
+      meetingId: "meeting",
+      text: "First Minutes",
+      type: "minute",
+      createdById: "taker",
+      version: 1,
+    }));
+
+    const earlier = { id: "earlier", date: new Date("2026-07-23T18:00:00Z"), text: "Earlier", version: 0 };
+    const current = { id: "current", date: new Date("2026-07-23T19:00:00Z"), text: "Current", version: 3 };
+    manager.findOne
+      .mockResolvedValueOnce(meeting)
+      .mockResolvedValueOnce(appearance);
+    manager.find.mockResolvedValueOnce([current, earlier]);
+
+    await expect(service.updateMeetingMinutes(
+      "meeting",
+      "appearance",
+      { text: "Revised", version: 3 },
+      { id: "leader" } as any,
+    )).resolves.toMatchObject({
+      meetingMinutes: { id: "current", text: "Revised", version: 4 },
+    });
+    expect(earlier.text).toBe("Earlier");
+  });
+
+  it("scopes the appearance lock so PostgreSQL can save Meeting minutes through the Topic join", async () => {
+    const meeting = {
+      id: "meeting",
+      status: "in_progress",
+      meetingLeaderId: "leader",
+      minuteTakerId: null,
+    };
+    const appearance = {
+      id: "appearance",
+      meetingId: "meeting",
+      topicId: "topic",
+      agendaNote: "Preparation context",
+      noteVersion: 0,
+      topic: { type: "generic" },
+    };
+    manager.findOne.mockImplementation(async (entity, options) => {
+      if (entity.name === "Meeting") return meeting;
+      if (
+        entity.name === "MeetingTopic" &&
+        options.relations?.topic &&
+        options.lock?.mode === "pessimistic_write" &&
+        !options.lock.tables
+      ) {
+        throw new QueryFailedError(
+          "SELECT ... LEFT JOIN topics ... FOR UPDATE",
+          [],
+          new Error(
+            "FOR UPDATE cannot be applied to the nullable side of an outer join",
+          ),
+        );
+      }
+      return appearance;
+    });
+    manager.find.mockResolvedValue([]);
+
+    await expect(service.updateMeetingMinutes(
+      "meeting",
+      "appearance",
+      { text: "Recorded Minutes", version: null },
+      { id: "leader" } as any,
+    )).resolves.toMatchObject({
+      meetingMinutes: {
+        text: "Recorded Minutes",
+        version: 1,
+      },
+    });
+  });
+
+  it("rejects Minutes writes for the wrong status, role, Topic type, and version", async () => {
+    manager.findOne.mockResolvedValueOnce({
+      id: "meeting",
+      status: "planned",
+      meetingLeaderId: "leader",
+      minuteTakerId: "taker",
+    });
+    await expect(service.updateMeetingMinutes(
+      "meeting",
+      "appearance",
+      { text: "Too early", version: null },
+      { id: "taker" } as any,
+    )).rejects.toMatchObject({
+      response: expect.objectContaining({ code: "MEETING_MINUTES_STATUS_INVALID" }),
+    });
+
+    manager.findOne.mockResolvedValueOnce({
+      id: "meeting",
+      status: "in_progress",
+      meetingLeaderId: "leader",
+      minuteTakerId: "taker",
+    });
+    await expect(service.updateMeetingMinutes(
+      "meeting",
+      "appearance",
+      { text: "Forbidden", version: null },
+      { id: "other" } as any,
+    )).rejects.toMatchObject({
+      response: expect.objectContaining({ code: "MEETING_MINUTES_FORBIDDEN" }),
+    });
+
+    manager.findOne
+      .mockResolvedValueOnce({
+        id: "meeting",
+        status: "in_progress",
+        meetingLeaderId: "leader",
+        minuteTakerId: "taker",
+      })
+      .mockResolvedValueOnce({
+        id: "appearance",
+        topicId: "person",
+        topic: { type: "person" },
+      });
+    await expect(service.updateMeetingMinutes(
+      "meeting",
+      "appearance",
+      { text: "Not for Person", version: null },
+      { id: "taker" } as any,
+    )).rejects.toMatchObject({
+      response: expect.objectContaining({ code: "MEETING_TEXT_TOPIC_TYPE_INVALID" }),
+    });
+
+    manager.findOne
+      .mockResolvedValueOnce({
+        id: "meeting",
+        status: "in_progress",
+        meetingLeaderId: "leader",
+        minuteTakerId: "taker",
+      })
+      .mockResolvedValueOnce({
+        id: "appearance",
+        topicId: "topic",
+        topic: { type: "generic" },
+      });
+    manager.find.mockResolvedValueOnce([
+      { id: "current", text: "Current", version: 2, date: new Date() },
+    ]);
+    await expect(service.updateMeetingMinutes(
+      "meeting",
+      "appearance",
+      { text: "Stale", version: 1 },
+      { id: "taker" } as any,
+    )).rejects.toMatchObject({
+      response: expect.objectContaining({ code: "MEETING_TEXT_STALE" }),
+    });
   });
 
   it("rejects bypassing the completion lifecycle through the general Meeting update", async () => {
@@ -300,6 +578,156 @@ describe("MeetingsService", () => {
     await service.findOne("empty");
     expect(updates.find).toHaveBeenCalledTimes(1);
     expect(tasks.find).toHaveBeenCalledTimes(1);
+  });
+
+  it("exposes semantic paired texts and the one current Minutes value with Meeting detail", async () => {
+    const generic: any = {
+      id: "generic-appearance",
+      topicId: "generic",
+      agendaNote: "Preparation context",
+      noteVersion: 2,
+      topic: { type: "generic" },
+    };
+    const person: any = {
+      id: "person-appearance",
+      topicId: "person",
+      agendaNote: "One Person note",
+      noteVersion: 4,
+      topic: { type: "person" },
+    };
+    meetings.findOne.mockResolvedValue({ id: "meeting", status: "in_progress" });
+    participants.find.mockResolvedValue([]);
+    meetingTopics.find.mockResolvedValue([generic, person]);
+    updates.find.mockResolvedValue([
+      {
+        id: "older",
+        topicId: "generic",
+        meetingId: "meeting",
+        date: new Date("2026-07-23T18:00:00Z"),
+        text: "Older Minutes",
+        version: 0,
+      },
+      {
+        id: "current",
+        topicId: "generic",
+        meetingId: "meeting",
+        date: new Date("2026-07-23T19:00:00Z"),
+        text: "Current Minutes",
+        version: 3,
+      },
+    ]);
+    tasks.find.mockResolvedValue([]);
+
+    const result = await service.findOne("meeting");
+
+    expect(result.agenda[0]).toMatchObject({
+      preparationContext: {
+        id: "generic-appearance",
+        text: "Preparation context",
+        version: 2,
+      },
+      personNote: null,
+      meetingMinutes: {
+        id: "current",
+        text: "Current Minutes",
+        version: 3,
+      },
+    });
+    expect(result.agenda[1]).toMatchObject({
+      preparationContext: null,
+      personNote: {
+        id: "person-appearance",
+        text: "One Person note",
+        version: 4,
+      },
+      meetingMinutes: null,
+    });
+  });
+
+  it("loads paired entries from the latest earlier appearance for Meeting preparation", async () => {
+    const current: any = {
+      id: "current",
+      topicId: "topic",
+      agendaNote: null,
+      noteVersion: 0,
+      topic: { type: "generic" },
+    };
+    const latestEarlier: any = {
+      id: "latest-earlier",
+      meetingId: "previous-meeting",
+      topicId: "topic",
+      agendaNote: "Latest preparation context",
+      meeting: {
+        id: "previous-meeting",
+        date: "2026-07-23",
+        beginTime: "19:30:00",
+      },
+    };
+    const older: any = {
+      id: "older",
+      meetingId: "older-meeting",
+      topicId: "topic",
+      agendaNote: "Older preparation context",
+      meeting: {
+        id: "older-meeting",
+        date: "2026-07-16",
+        beginTime: "19:30:00",
+      },
+    };
+    meetings.findOne.mockResolvedValue({
+      id: "meeting",
+      status: "planned",
+      date: "2026-07-30",
+      beginTime: "19:30:00",
+    });
+    participants.find.mockResolvedValue([]);
+    meetingTopics.find.mockImplementation(async (options: any) =>
+      options.where?.meetingId ? [current] : [latestEarlier, older]);
+    updates.find.mockResolvedValue([
+      {
+        id: "latest-minutes",
+        topicId: "topic",
+        meetingId: "previous-meeting",
+        type: "minute",
+        text: "Latest Meeting minutes",
+        date: new Date("2026-07-23T20:30:00Z"),
+      },
+      {
+        id: "older-minutes",
+        topicId: "topic",
+        meetingId: "older-meeting",
+        type: "minute",
+        text: "Older Meeting minutes",
+        date: new Date("2026-07-16T20:30:00Z"),
+      },
+    ]);
+    tasks.find.mockResolvedValue([]);
+
+    const result = await service.findOne("meeting");
+
+    expect(result.agenda[0]).toMatchObject({
+      previousMeetingTexts: {
+        preparationContext: "Latest preparation context",
+        meetingMinutes: "Latest Meeting minutes",
+      },
+    });
+    expect(meetingTopics.find).toHaveBeenNthCalledWith(2, {
+      where: [
+        {
+          topicId: In(["topic"]),
+          meeting: { date: LessThan("2026-07-30") },
+        },
+        {
+          topicId: In(["topic"]),
+          meeting: {
+            date: "2026-07-30",
+            beginTime: LessThan("19:30:00"),
+          },
+        },
+      ],
+      relations: { meeting: true },
+      order: { meeting: { date: "DESC", beginTime: "DESC" } },
+    });
   });
 
   it("renders completed Meeting appearances from snapshots instead of live Topic display values", async () => {
@@ -579,16 +1007,42 @@ describe("MeetingsService", () => {
     await service.removeTopic("meeting", "item");
     expect(manager.remove).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ id: "item" }));
     meetings.findOneBy.mockResolvedValue({ date: "2026-07-20" });
-    meetingTopics.find.mockResolvedValue([{ topicId: "present" }]);
-    topics.find.mockResolvedValue([{ id: "present" }, { id: "suggest" }]);
+    meetingTopics.find.mockImplementation(async (options: any) =>
+      options.where?.meetingId
+        ? [{ topicId: "present" }]
+        : [
+          { topicId: "recurring-due", meeting: { date: "2026-06-01" } },
+          { topicId: "recurring-future", meeting: { date: "2026-07-15" } },
+        ]);
+    topics.find.mockResolvedValue([
+      { id: "present", type: "generic", followUpDate: null },
+      { id: "available", type: "generic", followUpDate: null },
+      { id: "follow-up-due", type: "generic", followUpDate: "2026-07-20" },
+      { id: "follow-up-future", type: "generic", followUpDate: "2026-07-21" },
+      { id: "recurring-due", type: "recurring" },
+      { id: "recurring-future", type: "recurring" },
+    ]);
+    recurrence.nextDueDate.mockImplementation((topic: any) =>
+      topic.id === "recurring-due" ? "2026-07-20" : "2026-08-01");
     await expect(service.suggestions("meeting")).resolves.toEqual([
-      { id: "suggest" },
+      { id: "available", type: "generic", followUpDate: null },
+      { id: "follow-up-due", type: "generic", followUpDate: "2026-07-20" },
+      {
+        id: "recurring-due",
+        type: "recurring",
+        nextDueDate: "2026-07-20",
+      },
+    ]);
+    await expect(service.suggestions("meeting", true)).resolves.toEqual([
+      { id: "follow-up-future", type: "generic", followUpDate: "2026-07-21" },
+      {
+        id: "recurring-future",
+        type: "recurring",
+        nextDueDate: "2026-08-01",
+      },
     ]);
     expect(topics.find).toHaveBeenCalledWith({
-      where: [
-        { status: "open" },
-        { status: "deferred", followUpDate: LessThanOrEqual("2026-07-20") },
-      ],
+      where: { status: In(["open", "deferred"]) },
       relations: { responsibleUser: true, defaultSection: true },
       order: { followUpDate: "ASC", updatedAt: "DESC" },
     });

@@ -1,6 +1,26 @@
-import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Post, Put } from '@nestjs/common';
-import { MeetingDto, MeetingParticipantDto, MeetingTopicDto, ReorderMeetingTopicsDto, UpdateMeetingTopicDto, UpdateMeetingTopicNoteDto } from './dto/meeting.dto';
-import { MeetingTopic } from './meeting-topic.entity';
+import {
+  Body,
+  Controller,
+  DefaultValuePipe,
+  Delete,
+  Get,
+  Param,
+  ParseBoolPipe,
+  ParseUUIDPipe,
+  Post,
+  Put,
+  Query,
+} from '@nestjs/common';
+import {
+  MeetingDto,
+  MeetingParticipantDto,
+  MeetingTopicDto,
+  ReorderMeetingTopicsDto,
+  UpdateMeetingMinutesDto,
+  UpdateMeetingTextDto,
+  UpdateMeetingTopicDto,
+} from './dto/meeting.dto';
+import { MeetingAppearanceTexts, MeetingTopic } from './meeting-topic.entity';
 import { MeetingUser } from './meeting-user.entity';
 import { Meeting } from './meeting.entity';
 import { MeetingDetail, MeetingsService } from './meetings.service';
@@ -22,7 +42,10 @@ export class MeetingsController {
   ): Promise<Meeting> { return this.service.complete(id, user); }
   @Get(':id') findOne(@Param('id', ParseUUIDPipe) id: string): Promise<MeetingDetail> { return this.service.findOne(id); }
   @Put(':id') update(@Param('id', ParseUUIDPipe) id: string, @Body() input: MeetingDto): Promise<Meeting> { return this.service.update(id, input); }
-  @Get(':id/suggestions') suggestions(@Param('id', ParseUUIDPipe) id: string): Promise<Topic[]> { return this.service.suggestions(id); }
+  @Get(':id/suggestions') suggestions(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query('future', new DefaultValuePipe(false), ParseBoolPipe) future: boolean,
+  ): Promise<Topic[]> { return this.service.suggestions(id, future); }
   @Post(':id/participants') addParticipant(@Param('id', ParseUUIDPipe) id: string, @Body() input: MeetingParticipantDto): Promise<MeetingUser> { return this.service.addParticipant(id, input); }
   @Delete(':id/participants/:userId') removeParticipant(@Param('id', ParseUUIDPipe) id: string, @Param('userId', ParseUUIDPipe) userId: string): Promise<void> { return this.service.removeParticipant(id, userId); }
   @Post(':id/topics') addTopic(@Param('id', ParseUUIDPipe) id: string, @Body() input: MeetingTopicDto): Promise<MeetingTopic> { return this.service.addTopic(id, input); }
@@ -33,11 +56,28 @@ export class MeetingsController {
     @Param('itemId', ParseUUIDPipe) itemId: string,
     @Body() input: UpdateTopicFieldsDto,
   ): Promise<Topic> { return this.service.updateTopicFields(id, itemId, input); }
-  @Put(':id/topics/:itemId/note') updateTopicNote(
+  @Put(':id/topics/:itemId/preparation-context') updatePreparationContext(
     @Param('id', ParseUUIDPipe) id: string,
     @Param('itemId', ParseUUIDPipe) itemId: string,
-    @Body() input: UpdateMeetingTopicNoteDto,
-  ): Promise<MeetingTopic> { return this.service.updateTopicNote(id, itemId, input.agendaNote ?? null); }
+    @Body() input: UpdateMeetingTextDto,
+  ): Promise<MeetingAppearanceTexts> {
+    return this.service.updatePreparationContext(id, itemId, input.text ?? null, input.version);
+  }
+  @Put(':id/topics/:itemId/person-note') updatePersonNote(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('itemId', ParseUUIDPipe) itemId: string,
+    @Body() input: UpdateMeetingTextDto,
+  ): Promise<MeetingAppearanceTexts> {
+    return this.service.updatePersonNote(id, itemId, input.text ?? null, input.version);
+  }
+  @Put(':id/topics/:itemId/minutes') updateMeetingMinutes(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('itemId', ParseUUIDPipe) itemId: string,
+    @Body() input: UpdateMeetingMinutesDto,
+    @CurrentUser() user: User,
+  ) {
+    return this.service.updateMeetingMinutes(id, itemId, input, user);
+  }
   @Delete(':id/topics/:itemId') removeTopic(@Param('id', ParseUUIDPipe) id: string, @Param('itemId', ParseUUIDPipe) itemId: string): Promise<void> { return this.service.removeTopic(id, itemId); }
   @Post(':id/recurrences/:topicId/restore') restoreRecurrence(
     @Param('id', ParseUUIDPipe) id: string,
