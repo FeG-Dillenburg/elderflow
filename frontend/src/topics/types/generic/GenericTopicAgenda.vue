@@ -66,6 +66,7 @@ const saveCurrentMinutes = (text: string | null) =>
       </div>
     </div>
     <PairedMeetingTexts
+      class="meeting-texts"
       :item="item"
       :mode="meetingTextMode"
       :can-write-minutes="canWriteMinutes"
@@ -146,7 +147,8 @@ h3 {
 }
 
 .updates,
-.tasks {
+.tasks,
+.meeting-texts {
   margin-left: 72px;
 }
 
@@ -170,7 +172,6 @@ h3 {
   align-items: center;
   justify-content: space-between;
   margin: 0.75rem 0 0 64px;
-  border-top: 1px solid #edf0f4;
   padding-top: 0.45rem;
 }
 
@@ -185,6 +186,7 @@ h3 {
 
   .updates,
   .tasks,
+  .meeting-texts,
   .topic-footer {
     margin-left: 0;
   }

@@ -61,6 +61,9 @@ describe("paired Topic renderers", () => {
       mode: "active",
       canWriteMinutes: true,
     });
+    if (_type === "generic") {
+      expect(texts.classes()).toContain("meeting-texts");
+    }
   });
 
   it("uses the same paired lifecycle inside the New membership layout", () => {

@@ -23,7 +23,8 @@ describe("Recurring Topic renderers", () => {
     expect(wrapper.text()).toContain("Next due: 10/31/2026");
   });
 
-  it("keeps TOP numbering and paired appearance texts without rendering earlier updates", () => {
+  it("keeps TOP numbering, paired texts, and deferral without rendering earlier updates", async () => {
+    const toggleDeferred = vi.fn();
     const wrapper = mount(RecurringTopicAgenda, {
       shallow: true,
       props: {
@@ -34,6 +35,7 @@ describe("Recurring Topic renderers", () => {
         } as any,
         number: "TOP 2.1",
         canEdit: true,
+        toggleDeferred,
         savePreparationContext: vi.fn(),
         saveMinutes: vi.fn(),
       },
@@ -45,6 +47,11 @@ describe("Recurring Topic renderers", () => {
     expect(wrapper.findComponent({ name: "PairedMeetingTexts" }).props("mode"))
       .toBe("preparation");
     expect(wrapper.text()).not.toContain("Recent updates");
+    const deferButton = wrapper.getComponent({ name: "Button" });
+    expect(deferButton.attributes("label")).toBe("Defer");
+    expect(wrapper.text()).not.toContain("Mark done");
+    await deferButton.vm.$emit("click");
+    expect(toggleDeferred).toHaveBeenCalledOnce();
   });
 
   it("passes recurring paired autosave through and makes completed content read-only", async () => {
