@@ -49,23 +49,29 @@ const minutesEntries = computed(() => [
               {{ t("meetingAgenda.deferred") }}
             </span>
           </div>
-          <p class="meeting-meta">
-            <time :datetime="entry.effectiveAt">
-              {{ formatDate(entry.effectiveAt, { dateStyle: "medium", timeStyle: "short" }) }}
-            </time>
+        </div>
+        <Tag :value="t(`labels.${entry.meeting.status}`)" severity="secondary" />
+        <p class="meeting-meta">
+          <time :datetime="entry.effectiveAt">
+            {{ formatDate(entry.effectiveAt, { dateStyle: "medium", timeStyle: "short" }) }}
+          </time>
+          <span
+            v-if="entry.section || entry.meeting.minuteTakerDisplayName"
+            class="meeting-details"
+          >
             <span v-if="entry.section" class="meeting-section">
               {{ entry.section.name }}
             </span>
             <span
               v-if="entry.meeting.minuteTakerDisplayName"
               class="meeting-minute-taker"
+              :class="{ 'after-section': entry.section }"
             >
               {{ t("meetingAgenda.minuteTaker") }}:
               {{ entry.meeting.minuteTakerDisplayName }}
             </span>
-          </p>
-        </div>
-        <Tag :value="t(`labels.${entry.meeting.status}`)" severity="secondary" />
+          </span>
+        </p>
       </header>
 
       <section
@@ -151,10 +157,10 @@ const minutesEntries = computed(() => [
 }
 
 .meeting-header {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: flex-start;
-  justify-content: space-between;
-  gap: 1rem;
+  gap: 0 1rem;
   padding: 1rem 1.1rem;
   border-bottom: 1px solid #e8edf3;
   background: linear-gradient(135deg, #f7faff, #fff);
@@ -206,14 +212,22 @@ const minutesEntries = computed(() => [
 }
 
 .meeting-meta {
+  grid-column: 1 / -1;
   display: flex;
-  flex-wrap: wrap;
-  gap: 0.65rem;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.2rem;
   color: #718096;
   font-size: 0.76rem;
 }
 
-.meeting-minute-taker::before {
+.meeting-details {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 0.65rem;
+}
+
+.meeting-minute-taker.after-section::before {
   margin-right: 0.65rem;
   content: "·";
 }
@@ -277,7 +291,7 @@ const minutesEntries = computed(() => [
 
 .meeting-content,
 .minutes-list {
-  padding: 0.325rem 1.1rem;
+  padding: 0 1.1rem;
 }
 
 .meeting-content + .minutes-list {
@@ -298,6 +312,10 @@ const minutesEntries = computed(() => [
   padding: 0;
 }
 
+.minute:last-child {
+  margin-bottom: 10px;
+}
+
 .minute + .minute {
   margin-top: 0.6rem;
 }
@@ -311,6 +329,10 @@ const minutesEntries = computed(() => [
 }
 
 @media (max-width: 620px) {
+  .meeting-details {
+    flex-wrap: wrap;
+  }
+
   .topic-snapshot,
   .membership-snapshot {
     grid-template-columns: 1fr;
