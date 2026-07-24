@@ -177,6 +177,11 @@ export interface MeetingAppearanceTexts {
   meetingMinutes: VersionedMeetingText | null;
 }
 
+export interface PreviousMeetingTexts {
+  preparationContext: string | null;
+  meetingMinutes: string | null;
+}
+
 export interface MeetingTopic {
   id: string;
   meetingId: string;
@@ -190,6 +195,7 @@ export interface MeetingTopic {
   preparationContext?: VersionedMeetingText | null;
   personNote?: VersionedMeetingText | null;
   meetingMinutes?: VersionedMeetingText | null;
+  previousMeetingTexts?: PreviousMeetingTexts | null;
   source?: AgendaAppearanceSource;
   noteEditedAt?: string | null;
   deferredAt?: string | null;

@@ -134,7 +134,10 @@ export class MeetingsService {
     ]);
     const topicIds = agenda.map((item) => item.topicId);
     if (topicIds.length) {
-      const [updates, tasks] = await Promise.all([
+      const pairedTopicIds = agenda
+        .filter((item) => item.topic?.type !== 'person')
+        .map((item) => item.topicId);
+      const [updates, tasks, earlierAppearances] = await Promise.all([
         this.updates.find({
           where: {
             topicId: In(topicIds),
@@ -146,12 +149,51 @@ export class MeetingsService {
         this.tasks.find({
           where: { topicId: In(topicIds), status: In(['open', 'in_progress']) }, relations: { assignedTo: true }, order: { dueDate: 'ASC' },
         }),
+        meeting.status === 'planned' && pairedTopicIds.length
+          ? this.meetingTopics.find({
+            where: [
+              {
+                topicId: In(pairedTopicIds),
+                meeting: { date: LessThan(meeting.date) },
+              },
+              {
+                topicId: In(pairedTopicIds),
+                meeting: {
+                  date: meeting.date,
+                  beginTime: LessThan(meeting.beginTime),
+                },
+              },
+            ],
+            relations: { meeting: true },
+            order: { meeting: { date: 'DESC', beginTime: 'DESC' } },
+          })
+          : Promise.resolve([]),
       ]);
+      const previousAppearanceByTopic = new Map<string, MeetingTopic>();
+      for (const appearance of earlierAppearances) {
+        if (!previousAppearanceByTopic.has(appearance.topicId)) {
+          previousAppearanceByTopic.set(appearance.topicId, appearance);
+        }
+      }
       for (const item of agenda) {
         const meetingMinutes = updates
           .filter((update) => update.topicId === item.topicId && update.meetingId === id)
           .sort((left, right) =>
             right.date.getTime() - left.date.getTime() || right.id.localeCompare(left.id))[0];
+        const previousAppearance = previousAppearanceByTopic.get(item.topicId);
+        const previousMinutes = previousAppearance
+          ? updates.find((update) =>
+            update.topicId === item.topicId &&
+            update.meetingId === previousAppearance.meetingId &&
+            update.type === 'minute')
+          : null;
+        const previousMeetingTexts = previousAppearance &&
+          (previousAppearance.agendaNote || previousMinutes?.text)
+          ? {
+            preparationContext: previousAppearance.agendaNote,
+            meetingMinutes: previousMinutes?.text ?? null,
+          }
+          : null;
         Object.assign(item, item.topic?.type === 'person'
           ? {
             preparationContext: null,
@@ -161,6 +203,7 @@ export class MeetingsService {
               version: item.noteVersion,
             },
             meetingMinutes: null,
+            previousMeetingTexts: null,
           }
           : {
             preparationContext: {
@@ -176,6 +219,7 @@ export class MeetingsService {
                 version: meetingMinutes.version,
               }
               : null,
+            previousMeetingTexts,
           });
         Object.assign(item.topic!, {
           updates: updates.filter((update) =>

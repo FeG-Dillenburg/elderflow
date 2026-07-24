@@ -51,6 +51,32 @@ describe("PairedMeetingTexts", () => {
     expect(wrapper.get('[role="status"]').text()).toBe("Saved");
   });
 
+  it("shows entries from the latest Meeting before the current preparation editor", () => {
+    const prepared = item();
+    prepared.previousMeetingTexts = {
+      preparationContext: "<p>Earlier preparation context</p>",
+      meetingMinutes: "<p>Earlier Meeting minutes</p>",
+    };
+    const wrapper = mount(PairedMeetingTexts, {
+      props: {
+        item: prepared,
+        mode: "preparation",
+        savePreparation: vi.fn(),
+        saveMinutes: vi.fn(),
+      },
+      global: { stubs: { RichTextEditor } },
+    });
+    const html = wrapper.html();
+
+    expect(wrapper.get(".previous-meeting-entries h4").text())
+      .toBe("Entries from the last meeting:");
+    expect(wrapper.findAll(".previous-entry")).toHaveLength(2);
+    expect(html.indexOf("Earlier preparation context"))
+      .toBeLessThan(html.indexOf("<textarea"));
+    expect(html.indexOf("Earlier Meeting minutes"))
+      .toBeLessThan(html.indexOf("<textarea"));
+  });
+
   it("shows preparation read-only above directly editable Minutes in an active Meeting", async () => {
     vi.useFakeTimers();
     const saveMinutes = vi.fn().mockResolvedValue({});

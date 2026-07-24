@@ -17,6 +17,11 @@ export interface MeetingAppearanceTexts {
   meetingMinutes: VersionedMeetingText | null;
 }
 
+export interface PreviousMeetingTexts {
+  preparationContext: string | null;
+  meetingMinutes: string | null;
+}
+
 @Entity({ name: 'meeting_topics' })
 @Unique(['meetingId', 'topicId'])
 export class MeetingTopic {
@@ -88,4 +93,6 @@ export class MeetingTopic {
   personNote?: VersionedMeetingText | null;
 
   meetingMinutes?: VersionedMeetingText | null;
+
+  previousMeetingTexts?: PreviousMeetingTexts | null;
 }

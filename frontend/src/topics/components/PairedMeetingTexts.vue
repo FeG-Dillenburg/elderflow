@@ -44,11 +44,39 @@ const minutes = useMeetingTopicNoteAutosave({
 
 watch(preparation.localNote, preparation.scheduleSave);
 watch(minutes.localNote, minutes.scheduleSave);
+const previousPreparation = computed(() =>
+  props.item.previousMeetingTexts?.preparationContext ?? null);
+const previousMinutes = computed(() =>
+  props.item.previousMeetingTexts?.meetingMinutes ?? null);
+const hasPreviousPreparation = computed(() =>
+  Boolean(plainText(previousPreparation.value)));
+const hasPreviousMinutes = computed(() =>
+  Boolean(plainText(previousMinutes.value)));
+const hasPreviousMeetingTexts = computed(() =>
+  hasPreviousPreparation.value || hasPreviousMinutes.value);
 const hasPreparation = computed(() => Boolean(plainText(preparation.localNote.value)));
 </script>
 
 <template>
   <div class="paired-meeting-texts">
+    <section
+      v-if="mode === 'preparation' && hasPreviousMeetingTexts"
+      class="previous-meeting-entries"
+      :aria-label="t('meetingTexts.previousMeetingEntries')"
+    >
+      <h4>{{ t("meetingTexts.previousMeetingEntries") }}</h4>
+      <div
+        v-if="hasPreviousPreparation"
+        class="previous-entry previous-preparation"
+        v-html="safe(previousPreparation)"
+      />
+      <div
+        v-if="hasPreviousMinutes"
+        class="previous-entry previous-minutes"
+        v-html="safe(previousMinutes)"
+      />
+    </section>
+
     <section
       v-if="mode === 'preparation' || hasPreparation"
       class="meeting-text preparation-context"
@@ -109,6 +137,32 @@ const hasPreparation = computed(() => Boolean(plainText(preparation.localNote.va
   min-width: 0;
 }
 
+.previous-meeting-entries {
+  display: grid;
+  gap: 0.3rem;
+  min-width: 0;
+}
+
+.previous-meeting-entries h4 {
+  margin: 0 0 0.1rem;
+  color: #607dae;
+  font-size: 0.75rem;
+  font-weight: 800;
+}
+
+.previous-entry {
+  overflow-wrap: anywhere;
+  line-height: 1.5;
+}
+
+.previous-preparation {
+  color: #6c7b8f;
+}
+
+.previous-minutes {
+  color: #17243a;
+}
+
 .read-only-text {
   overflow-wrap: anywhere;
   line-height: 1.5;
@@ -123,6 +177,7 @@ const hasPreparation = computed(() => Boolean(plainText(preparation.localNote.va
 }
 
 .read-only-text :deep(p),
+.previous-entry :deep(p),
 .empty-text {
   margin: 0.25rem 0;
 }

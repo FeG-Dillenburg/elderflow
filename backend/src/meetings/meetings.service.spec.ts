@@ -1,5 +1,5 @@
 import { BadRequestException, ConflictException, ForbiddenException, NotFoundException } from "@nestjs/common";
-import { In, LessThanOrEqual, QueryFailedError } from "typeorm";
+import { In, LessThan, LessThanOrEqual, QueryFailedError } from "typeorm";
 import { MeetingsService } from "./meetings.service";
 
 describe("MeetingsService", () => {
@@ -640,6 +640,92 @@ describe("MeetingsService", () => {
         version: 4,
       },
       meetingMinutes: null,
+    });
+  });
+
+  it("loads paired entries from the latest earlier appearance for Meeting preparation", async () => {
+    const current: any = {
+      id: "current",
+      topicId: "topic",
+      agendaNote: null,
+      noteVersion: 0,
+      topic: { type: "generic" },
+    };
+    const latestEarlier: any = {
+      id: "latest-earlier",
+      meetingId: "previous-meeting",
+      topicId: "topic",
+      agendaNote: "Latest preparation context",
+      meeting: {
+        id: "previous-meeting",
+        date: "2026-07-23",
+        beginTime: "19:30:00",
+      },
+    };
+    const older: any = {
+      id: "older",
+      meetingId: "older-meeting",
+      topicId: "topic",
+      agendaNote: "Older preparation context",
+      meeting: {
+        id: "older-meeting",
+        date: "2026-07-16",
+        beginTime: "19:30:00",
+      },
+    };
+    meetings.findOne.mockResolvedValue({
+      id: "meeting",
+      status: "planned",
+      date: "2026-07-30",
+      beginTime: "19:30:00",
+    });
+    participants.find.mockResolvedValue([]);
+    meetingTopics.find.mockImplementation(async (options: any) =>
+      options.where?.meetingId ? [current] : [latestEarlier, older]);
+    updates.find.mockResolvedValue([
+      {
+        id: "latest-minutes",
+        topicId: "topic",
+        meetingId: "previous-meeting",
+        type: "minute",
+        text: "Latest Meeting minutes",
+        date: new Date("2026-07-23T20:30:00Z"),
+      },
+      {
+        id: "older-minutes",
+        topicId: "topic",
+        meetingId: "older-meeting",
+        type: "minute",
+        text: "Older Meeting minutes",
+        date: new Date("2026-07-16T20:30:00Z"),
+      },
+    ]);
+    tasks.find.mockResolvedValue([]);
+
+    const result = await service.findOne("meeting");
+
+    expect(result.agenda[0]).toMatchObject({
+      previousMeetingTexts: {
+        preparationContext: "Latest preparation context",
+        meetingMinutes: "Latest Meeting minutes",
+      },
+    });
+    expect(meetingTopics.find).toHaveBeenNthCalledWith(2, {
+      where: [
+        {
+          topicId: In(["topic"]),
+          meeting: { date: LessThan("2026-07-30") },
+        },
+        {
+          topicId: In(["topic"]),
+          meeting: {
+            date: "2026-07-30",
+            beginTime: LessThan("19:30:00"),
+          },
+        },
+      ],
+      relations: { meeting: true },
+      order: { meeting: { date: "DESC", beginTime: "DESC" } },
     });
   });
 
