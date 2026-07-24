@@ -103,4 +103,41 @@ describe("paired Topic renderers", () => {
       html.indexOf("paired-meeting-texts-stub"),
     );
   });
+
+  it.each([
+    ["generic", GenericTopicAgenda],
+    ["recurring", RecurringTopicAgenda],
+  ])("marks a deferred %s appearance only in the completed Meeting", (_type, component) => {
+    const deferredItem = {
+      ...item(_type),
+      deferredAt: "2026-07-15T20:30:00.000Z",
+    };
+    const completed = shallowMount(component, {
+      props: {
+        item: deferredItem,
+        meetingStatus: "completed",
+        ...saves,
+      } as any,
+      global: {
+        stubs: {
+          RouterLink: { template: "<a><slot /></a>" },
+        },
+      },
+    });
+    const active = shallowMount(component, {
+      props: {
+        item: deferredItem,
+        meetingStatus: "in_progress",
+        ...saves,
+      } as any,
+      global: {
+        stubs: {
+          RouterLink: { template: "<a><slot /></a>" },
+        },
+      },
+    });
+
+    expect(completed.get(".deferred-marker").text()).toBe("Deferred");
+    expect(active.find(".deferred-marker").exists()).toBe(false);
+  });
 });

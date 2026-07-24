@@ -33,9 +33,17 @@ const saveCurrentMinutes = (text: string | null) =>
   <div class="recurring-agenda">
     <span class="number">{{ number }}</span>
     <div>
-      <RouterLink :to="`/topics/${item.topicId}`" class="topic-name">
-        {{ item.topicNameSnapshot ?? item.topic?.name }}
-      </RouterLink>
+      <div class="topic-title">
+        <RouterLink :to="`/topics/${item.topicId}`" class="topic-name">
+          {{ item.topicNameSnapshot ?? item.topic?.name }}
+        </RouterLink>
+        <span
+          v-if="meetingStatus === 'completed' && item.deferredAt"
+          class="deferred-marker"
+        >
+          {{ t("meetingAgenda.deferred") }}
+        </span>
+      </div>
       <PairedMeetingTexts
         :item="item"
         :mode="meetingTextMode"
@@ -71,8 +79,26 @@ const saveCurrentMinutes = (text: string | null) =>
 }
 
 .number,
-.topic-name {
+.topic-name,
+.deferred-marker {
   font-weight: 800;
+}
+
+.topic-name,
+.deferred-marker {
+  font-size: 1.05rem;
+}
+
+.topic-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.65rem;
+  margin-bottom: 0.45rem;
+}
+
+.deferred-marker {
+  color: #c53d3d;
 }
 
 .topic-footer {
@@ -87,7 +113,6 @@ const saveCurrentMinutes = (text: string | null) =>
 
 .topic-name {
   display: block;
-  margin-bottom: 0.45rem;
   text-decoration: none;
 }
 

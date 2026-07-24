@@ -108,8 +108,15 @@ const hasPreparation = computed(() => Boolean(plainText(preparation.localNote.va
 
 .read-only-text {
   overflow-wrap: anywhere;
-  color: #6c7b8f;
   line-height: 1.5;
+}
+
+.preparation-context .read-only-text {
+  color: #6c7b8f;
+}
+
+.minutes-field .read-only-text {
+  color: #17243a;
 }
 
 .read-only-text :deep(p),
