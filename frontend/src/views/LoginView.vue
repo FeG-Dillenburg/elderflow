@@ -38,7 +38,7 @@ async function submit(): Promise<void> {
       <img
         class="brand-wordmark"
         src="/elderflow-wordmark-color.png"
-        alt="Elderflow"
+        :alt="t('brand.name')"
       />
       <h1>{{ t("login.title") }}</h1>
       <p class="description">{{ t("login.description") }}</p>

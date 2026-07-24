@@ -75,7 +75,7 @@ async function logout(): Promise<void> {
         <img
           class="brand-wordmark"
           src="/elderflow-wordmark-white.png"
-          alt="Elderflow"
+          :alt="t('brand.name')"
         />
       </div>
       <nav :aria-label="t('nav.main')">

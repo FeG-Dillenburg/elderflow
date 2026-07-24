@@ -104,7 +104,7 @@ async function createUser(): Promise<void> {
       <img
         class="brand-wordmark"
         src="/elderflow-wordmark-color.png"
-        alt="Elderflow"
+        :alt="t('brand.name')"
       />
       <h1>{{ t("setup.title") }}</h1>
 
