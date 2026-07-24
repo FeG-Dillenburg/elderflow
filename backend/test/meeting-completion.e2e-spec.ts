@@ -170,7 +170,10 @@ describe('Meeting completion lifecycle (e2e)', () => {
     ['put', `/api/meetings/${MEETING_ID}/topics/order`, { items: [] }],
     ['put', `/api/meetings/${MEETING_ID}/topics/${APPEARANCE_ID}`, { agendaNote: 'late' }],
     ['delete', `/api/meetings/${MEETING_ID}/topics/${APPEARANCE_ID}`, undefined],
-    ['post', `/api/topics/${TOPIC_ID}/updates`, { text: 'late', type: 'minute', meetingId: MEETING_ID }],
+    ['put', `/api/meetings/${MEETING_ID}/topics/${APPEARANCE_ID}/minutes`, {
+      text: 'late',
+      version: null,
+    }],
   ])('rejects completed-Meeting mutation through %s %s', async (method, path, body) => {
     state.meeting.status = 'completed';
     const operation = request(app.getHttpServer())[method as 'put'](path);
