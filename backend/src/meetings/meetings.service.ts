@@ -433,7 +433,7 @@ export class MeetingsService {
       const appearance = await manager.findOne(MeetingTopic, {
         where: { id, meetingId },
         relations: { topic: true },
-        lock: { mode: 'pessimistic_write' },
+        lock: { mode: 'pessimistic_write', tables: ['meeting_topics'] },
       });
       if (!appearance) {
         throw codedHttpException(
@@ -489,7 +489,7 @@ export class MeetingsService {
     const appearance = await manager.findOne(MeetingTopic, {
       where: { id, meetingId },
       relations: { topic: true },
-      lock: { mode: 'pessimistic_write' },
+      lock: { mode: 'pessimistic_write', tables: ['meeting_topics'] },
     });
     if (!appearance) {
       throw codedHttpException(

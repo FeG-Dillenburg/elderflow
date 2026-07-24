@@ -1,5 +1,5 @@
 import { BadRequestException, ConflictException, ForbiddenException, NotFoundException } from "@nestjs/common";
-import { In, LessThanOrEqual } from "typeorm";
+import { In, LessThanOrEqual, QueryFailedError } from "typeorm";
 import { MeetingsService } from "./meetings.service";
 
 describe("MeetingsService", () => {
@@ -269,6 +269,49 @@ describe("MeetingsService", () => {
     });
   });
 
+  it("scopes the preparation-context lock through the Topic join", async () => {
+    const meeting = { id: "meeting", status: "planned" };
+    const appearance = {
+      id: "appearance",
+      meetingId: "meeting",
+      topicId: "topic",
+      agendaNote: "Earlier context",
+      noteVersion: 0,
+      topic: { type: "generic" },
+    };
+    manager.findOne.mockImplementation(async (entity, options) => {
+      if (entity.name === "Meeting") return meeting;
+      if (
+        entity.name === "MeetingTopic" &&
+        options.relations?.topic &&
+        options.lock?.mode === "pessimistic_write" &&
+        !options.lock.tables
+      ) {
+        throw new QueryFailedError(
+          "SELECT ... LEFT JOIN topics ... FOR UPDATE",
+          [],
+          new Error(
+            "FOR UPDATE cannot be applied to the nullable side of an outer join",
+          ),
+        );
+      }
+      if (entity.name === "TopicUpdate") return null;
+      return appearance;
+    });
+
+    await expect(service.updatePreparationContext(
+      "meeting",
+      "appearance",
+      "Current context",
+      0,
+    )).resolves.toMatchObject({
+      preparationContext: {
+        text: "Current context",
+        version: 1,
+      },
+    });
+  });
+
   it("keeps Person notes writable in planned and in-progress Meetings but rejects paired semantics", async () => {
     const person = {
       id: "appearance",
@@ -358,6 +401,54 @@ describe("MeetingsService", () => {
       meetingMinutes: { id: "current", text: "Revised", version: 4 },
     });
     expect(earlier.text).toBe("Earlier");
+  });
+
+  it("scopes the appearance lock so PostgreSQL can save Meeting minutes through the Topic join", async () => {
+    const meeting = {
+      id: "meeting",
+      status: "in_progress",
+      meetingLeaderId: "leader",
+      minuteTakerId: null,
+    };
+    const appearance = {
+      id: "appearance",
+      meetingId: "meeting",
+      topicId: "topic",
+      agendaNote: "Preparation context",
+      noteVersion: 0,
+      topic: { type: "generic" },
+    };
+    manager.findOne.mockImplementation(async (entity, options) => {
+      if (entity.name === "Meeting") return meeting;
+      if (
+        entity.name === "MeetingTopic" &&
+        options.relations?.topic &&
+        options.lock?.mode === "pessimistic_write" &&
+        !options.lock.tables
+      ) {
+        throw new QueryFailedError(
+          "SELECT ... LEFT JOIN topics ... FOR UPDATE",
+          [],
+          new Error(
+            "FOR UPDATE cannot be applied to the nullable side of an outer join",
+          ),
+        );
+      }
+      return appearance;
+    });
+    manager.find.mockResolvedValue([]);
+
+    await expect(service.updateMeetingMinutes(
+      "meeting",
+      "appearance",
+      { text: "Recorded Minutes", version: null },
+      { id: "leader" } as any,
+    )).resolves.toMatchObject({
+      meetingMinutes: {
+        text: "Recorded Minutes",
+        version: 1,
+      },
+    });
   });
 
   it("rejects Minutes writes for the wrong status, role, Topic type, and version", async () => {
