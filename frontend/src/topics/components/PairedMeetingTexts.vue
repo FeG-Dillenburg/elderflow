@@ -17,7 +17,10 @@ const props = withDefaults(defineProps<{
 });
 
 const { t } = useI18n();
-const safe = (html: string | null | undefined) => DOMPurify.sanitize(html ?? "");
+const safe = (html: string | null | undefined) => DOMPurify.sanitize(
+  html ?? "",
+  { FORBID_ATTR: ["style"] },
+);
 const plainText = (html: string | null | undefined): string =>
   DOMPurify.sanitize(html ?? "", { ALLOWED_TAGS: [] })
     .replace(/&nbsp;|&#160;|\u00a0/gi, " ")

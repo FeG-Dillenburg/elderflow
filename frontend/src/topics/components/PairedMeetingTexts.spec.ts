@@ -161,7 +161,11 @@ describe("PairedMeetingTexts", () => {
     const completed = item();
     completed.meetingMinutes = {
       id: "minute",
-      text: "<p>Final Minutes</p>",
+      text: `<p>
+        <span style="background-color: white; color: #6c7b8f;">
+          Final Minutes
+        </span>
+      </p>`,
       version: 2,
     };
     const wrapper = mount(PairedMeetingTexts, {
@@ -177,5 +181,6 @@ describe("PairedMeetingTexts", () => {
     expect(wrapper.find("textarea").exists()).toBe(false);
     expect(wrapper.text()).toContain("Prepared context");
     expect(wrapper.text()).toContain("Final Minutes");
+    expect(wrapper.get(".minutes-field span").attributes("style")).toBeUndefined();
   });
 });
