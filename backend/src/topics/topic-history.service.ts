@@ -40,16 +40,16 @@ export class TopicHistoryService {
     const [updates, appearances, skippedRecurrences] = await Promise.all([
       this.updates.find({
         where: { topicId },
-        relations: { createdBy: true, meeting: true },
+        relations: { createdBy: true, meeting: { minuteTaker: true } },
       }),
       this.appearances.find({
         where: { topicId },
-        relations: { meeting: true, section: true },
+        relations: { meeting: { minuteTaker: true }, section: true },
       }),
       topic.type === 'recurring'
         ? this.skippedRecurrences.find({
           where: { topicId },
-          relations: { meeting: true },
+          relations: { meeting: { minuteTaker: true } },
         })
         : Promise.resolve([]),
     ]);
@@ -232,6 +232,7 @@ export class TopicHistoryService {
       date: meeting.date,
       beginTime: meeting.beginTime,
       status: meeting.status,
+      minuteTakerDisplayName: this.userDisplayName(meeting.minuteTaker),
     };
   }
 

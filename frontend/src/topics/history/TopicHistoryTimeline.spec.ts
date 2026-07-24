@@ -9,6 +9,7 @@ const meeting = {
   date: '2026-07-15',
   beginTime: '20:00:00',
   status: 'completed',
+  minuteTakerDisplayName: 'Ada Lovelace',
 };
 
 describe('TopicHistoryTimeline', () => {
@@ -70,6 +71,9 @@ describe('TopicHistoryTimeline', () => {
     expect(text.indexOf('Council')).toBeLessThan(text.indexOf('Skipped recurrence'));
     expect(text.indexOf('Long historical context')).toBeLessThan(text.indexOf('First minute'));
     expect(text.indexOf('First minute')).toBeLessThan(text.indexOf('Second minute'));
+    expect(text).toContain('Minute taker: Ada Lovelace');
+    expect(text).not.toContain('Preparation context');
+    expect(wrapper.find('h3').exists()).toBe(false);
     expect(text).toContain('Recorded family');
     expect(text).toContain('Welcome planned');
     expect(text).toContain('Alex and Robin');
@@ -120,10 +124,10 @@ describe('TopicHistoryTimeline', () => {
   });
 
   it.each([
-    ['generic', 'Preparation context'],
-    ['person', 'Meeting topic note'],
-    ['recurring', 'Preparation context'],
-  ] as const)('renders the %s Meeting appearance with its type-aware note label', (type, label) => {
+    'generic',
+    'person',
+    'recurring',
+  ] as const)('renders the %s Meeting appearance without section titles', (type) => {
     const entries: TopicHistoryEntry[] = [{
       id: type,
       kind: 'meeting_appearance',
@@ -148,8 +152,13 @@ describe('TopicHistoryTimeline', () => {
 
     const wrapper = mount(TopicHistoryTimeline, { props: { entries }, ...options });
 
-    expect(wrapper.text()).toContain(label);
     expect(wrapper.text().match(/One appearance note/g)).toHaveLength(1);
+    expect(wrapper.text()).not.toContain('Preparation context');
+    expect(wrapper.text()).not.toContain('Meeting topic note');
+    expect(wrapper.find('h3').exists()).toBe(false);
+    expect(wrapper.findAll('.meeting-content + .minutes-list')).toHaveLength(
+      type === 'person' ? 0 : 1,
+    );
   });
 
   it('keeps legacy Meeting-linked Minutes visible for a Person appearance', () => {

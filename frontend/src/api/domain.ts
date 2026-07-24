@@ -234,6 +234,7 @@ export interface TopicHistoryMeeting {
   date: string;
   beginTime: string;
   status: string;
+  minuteTakerDisplayName: string | null;
 }
 
 export interface TopicHistoryTopicDisplay {

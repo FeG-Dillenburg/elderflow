@@ -25,9 +25,6 @@ const topicSnapshotValueCount = computed(() => Number(showTopicName.value)
 const appearanceNote = computed(() => props.entry.topic.type === "person"
   ? props.entry.personNote
   : props.entry.preparationContext);
-const noteLabel = computed(() => props.entry.topic.type === "person"
-  ? t("personTopic.noteLabel")
-  : t("meetingTexts.preparationContext"));
 const minutesEntries = computed(() => [
   ...props.entry.legacyMinutesEntries,
   ...(props.entry.meetingMinutes ? [props.entry.meetingMinutes] : []),
@@ -100,7 +97,6 @@ const minutesEntries = computed(() => [
         v-if="entry.topic.type !== 'person' || appearanceNote"
         class="meeting-content"
       >
-        <h3>{{ noteLabel }}</h3>
         <div
           v-if="appearanceNote"
           class="rich-content"
@@ -113,7 +109,6 @@ const minutesEntries = computed(() => [
         v-if="entry.topic.type !== 'person' || minutesEntries.length"
         class="minutes-list"
       >
-        <h3>{{ t("meetingTexts.meetingMinutes") }}</h3>
         <p v-if="!minutesEntries.length" class="empty-text">
           {{ t("meetingTexts.noMeetingMinutes") }}
         </p>
@@ -126,6 +121,13 @@ const minutesEntries = computed(() => [
             <span>{{ minute.createdByDisplayName || t("topicHistory.unknownAuthor") }}</span>
           </p>
         </article>
+        <p
+          v-if="entry.meeting.minuteTakerDisplayName"
+          class="minutes-attribution"
+        >
+          {{ t("meetingAgenda.minuteTaker") }}:
+          {{ entry.meeting.minuteTakerDisplayName }}
+        </p>
       </section>
     </div>
   </article>
@@ -280,14 +282,6 @@ const minutesEntries = computed(() => [
   border-top: 1px solid #edf1f5;
 }
 
-h3 {
-  margin: 0 0 0.65rem;
-  color: #526378;
-  font-size: 0.74rem;
-  letter-spacing: 0.03em;
-  text-transform: uppercase;
-}
-
 .rich-content {
   min-width: 0;
   overflow-wrap: anywhere;
@@ -311,6 +305,12 @@ h3 {
   display: flex;
   gap: 0.6rem;
   margin: 0.4rem 0 0;
+  color: #7a8799;
+  font-size: 0.72rem;
+}
+
+.minutes-attribution {
+  margin: 0.55rem 0 0;
   color: #7a8799;
   font-size: 0.72rem;
 }
