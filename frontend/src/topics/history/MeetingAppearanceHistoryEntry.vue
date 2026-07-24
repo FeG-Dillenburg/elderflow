@@ -53,7 +53,16 @@ const minutesEntries = computed(() => [
             <time :datetime="entry.effectiveAt">
               {{ formatDate(entry.effectiveAt, { dateStyle: "medium", timeStyle: "short" }) }}
             </time>
-            <span v-if="entry.section">{{ entry.section.name }}</span>
+            <span v-if="entry.section" class="meeting-section">
+              {{ entry.section.name }}
+            </span>
+            <span
+              v-if="entry.meeting.minuteTakerDisplayName"
+              class="meeting-minute-taker"
+            >
+              {{ t("meetingAgenda.minuteTaker") }}:
+              {{ entry.meeting.minuteTakerDisplayName }}
+            </span>
           </p>
         </div>
         <Tag :value="t(`labels.${entry.meeting.status}`)" severity="secondary" />
@@ -121,13 +130,6 @@ const minutesEntries = computed(() => [
             <span>{{ minute.createdByDisplayName || t("topicHistory.unknownAuthor") }}</span>
           </p>
         </article>
-        <p
-          v-if="entry.meeting.minuteTakerDisplayName"
-          class="minutes-attribution"
-        >
-          {{ t("meetingAgenda.minuteTaker") }}:
-          {{ entry.meeting.minuteTakerDisplayName }}
-        </p>
       </section>
     </div>
   </article>
@@ -211,7 +213,7 @@ const minutesEntries = computed(() => [
   font-size: 0.76rem;
 }
 
-.meeting-meta span::before {
+.meeting-minute-taker::before {
   margin-right: 0.65rem;
   content: "·";
 }
@@ -275,7 +277,7 @@ const minutesEntries = computed(() => [
 
 .meeting-content,
 .minutes-list {
-  padding: 0.65rem 1.1rem;
+  padding: 0.325rem 1.1rem;
 }
 
 .meeting-content + .minutes-list {
@@ -293,7 +295,7 @@ const minutesEntries = computed(() => [
 }
 
 .minute {
-  padding: 0.15rem 0;
+  padding: 0;
 }
 
 .minute + .minute {
@@ -304,12 +306,6 @@ const minutesEntries = computed(() => [
   display: flex;
   gap: 0.6rem;
   margin: 0.4rem 0 0;
-  color: #7a8799;
-  font-size: 0.72rem;
-}
-
-.minutes-attribution {
-  margin: 0.55rem 0 0;
   color: #7a8799;
   font-size: 0.72rem;
 }

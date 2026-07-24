@@ -72,6 +72,12 @@ describe('TopicHistoryTimeline', () => {
     expect(text.indexOf('Long historical context')).toBeLessThan(text.indexOf('First minute'));
     expect(text.indexOf('First minute')).toBeLessThan(text.indexOf('Second minute'));
     expect(text).toContain('Minute taker: Ada Lovelace');
+    const meetingMeta = wrapper.get('.meeting-meta');
+    expect(meetingMeta.get('.meeting-section').text()).toBe('People');
+    expect(meetingMeta.get('.meeting-minute-taker').text()).toBe(
+      'Minute taker: Ada Lovelace',
+    );
+    expect(wrapper.get('.minutes-list').text()).not.toContain('Minute taker');
     expect(text).not.toContain('Preparation context');
     expect(wrapper.find('h3').exists()).toBe(false);
     expect(text).toContain('Recorded family');
