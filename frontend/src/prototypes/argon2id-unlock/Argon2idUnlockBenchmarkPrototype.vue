@@ -16,13 +16,14 @@ import {
 
 type Locale = 'en' | 'de';
 type RunState = 'idle' | 'running' | 'complete' | 'failed' | 'cancelled';
+type SaveState = 'idle' | 'saving' | 'saved' | 'failed';
 
 const copy = {
   en: {
     eyebrow: 'Disposable evidence · Wayfinder prototype',
     title: 'Argon2id unlock benchmark',
     intro: 'Does the fixed v1 profile remain usable on ElderFlow’s lowest supported browsers without changing a single security parameter?',
-    warning: 'Prototype only — fixed public test input, no real passphrases, no persistence.',
+    warning: 'Prototype only — fixed public test input and no real passphrases. Evidence is stored only when you click Save.',
     profile: 'Committed profile',
     environment: 'Test environment',
     deviceLabel: 'Device label',
@@ -34,7 +35,11 @@ const copy = {
     cancel: 'Cancel active run',
     cancellation: 'Probe cancellation',
     fallback: 'Probe without WebAssembly',
-    export: 'Export evidence JSON',
+    save: 'Save evidence to worktree',
+    saving: 'Saving evidence…',
+    saved: 'Evidence saved:',
+    saveFailed: 'Could not save evidence:',
+    export: 'Download JSON instead',
     results: 'This device’s evidence',
     noResults: 'Run the benchmark to capture evidence on this browser.',
     matrix: 'Required support matrix',
@@ -42,6 +47,9 @@ const copy = {
     status: 'Status',
     cold: 'Cold unlock',
     warm: 'Warm median',
+    totalCapture: 'Total capture time',
+    memoryTelemetry: 'Memory telemetry time',
+    timingDetail: 'Derivation samples',
     responsiveness: 'Largest main-thread interval',
     memory: 'Live / retained memory growth',
     reference: 'Native reference vector',
@@ -60,7 +68,7 @@ const copy = {
     eyebrow: 'Einmaliger Nachweis · Wayfinder-Prototyp',
     title: 'Argon2id-Entsperr-Benchmark',
     intro: 'Bleibt das feste v1-Profil auf den ältesten unterstützten ElderFlow-Browsern nutzbar, ohne einen Sicherheitsparameter zu ändern?',
-    warning: 'Nur Prototyp — feste öffentliche Testdaten, keine echten Passphrasen, keine Speicherung.',
+    warning: 'Nur Prototyp — feste öffentliche Testdaten und keine echten Passphrasen. Nachweise werden nur mit „Speichern“ abgelegt.',
     profile: 'Festgelegtes Profil',
     environment: 'Testumgebung',
     deviceLabel: 'Gerätebezeichnung',
@@ -72,7 +80,11 @@ const copy = {
     cancel: 'Aktiven Lauf abbrechen',
     cancellation: 'Abbruch prüfen',
     fallback: 'Ohne WebAssembly prüfen',
-    export: 'Nachweis als JSON exportieren',
+    save: 'Nachweis im Worktree speichern',
+    saving: 'Nachweis wird gespeichert…',
+    saved: 'Nachweis gespeichert:',
+    saveFailed: 'Nachweis konnte nicht gespeichert werden:',
+    export: 'Stattdessen JSON herunterladen',
     results: 'Nachweis dieses Geräts',
     noResults: 'Benchmark starten, um Nachweise in diesem Browser zu erfassen.',
     matrix: 'Erforderliche Unterstützungsmatrix',
@@ -80,6 +92,9 @@ const copy = {
     status: 'Status',
     cold: 'Kalte Entsperrung',
     warm: 'Median warm',
+    totalCapture: 'Gesamtdauer der Erfassung',
+    memoryTelemetry: 'Dauer der Speichertelemetrie',
+    timingDetail: 'Einzelne Ableitungen',
     responsiveness: 'Größtes Hauptthread-Intervall',
     memory: 'Speicherzuwachs aktiv / verbleibend',
     reference: 'Nativer Referenzvektor',
@@ -105,6 +120,8 @@ const report = ref<BenchmarkReport | null>(null);
 const failure = ref('');
 const cancellationProbe = ref<{ durationMs: number; maxMainThreadGapMs: number; passed: boolean } | null>(null);
 const fallbackProbe = ref<{ outcome: 'exact' | 'failed-closed' | 'unsafe'; detail: string } | null>(null);
+const saveState = ref<SaveState>('idle');
+const saveMessage = ref('');
 
 function generateRequestId(): string {
   return Array.from(
@@ -185,9 +202,12 @@ function startHeartbeat(): { stop: () => number } {
 }
 
 async function runBenchmark(): Promise<void> {
+  const captureStartedAt = performance.now();
   runState.value = 'running';
   report.value = null;
   failure.value = '';
+  saveState.value = 'idle';
+  saveMessage.value = '';
   const memoryBefore = await measureMemory();
   const heartbeat = startHeartbeat();
   const coldStartedAt = performance.now();
@@ -215,6 +235,9 @@ async function runBenchmark(): Promise<void> {
       : null;
     const warmDerivationMs = warmResults.map((result) => result.durationMs);
     const warmMedianMs = median(warmDerivationMs);
+    const memoryMeasurementMs = memoryBefore.durationMs
+      + memoryWithWorker.durationMs
+      + memoryAfter.durationMs;
     const allResults = [coldResult, ...warmResults];
     const latencyThresholds = THRESHOLDS[deviceClass.value];
     const verdicts: BenchmarkReport['verdicts'] = {
@@ -238,6 +261,8 @@ async function runBenchmark(): Promise<void> {
       profile: PROFILE,
       thresholds: THRESHOLDS,
       runtime,
+      totalCaptureMs: performance.now() - captureStartedAt,
+      memoryMeasurementMs,
       coldDerivationMs: coldResult.durationMs,
       coldUnlockMs,
       warmDerivationMs,
@@ -273,6 +298,8 @@ function cancelBenchmark(): void {
 
 async function runCancellationProbe(): Promise<void> {
   cancellationProbe.value = null;
+  saveState.value = 'idle';
+  saveMessage.value = '';
   const heartbeat = startHeartbeat();
   const worker = new BenchmarkWorker();
   activeWorker = worker;
@@ -301,6 +328,8 @@ async function runCancellationProbe(): Promise<void> {
 
 async function runFallbackProbe(): Promise<void> {
   fallbackProbe.value = null;
+  saveState.value = 'idle';
+  saveMessage.value = '';
   const worker = new BenchmarkWorker(true);
   activeWorker = worker;
   try {
@@ -330,13 +359,46 @@ function formatBytes(value: number | null): string {
   return `${sign}${(Math.abs(value) / 1024 / 1024).toFixed(1)} MiB`;
 }
 
-function downloadReport(): void {
-  if (!report.value) return;
-  const payload = {
+function formatDerivationSamples(value: BenchmarkReport | null): string {
+  if (!value) return '';
+  return `cold ${formatMs(value.coldDerivationMs)} · warm ${value.warmDerivationMs.map(formatMs).join(' / ')} · init ${formatMs(value.runtime.initializationMs)}`;
+}
+
+function evidencePayload() {
+  if (!report.value) return null;
+  return {
     ...report.value,
     cancellationProbe: cancellationProbe.value,
     fallbackProbe: fallbackProbe.value,
   };
+}
+
+async function saveReport(): Promise<void> {
+  const payload = evidencePayload();
+  if (!payload) return;
+  saveState.value = 'saving';
+  saveMessage.value = '';
+  try {
+    const response = await fetch('/__prototype/argon2id-unlock/evidence', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const result = await response.json() as { file?: string; error?: string };
+    if (!response.ok || !result.file) {
+      throw new Error(result.error || `HTTP ${response.status}`);
+    }
+    saveState.value = 'saved';
+    saveMessage.value = result.file;
+  } catch (error) {
+    saveState.value = 'failed';
+    saveMessage.value = error instanceof Error ? error.message : String(error);
+  }
+}
+
+function downloadReport(): void {
+  const payload = evidencePayload();
+  if (!payload) return;
   const blob = new Blob([`${JSON.stringify(payload, null, 2)}\n`], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement('a');
@@ -404,7 +466,14 @@ onBeforeUnmount(() => activeWorker?.terminate('Prototype unmounted'));
           <button type="button" :disabled="Boolean(activeWorker)" @click="runCancellationProbe">{{ text.cancellation }}</button>
           <button type="button" :disabled="Boolean(activeWorker)" @click="runFallbackProbe">{{ text.fallback }}</button>
         </div>
+        <button class="primary" type="button" :disabled="!report || saveState === 'saving'" @click="saveReport">
+          {{ saveState === 'saving' ? text.saving : text.save }}
+        </button>
         <button type="button" :disabled="!report" @click="downloadReport">{{ text.export }}</button>
+        <p v-if="saveMessage" :class="['save-status', `save-status--${saveState}`]" role="status">
+          <strong>{{ saveState === 'saved' ? text.saved : text.saveFailed }}</strong>
+          {{ saveMessage }}
+        </p>
       </section>
 
       <section class="panel evidence" aria-live="polite">
@@ -423,6 +492,14 @@ onBeforeUnmount(() => activeWorker?.terminate('Prototype unmounted'));
             <dt>{{ text.warm }}</dt>
             <dd>{{ formatMs(report.warmMedianMs) }}</dd>
             <span :class="verdictClass(report.verdicts.warmMedian)">{{ report.verdicts.warmMedian }}</span>
+          </div>
+          <div>
+            <dt>{{ text.totalCapture }}</dt>
+            <dd>{{ formatMs(report.totalCaptureMs) }}</dd>
+          </div>
+          <div>
+            <dt>{{ text.memoryTelemetry }}</dt>
+            <dd>{{ formatMs(report.memoryMeasurementMs) }}</dd>
           </div>
           <div>
             <dt>{{ text.responsiveness }}</dt>
@@ -446,6 +523,7 @@ onBeforeUnmount(() => activeWorker?.terminate('Prototype unmounted'));
           </div>
         </dl>
         <div class="probe-results">
+          <p><strong>{{ text.timingDetail }}:</strong> {{ formatDerivationSamples(report) }}</p>
           <p><strong>{{ text.cancellationResult }}:</strong> {{ cancellationProbe ? `${formatMs(cancellationProbe.durationMs)} · ${cancellationProbe.passed ? 'pass' : 'fail'}` : text.pending }}</p>
           <p><strong>{{ text.fallbackResult }}:</strong> {{ fallbackProbe ? `${fallbackProbe.outcome} · ${fallbackProbe.detail}` : text.pending }}</p>
         </div>
@@ -680,6 +758,17 @@ legend {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 0.5rem;
+}
+
+.save-status {
+  margin: 0;
+  color: #496158;
+  font-size: 0.78rem;
+  overflow-wrap: anywhere;
+}
+
+.save-status--failed {
+  color: #9d2424;
 }
 
 .panel-heading {

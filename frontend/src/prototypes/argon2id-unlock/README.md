@@ -14,7 +14,7 @@ pnpm prototype:argon2id-unlock
 
 This command intentionally exists only on the throwaway `prototype/benchmark-fixed-argon2id-unlock-profile` branch. A “command not found” error means the current checkout is on another branch; switch to the prototype branch or run it from a separate worktree for that branch rather than copying the prototype into production work.
 
-The browser page runs one cold and three warm derivations in a dedicated Worker, checks every result against a native-libsodium reference vector, measures main-thread responsiveness and available browser memory telemetry, probes hard cancellation by terminating the Worker, and probes the pinned runtime with WebAssembly deliberately unavailable. Export one JSON file for every matrix entry.
+The browser page runs one cold and three warm derivations in a dedicated Worker, checks every result against a native-libsodium reference vector, measures main-thread responsiveness and available browser memory telemetry, probes hard cancellation by terminating the Worker, and probes the pinned runtime with WebAssembly deliberately unavailable. Save one JSON record for every matrix entry through the page. The prototype-only Vite endpoint writes it to `frontend/src/prototypes/argon2id-unlock/evidence/`; those records are ignored by Git because they include device and browser metadata. The download button remains as an offline fallback.
 
 The Vite server listens on the local network. A phone on the same trusted Wi-Fi can open the `Network` URL printed by Vite, followed by `/prototypes/argon2id-unlock/`. The harness uses `crypto.getRandomValues()` for internal request IDs because LAN HTTP is not a secure context and older browsers may not expose `crypto.randomUUID()` there. Treat desktop CPU-throttled or emulated runs as supplementary diagnostics only; they cannot replace physical-phone evidence.
 
@@ -63,3 +63,5 @@ These thresholds are the concrete proposal this HITL prototype exists to test. A
 ## Known measurement limits
 
 Browser JavaScript cannot portably observe the peak native/Wasm allocation. The page uses `performance.measureUserAgentSpecificMemory()` when available, then Chromium's non-standard `performance.memory`, and otherwise marks memory as requiring manual evidence. The isolated prototype Vite configuration supplies COOP/COEP headers for the first API. Device-memory values and user-agent strings are evidence metadata, not trusted capability detection.
+
+Chromium's `measureUserAgentSpecificMemory()` can take substantially longer than an Argon2id derivation because the browser schedules a whole-agent memory measurement. The page therefore reports total capture time and cumulative memory-telemetry time separately from cold and warm KDF timings. A long total with low derivation samples indicates telemetry overhead, while an individual multi-second sample is a real KDF observation that should be retained and repeated under comparable device load and thermal conditions.

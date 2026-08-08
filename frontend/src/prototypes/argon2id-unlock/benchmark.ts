@@ -67,6 +67,7 @@ export type WorkerResponse = WorkerReady | DerivationResult | WorkerFailure;
 export interface MemorySnapshot {
   source: 'measureUserAgentSpecificMemory' | 'performance.memory' | 'unavailable';
   bytes: number | null;
+  durationMs: number;
 }
 
 export interface BenchmarkReport {
@@ -77,6 +78,8 @@ export interface BenchmarkReport {
   profile: typeof PROFILE;
   thresholds: typeof THRESHOLDS;
   runtime: WorkerReady;
+  totalCaptureMs: number;
+  memoryMeasurementMs: number;
   coldDerivationMs: number;
   coldUnlockMs: number;
   warmDerivationMs: number[];
@@ -112,6 +115,7 @@ export function runtimeMetadata(): RuntimeMetadata {
 }
 
 export async function measureMemory(): Promise<MemorySnapshot> {
+  const startedAt = performance.now();
   const performanceWithMemory = performance as Performance & {
     measureUserAgentSpecificMemory?: () => Promise<{ bytes: number }>;
     memory?: { usedJSHeapSize: number };
@@ -120,15 +124,27 @@ export async function measureMemory(): Promise<MemorySnapshot> {
   if (performanceWithMemory.measureUserAgentSpecificMemory) {
     try {
       const result = await performanceWithMemory.measureUserAgentSpecificMemory();
-      return { source: 'measureUserAgentSpecificMemory', bytes: result.bytes };
+      return {
+        source: 'measureUserAgentSpecificMemory',
+        bytes: result.bytes,
+        durationMs: performance.now() - startedAt,
+      };
     } catch {
       // Chromium can expose the function while policy or platform support rejects it.
     }
   }
 
   if (performanceWithMemory.memory) {
-    return { source: 'performance.memory', bytes: performanceWithMemory.memory.usedJSHeapSize };
+    return {
+      source: 'performance.memory',
+      bytes: performanceWithMemory.memory.usedJSHeapSize,
+      durationMs: performance.now() - startedAt,
+    };
   }
 
-  return { source: 'unavailable', bytes: null };
+  return {
+    source: 'unavailable',
+    bytes: null,
+    durationMs: performance.now() - startedAt,
+  };
 }
