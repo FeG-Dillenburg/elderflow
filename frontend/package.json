@@ -14,6 +14,7 @@
   "dependencies": {
     "@primeuix/themes": "1.2.3",
     "dompurify": "3.3.0",
+    "libsodium-wrappers-sumo": "0.7.16",
     "primeicons": "7.0.0",
     "primevue": "4.4.1",
     "quill": "2.0.3",

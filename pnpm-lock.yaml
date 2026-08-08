@@ -137,6 +137,9 @@ importers:
       dompurify:
         specifier: 3.3.0
         version: 3.3.0
+      libsodium-wrappers-sumo:
+        specifier: 0.7.16
+        version: 0.7.16
       primeicons:
         specifier: 7.0.0
         version: 7.0.0
@@ -2980,6 +2983,12 @@ packages:
 
   libphonenumber-js@1.13.8:
     resolution: {integrity: sha512-80xal1m93rADejw2pMp2MSzFhHCPLEspjHxnH2UtqI+DgAmElsbmLMiqk9niwH9NWAfjsRtaJI+qBrOEmRx9nQ==}
+
+  libsodium-sumo@0.7.16:
+    resolution: {integrity: sha512-x6atrz2AdXCJg6G709x9W9TTJRI6/0NcL5dD0l5GGVqNE48UJmDsjO4RUWYTeyXXUpg+NXZ2SHECaZnFRYzwGA==}
+
+  libsodium-wrappers-sumo@0.7.16:
+    resolution: {integrity: sha512-gR0JEFPeN3831lB9+ogooQk0KH4K5LSMIO5Prd5Q5XYR2wHFtZfPg0eP7t1oJIWq+UIzlU4WVeBxZ97mt28tXw==}
 
   libsodium-wrappers@0.7.16:
     resolution: {integrity: sha512-Gtr/WBx4dKjvRL1pvfwZqu7gO6AfrQ0u9vFL+kXihtHf6NfkROR8pjYWn98MFDI3jN19Ii1ZUfPR9afGiPyfHg==}
@@ -7613,6 +7622,12 @@ snapshots:
       isomorphic.js: 0.2.5
 
   libphonenumber-js@1.13.8: {}
+
+  libsodium-sumo@0.7.16: {}
+
+  libsodium-wrappers-sumo@0.7.16:
+    dependencies:
+      libsodium-sumo: 0.7.16
 
   libsodium-wrappers@0.7.16:
     dependencies:

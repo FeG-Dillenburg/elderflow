@@ -20,6 +20,7 @@
     "build": "pnpm -r build",
     "build:backend": "pnpm --filter @elderflow/backend build",
     "build:frontend": "pnpm --filter @elderflow/frontend build",
-    "prototype:opaque-meeting": "pnpm --filter @elderflow/backend prototype:opaque-meeting"
+    "prototype:opaque-meeting": "pnpm --filter @elderflow/backend prototype:opaque-meeting",
+    "prototype:argon2id-unlock": "pnpm --filter @elderflow/frontend exec vite --config vite.prototype-argon2id.config.ts --host 0.0.0.0 --open /prototypes/argon2id-unlock/"
   }
 }
