@@ -19,6 +19,7 @@
     "test:frontend": "pnpm --filter @elderflow/frontend test",
     "build": "pnpm -r build",
     "build:backend": "pnpm --filter @elderflow/backend build",
-    "build:frontend": "pnpm --filter @elderflow/frontend build"
+    "build:frontend": "pnpm --filter @elderflow/frontend build",
+    "prototype:opaque-meeting": "pnpm --filter @elderflow/backend prototype:opaque-meeting"
   }
 }

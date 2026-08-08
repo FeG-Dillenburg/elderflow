@@ -12,7 +12,8 @@
     "test": "jest --runInBand",
     "test:coverage": "jest --coverage --runInBand",
     "test:watch": "jest --watch",
-    "test:e2e": "jest --config test/jest-e2e.json --runInBand"
+    "test:e2e": "jest --config test/jest-e2e.json --runInBand",
+    "prototype:opaque-meeting": "ts-node --transpile-only src/collaboration/opaque-meeting-protocol.prototype/cli.ts"
   },
   "dependencies": {
     "@nestjs/common": "11.1.6",
@@ -34,18 +35,27 @@
     "@nestjs/cli": "11.0.10",
     "@nestjs/schematics": "11.0.7",
     "@nestjs/testing": "11.1.6",
+    "@tiptap/core": "3.29.2",
+    "@tiptap/extension-collaboration": "3.29.2",
+    "@tiptap/starter-kit": "3.29.2",
     "@types/express": "5.0.3",
     "@types/jest": "30.0.0",
+    "@types/libsodium-wrappers": "0.7.14",
     "@types/node": "24.7.2",
     "@types/supertest": "6.0.3",
     "jest": "30.2.0",
+    "jsdom": "27.0.0",
+    "libsodium-wrappers": "0.7.16",
     "pg-mem": "^3.0.14",
+    "secsync": "0.5.0",
+    "secsync-server": "0.5.0",
     "source-map-support": "0.5.21",
     "supertest": "7.1.4",
     "ts-jest": "29.4.5",
     "ts-loader": "9.5.4",
     "ts-node": "10.9.2",
     "tsconfig-paths": "4.2.0",
-    "typescript": "5.9.3"
+    "typescript": "5.9.3",
+    "yjs": "13.6.32"
   }
 }
