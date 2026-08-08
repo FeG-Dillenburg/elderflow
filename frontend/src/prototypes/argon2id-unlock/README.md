@@ -12,9 +12,11 @@ Run from the repository root:
 pnpm prototype:argon2id-unlock
 ```
 
+This command intentionally exists only on the throwaway `prototype/benchmark-fixed-argon2id-unlock-profile` branch. A “command not found” error means the current checkout is on another branch; switch to the prototype branch or run it from a separate worktree for that branch rather than copying the prototype into production work.
+
 The browser page runs one cold and three warm derivations in a dedicated Worker, checks every result against a native-libsodium reference vector, measures main-thread responsiveness and available browser memory telemetry, probes hard cancellation by terminating the Worker, and probes the pinned runtime with WebAssembly deliberately unavailable. Export one JSON file for every matrix entry.
 
-The Vite server listens on the local network. A phone on the same trusted Wi-Fi can open the `Network` URL printed by Vite, followed by `/prototypes/argon2id-unlock/`. Treat desktop CPU-throttled or emulated runs as supplementary diagnostics only; they cannot replace physical-phone evidence.
+The Vite server listens on the local network. A phone on the same trusted Wi-Fi can open the `Network` URL printed by Vite, followed by `/prototypes/argon2id-unlock/`. The harness uses `crypto.getRandomValues()` for internal request IDs because LAN HTTP is not a secure context and older browsers may not expose `crypto.randomUUID()` there. Treat desktop CPU-throttled or emulated runs as supplementary diagnostics only; they cannot replace physical-phone evidence.
 
 ## Fixed cross-runtime vector
 

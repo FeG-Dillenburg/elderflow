@@ -106,6 +106,13 @@ const failure = ref('');
 const cancellationProbe = ref<{ durationMs: number; maxMainThreadGapMs: number; passed: boolean } | null>(null);
 const fallbackProbe = ref<{ outcome: 'exact' | 'failed-closed' | 'unsafe'; detail: string } | null>(null);
 
+function generateRequestId(): string {
+  return Array.from(
+    crypto.getRandomValues(new Uint8Array(16)),
+    (byte) => byte.toString(16).padStart(2, '0'),
+  ).join('');
+}
+
 class BenchmarkWorker {
   private readonly worker = new Worker(new URL('./argon2id.worker.ts', import.meta.url), { type: 'module' });
   private readonly pending = new Map<string, { resolve: (result: DerivationResult) => void; reject: (error: Error) => void }>();
@@ -143,7 +150,7 @@ class BenchmarkWorker {
   }
 
   derive(): Promise<DerivationResult> {
-    const requestId = crypto.randomUUID();
+    const requestId = generateRequestId();
     return new Promise((resolve, reject) => {
       this.pending.set(requestId, { resolve, reject });
       this.worker.postMessage({ type: 'derive', requestId, profile: PROFILE });
