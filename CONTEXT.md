@@ -16,6 +16,10 @@ _Avoid_: Archived Meeting, read-only view; Archivierte Sitzung, schreibgeschuetz
 A long-lived matter that may be discussed across multiple meetings.
 _Avoid_: Agenda item, subject; Tagesordnungspunkt, Gegenstand
 
+**Topic description (Themenbeschreibung)**:
+Long-lived Protected text owned by a Topic. Text copied from it to initialize a Meeting appearance becomes independent appearance-owned content, and later edits do not propagate in either direction.
+_Avoid_: Meeting-owned Topic description, linked Meeting context; Sitzungseigene Themenbeschreibung, verknüpfter Sitzungskontext
+
 **Topic type (Themenart)**:
 The behavioral classification that determines a topic's domain-specific information and presentation, with the canonical types Generic, Person, New membership, and Recurring.
 _Avoid_: Topic category, agenda section; Themenkategorie, Tagesordnungsabschnitt
@@ -73,7 +77,7 @@ The single editable text prepared for a Generic, New membership, or Recurring To
 _Avoid_: Meeting topic note, Update, Minutes entry; Sitzungsthemennotiz, Aktualisierung, Protokolleintrag
 
 **Meeting-minutes text (Sitzungsprotokolltext)**:
-The single current Minutes value edited directly for a Generic, New membership, or Recurring Topic appearance while its Meeting is in progress. Earlier legacy Minutes entries remain separately preserved in chronological order.
+The single Minutes value edited directly for a Generic, New membership, or Recurring Topic appearance while its Meeting is in progress.
 _Avoid_: Preparation context, standalone Update, complete Meeting minutes; Vorbereitungskontext, eigenständige Aktualisierung, vollständiges Sitzungsprotokoll
 
 **Meeting topic snapshot (Sitzungsthemenstand)**:
@@ -97,7 +101,7 @@ A topic-history entry recorded outside a meeting.
 _Avoid_: Minutes entry; Protokolleintrag
 
 **Topic history (Themenverlauf)**:
-The chronological record of a Topic's standalone Updates, Meeting appearances, and Skipped recurrences, including paired Preparation context and Meeting-minutes text, Person Meeting topic notes, legacy Minutes entries, and completed-Meeting snapshots where applicable.
+The chronological record of a Topic's standalone Updates, Meeting appearances, and Skipped recurrences, including paired Preparation context and Meeting-minutes text, Person Meeting topic notes, and completed-Meeting snapshots where applicable.
 _Avoid_: Activity log, Meeting history; Aktivitätsprotokoll, Sitzungshistorie
 
 **Task (Aufgabe)**:
@@ -107,6 +111,30 @@ _Avoid_: Action; Aktion
 **User role (Benutzerrolle)**:
 A user classification that determines their permissions, with the canonical English labels Superadmin, IT admin, Admin, User, and Guest, and the canonical German labels Superadministrator, IT-Administrator, Administrator, Benutzer, and Gast.
 _Avoid_: Account type; Kontotyp
+
+**Protected text (Geschützter Text)**:
+Confidential user-authored domain content whose readable form is available only to an authorized user who has unlocked it in a trusted client. Server-side storage, backups, logs, and passive infrastructure access reveal only encrypted content; account identity and structural metadata remain server-readable.
+_Avoid_: Protected metadata, server-readable text; Geschützte Metadaten, serverlesbarer Text
+
+**Collaborative text (Gemeinsam bearbeiteter Text)**:
+Long-form Protected text embedded in Meeting preparation or the active Agenda that multiple Content users may edit concurrently. Short text fields and Protected text outside those Agenda views are not Collaborative text in the initial release.
+_Avoid_: Every Protected text field, standalone Update; Jedes geschützte Textfeld, eigenständige Aktualisierung
+
+**Content user (Inhaltsbenutzer)**:
+An authenticated user whose role permits access to confidential leadership content and who may therefore unlock Protected text. An IT admin is not a Content user and is never offered the Protected-text unlock flow.
+_Avoid_: Every user, IT admin; Jeder Benutzer, IT-Administrator
+
+**Protected-text unlock session (Entsperrsitzung für geschützten Text)**:
+The bounded period in one browser context after a Content user unlocks Protected text, during which plaintext and unwrapped key material may remain in memory. It is separate from the user's authentication session and does not create, expire, or rotate persistent encryption keys.
+_Avoid_: Key lifetime, login session; Schlüssellebensdauer, Anmeldesitzung
+
+**Recovery Secret (Wiederherstellungsgeheimnis)**:
+A high-entropy secret kept outside ElderFlow that allows authorized leadership to restore access to Protected text when the shared unlock passphrase is unavailable. A stored copy is sufficient to recover access; requiring multiple leaders to conduct recovery is an operational control rather than a cryptographic property of the secret.
+_Avoid_: Recovery password, administrator key; Wiederherstellungspasswort, Administratorschlüssel
+
+**Key operator (Schlüsselverantwortlicher)**:
+An authenticated Content user with the Superadmin, Admin, or User role who may initiate or approve a Protected-text recovery or key-rotation ceremony. Every post-setup ceremony requires two distinct Key operators; initial setup is the sole one-person exception. Guests and IT admins are excluded.
+_Avoid_: IT admin, content-settings manager; IT-Administrator, Inhaltseinstellungsverwalter
 
 **Installation default language**:
 The supported language an ElderFlow installation uses when no supported personal or browser preference is available, and for system-provided content created during initial setup.

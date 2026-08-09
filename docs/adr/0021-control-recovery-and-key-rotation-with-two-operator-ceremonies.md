@@ -1,0 +1,7 @@
+# Control recovery and key rotation with two-operator ceremonies
+
+ElderFlow will use one Recovery Slot with two verified paper copies of its Recovery Secret and will treat custody after printing as an organizational responsibility rather than an application-enforced guarantee. Initial setup is the sole one-person exception; every later recovery or key-rotation ceremony requires two distinct Key operators with the Superadmin, Admin, or User role, runs inside a 30-minute exclusive application-session boundary, independently verifies the candidate key state in both browsers, activates it atomically, and then revokes all application sessions and browser client epochs.
+
+Rotations are event-driven rather than periodic. Ordinary loss replaces only the affected unlock slot, while suspected disclosure of a passphrase, Recovery Secret, Organization Root Key, or encryption key rotates both the Organization Root Key and Organization Content Key to protect future writes; this does not claim to revoke keys, ciphertext, or plaintext already copied. Old unlock slots cannot be restored, but historical key wrappers remain readable for their already-decided rollback windows and immutable-ciphertext references.
+
+ElderFlow records only content-free ceremony actors, reason codes, key identifiers and versions, acknowledgements, outcomes, and stable errors. It never stores the plaintext Recovery Secret, and if every shared-passphrase and Recovery Secret copy is lost, the backend and IT administrators cannot recover Protected text.
