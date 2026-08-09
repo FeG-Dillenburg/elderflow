@@ -3,6 +3,8 @@ import DashboardView from '../views/DashboardView.vue';
 import { auth } from '../auth/auth';
 import type { PermissionCategory } from '../api/domain';
 import { installation, setupRedirect } from '../installation';
+import { isE2eeKeyOperator } from '../e2ee/roles';
+import { recoverySession } from '../e2ee/recovery-session';
 
 const router = createRouter({
   history: createWebHistory(),
@@ -30,7 +32,8 @@ router.beforeEach(async (to) => {
   await auth.initialize();
   if (to.meta.public) return auth.state.user ? { path: '/' } : true;
   if (!auth.state.user) return { path: '/login', query: { redirect: to.fullPath } };
-  if (to.meta.keyOperator && !['superadmin', 'admin', 'user'].includes(auth.state.user.role)) return { path: '/profile' };
+  if (recoverySession.isActive() && to.name !== 'key-recovery') return { path: '/key-recovery' };
+  if (to.meta.keyOperator && !isE2eeKeyOperator(auth.state.user)) return { path: '/profile' };
   const permission = to.meta.permission as PermissionCategory | undefined;
   if (permission && !auth.canView(permission)) {
     const fallback = (['dashboard', 'meetings', 'topics', 'tasks', 'users', 'contentSettings'] as PermissionCategory[])

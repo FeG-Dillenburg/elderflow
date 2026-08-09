@@ -42,6 +42,7 @@ describe('App', () => {
     expect(wrapper.text()).toContain('IT admin');
     expect(wrapper.html()).toContain('href="/users"');
     expect(wrapper.html()).not.toContain('href="/meetings"');
+    expect(wrapper.html()).not.toContain('href="/key-recovery"');
   });
 
   it('hides the user directory navigation for a guest', () => {
@@ -53,6 +54,7 @@ describe('App', () => {
     expect(wrapper.html()).not.toContain('href="/users"');
     expect(wrapper.html()).toContain('href="/meetings"');
     expect(wrapper.html()).toContain('href="/topics"');
+    expect(wrapper.html()).not.toContain('href="/key-recovery"');
   });
 
   it('renders only the route outlet while signed out', () => {

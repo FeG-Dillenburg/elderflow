@@ -2,6 +2,7 @@
   "format": "elderflow-e2ee-key-vectors-v1",
   "runtimeVersions": {
     "libsodiumWrappersSumo": "0.7.15",
+    "libsodiumSumo": "0.7.15",
     "cborX": "1.6.0",
     "node": ">=20"
   },
@@ -48,6 +49,24 @@
     "associatedDataCborHex": "8401030185500000000000004000800000000000000150000000000000400080000000000000035000000000000040008000000000000004015818808182838485868788898a8b8c8d8e8f9091929394959697",
     "ciphertextHex": "f3d4df98842427b70a7863bfd9faaeac3515b6a4b4d14c662fee2f1bb20bd25f1ed8fee0f098ff94b0bd86698dc0d27a",
     "envelopeHex": "8601030185500000000000004000800000000000000150000000000000400080000000000000035000000000000040008000000000000004015818808182838485868788898a8b8c8d8e8f90919293949596975830f3d4df98842427b70a7863bfd9faaeac3515b6a4b4d14c662fee2f1bb20bd25f1ed8fee0f098ff94b0bd86698dc0d27af6"
+  },
+  "signedNullScalar": {
+    "organizationId": "00000000-0000-4000-8000-000000000001",
+    "aggregateType": 256,
+    "recordId": "00000000-0000-4000-8000-000000000007",
+    "fieldId": 1,
+    "ockId": "00000000-0000-4000-8000-000000000004",
+    "clientEpochId": "00000000-0000-4000-8000-000000000008",
+    "writeCounter": "1",
+    "noncePrefixHex": "c0c1c2c3c4c5c6c7c8c9cacbcccdcecf",
+    "organizationContentKeyHex": "a0a1a2a3a4a5a6a7a8a9aaabacadaeafb0b1b2b3b4b5b6b7b8b9babbbcbdbebf",
+    "signingSeedHex": "9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60",
+    "paddingByteHex": "5a",
+    "paddingLength": 250,
+    "plaintextLength": 256,
+    "signatureHex": "b51471c69160632d9142d0d3bd25c897b026155efb1802413aa3fbb1d0ef7d4f5fb9c9d07fb5e4bd6e6fcba3cc064d9797c256376cd847398456a974d6e82a07",
+    "envelopeSha256Hex": "2ac620e9fd60578a3d208e18dfb31bf605876274afb59ed340823244b5f86eaf",
+    "negativeCases": ["nonCanonicalInteger", "nullVsEmpty", "transplantedRecord", "ciphertextCorruption", "unsupportedVersion", "counterReuse"]
   },
   "clientEpochNonces": {
     "counter": "1",

@@ -43,6 +43,10 @@ The purpose-1 wrapper binds ORK ID `…0003`, OCK ID `…0004`, and OCK epoch 1.
 8601030185500000000000004000800000000000000150000000000000400080000000000000035000000000000040008000000000000004015818808182838485868788898a8b8c8d8e8f90919293949596975830f3d4df98842427b70a7863bfd9faaeac3515b6a4b4d14c662fee2f1bb20bd25f1ed8fee0f098ff94b0bd86698dc0d27af6
 ```
 
+## Signed scalar and negative cases
+
+The machine-readable fixture also pins a complete 256-byte padded null scalar, its client-epoch counter nonce, Ed25519 signature, and complete-envelope SHA-256. The Node reference test reconstructs every byte and verifies that changing the version, record context, or ciphertext invalidates the signature. The validator tests reject non-canonical/trailing encodings, wrong kinds, truncation, and unsupported framing; the Recovery Secret tests reject padding and alternate versions while keeping wrong-secret failures generic.
+
 ## Independent client epochs
 
 Counter 1 under two independently random 16-byte prefixes produces distinct 24-byte nonces:

@@ -1,4 +1,4 @@
-import { hkdfSync } from 'node:crypto';
+import { createHash, hkdfSync } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { Encoder } from 'cbor-x';
@@ -121,5 +121,53 @@ describe('Node reference validation of browser key vectors', () => {
     expect(Buffer.concat([fromHex(epochs.firstPrefixHex), counter]).toString('hex')).toBe(epochs.firstNonceHex);
     expect(Buffer.concat([fromHex(epochs.secondPrefixHex), counter]).toString('hex')).toBe(epochs.secondNonceHex);
     expect(epochs.firstNonceHex).not.toBe(epochs.secondNonceHex);
+  });
+
+  it('reproduces a padded signed scalar and rejects signature-bound mutations', () => {
+    const vector = vectors.signedNullScalar;
+    const organizationId = uuid(vector.organizationId);
+    const recordId = uuid(vector.recordId);
+    const counter = Buffer.alloc(8);
+    counter.writeBigUInt64BE(BigInt(vector.writeCounter));
+    const nonce = Buffer.concat([fromHex(vector.noncePrefixHex), counter]);
+    const aggregateId = Buffer.concat([recordId, Buffer.from([0, vector.fieldId])]);
+    const info = Buffer.from(encoder.encode(['ElderFlow key v1', 10, vector.aggregateType, aggregateId]));
+    const key = Buffer.from(hkdfSync(
+      'sha256', fromHex(vector.organizationContentKeyHex), organizationId, info, 32,
+    ));
+    const plaintext = Buffer.from(encoder.encode([
+      1, 0, Buffer.alloc(0), Buffer.alloc(vector.paddingLength, Number.parseInt(vector.paddingByteHex, 16)),
+    ]));
+    const header = [
+      organizationId, vector.aggregateType, recordId, vector.fieldId, uuid(vector.ockId),
+      uuid(vector.clientEpochId), Number(vector.writeCounter), nonce,
+    ];
+    const aad = Buffer.from(encoder.encode([1, 4, 1, header]));
+    const ciphertext = Buffer.from(sodium.crypto_aead_xchacha20poly1305_ietf_encrypt(
+      plaintext, aad, null, nonce, key, 'uint8array',
+    ));
+    const signedMessage = Buffer.concat([
+      Buffer.from('ElderFlow signed envelope v1\0'),
+      Buffer.from(encoder.encode([1, 4, 1, header, ciphertext])),
+    ]);
+    const keyPair = sodium.crypto_sign_seed_keypair(fromHex(vector.signingSeedHex), 'uint8array');
+    const signature = Buffer.from(sodium.crypto_sign_detached(signedMessage, keyPair.privateKey, 'uint8array'));
+    const envelope = Buffer.from(encoder.encode([1, 4, 1, header, ciphertext, signature]));
+
+    expect(plaintext).toHaveLength(vector.plaintextLength);
+    expect(signature.toString('hex')).toBe(vector.signatureHex);
+    expect(createHash('sha256').update(envelope).digest('hex')).toBe(vector.envelopeSha256Hex);
+    expect(sodium.crypto_sign_verify_detached(signature, signedMessage, keyPair.publicKey)).toBe(true);
+
+    for (const mutation of [
+      [2, 4, 1, header, ciphertext],
+      [1, 4, 1, [...header.slice(0, 2), uuid('00000000-0000-4000-8000-000000000009'), ...header.slice(3)], ciphertext],
+      [1, 4, 1, header, Buffer.from(ciphertext).fill(ciphertext[0] ^ 1, 0, 1)],
+    ]) {
+      const mutatedMessage = Buffer.concat([
+        Buffer.from('ElderFlow signed envelope v1\0'), Buffer.from(encoder.encode(mutation)),
+      ]);
+      expect(sodium.crypto_sign_verify_detached(signature, mutatedMessage, keyPair.publicKey)).toBe(false);
+    }
   });
 });

@@ -57,6 +57,9 @@ const visibleNavigation = computed(() =>
   navigation.filter((item) => auth.canView(item.permission)),
 );
 const isSetupRoute = computed(() => router.currentRoute.value.name === "setup");
+const protectedRouteKey = computed(
+  () => `${router.currentRoute.value.fullPath}:${protectedText.state.status}`,
+);
 
 async function logout(): Promise<void> {
   auth.logout();
@@ -110,7 +113,11 @@ async function logout(): Promise<void> {
         >
           <i class="pi pi-sign-out" aria-hidden="true" />
         </button>
-        <RouterLink class="lock-button" to="/key-recovery">
+        <RouterLink
+          v-if="protectedText.isEligible(auth.state.user)"
+          class="lock-button"
+          to="/key-recovery"
+        >
           {{ t("e2ee.recoveryAction") }}
         </RouterLink>
       </div>
@@ -148,7 +155,7 @@ async function logout(): Promise<void> {
           }}
         </button>
       </div>
-      <RouterView />
+      <RouterView :key="protectedRouteKey" />
     </main>
     <UnlockDialog v-if="protectedText.isEligible(auth.state.user)" />
   </div>

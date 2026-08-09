@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { api, formatUser, meetingLabel, request, toLocalDate } from "./domain";
+import { setProtectedContentUnlocked } from "../e2ee/content-visibility";
+import { Decoder } from "cbor-x";
 
 const response = (body: unknown, options: Partial<Response> = {}) =>
   ({
@@ -11,7 +13,11 @@ const response = (body: unknown, options: Partial<Response> = {}) =>
   }) as unknown as Response;
 
 describe("domain API client", () => {
-  afterEach(() => vi.unstubAllGlobals());
+  afterEach(() => {
+    setProtectedContentUnlocked(false);
+    vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
+  });
   it("uses the API base URL, JSON header, and caller headers", async () => {
     const fetch = vi.fn().mockResolvedValue(response({ id: "one" }));
     vi.stubGlobal("fetch", fetch);
@@ -24,6 +30,57 @@ describe("domain API client", () => {
         Authorization: "Bearer token",
       },
     });
+  });
+  it("transports key wrappers as authenticated CBOR bytes rather than JSON fields", async () => {
+    const binaryResponse = (bytes: Uint8Array) => ({
+      ok: true,
+      status: 200,
+      headers: new Headers({ "content-type": "application/vnd.elderflow.e2ee+cbor;v=1" }),
+      arrayBuffer: vi.fn().mockResolvedValue(Uint8Array.from(bytes).buffer),
+    }) as unknown as Response;
+    const metadata = {
+      envelopeFormat: 1, cryptoSuite: 1, organizationId: "org", generation: 1,
+      orkId: "ork", ockId: "ock", ockEpoch: 1,
+      passphraseKdf: { version: 1, operationsLimit: 3, memoryLimit: 67_108_864, outputLength: 32 },
+    };
+    const fetch = vi.fn()
+      .mockResolvedValueOnce(response(metadata))
+      .mockResolvedValueOnce(binaryResponse(Uint8Array.from([1, 2, 3])))
+      .mockResolvedValueOnce(binaryResponse(Uint8Array.from([4, 5, 6])));
+    vi.stubGlobal("fetch", fetch);
+
+    await expect(api.e2eeKeyState()).resolves.toMatchObject({
+      ...metadata,
+      sharedPassphraseSlot: "AQID",
+      contentKeyWrapper: "BAUG",
+    });
+    expect(fetch.mock.calls.slice(1).every((call) => call[1].headers.Accept === "application/vnd.elderflow.e2ee+cbor;v=1")).toBe(true);
+  });
+
+  it("sends initial wrappers as canonical CBOR byte strings", async () => {
+    const fetch = vi.fn().mockResolvedValue(response({ id: "user" }));
+    vi.stubGlobal("fetch", fetch);
+    await api.createInitialUser({
+      defaultLanguage: "en", setupPassword: "setup-password", email: "ada@example.com",
+      firstName: "Ada", lastName: "Lovelace", password: "password123!",
+      e2ee: {
+        organizationId: "00000000-0000-4000-8000-000000000001",
+        orkId: "00000000-0000-4000-8000-000000000003",
+        ockId: "00000000-0000-4000-8000-000000000004",
+        sharedPassphraseSlot: "AQID", recoverySlot: "BAUG", contentKeyWrapper: "BwgJ",
+        custodyCopiesAcknowledged: 2,
+      },
+    });
+
+    const requestOptions = fetch.mock.calls[0][1];
+    expect(requestOptions.headers["Content-Type"]).toBe("application/vnd.elderflow.e2ee+cbor;v=1");
+    const decoded = new Decoder({ mapsAsObjects: false, useRecords: false }).decode(requestOptions.body) as unknown[];
+    expect(decoded[6]).toEqual(expect.arrayContaining([
+      expect.any(Uint8Array),
+    ]));
+    expect((decoded[6] as unknown[]).slice(3, 6)).toEqual([
+      Uint8Array.from([1, 2, 3]), Uint8Array.from([4, 5, 6]), Uint8Array.from([7, 8, 9]),
+    ]);
   });
   it("returns undefined for empty successful responses", async () => {
     const fetch = vi
@@ -84,6 +141,44 @@ describe("domain API client", () => {
       "http://localhost:3000/api/topics/topic/history",
       expect.any(Object),
     );
+  });
+  it("localizes server-redacted Protected text while preserving structural fields", async () => {
+    const fetch = vi.fn().mockResolvedValue(response({
+      id: "topic", type: "general", status: "open", followUpDate: "2026-08-10",
+      name: "__ELDERFLOW_PROTECTED_TEXT_REDACTED__",
+      description: "__ELDERFLOW_PROTECTED_TEXT_REDACTED__",
+    }));
+    vi.stubGlobal("fetch", fetch);
+
+    await expect(api.topic("topic")).resolves.toMatchObject({
+      id: "topic", status: "open", followUpDate: "2026-08-10",
+      name: "Protected text is unavailable.",
+      description: "Protected text is unavailable.",
+    });
+  });
+
+  it("only advertises the local development plaintext path while unlocked", async () => {
+    vi.stubEnv("VITE_E2EE_DEVELOPMENT_GATE", "true");
+    const fetch = vi.fn().mockResolvedValue(response({ id: "one" }));
+    vi.stubGlobal("fetch", fetch);
+
+    await request("/api/topics");
+    setProtectedContentUnlocked(true);
+    await request("/api/topics");
+
+    expect(fetch.mock.calls[0][1].headers).not.toHaveProperty("X-Elderflow-E2EE-Unlocked");
+    expect(fetch.mock.calls[1][1].headers).toMatchObject({ "X-Elderflow-E2EE-Unlocked": "1" });
+  });
+  it("describes redacted local development content as locked until unlock", async () => {
+    vi.stubEnv("VITE_E2EE_DEVELOPMENT_GATE", "true");
+    const fetch = vi.fn().mockResolvedValue(response({
+      title: "__ELDERFLOW_PROTECTED_TEXT_REDACTED__",
+    }));
+    vi.stubGlobal("fetch", fetch);
+
+    await expect(request("/api/tasks/task")).resolves.toMatchObject({
+      title: "Unlock Protected text to view this content.",
+    });
   });
   it("requests future Meeting suggestions explicitly", async () => {
     const fetch = vi.fn().mockResolvedValue(response([]));

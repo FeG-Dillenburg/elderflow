@@ -24,6 +24,7 @@ const started = ref<{ id: string; fingerprint: string; expiresAt: string } | nul
 const approved = ref(false);
 const startForm = reactive({ recoverySecret: "", passphrase: "", confirmation: "" });
 const approveForm = reactive({ ceremonyId: "", recoverySecret: "", passphrase: "" });
+let kdfAbort: AbortController | null = null;
 
 async function startRecovery(): Promise<void> {
   if (startForm.passphrase !== startForm.confirmation) {
@@ -32,12 +33,15 @@ async function startRecovery(): Promise<void> {
   }
   busy.value = true;
   errorMessage.value = "";
+  kdfAbort?.abort();
+  kdfAbort = new AbortController();
   try {
     const metadata = await api.e2eeRecoveryMetadata();
     const candidate = await createRecoveryCandidate(
       startForm.recoverySecret,
       startForm.passphrase,
       metadata,
+      kdfAbort.signal,
     );
     const ceremony = await api.startE2eeRecovery({
       expectedGeneration: metadata.generation,
@@ -54,6 +58,7 @@ async function startRecovery(): Promise<void> {
   } catch {
     errorMessage.value = t("e2ee.recoveryFailed");
   } finally {
+    kdfAbort = null;
     busy.value = false;
   }
 }
@@ -61,6 +66,8 @@ async function startRecovery(): Promise<void> {
 async function approveRecovery(): Promise<void> {
   busy.value = true;
   errorMessage.value = "";
+  kdfAbort?.abort();
+  kdfAbort = new AbortController();
   try {
     const [metadata, ceremony] = await Promise.all([
       api.e2eeRecoveryMetadata(),
@@ -75,6 +82,7 @@ async function approveRecovery(): Promise<void> {
       approveForm.passphrase,
       metadata,
       candidate,
+      kdfAbort.signal,
     );
     if (!verified) throw new Error("candidate mismatch");
     await api.approveE2eeRecovery(ceremony.id, candidate.candidateFingerprint);
@@ -85,6 +93,7 @@ async function approveRecovery(): Promise<void> {
   } catch {
     errorMessage.value = t("e2ee.recoveryFailed");
   } finally {
+    kdfAbort = null;
     busy.value = false;
   }
 }
@@ -106,6 +115,8 @@ async function activateRecovery(): Promise<void> {
 }
 
 onBeforeUnmount(() => {
+  kdfAbort?.abort();
+  kdfAbort = null;
   if (activeCeremonyId.value) {
     void recoverySession.abort();
   }

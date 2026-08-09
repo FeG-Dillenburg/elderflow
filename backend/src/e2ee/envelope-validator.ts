@@ -1,4 +1,6 @@
 import { Decoder, Encoder } from 'cbor-x';
+import { HttpException, HttpStatus } from '@nestjs/common';
+import { codedHttpException } from '../errors/coded-http.exception';
 
 const decoder = new Decoder({ mapsAsObjects: false, useRecords: false });
 const encoder = new Encoder({ mapsAsObjects: false, structuredClone: false, tagUint8Array: false, useRecords: false });
@@ -9,11 +11,21 @@ export interface KeyEnvelopeMetadata {
   wrappedKeyId: string;
 }
 
+export function decodeBase64UrlEnvelope(value: string): Buffer {
+  const decoded = Buffer.from(value, 'base64url');
+  if (decoded.length < 32 || decoded.length > 12_288 || decoded.toString('base64url') !== value) {
+    throw codedHttpException(HttpStatus.BAD_REQUEST, 'E2EE_ENVELOPE_INVALID', 'Invalid E2EE envelope');
+  }
+  return decoded;
+}
+
 export function validateKeyEnvelope(encoded: Uint8Array, expectedKind: 1 | 2 | 3): KeyEnvelopeMetadata {
   try {
     const envelope = decoder.decode(encoded) as unknown;
-    if (!Array.isArray(envelope) || envelope.length !== 6 || envelope[0] !== 1 || envelope[1] !== expectedKind
-      || envelope[2] !== 1 || envelope[5] !== null || !Array.isArray(envelope[3])) invalid();
+    if (!Array.isArray(envelope) || envelope.length !== 6) invalid();
+    if (envelope[0] !== 1) invalid('E2EE_FORMAT_UNSUPPORTED');
+    if (envelope[2] !== 1) invalid('E2EE_SUITE_UNSUPPORTED');
+    if (envelope[1] !== expectedKind || envelope[5] !== null || !Array.isArray(envelope[3])) invalid();
     const header = envelope[3] as unknown[];
     const ciphertext = bytes(envelope[4], 48);
     if (ciphertext.length !== 48) invalid();
@@ -36,8 +48,9 @@ export function validateKeyEnvelope(encoded: Uint8Array, expectedKind: 1 | 2 | 3
       primaryKeyId: bytesToUuid(bytes(header[1], 16)),
       wrappedKeyId: bytesToUuid(bytes(header[2], 16)),
     };
-  } catch {
-    throw new Error('E2EE_ENVELOPE_INVALID');
+  } catch (error) {
+    if (error instanceof HttpException) throw error;
+    invalid();
   }
 }
 
@@ -58,6 +71,6 @@ function sameBytes(left: Uint8Array, right: Uint8Array): boolean {
   return difference === 0;
 }
 
-function invalid(): never {
-  throw new Error('E2EE_ENVELOPE_INVALID');
+function invalid(code = 'E2EE_ENVELOPE_INVALID'): never {
+  throw codedHttpException(HttpStatus.BAD_REQUEST, code, 'Invalid E2EE envelope');
 }

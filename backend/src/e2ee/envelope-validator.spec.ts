@@ -19,10 +19,24 @@ describe('key-envelope validation boundary', () => {
     Buffer.from(recoveryEnvelope).fill(2, 0, 1),
     Buffer.from(recoveryEnvelope).subarray(0, recoveryEnvelope.length - 1),
   ])('rejects trailing, unsupported, or truncated bytes before persistence', (invalid) => {
-    expect(() => validateKeyEnvelope(invalid, 2)).toThrow('E2EE_ENVELOPE_INVALID');
+    expect(() => validateKeyEnvelope(invalid, 2)).toThrow('Invalid E2EE envelope');
   });
 
   it('rejects a valid envelope at the wrong kind boundary', () => {
-    expect(() => validateKeyEnvelope(recoveryEnvelope, 1)).toThrow('E2EE_ENVELOPE_INVALID');
+    expect(() => validateKeyEnvelope(recoveryEnvelope, 1)).toThrow('Invalid E2EE envelope');
+  });
+
+  it.each([
+    [0, 'E2EE_FORMAT_UNSUPPORTED'],
+    [2, 'E2EE_SUITE_UNSUPPORTED'],
+  ])('returns a stable protocol code for unsupported envelope field %s', (field, code) => {
+    const invalid = Buffer.from(recoveryEnvelope);
+    invalid[field + 1] = 2;
+    try {
+      validateKeyEnvelope(invalid, 2);
+      throw new Error('expected validation to fail');
+    } catch (error) {
+      expect((error as { getResponse: () => unknown }).getResponse()).toMatchObject({ code });
+    }
   });
 });

@@ -4,6 +4,9 @@ import { api, type AuthUser } from '../api/domain';
 import { unlockWithPassphrase, type PublicKeyState } from './crypto';
 import { UnlockSession, type LockReason } from './unlock-session';
 import { recoverySession } from './recovery-session';
+import { isE2eeKeyOperator } from './roles';
+import { bytesToBase64Url } from './protocol';
+import { setProtectedContentUnlocked } from './content-visibility';
 
 const state = reactive({
   status: 'locked' as 'locked' | 'unlocking' | 'unlocked',
@@ -13,26 +16,30 @@ const state = reactive({
 let keyState: PublicKeyState | null = null;
 let epochId: string | null = null;
 let abortController: AbortController | null = null;
+let activeUserId: string | null = null;
+let authorizationPoll: ReturnType<typeof setInterval> | null = null;
 const channel = typeof BroadcastChannel === 'undefined' ? null : new BroadcastChannel('elderflow.protected-text-lock');
 const session = new UnlockSession({ onLock: handleSessionLock });
 
 channel?.addEventListener('message', ({ data }) => {
-  if (data === 'lock') session.lock('remote');
+  if (data?.type === 'lock' && data.userId === activeUserId) protectedText.lock('remote', false);
 });
 
 const trustedActivity = () => session.recordTrustedForegroundActivity();
 if (typeof window !== 'undefined') {
   window.addEventListener('keydown', trustedActivity, { passive: true });
   window.addEventListener('pointerdown', trustedActivity, { passive: true });
+  window.addEventListener('elderflow:authorization-loss', () => protectedText.lock('authorization-loss'));
 }
 
 export const protectedText = {
   state,
   isEligible(user: AuthUser | null): boolean {
-    return Boolean(user && ['superadmin', 'admin', 'user'].includes(user.role));
+    return isE2eeKeyOperator(user);
   },
   async offerUnlock(user: AuthUser | null): Promise<void> {
     protectedText.lock('identity-change', false);
+    activeUserId = user?.id ?? null;
     if (!protectedText.isEligible(user)) return;
     try {
       keyState = await api.e2eeKeyState();
@@ -64,8 +71,8 @@ export const protectedText = {
       try {
         await api.registerE2eeClientEpoch({
           id: newEpochId,
-          noncePrefix: toBase64Url(noncePrefix),
-          signingPublicKey: toBase64Url(signing.publicKey),
+          noncePrefix: bytesToBase64Url(noncePrefix),
+          signingPublicKey: bytesToBase64Url(signing.publicKey),
         });
       } catch (error) {
         sodium.memzero(signing.privateKey);
@@ -77,7 +84,9 @@ export const protectedText = {
       epochId = newEpochId;
       session.unlock({ ...keys, signingPrivateKey: signing.privateKey, noncePrefix });
       state.status = 'unlocked';
+      setProtectedContentUnlocked(true);
       state.promptVisible = false;
+      startAuthorizationPolling();
     } catch (error) {
       state.status = 'locked';
       if (!(error instanceof DOMException && error.name === 'AbortError')) state.error = true;
@@ -92,16 +101,31 @@ export const protectedText = {
     session.lock(reason);
     if (!wasUnlocked) {
       finishLock();
-      if (coordinate) channel?.postMessage('lock');
+      if (coordinate) coordinateLock();
     }
   },
 };
 
 function finishLock(): void {
+  if (authorizationPoll) clearInterval(authorizationPoll);
+  authorizationPoll = null;
   state.status = 'locked';
+  setProtectedContentUnlocked(false);
   state.promptVisible = false;
   state.error = false;
   epochId = null;
+}
+
+function startAuthorizationPolling(): void {
+  if (authorizationPoll) clearInterval(authorizationPoll);
+  authorizationPoll = setInterval(() => {
+    if (!session.isUnlocked() || !keyState || recoverySession.isActive()) return;
+    void api.e2eeKeyMetadata()
+      .then((metadata) => {
+        if (keyState && metadata.generation !== keyState.generation) protectedText.lock('authorization-loss');
+      })
+      .catch(() => protectedText.lock('authorization-loss'));
+  }, 30_000);
 }
 
 function handleSessionLock(reason: LockReason): void {
@@ -109,11 +133,9 @@ function handleSessionLock(reason: LockReason): void {
   void recoverySession.abort();
   finishLock();
   if (revokedEpoch) void api.revokeE2eeClientEpoch(revokedEpoch).catch(() => undefined);
-  if (reason !== 'remote') channel?.postMessage('lock');
+  if (reason !== 'remote') coordinateLock();
 }
 
-function toBase64Url(value: Uint8Array): string {
-  let binary = '';
-  value.forEach((byte) => { binary += String.fromCharCode(byte); });
-  return btoa(binary).replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/, '');
+function coordinateLock(): void {
+  if (activeUserId) channel?.postMessage({ type: 'lock', userId: activeUserId });
 }

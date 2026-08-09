@@ -267,10 +267,13 @@ describe("MeetingAgendaView", () => {
     expect(api.updateMeeting).toHaveBeenCalledWith(
       "meeting-1",
       expect.objectContaining({
-        title: null,
         date: "2026-07-16",
         beginTime: "08:05",
       }),
+    );
+    expect(api.updateMeeting).not.toHaveBeenCalledWith(
+      "meeting-1",
+      expect.objectContaining({ title: expect.anything() }),
     );
     vm.editForm.date = null;
     await vm.saveMeeting();

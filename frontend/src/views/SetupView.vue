@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from "vue";
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import Button from "primevue/button";
 import InputText from "primevue/inputtext";
@@ -40,6 +40,7 @@ const errorMessage = ref("");
 const generatedKeyState = ref<GeneratedInitialKeyState | null>(null);
 const firstCopyAcknowledged = ref(false);
 const secondCopyAcknowledged = ref(false);
+let kdfAbort: AbortController | null = null;
 const defaultLanguage = ref<SupportedLanguage>(
   detectSupportedLanguage(navigator.languages) ?? "en",
 );
@@ -88,17 +89,25 @@ async function prepareRecovery(): Promise<void> {
   }
 
   submitting.value = true;
+  kdfAbort?.abort();
+  kdfAbort = new AbortController();
   try {
-    generatedKeyState.value = await createInitialKeyState(form.sharedPassphrase);
+    generatedKeyState.value = await createInitialKeyState(form.sharedPassphrase, kdfAbort.signal);
     form.sharedPassphrase = "";
     form.sharedPassphraseConfirmation = "";
     stage.value = "recovery";
   } catch {
     errorMessage.value = t("e2ee.setupFailed");
   } finally {
+    kdfAbort = null;
     submitting.value = false;
   }
 }
+
+onBeforeUnmount(() => {
+  kdfAbort?.abort();
+  kdfAbort = null;
+});
 
 async function createUser(): Promise<void> {
   if (!generatedKeyState.value || !firstCopyAcknowledged.value || !secondCopyAcknowledged.value) return;

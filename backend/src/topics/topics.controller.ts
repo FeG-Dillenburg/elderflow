@@ -1,7 +1,7 @@
 import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Put, Query } from '@nestjs/common';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { User } from '../users/user.entity';
-import { DiscriminatedTopicDto, TopicDto, TopicUpdateDto } from './dto/topic.dto';
+import { DiscriminatedTopicDto, TopicDto, TopicPatchDto, TopicUpdateDto } from './dto/topic.dto';
 import { Topic } from './topic.entity';
 import { TopicUpdate } from './topic-update.entity';
 import { TopicsService } from './topics.service';
@@ -35,8 +35,8 @@ export class TopicsController {
   create(@Body() input: TopicDto): Promise<Topic> { return this.service.create(input as DiscriminatedTopicDto); }
 
   @Put(':id')
-  update(@Param('id', ParseUUIDPipe) id: string, @Body() input: TopicDto): Promise<Topic> {
-    return this.service.update(id, input as DiscriminatedTopicDto);
+  update(@Param('id', ParseUUIDPipe) id: string, @Body() input: TopicPatchDto): Promise<Topic> {
+    return this.service.update(id, input as Partial<DiscriminatedTopicDto>);
   }
 
   @Get(':id/updates')

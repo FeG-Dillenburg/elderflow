@@ -1,14 +1,21 @@
 import { Decoder, Encoder } from 'cbor-x';
 import sodium from 'libsodium-wrappers-sumo';
+import { base64UrlToBytes, bytesToBase64Url, PASSPHRASE_KDF } from './protocol';
 
 export const E2EE_FORMAT = 1;
 export const E2EE_SUITE = 1;
-export const PASSPHRASE_KDF = Object.freeze({
-  version: 1,
-  operationsLimit: 3,
-  memoryLimit: 67_108_864,
-  outputLength: 32,
-});
+export { PASSPHRASE_KDF } from './protocol';
+const ENVELOPE_KIND = Object.freeze({
+  sharedPassphraseSlot: 1,
+  recoverySlot: 2,
+  contentKeyWrapper: 3,
+} as const);
+const KEY_DERIVATION_PURPOSE = Object.freeze({
+  contentKeyWrapper: 1,
+  sharedPassphraseSlot: 2,
+  recoverySlot: 3,
+} as const);
+const ORGANIZATION_AGGREGATE_ID = 0;
 
 const encoder = new Encoder({
   mapsAsObjects: false,
@@ -79,12 +86,12 @@ export async function hkdfSha256(
 
 export function encodeRecoverySecret(secret: Uint8Array): string {
   if (secret.length !== 32) throw new Error('E2EE_RECOVERY_SECRET_INVALID');
-  return `EFR1.${toBase64Url(secret)}`;
+  return `EFR1.${bytesToBase64Url(secret)}`;
 }
 
 export function decodeRecoverySecret(value: string): Uint8Array {
   if (!/^EFR1\.[A-Za-z0-9_-]{43}$/.test(value)) throw new Error('E2EE_RECOVERY_SECRET_INVALID');
-  const decoded = fromBase64Url(value.slice(5));
+  const decoded = base64UrlToBytes(value.slice(5));
   if (decoded.length !== 32 || encodeRecoverySecret(decoded) !== value) {
     throw new Error('E2EE_RECOVERY_SECRET_INVALID');
   }
@@ -99,9 +106,9 @@ export async function createRecoveryWrapper(input: RecoveryWrapperInput): Promis
   const organizationId = uuidToBytes(input.organizationId);
   const slotId = uuidToBytes(input.slotId);
   const header = [organizationId, slotId, uuidToBytes(input.orkId), 1, input.nonce];
-  const info = deterministicCbor(['ElderFlow key v1', 3, 0, slotId]);
+  const info = deterministicCbor(['ElderFlow key v1', KEY_DERIVATION_PURPOSE.recoverySlot, ORGANIZATION_AGGREGATE_ID, slotId]);
   const derivedKey = await hkdfSha256(input.recoverySecret, organizationId, info);
-  const associatedData = deterministicCbor([E2EE_FORMAT, 2, E2EE_SUITE, header]);
+  const associatedData = deterministicCbor([E2EE_FORMAT, ENVELOPE_KIND.recoverySlot, E2EE_SUITE, header]);
   const ciphertext = sodium.crypto_aead_xchacha20poly1305_ietf_encrypt(
     input.organizationRootKey,
     associatedData,
@@ -113,7 +120,7 @@ export async function createRecoveryWrapper(input: RecoveryWrapperInput): Promis
   return {
     recoveryText: encodeRecoverySecret(input.recoverySecret),
     derivedKey,
-    envelope: deterministicCbor([E2EE_FORMAT, 2, E2EE_SUITE, header, ciphertext, null]),
+    envelope: deterministicCbor([E2EE_FORMAT, ENVELOPE_KIND.recoverySlot, E2EE_SUITE, header, ciphertext, null]),
   };
 }
 
@@ -149,10 +156,10 @@ export async function createInitialKeyState(
     const sharedWrappingKey = await hkdfSha256(
       passphraseKey,
       organizationIdBytes,
-      deterministicCbor(['ElderFlow key v1', 2, 0, uuidToBytes(sharedSlotId)]),
+      deterministicCbor(['ElderFlow key v1', KEY_DERIVATION_PURPOSE.sharedPassphraseSlot, ORGANIZATION_AGGREGATE_ID, uuidToBytes(sharedSlotId)]),
     );
-    const sharedCiphertext = encryptWrapper(1, sharedHeader, organizationRootKey, passphraseNonce, sharedWrappingKey);
-    const sharedEnvelope = deterministicCbor([E2EE_FORMAT, 1, E2EE_SUITE, sharedHeader, sharedCiphertext, null]);
+    const sharedCiphertext = encryptWrapper(ENVELOPE_KIND.sharedPassphraseSlot, sharedHeader, organizationRootKey, passphraseNonce, sharedWrappingKey);
+    const sharedEnvelope = deterministicCbor([E2EE_FORMAT, ENVELOPE_KIND.sharedPassphraseSlot, E2EE_SUITE, sharedHeader, sharedCiphertext, null]);
 
     const recovery = await createRecoveryWrapper({
       organizationId,
@@ -168,10 +175,10 @@ export async function createInitialKeyState(
     const contentWrappingKey = await hkdfSha256(
       organizationRootKey,
       organizationIdBytes,
-      deterministicCbor(['ElderFlow key v1', 1, 0, uuidToBytes(ockId)]),
+      deterministicCbor(['ElderFlow key v1', KEY_DERIVATION_PURPOSE.contentKeyWrapper, ORGANIZATION_AGGREGATE_ID, uuidToBytes(ockId)]),
     );
-    const contentCiphertext = encryptWrapper(3, contentHeader, organizationContentKey, contentNonce, contentWrappingKey);
-    const contentEnvelope = deterministicCbor([E2EE_FORMAT, 3, E2EE_SUITE, contentHeader, contentCiphertext, null]);
+    const contentCiphertext = encryptWrapper(ENVELOPE_KIND.contentKeyWrapper, contentHeader, organizationContentKey, contentNonce, contentWrappingKey);
+    const contentEnvelope = deterministicCbor([E2EE_FORMAT, ENVELOPE_KIND.contentKeyWrapper, E2EE_SUITE, contentHeader, contentCiphertext, null]);
 
     sodium.memzero(sharedWrappingKey);
     sodium.memzero(contentWrappingKey);
@@ -181,9 +188,9 @@ export async function createInitialKeyState(
         organizationId,
         orkId,
         ockId,
-        sharedPassphraseSlot: toBase64Url(sharedEnvelope),
-        recoverySlot: toBase64Url(recovery.envelope),
-        contentKeyWrapper: toBase64Url(contentEnvelope),
+        sharedPassphraseSlot: bytesToBase64Url(sharedEnvelope),
+        recoverySlot: bytesToBase64Url(recovery.envelope),
+        contentKeyWrapper: bytesToBase64Url(contentEnvelope),
         custodyCopiesAcknowledged: 2,
       },
       recoveryText: recovery.recoveryText,
@@ -240,8 +247,8 @@ export async function createRecoveryCandidate(
     );
     const digest = await crypto.subtle.digest('SHA-256', toArrayBuffer(candidateSharedPassphraseSlot));
     return {
-      candidateSharedPassphraseSlot: toBase64Url(candidateSharedPassphraseSlot),
-      candidateFingerprint: toBase64Url(new Uint8Array(digest)),
+      candidateSharedPassphraseSlot: bytesToBase64Url(candidateSharedPassphraseSlot),
+      candidateFingerprint: bytesToBase64Url(new Uint8Array(digest)),
     };
   } finally {
     sodium.memzero(organizationRootKey);
@@ -259,24 +266,24 @@ export async function verifyRecoveryCandidate(
   await sodium.ready;
   const organizationRootKey = await unlockOrganizationRootKeyWithRecovery(recoveryText, state);
   try {
-    const envelope = decodeCanonicalEnvelope(candidate.candidateSharedPassphraseSlot, 1);
+    const envelope = decodeCanonicalEnvelope(candidate.candidateSharedPassphraseSlot, ENVELOPE_KIND.sharedPassphraseSlot);
     const header = envelope[3] as unknown[];
     const passphraseKey = await derive(newPassphrase, bytes(header[6], 16), signal);
     const wrappingKey = await hkdfSha256(
       passphraseKey,
       uuidToBytes(state.organizationId),
-      deterministicCbor(['ElderFlow key v1', 2, 0, bytes(header[1], 16)]),
+      deterministicCbor(['ElderFlow key v1', KEY_DERIVATION_PURPOSE.sharedPassphraseSlot, ORGANIZATION_AGGREGATE_ID, bytes(header[1], 16)]),
     );
     sodium.memzero(passphraseKey);
-    const candidateRootKey = decryptWrapper(1, header, bytes(envelope[4], 48), bytes(header[7], 24), wrappingKey);
+    const candidateRootKey = decryptWrapper(ENVELOPE_KIND.sharedPassphraseSlot, header, bytes(envelope[4], 48), bytes(header[7], 24), wrappingKey);
     sodium.memzero(wrappingKey);
     const matches = constantTimeEqual(organizationRootKey, candidateRootKey);
     sodium.memzero(candidateRootKey);
     const digest = new Uint8Array(await crypto.subtle.digest(
       'SHA-256',
-      toArrayBuffer(fromBase64Url(candidate.candidateSharedPassphraseSlot)),
+      toArrayBuffer(base64UrlToBytes(candidate.candidateSharedPassphraseSlot)),
     ));
-    return matches && toBase64Url(digest) === candidate.candidateFingerprint;
+    return matches && bytesToBase64Url(digest) === candidate.candidateFingerprint;
   } catch {
     return false;
   } finally {
@@ -292,7 +299,7 @@ export async function unlockWithPassphrase(
   await sodium.ready;
   try {
     assertSupportedState(state);
-    const shared = decodeCanonicalEnvelope(state.sharedPassphraseSlot, 1);
+    const shared = decodeCanonicalEnvelope(state.sharedPassphraseSlot, ENVELOPE_KIND.sharedPassphraseSlot);
     const sharedHeader = shared[3] as unknown[];
     const salt = bytes(sharedHeader[6], 16);
     const nonce = bytes(sharedHeader[7], 24);
@@ -300,21 +307,21 @@ export async function unlockWithPassphrase(
     const wrappingKey = await hkdfSha256(
       passphraseKey,
       uuidToBytes(state.organizationId),
-      deterministicCbor(['ElderFlow key v1', 2, 0, bytes(sharedHeader[1], 16)]),
+      deterministicCbor(['ElderFlow key v1', KEY_DERIVATION_PURPOSE.sharedPassphraseSlot, ORGANIZATION_AGGREGATE_ID, bytes(sharedHeader[1], 16)]),
     );
     sodium.memzero(passphraseKey);
-    const organizationRootKey = decryptWrapper(1, sharedHeader, bytes(shared[4]), nonce, wrappingKey);
+    const organizationRootKey = decryptWrapper(ENVELOPE_KIND.sharedPassphraseSlot, sharedHeader, bytes(shared[4]), nonce, wrappingKey);
     sodium.memzero(wrappingKey);
 
-    const content = decodeCanonicalEnvelope(state.contentKeyWrapper, 3);
+    const content = decodeCanonicalEnvelope(state.contentKeyWrapper, ENVELOPE_KIND.contentKeyWrapper);
     const contentHeader = content[3] as unknown[];
     const contentNonce = bytes(contentHeader[4], 24);
     const contentWrappingKey = await hkdfSha256(
       organizationRootKey,
       uuidToBytes(state.organizationId),
-      deterministicCbor(['ElderFlow key v1', 1, 0, bytes(contentHeader[2], 16)]),
+      deterministicCbor(['ElderFlow key v1', KEY_DERIVATION_PURPOSE.contentKeyWrapper, ORGANIZATION_AGGREGATE_ID, bytes(contentHeader[2], 16)]),
     );
-    const contentKey = decryptWrapper(3, contentHeader, bytes(content[4]), contentNonce, contentWrappingKey);
+    const contentKey = decryptWrapper(ENVELOPE_KIND.contentKeyWrapper, contentHeader, bytes(content[4]), contentNonce, contentWrappingKey);
     sodium.memzero(contentWrappingKey);
     return { organizationRootKey, contentKey };
   } catch (error) {
@@ -330,15 +337,15 @@ async function unlockOrganizationRootKeyWithRecovery(
   try {
     assertSupportedState(state);
     const secret = decodeRecoverySecret(recoveryText);
-    const envelope = decodeCanonicalEnvelope(state.recoverySlot, 2);
+    const envelope = decodeCanonicalEnvelope(state.recoverySlot, ENVELOPE_KIND.recoverySlot);
     const header = envelope[3] as unknown[];
     const wrappingKey = await hkdfSha256(
       secret,
       uuidToBytes(state.organizationId),
-      deterministicCbor(['ElderFlow key v1', 3, 0, bytes(header[1], 16)]),
+      deterministicCbor(['ElderFlow key v1', KEY_DERIVATION_PURPOSE.recoverySlot, ORGANIZATION_AGGREGATE_ID, bytes(header[1], 16)]),
     );
     sodium.memzero(secret);
-    const organizationRootKey = decryptWrapper(2, header, bytes(envelope[4], 48), bytes(header[4], 24), wrappingKey);
+    const organizationRootKey = decryptWrapper(ENVELOPE_KIND.recoverySlot, header, bytes(envelope[4], 48), bytes(header[4], 24), wrappingKey);
     sodium.memzero(wrappingKey);
     return organizationRootKey;
   } catch {
@@ -358,16 +365,16 @@ async function createSharedPassphraseEnvelope(
   const salt = crypto.getRandomValues(new Uint8Array(16));
   const nonce = crypto.getRandomValues(new Uint8Array(24));
   const passphraseKey = await derive(passphrase, salt, signal);
-  const header = [uuidToBytes(organizationId), uuidToBytes(slotId), uuidToBytes(orkId), 1, 3, 67_108_864, salt, nonce];
+  const header = [uuidToBytes(organizationId), uuidToBytes(slotId), uuidToBytes(orkId), PASSPHRASE_KDF.version, PASSPHRASE_KDF.operationsLimit, PASSPHRASE_KDF.memoryLimit, salt, nonce];
   const wrappingKey = await hkdfSha256(
     passphraseKey,
     uuidToBytes(organizationId),
-    deterministicCbor(['ElderFlow key v1', 2, 0, uuidToBytes(slotId)]),
+    deterministicCbor(['ElderFlow key v1', KEY_DERIVATION_PURPOSE.sharedPassphraseSlot, ORGANIZATION_AGGREGATE_ID, uuidToBytes(slotId)]),
   );
   sodium.memzero(passphraseKey);
-  const ciphertext = encryptWrapper(1, header, organizationRootKey, nonce, wrappingKey);
+  const ciphertext = encryptWrapper(ENVELOPE_KIND.sharedPassphraseSlot, header, organizationRootKey, nonce, wrappingKey);
   sodium.memzero(wrappingKey);
-  return deterministicCbor([1, 1, 1, header, ciphertext, null]);
+  return deterministicCbor([E2EE_FORMAT, ENVELOPE_KIND.sharedPassphraseSlot, E2EE_SUITE, header, ciphertext, null]);
 }
 
 export function derivePassphraseKey(passphrase: string, salt: Uint8Array, signal?: AbortSignal): Promise<Uint8Array> {
@@ -437,7 +444,7 @@ function decryptWrapper(kind: number, header: unknown[], ciphertext: Uint8Array,
 }
 
 function decodeCanonicalEnvelope(value: string, expectedKind: number): unknown[] {
-  const encoded = fromBase64Url(value);
+  const encoded = base64UrlToBytes(value);
   const decoded = decoder.decode(encoded) as unknown;
   if (!Array.isArray(decoded) || decoded.length !== 6 || decoded[0] !== 1 || decoded[1] !== expectedKind || decoded[2] !== 1 || decoded[5] !== null) {
     throw new Error('E2EE_ENVELOPE_INVALID');
@@ -447,10 +454,13 @@ function decodeCanonicalEnvelope(value: string, expectedKind: number): unknown[]
 }
 
 function assertSupportedState(state: PublicKeyState): void {
-  if (state.envelopeFormat !== 1 || state.cryptoSuite !== 1 || state.passphraseKdf.version !== 1
-    || state.passphraseKdf.operationsLimit !== 3 || state.passphraseKdf.memoryLimit !== 67_108_864
+  if (state.envelopeFormat !== E2EE_FORMAT) throw new Error('E2EE_FORMAT_UNSUPPORTED');
+  if (state.cryptoSuite !== E2EE_SUITE) throw new Error('E2EE_SUITE_UNSUPPORTED');
+  if (state.passphraseKdf.version !== PASSPHRASE_KDF.version
+    || state.passphraseKdf.operationsLimit !== PASSPHRASE_KDF.operationsLimit
+    || state.passphraseKdf.memoryLimit !== PASSPHRASE_KDF.memoryLimit
     || state.passphraseKdf.outputLength !== 32) {
-    throw new Error('E2EE_FORMAT_UNSUPPORTED');
+    throw new Error('E2EE_KDF_UNSUPPORTED');
   }
 }
 
@@ -463,18 +473,6 @@ function bytes(value: unknown, length?: number): Uint8Array {
 
 function assertLength(value: Uint8Array, expected: number): void {
   if (value.length !== expected) throw new Error('E2EE_BINARY_LENGTH_INVALID');
-}
-
-function toBase64Url(value: Uint8Array): string {
-  let binary = '';
-  value.forEach((byte) => { binary += String.fromCharCode(byte); });
-  return btoa(binary).replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/, '');
-}
-
-function fromBase64Url(value: string): Uint8Array {
-  if (!/^[A-Za-z0-9_-]*$/.test(value)) throw new Error('E2EE_BASE64_INVALID');
-  const base64 = value.replaceAll('-', '+').replaceAll('_', '/').padEnd(Math.ceil(value.length / 4) * 4, '=');
-  return Uint8Array.from(atob(base64), (character) => character.charCodeAt(0));
 }
 
 function constantTimeEqual(left: Uint8Array, right: Uint8Array): boolean {

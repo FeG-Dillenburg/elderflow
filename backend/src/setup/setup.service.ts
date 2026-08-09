@@ -8,7 +8,7 @@ import { User } from '../users/user.entity';
 import { CreateInitialUserDto } from './dto/setup.dto';
 import { codedHttpException } from '../errors/coded-http.exception';
 import { E2eeKeyState } from '../e2ee/e2ee-key-state.entity';
-import { validateKeyEnvelope } from '../e2ee/envelope-validator';
+import { decodeBase64UrlEnvelope, validateKeyEnvelope } from '../e2ee/envelope-validator';
 
 export const SETUP_PASSWORD_HASH = Symbol('SETUP_PASSWORD_HASH');
 
@@ -82,9 +82,9 @@ export class SetupService {
         orkId: input.e2ee.orkId,
         ockId: input.e2ee.ockId,
         ockEpoch: 1,
-        sharedPassphraseSlot: this.decodeEnvelope(input.e2ee.sharedPassphraseSlot),
-        recoverySlot: this.decodeEnvelope(input.e2ee.recoverySlot),
-        contentKeyWrapper: this.decodeEnvelope(input.e2ee.contentKeyWrapper),
+        sharedPassphraseSlot: decodeBase64UrlEnvelope(input.e2ee.sharedPassphraseSlot),
+        recoverySlot: decodeBase64UrlEnvelope(input.e2ee.recoverySlot),
+        contentKeyWrapper: decodeBase64UrlEnvelope(input.e2ee.contentKeyWrapper),
         custodyAcknowledgedBy: saved.id,
         custodyAcknowledgedAt: new Date(),
       });
@@ -107,14 +107,6 @@ export class SetupService {
       delete (saved as Partial<User>).passwordHash;
       return saved;
     });
-  }
-
-  private decodeEnvelope(value: string): Buffer {
-    const decoded = Buffer.from(value, 'base64url');
-    if (decoded.length < 32 || decoded.length > 12_288 || decoded.toString('base64url') !== value) {
-      throw codedHttpException(HttpStatus.BAD_REQUEST, 'E2EE_ENVELOPE_INVALID', 'Invalid E2EE envelope');
-    }
-    return decoded;
   }
 
   private async ensureSetupRequired(): Promise<void> {

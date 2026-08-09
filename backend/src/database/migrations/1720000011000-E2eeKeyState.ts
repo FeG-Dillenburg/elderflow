@@ -36,7 +36,13 @@ export class E2eeKeyState1720000011000 implements MigrationInterface {
       CREATE TABLE "e2ee_recovery_ceremonies" (
         "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
         "initiator_id" uuid NOT NULL REFERENCES "users"("id"),
+        "initiator_session_version" integer NOT NULL,
+        "initiator_session_id" text NOT NULL,
         "approver_id" uuid REFERENCES "users"("id"),
+        "approver_session_version" integer,
+        "approver_session_id" text,
+        "initiator_confirmed_at" timestamptz,
+        "approver_confirmed_at" timestamptz,
         "state" text NOT NULL CHECK ("state" IN ('pending_second_operator', 'ready_to_activate', 'activated', 'aborted')),
         "expected_generation" integer NOT NULL,
         "candidate_fingerprint" bytea NOT NULL CHECK (octet_length("candidate_fingerprint") = 32),

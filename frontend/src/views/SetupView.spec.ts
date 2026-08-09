@@ -2,6 +2,7 @@ import { flushPromises, mount } from '@vue/test-utils';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import SetupView from './SetupView.vue';
 import { installation } from '../installation';
+import { Decoder } from 'cbor-x';
 
 const createInitialKeyState = vi.hoisted(() => vi.fn());
 vi.mock('../e2ee/crypto', async (importOriginal) => ({
@@ -105,6 +106,10 @@ describe('SetupView', () => {
       sharedPassphrase: 'correct horse battery staple', sharedPassphraseConfirmation: 'correct horse battery staple',
     });
     await vm.prepareRecovery();
+    expect(createInitialKeyState).toHaveBeenCalledWith(
+      'correct horse battery staple',
+      expect.any(AbortSignal),
+    );
     expect(vm.stage).toBe('recovery');
     expect(wrapper.text()).toContain(generatedKeyState.recoveryText);
     vm.firstCopyAcknowledged = true;
@@ -113,10 +118,16 @@ describe('SetupView', () => {
 
     expect(fetchMock).toHaveBeenNthCalledWith(2, 'http://localhost:3000/api/setup', expect.objectContaining({
       method: 'POST',
-      body: JSON.stringify({
-        setupPassword: 'startup-password', defaultLanguage: 'en', email: 'ada@example.com', firstName: 'Ada', lastName: 'Lovelace', password: 'password123!', e2ee: generatedKeyState.e2ee,
-      }),
+      headers: expect.objectContaining({ 'Content-Type': 'application/vnd.elderflow.e2ee+cbor;v=1' }),
     }));
+    const setupBody = fetchMock.mock.calls[1][1].body as Uint8Array;
+    const decoded = new Decoder({ mapsAsObjects: false, useRecords: false }).decode(setupBody) as unknown[];
+    expect(decoded.slice(0, 6)).toEqual([
+      'en', 'startup-password', 'ada@example.com', 'Ada', 'Lovelace', 'password123!',
+    ]);
+    expect((decoded[6] as unknown[]).slice(0, 3)).toEqual([
+      generatedKeyState.e2ee.organizationId, generatedKeyState.e2ee.orkId, generatedKeyState.e2ee.ockId,
+    ]);
     expect(vm.stage).toBe('complete');
     expect(installation.setupRequired).toBe(false);
     expect(installation.defaultLanguage).toBe('en');

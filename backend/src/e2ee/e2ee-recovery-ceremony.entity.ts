@@ -10,8 +10,26 @@ export class E2eeRecoveryCeremony {
   @Column({ name: 'initiator_id', type: 'uuid' })
   initiatorId: string;
 
+  @Column({ name: 'initiator_session_version', type: 'integer' })
+  initiatorSessionVersion: number;
+
+  @Column({ name: 'initiator_session_id', type: 'text' })
+  initiatorSessionId: string;
+
   @Column({ name: 'approver_id', type: 'uuid', nullable: true })
   approverId: string | null;
+
+  @Column({ name: 'approver_session_version', type: 'integer', nullable: true })
+  approverSessionVersion: number | null;
+
+  @Column({ name: 'approver_session_id', type: 'text', nullable: true })
+  approverSessionId: string | null;
+
+  @Column({ name: 'initiator_confirmed_at', type: 'timestamptz', nullable: true })
+  initiatorConfirmedAt: Date | null;
+
+  @Column({ name: 'approver_confirmed_at', type: 'timestamptz', nullable: true })
+  approverConfirmedAt: Date | null;
 
   @Column({ type: 'text' })
   state: RecoveryCeremonyState;
