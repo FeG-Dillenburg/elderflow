@@ -19,6 +19,7 @@ const router = createRouter({
     { path: '/agenda-sections', name: 'agenda-sections', component: () => import('../views/AgendaSectionsView.vue'), meta: { permission: 'contentSettings' } },
     { path: '/users', name: 'users', component: () => import('../views/UsersView.vue'), meta: { permission: 'users' } },
     { path: '/profile', name: 'profile', component: () => import('../views/ProfileView.vue') },
+    { path: '/key-recovery', name: 'key-recovery', component: () => import('../views/RecoveryView.vue'), meta: { keyOperator: true } },
   ],
 });
 
@@ -29,6 +30,7 @@ router.beforeEach(async (to) => {
   await auth.initialize();
   if (to.meta.public) return auth.state.user ? { path: '/' } : true;
   if (!auth.state.user) return { path: '/login', query: { redirect: to.fullPath } };
+  if (to.meta.keyOperator && !['superadmin', 'admin', 'user'].includes(auth.state.user.role)) return { path: '/profile' };
   const permission = to.meta.permission as PermissionCategory | undefined;
   if (permission && !auth.canView(permission)) {
     const fallback = (['dashboard', 'meetings', 'topics', 'tasks', 'users', 'contentSettings'] as PermissionCategory[])

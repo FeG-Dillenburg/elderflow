@@ -12,6 +12,15 @@ describe('SetupController', () => {
     const input = {
       setupPassword: 'setup-password', email: 'ada@example.com', firstName: 'Ada', lastName: 'Lovelace', password: 'password123!',
       defaultLanguage: 'en' as const,
+      e2ee: {
+        organizationId: '00000000-0000-4000-8000-000000000001',
+        orkId: '00000000-0000-4000-8000-000000000003',
+        ockId: '00000000-0000-4000-8000-000000000004',
+        sharedPassphraseSlot: Buffer.alloc(96).toString('base64url'),
+        recoverySlot: Buffer.alloc(96).toString('base64url'),
+        contentKeyWrapper: Buffer.alloc(96).toString('base64url'),
+        custodyCopiesAcknowledged: 2 as const,
+      },
     };
 
     await expect(controller.installation()).resolves.toEqual({ setupRequired: true, defaultLanguage: null });

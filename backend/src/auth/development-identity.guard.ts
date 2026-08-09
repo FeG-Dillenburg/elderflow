@@ -30,6 +30,9 @@ export class DevelopmentIdentityGuard implements CanActivate {
       const session = this.sessions.verify(authorization.slice(7));
       user = await this.users.findOne({ where: { id: session.sub, archivedAt: IsNull() } });
       if (!user) throw codedHttpException(HttpStatus.UNAUTHORIZED, 'AUTH_USER_NOT_FOUND', 'Session user does not exist');
+      if (user.sessionVersion !== session.ver) {
+        throw codedHttpException(HttpStatus.UNAUTHORIZED, 'AUTH_SESSION_REVOKED', 'Session was revoked');
+      }
     } else {
       const environment = this.config.get<string>('NODE_ENV');
       const developmentBypass = this.config.get<boolean>('DEV_AUTH_BYPASS');

@@ -6,9 +6,9 @@ describe('SessionService', () => {
   const service = new SessionService(config as any);
 
   it('creates and verifies a signed, expiring session', () => {
-    const token = service.create('user-id');
+    const token = service.create('user-id', 3);
     expect(token.split('.')).toHaveLength(2);
-    expect(service.verify(token)).toEqual(expect.objectContaining({ sub: 'user-id', exp: expect.any(Number) }));
+    expect(service.verify(token)).toEqual(expect.objectContaining({ sub: 'user-id', ver: 3, exp: expect.any(Number) }));
   });
 
   it.each(['broken', 'payload.invalid-signature', 'payload.signature.extra'])('rejects invalid token %s', (token) => {
@@ -18,7 +18,7 @@ describe('SessionService', () => {
   it('rejects expired sessions', () => {
     const now = jest.spyOn(Date, 'now');
     now.mockReturnValue(1_000_000);
-    const token = service.create('user-id');
+    const token = service.create('user-id', 1);
     now.mockReturnValue(1_000_000 + 13 * 60 * 60 * 1000);
     expect(() => service.verify(token)).toThrow('Session expired');
     now.mockRestore();

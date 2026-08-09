@@ -38,11 +38,21 @@ export class UsersService {
   async update(id: string, input: UpdateUserDto): Promise<User> {
     const user = await this.usersRepository.findOneBy({ id });
     if (!user) throw codedHttpException(HttpStatus.NOT_FOUND, 'USER_NOT_FOUND', 'User not found');
+    const wasContentUser = this.isContentRole(user.role);
     const { password, ...fields } = input;
     Object.assign(user, fields);
+    const lostContentAuthorization = wasContentUser && !this.isContentRole(user.role);
+    if (lostContentAuthorization) user.sessionVersion = (user.sessionVersion ?? 1) + 1;
     if (password) user.passwordHash = await hash(password, 12);
     try {
-      return this.withoutPassword(await this.usersRepository.save(user));
+      const saved = this.withoutPassword(await this.usersRepository.save(user));
+      if (lostContentAuthorization) {
+        await this.dataSource.query(
+          'UPDATE "e2ee_client_epochs" SET "revoked_at" = now() WHERE "user_id" = $1 AND "revoked_at" IS NULL',
+          [user.id],
+        );
+      }
+      return saved;
     } catch (error) {
       if (error instanceof QueryFailedError && (error as QueryFailedError & { driverError?: { code?: string } }).driverError?.code === '23505') {
         throw codedHttpException(HttpStatus.CONFLICT, 'USER_EMAIL_CONFLICT', 'A user with this email already exists');
@@ -66,12 +76,20 @@ export class UsersService {
           UNION ALL SELECT 1 FROM "meeting_users" WHERE "user_id" = $1
           UNION ALL SELECT 1 FROM "topic_updates" WHERE "created_by_id" = $1
           UNION ALL SELECT 1 FROM "tasks" WHERE "assigned_to_id" = $1
+          UNION ALL SELECT 1 FROM "e2ee_key_state" WHERE "custody_acknowledged_by" = $1
+          UNION ALL SELECT 1 FROM "e2ee_client_epochs" WHERE "user_id" = $1
+          UNION ALL SELECT 1 FROM "e2ee_recovery_ceremonies" WHERE "initiator_id" = $1 OR "approver_id" = $1
         ) AS "referenced"`,
         [id],
       ) as Array<{ referenced: boolean }>;
 
       if (result?.referenced) {
         user.archivedAt = new Date();
+        user.sessionVersion = (user.sessionVersion ?? 1) + 1;
+        await manager.query(
+          'UPDATE "e2ee_client_epochs" SET "revoked_at" = now() WHERE "user_id" = $1 AND "revoked_at" IS NULL',
+          [user.id],
+        );
         await manager.save(User, user);
         return { action: 'archived' };
       }
@@ -91,5 +109,9 @@ export class UsersService {
   private withoutPassword(user: User): User {
     delete (user as Partial<User>).passwordHash;
     return user;
+  }
+
+  private isContentRole(role: User['role']): boolean {
+    return ['superadmin', 'admin', 'user'].includes(role);
   }
 }

@@ -2,6 +2,7 @@ import type { SupportedLanguage } from '../i18n/language';
 import { localizeApiError, type ApiErrorPayload } from '../i18n/api-errors';
 import { formatDate, translate } from '../i18n';
 import type { TopicType } from '../topics/topicTypes';
+import type { InitialKeyState, PublicKeyState, RecoveryKeyState } from '../e2ee/crypto';
 export type { TopicType } from '../topics/topicTypes';
 export type RecurrenceUnit = 'weeks' | 'months';
 export type AgendaAppearanceSource = 'manual' | 'recurrence';
@@ -31,6 +32,7 @@ export interface InitialUserInput {
   firstName: string;
   lastName: string;
   password: string;
+  e2ee: InitialKeyState;
 }
 
 export interface AgendaSection {
@@ -348,6 +350,15 @@ export const api = {
   login: (input: { email: string; password: string }) => request<{ token: string; user: AuthUser }>('/api/auth/login', { method: 'POST', body: JSON.stringify(input) }),
   me: () => request<AuthUser>('/api/auth/me'),
   updateProfile: (input: { email: string; firstName: string; lastName: string; language: SupportedLanguage | null; password?: string }) => request<AuthUser>('/api/auth/profile', { method: 'PATCH', body: JSON.stringify(input) }),
+  e2eeKeyState: () => request<PublicKeyState>('/api/e2ee/key-state'),
+  e2eeRecoveryMetadata: () => request<RecoveryKeyState>('/api/e2ee/recovery-metadata'),
+  registerE2eeClientEpoch: (input: { id: string; noncePrefix: string; signingPublicKey: string }) => request<{ registered: true }>('/api/e2ee/client-epochs', { method: 'POST', body: JSON.stringify(input) }),
+  revokeE2eeClientEpoch: (id: string) => request<void>(`/api/e2ee/client-epochs/${id}/revoke`, { method: 'POST' }),
+  startE2eeRecovery: (input: { expectedGeneration: number; candidateFingerprint: string; candidateSharedPassphraseSlot: string }) => request<{ id: string; state: string; expiresAt: string }>('/api/e2ee/recovery-ceremonies', { method: 'POST', body: JSON.stringify(input) }),
+  approveE2eeRecovery: (id: string, candidateFingerprint: string) => request<{ id: string; state: string; expiresAt: string }>(`/api/e2ee/recovery-ceremonies/${id}/approve`, { method: 'POST', body: JSON.stringify({ candidateFingerprint }) }),
+  e2eeRecoveryCeremony: (id: string) => request<{ id: string; state: string; expectedGeneration: number; candidateFingerprint: string; candidateSharedPassphraseSlot: string; expiresAt: string }>(`/api/e2ee/recovery-ceremonies/${id}`),
+  activateE2eeRecovery: (id: string) => request<{ activated: true; generation: number }>(`/api/e2ee/recovery-ceremonies/${id}/activate`, { method: 'POST' }),
+  abortE2eeRecovery: (id: string) => request<void>(`/api/e2ee/recovery-ceremonies/${id}/abort`, { method: 'POST' }),
   users: () => request<User[]>('/api/users'),
   userDirectory: () => request<User[]>('/api/user-directory'),
   dashboard: () => request<DashboardData>('/api/dashboard'),

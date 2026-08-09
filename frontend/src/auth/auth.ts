@@ -4,6 +4,7 @@ import { installation } from '../installation';
 import { setLanguage } from '../i18n';
 import { resolveEffectiveLanguage } from '../i18n/language';
 import { clearSessionToken, getSessionToken, setSessionToken } from './session';
+import { protectedText } from '../e2ee/protected-text';
 
 const state = reactive<{ user: AuthUser | null; ready: boolean }>({ user: null, ready: false });
 let initialization: Promise<void> | null = null;
@@ -15,7 +16,7 @@ export const auth = {
     if (state.ready) return;
     if (!initialization) {
       initialization = api.me()
-        .then((user) => { state.user = user; })
+        .then(async (user) => { state.user = user; await protectedText.offerUnlock(user); })
         .catch(() => { clearSessionToken(); state.user = null; })
         .finally(() => { state.ready = true; });
     }
@@ -32,8 +33,10 @@ export const auth = {
       installationDefault: installation.defaultLanguage,
       browserLanguages: navigator.languages,
     }));
+    await protectedText.offerUnlock(result.user);
   },
   logout(): void {
+    protectedText.lock('logout');
     clearSessionToken();
     state.user = null;
     state.ready = true;

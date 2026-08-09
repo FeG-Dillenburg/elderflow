@@ -28,13 +28,21 @@ describe('DevelopmentIdentityGuard', () => {
 
   it('authenticates a bearer session and attaches its active user', async () => {
     reflector.getAllAndOverride.mockReturnValueOnce(false).mockReturnValueOnce('topics');
-    sessions.verify.mockReturnValue({ sub: 'user-id' });
-    const user = { id: 'user-id', role: 'user' };
+    sessions.verify.mockReturnValue({ sub: 'user-id', ver: 2 });
+    const user = { id: 'user-id', role: 'user', sessionVersion: 2 };
     users.findOne.mockResolvedValue(user);
     const requestContext = context('POST', 'Bearer signed-token');
     await expect(guard.canActivate(requestContext)).resolves.toBe(true);
     expect(users.findOne).toHaveBeenCalledWith({ where: { id: 'user-id', archivedAt: IsNull() } });
     expect(requestContext.request.user).toBe(user);
+  });
+
+  it('rejects every application session issued before a key-state activation', async () => {
+    reflector.getAllAndOverride.mockReturnValueOnce(false);
+    sessions.verify.mockReturnValue({ sub: 'user-id', ver: 4 });
+    users.findOne.mockResolvedValue({ id: 'user-id', role: 'user', sessionVersion: 5 });
+
+    await expect(guard.canActivate(context('GET', 'Bearer old-token'))).rejects.toThrow('Session was revoked');
   });
 
   it('rejects missing authentication in production and unknown session users', async () => {

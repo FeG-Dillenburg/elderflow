@@ -153,6 +153,8 @@ describe("MeetingAgendaView", () => {
     ).toEqual(["b", "c", "d"]);
   });
   it("keeps standalone Updates separate from paired Meeting minutes", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-07-15T12:00:00Z"));
     const completedMeeting = structuredClone(meeting);
     completedMeeting.status = "completed";
     completedMeeting.agenda[0].topic.updates = [

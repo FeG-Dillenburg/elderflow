@@ -17,7 +17,7 @@ describe("UsersService", () => {
     save: jest.Mock;
     delete: jest.Mock;
   };
-  let dataSource: { transaction: jest.Mock };
+  let dataSource: { transaction: jest.Mock; query: jest.Mock };
 
   beforeEach(async () => {
     repository = {
@@ -34,6 +34,7 @@ describe("UsersService", () => {
     };
     dataSource = {
       transaction: jest.fn((operation) => operation(manager)),
+      query: jest.fn(),
     };
 
     const module = await Test.createTestingModule({
@@ -131,6 +132,25 @@ describe("UsersService", () => {
       repository.save.mockRejectedValue(error);
       await expect(service.create(input)).rejects.toBe(error);
     }
+  });
+
+  it("revokes application sessions and client epochs when a Content user loses authorization", async () => {
+    const user = { id: "user-id", role: "user", sessionVersion: 2 } as User;
+    repository.findOneBy.mockResolvedValue(user);
+    repository.save.mockResolvedValue(user);
+
+    await service.update(user.id, {
+      email: "guest@example.com",
+      firstName: "Grace",
+      lastName: "Guest",
+      role: "guest",
+    });
+
+    expect(user.sessionVersion).toBe(3);
+    expect(dataSource.query).toHaveBeenCalledWith(
+      expect.stringContaining('UPDATE "e2ee_client_epochs"'),
+      [user.id],
+    );
   });
 
   it("deletes a user that has no attached records", async () => {

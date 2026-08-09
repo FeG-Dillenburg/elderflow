@@ -6,6 +6,8 @@ import { auth } from "./auth/auth";
 import { roleLabel } from "./auth/roles";
 import router from "./router";
 import { useI18n } from "vue-i18n";
+import UnlockDialog from "./e2ee/UnlockDialog.vue";
+import { protectedText } from "./e2ee/protected-text";
 
 const { t } = useI18n();
 const navigation: Array<{
@@ -108,11 +110,47 @@ async function logout(): Promise<void> {
         >
           <i class="pi pi-sign-out" aria-hidden="true" />
         </button>
+        <RouterLink class="lock-button" to="/key-recovery">
+          {{ t("e2ee.recoveryAction") }}
+        </RouterLink>
       </div>
     </aside>
     <main class="main-content">
+      <div
+        v-if="protectedText.isEligible(auth.state.user)"
+        class="protected-text-status"
+      >
+        <span
+          class="status-indicator"
+          :class="`status-${protectedText.state.status}`"
+          role="status"
+        >
+          {{
+            protectedText.state.status === "unlocked"
+              ? t("e2ee.unlocked")
+              : t("e2ee.locked")
+          }}
+        </span>
+        <button
+          v-if="protectedText.isEligible(auth.state.user)"
+          type="button"
+          class="lock-button"
+          @click="
+            protectedText.state.status === 'unlocked'
+              ? protectedText.lock('explicit')
+              : protectedText.showUnlock()
+          "
+        >
+          {{
+            protectedText.state.status === "unlocked"
+              ? t("e2ee.lockAction")
+              : t("e2ee.unlockAction")
+          }}
+        </button>
+      </div>
       <RouterView />
     </main>
+    <UnlockDialog v-if="protectedText.isEligible(auth.state.user)" />
   </div>
   <RouterView v-else />
 </template>
@@ -260,6 +298,31 @@ nav {
 .main-content {
   min-width: 0;
   padding: 2.25rem;
+}
+
+.protected-text-status {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 0.65rem;
+  margin-bottom: 1rem;
+}
+
+.status-indicator {
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.status-unlocked {
+  color: #177245;
+}
+
+.lock-button {
+  border: 0;
+  background: transparent;
+  color: #334155;
+  text-decoration: underline;
+  cursor: pointer;
 }
 
 @media (max-width: 760px) {

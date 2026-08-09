@@ -13,6 +13,7 @@ import { TasksModule } from './tasks/tasks.module';
 import { TopicsModule } from './topics/topics.module';
 import { migrations } from './database/migrations';
 import { SetupModule } from './setup/setup.module';
+import { E2eeModule } from './e2ee/e2ee.module';
 
 @Module({
   imports: [
@@ -54,6 +55,7 @@ import { SetupModule } from './setup/setup.module';
     TasksModule,
     DashboardModule,
     SetupModule,
+    E2eeModule,
   ],
   controllers: [AppController],
   providers: [DatabaseService],

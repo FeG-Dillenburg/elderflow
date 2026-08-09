@@ -13,11 +13,13 @@ import {
 } from "../i18n/language";
 import { setLanguage } from "../i18n";
 import { installation } from "../installation";
+import { createInitialKeyState, type GeneratedInitialKeyState } from "../e2ee/crypto";
 
 type Stage =
   | "loading"
   | "password"
   | "user"
+  | "recovery"
   | "complete"
   | "already-setup"
   | "error";
@@ -30,9 +32,14 @@ const form = reactive({
   lastName: "",
   password: "",
   passwordConfirmation: "",
+  sharedPassphrase: "",
+  sharedPassphraseConfirmation: "",
 });
 const submitting = ref(false);
 const errorMessage = ref("");
+const generatedKeyState = ref<GeneratedInitialKeyState | null>(null);
+const firstCopyAcknowledged = ref(false);
+const secondCopyAcknowledged = ref(false);
 const defaultLanguage = ref<SupportedLanguage>(
   detectSupportedLanguage(navigator.languages) ?? "en",
 );
@@ -69,14 +76,34 @@ async function verifyPassword(): Promise<void> {
   }
 }
 
-async function createUser(): Promise<void> {
+async function prepareRecovery(): Promise<void> {
   errorMessage.value = "";
   if (form.password !== form.passwordConfirmation) {
     errorMessage.value = t("setup.passwordsMismatch");
     return;
   }
+  if (form.sharedPassphrase !== form.sharedPassphraseConfirmation) {
+    errorMessage.value = t("e2ee.passphrasesMismatch");
+    return;
+  }
 
   submitting.value = true;
+  try {
+    generatedKeyState.value = await createInitialKeyState(form.sharedPassphrase);
+    form.sharedPassphrase = "";
+    form.sharedPassphraseConfirmation = "";
+    stage.value = "recovery";
+  } catch {
+    errorMessage.value = t("e2ee.setupFailed");
+  } finally {
+    submitting.value = false;
+  }
+}
+
+async function createUser(): Promise<void> {
+  if (!generatedKeyState.value || !firstCopyAcknowledged.value || !secondCopyAcknowledged.value) return;
+  submitting.value = true;
+  errorMessage.value = "";
   try {
     await api.createInitialUser({
       setupPassword: setupPassword.value,
@@ -85,7 +112,9 @@ async function createUser(): Promise<void> {
       firstName: form.firstName,
       lastName: form.lastName,
       password: form.password,
+      e2ee: generatedKeyState.value.e2ee,
     });
+    generatedKeyState.value = null;
     installation.setupRequired = false;
     installation.defaultLanguage = defaultLanguage.value;
     stage.value = "complete";
@@ -95,6 +124,10 @@ async function createUser(): Promise<void> {
   } finally {
     submitting.value = false;
   }
+}
+
+function printRecovery(): void {
+  window.print();
 }
 </script>
 
@@ -150,6 +183,9 @@ async function createUser(): Promise<void> {
         <p v-else-if="stage === 'user'" class="description">
           {{ t("setup.userHelp") }}
         </p>
+        <p v-else-if="stage === 'recovery'" class="description">
+          {{ t("e2ee.recoverySetupDescription") }}
+        </p>
         <Message v-if="errorMessage" severity="error" :closable="false">
           {{ errorMessage }}
         </Message>
@@ -180,7 +216,7 @@ async function createUser(): Promise<void> {
         <form
           v-else-if="stage === 'user'"
           class="setup-form"
-          @submit.prevent="createUser"
+          @submit.prevent="prepareRecovery"
         >
           <label>
             <span>{{ t("setup.firstName") }}</span>
@@ -234,10 +270,62 @@ async function createUser(): Promise<void> {
               required
             />
           </label>
+          <label>
+            <span>{{ t("e2ee.sharedPassphrase") }}</span>
+            <Password
+              v-model="form.sharedPassphrase"
+              toggle-mask
+              autocomplete="new-password"
+              minlength="12"
+              required
+            />
+          </label>
+          <label>
+            <span>{{ t("e2ee.confirmSharedPassphrase") }}</span>
+            <Password
+              v-model="form.sharedPassphraseConfirmation"
+              :feedback="false"
+              toggle-mask
+              autocomplete="new-password"
+              minlength="12"
+              required
+            />
+          </label>
+          <Button
+            :label="t('e2ee.createRecoverySecret')"
+            type="submit"
+            :loading="submitting"
+          />
+        </form>
+
+        <form
+          v-else-if="stage === 'recovery' && generatedKeyState"
+          class="setup-form recovery-form"
+          @submit.prevent="createUser"
+        >
+          <p class="recovery-warning">{{ t("e2ee.recoveryWarning") }}</p>
+          <code class="recovery-secret" aria-live="polite">
+            {{ generatedKeyState.recoveryText }}
+          </code>
+          <Button
+            type="button"
+            severity="secondary"
+            :label="t('e2ee.printRecoverySecret')"
+            @click="printRecovery"
+          />
+          <label class="acknowledgement">
+            <input v-model="firstCopyAcknowledged" type="checkbox" />
+            <span>{{ t("e2ee.firstCopyAcknowledgement") }}</span>
+          </label>
+          <label class="acknowledgement">
+            <input v-model="secondCopyAcknowledged" type="checkbox" />
+            <span>{{ t("e2ee.secondCopyAcknowledgement") }}</span>
+          </label>
           <Button
             :label="t('setup.createSuperadmin')"
             type="submit"
             :loading="submitting"
+            :disabled="!firstCopyAcknowledged || !secondCopyAcknowledged"
           />
         </form>
       </template>
@@ -285,6 +373,31 @@ h1 {
 .setup-form label {
   display: grid;
   gap: 0.45rem;
+}
+
+.recovery-warning {
+  color: #9a3412;
+  font-weight: 700;
+}
+
+.recovery-secret {
+  overflow-wrap: anywhere;
+  padding: 1rem;
+  border: 1px dashed #64748b;
+  border-radius: 0.5rem;
+  background: #f8fafc;
+}
+
+.acknowledgement {
+  grid-template-columns: auto 1fr;
+  align-items: start;
+}
+
+@media print {
+  .setup-card > :not(.recovery-form),
+  .recovery-form > :not(.recovery-secret) {
+    display: none;
+  }
 }
 
 .language-field {
