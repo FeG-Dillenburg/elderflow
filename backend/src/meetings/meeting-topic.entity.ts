@@ -73,20 +73,29 @@ export class MeetingTopic {
   @Column({ name: 'deferred_at', type: 'timestamptz', nullable: true })
   deferredAt: Date | null;
 
-  @Column({ name: 'topic_name_snapshot', type: 'text', nullable: true })
-  topicNameSnapshot: string | null;
+  @Column({ name: 'topic_name_snapshot_envelope', type: 'bytea', nullable: true })
+  topicNameSnapshotEnvelope: Buffer | null;
+
+  @Column({ name: 'topic_name_snapshot_commit_revision', type: 'bigint', nullable: true })
+  topicNameSnapshotCommitRevision: string | null;
 
   @Column({ name: 'responsible_user_display_name_snapshot', type: 'text', nullable: true })
   responsibleUserDisplayNameSnapshot: string | null;
 
-  @Column({ name: 'membership_process_status_snapshot', type: 'text', nullable: true })
-  membershipProcessStatusSnapshot: string | null;
+  @Column({ name: 'membership_process_status_snapshot_envelope', type: 'bytea', nullable: true })
+  membershipProcessStatusSnapshotEnvelope: Buffer | null;
+
+  @Column({ name: 'membership_process_status_snapshot_commit_revision', type: 'bigint', nullable: true })
+  membershipProcessStatusSnapshotCommitRevision: string | null;
 
   @Column({ name: 'membership_status_signal_snapshot', type: 'text', nullable: true })
   membershipStatusSignalSnapshot: string | null;
 
-  @Column({ name: 'godparents_snapshot', type: 'text', nullable: true })
-  godparentsSnapshot: string | null;
+  @Column({ name: 'godparents_snapshot_envelope', type: 'bytea', nullable: true })
+  godparentsSnapshotEnvelope: Buffer | null;
+
+  @Column({ name: 'godparents_snapshot_commit_revision', type: 'bigint', nullable: true })
+  godparentsSnapshotCommitRevision: string | null;
 
   preparationContext?: VersionedMeetingText | null;
 

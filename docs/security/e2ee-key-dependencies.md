@@ -10,3 +10,5 @@ Issue #48 introduces two pinned runtime dependencies in both the browser and Nod
 `@types/libsodium-wrappers-sumo@0.7.8` is a development-only declaration package. No hosted service, paid feature, Secsync runtime, or proprietary cryptographic implementation was introduced.
 
 The lockfile is authoritative for transitive versions and integrity hashes. The project intentionally refused package build scripts during installation; the selected paths do not depend on them.
+
+Issue #49 reuses these exact pinned libraries for the production Topic scalar codec and backend relay validator. It adds no runtime dependency: `libsodium-wrappers-sumo` supplies scalar HKDF/AEAD/signing and signature verification, while `cbor-x` supplies the canonical array-only encoding. The compatibility, bundle, licensing, and upgrade constraints above therefore remain the dependency review for the Topic slice.

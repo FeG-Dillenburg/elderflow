@@ -29,8 +29,12 @@ import {
 } from "../api/domain";
 import { useI18n } from "vue-i18n";
 import { dateInputFormat, formatDate } from "../i18n";
+import { protectedText } from "../e2ee/protected-text";
 
 const canManage = computed(() => !auth.state.user || auth.canManage("topics"));
+const canEditProtected = computed(
+  () => canManage.value && protectedText.state.status === "unlocked",
+);
 const { t } = useI18n();
 
 const route = useRoute();
@@ -138,6 +142,7 @@ onMounted(load);
             icon="pi pi-pencil"
             :label="t('topicDetail.edit')"
             text
+            :disabled="!canEditProtected"
             @click="editVisible = true"
           />
           <Button
@@ -163,7 +168,7 @@ onMounted(load);
                 {{ t("topicDetail.entries", { count: history.length }) }}
               </span>
             </div>
-            <div v-if="canManage" class="new-update">
+            <div v-if="canEditProtected" class="new-update">
               <RichTextEditor v-model="updateText" height="120px" />
               <Button
                 :disabled="!updateText"
@@ -172,6 +177,9 @@ onMounted(load);
                 @click="addUpdate"
               />
             </div>
+            <Message v-else-if="canManage" severity="secondary">
+              {{ t("topics.unlockToEdit") }}
+            </Message>
             <TopicHistoryTimeline
               :current-topic-name="topic.name"
               :entries="history"
@@ -233,7 +241,7 @@ onMounted(load);
       </div>
     </template>
     <TopicEditDialog
-      v-if="topic && canManage"
+      v-if="topic && canEditProtected"
       v-model:visible="editVisible"
       :sections="sections"
       :topic="topic"

@@ -39,11 +39,17 @@ export class Topic {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ type: 'text' })
-  name: string;
+  @Column({ name: 'name_envelope', type: 'bytea' })
+  nameEnvelope: Buffer;
 
-  @Column({ type: 'text', nullable: true })
-  description: string | null;
+  @Column({ name: 'name_commit_revision', type: 'bigint', default: 1 })
+  nameCommitRevision: string;
+
+  @Column({ name: 'description_envelope', type: 'bytea' })
+  descriptionEnvelope: Buffer;
+
+  @Column({ name: 'description_commit_revision', type: 'bigint', default: 1 })
+  descriptionCommitRevision: string;
 
   @Column({ type: 'text' })
   type: TopicType;
@@ -57,14 +63,20 @@ export class Topic {
   @Column({ name: 'responsible_user_id', type: 'uuid', nullable: true })
   responsibleUserId: string | null;
 
-  @Column({ name: 'membership_process_status', type: 'text', nullable: true })
-  membershipProcessStatus: string | null;
+  @Column({ name: 'membership_process_status_envelope', type: 'bytea' })
+  membershipProcessStatusEnvelope: Buffer;
+
+  @Column({ name: 'membership_process_status_commit_revision', type: 'bigint', default: 1 })
+  membershipProcessStatusCommitRevision: string;
 
   @Column({ name: 'membership_status_signal', type: 'text', nullable: true })
   membershipStatusSignal: MembershipStatusSignal | null;
 
-  @Column({ type: 'text', nullable: true })
-  godparents: string | null;
+  @Column({ name: 'godparents_envelope', type: 'bytea' })
+  godparentsEnvelope: Buffer;
+
+  @Column({ name: 'godparents_commit_revision', type: 'bigint', default: 1 })
+  godparentsCommitRevision: string;
 
   @ManyToOne(() => User, { nullable: true, onDelete: 'SET NULL' })
   @JoinColumn({ name: 'responsible_user_id' })

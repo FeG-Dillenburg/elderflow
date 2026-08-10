@@ -66,7 +66,7 @@ describe("TopicEditDialog", () => {
     expect(wrapper.emitted("update:visible")?.[0]).toEqual([false]);
   });
 
-  it("repopulates all fields on prop changes and saves structural fields while Protected text is unavailable", async () => {
+  it("repopulates all fields on prop changes and sends plaintext only to the local encryption boundary", async () => {
     vi.spyOn(api, "updateTopic").mockResolvedValue({} as any);
     const wrapper = mount(TopicEditDialog, {
       shallow: true,
@@ -96,9 +96,9 @@ describe("TopicEditDialog", () => {
         defaultPosition: null,
       }),
     );
-    expect(api.updateTopic).not.toHaveBeenCalledWith(
+    expect(api.updateTopic).toHaveBeenCalledWith(
       "topic",
-      expect.objectContaining({ name: expect.anything() }),
+      expect.objectContaining({ name: "New", description: "Text" }),
     );
     expect(wrapper.emitted("saved")).toHaveLength(1);
     expect(wrapper.emitted("update:visible")?.[0]).toEqual([false]);
@@ -149,9 +149,9 @@ describe("TopicEditDialog", () => {
       "topic",
       expect.objectContaining({ type: "person" }),
     );
-    expect(api.updateTopic).not.toHaveBeenCalledWith(
+    expect(api.updateTopic).toHaveBeenCalledWith(
       "topic",
-      expect.objectContaining({ name: expect.anything() }),
+      expect.objectContaining({ name: "Alex and Sam" }),
     );
   });
 

@@ -11,6 +11,7 @@ describe("TasksService", () => {
     findOneBy: jest.fn(),
   };
   const service = new TasksService(repository as any);
+  const viewer = { id: "viewer", role: "user" } as any;
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -23,7 +24,7 @@ describe("TasksService", () => {
     "uses active task statuses for %s",
     async (status) => {
       repository.find.mockResolvedValue([]);
-      await service.findAll({ status });
+      await service.findAll({ status }, viewer);
       expect(repository.find).toHaveBeenCalledWith(
         expect.objectContaining({
           where: expect.objectContaining({
@@ -44,7 +45,7 @@ describe("TasksService", () => {
       topicId: "topic",
       meetingId: "meeting",
       dueOn: "2026-07-20",
-    });
+    }, viewer);
     expect(repository.find).toHaveBeenCalledWith(
       expect.objectContaining({
         where: {
@@ -60,12 +61,29 @@ describe("TasksService", () => {
 
   it("uses strict today comparison for overdue and gives it precedence", async () => {
     repository.find.mockResolvedValue([]);
-    await service.findAll({ overdue: true, dueOn: "2026-07-20" });
+    await service.findAll({ overdue: true, dueOn: "2026-07-20" }, viewer);
     expect(repository.find).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({ dueDate: LessThan("2026-07-15") }),
       }),
     );
+  });
+
+  it("withholds nested Topic ciphertext from a Guest task projection", async () => {
+    repository.find.mockResolvedValue([{
+      id: "task",
+      topic: {
+        id: "topic",
+        nameEnvelope: Buffer.from([1]),
+        descriptionEnvelope: Buffer.from([2]),
+        membershipProcessStatusEnvelope: Buffer.from([3]),
+        godparentsEnvelope: Buffer.from([4]),
+      },
+    }]);
+
+    const result = await service.findAll({}, { id: "guest", role: "guest" } as any);
+    expect(result[0].topic).toMatchObject({ id: "topic", protected: null });
+    expect(JSON.stringify(result)).not.toContain("nameEnvelope");
   });
 
   it("creates and saves tasks", async () => {

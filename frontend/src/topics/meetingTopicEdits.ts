@@ -2,6 +2,7 @@ import {
   api,
   type MeetingAppearanceTexts,
   type MeetingTopic,
+  type StructuralTopicFieldPatch,
   type Topic,
   type TopicFieldPatch,
 } from "../api/domain";
@@ -59,7 +60,29 @@ export const saveMeetingMinutes =
 export const saveMeetingTopicField =
   (meetingId: string, item: MeetingTopic) =>
   async (patch: TopicFieldPatch): Promise<Topic> => {
-    const saved = await api.updateMeetingTopicFields(meetingId, item.id, patch);
+    const structuralPatch: StructuralTopicFieldPatch = {};
+    if (patch.responsibleUserId !== undefined) {
+      structuralPatch.responsibleUserId = patch.responsibleUserId;
+    }
+    if (patch.membershipStatusSignal !== undefined) {
+      structuralPatch.membershipStatusSignal = patch.membershipStatusSignal;
+    }
+    const protectedPatch: Partial<TopicFieldPatch> = {};
+    if (patch.membershipProcessStatus !== undefined) {
+      protectedPatch.membershipProcessStatus = patch.membershipProcessStatus;
+    }
+    if (patch.godparents !== undefined) {
+      protectedPatch.godparents = patch.godparents;
+    }
+
+    const hasStructuralFields = Object.keys(structuralPatch).length > 0;
+    const hasProtectedFields = Object.keys(protectedPatch).length > 0;
+    let saved = hasStructuralFields || !hasProtectedFields
+      ? await api.updateMeetingTopicFields(meetingId, item.id, structuralPatch)
+      : await api.updateTopic(item.topicId, protectedPatch);
+    if (hasStructuralFields && hasProtectedFields) {
+      saved = await api.updateTopic(item.topicId, protectedPatch);
+    }
     if (item.topic) Object.assign(item.topic, saved);
     return saved;
   };

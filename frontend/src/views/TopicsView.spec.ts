@@ -29,21 +29,19 @@ describe("TopicsView", () => {
     await flushPromises();
     return wrapper;
   };
-  it("loads initial filters and converts local due-date filters", async () => {
+  it("loads once and applies structural and due-date filters locally", async () => {
     const wrapper = await view();
     const vm: any = wrapper.vm;
-    expect(api.topics).toHaveBeenCalledWith({
-      status: "active",
-      type: "",
-      responsibleUserId: "",
-      defaultSectionId: "",
-      dueOn: undefined,
-    });
+    expect(api.topics).toHaveBeenCalledWith();
+    vm.topics = [
+      { id: "due", name: "Due", status: "open", type: "generic", followUpDate: "2026-07-15" },
+      { id: "late", name: "Late", status: "open", type: "generic", followUpDate: "2026-07-16" },
+      { id: "done", name: "Done", status: "done", type: "generic", followUpDate: "2026-07-14" },
+    ];
     vm.filters.dueOn = new Date(2026, 6, 15);
-    await vm.load();
-    expect(api.topics).toHaveBeenLastCalledWith(
-      expect.objectContaining({ dueOn: "2026-07-15" }),
-    );
+    await wrapper.vm.$nextTick();
+    expect(vm.visibleTopics.map((topic: any) => topic.id)).toEqual(["due"]);
+    expect(api.topics).toHaveBeenCalledTimes(1);
   });
   it("resets stale form data when opening and creates a converted TopicInput", async () => {
     const wrapper = await view();

@@ -4,6 +4,7 @@ import {
   DefaultValuePipe,
   Delete,
   Get,
+  Header,
   Param,
   ParseBoolPipe,
   ParseUUIDPipe,
@@ -25,7 +26,6 @@ import { MeetingAppearanceTexts, MeetingTopic } from './meeting-topic.entity';
 import { MeetingUser } from './meeting-user.entity';
 import { Meeting } from './meeting.entity';
 import { MeetingDetail, MeetingsService } from './meetings.service';
-import { Topic } from '../topics/topic.entity';
 import { Permission } from '../auth/permissions';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { User } from '../users/user.entity';
@@ -41,22 +41,32 @@ export class MeetingsController {
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: User,
   ): Promise<Meeting> { return this.service.complete(id, user); }
-  @Get(':id') findOne(@Param('id', ParseUUIDPipe) id: string): Promise<MeetingDetail> { return this.service.findOne(id); }
+  @Get(':id')
+  @Header('Cache-Control', 'no-store')
+  findOne(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: User) { return this.service.findOne(id, user); }
   @Put(':id') update(@Param('id', ParseUUIDPipe) id: string, @Body() input: MeetingUpdateDto): Promise<Meeting> { return this.service.update(id, input); }
-  @Get(':id/suggestions') suggestions(
+  @Get(':id/suggestions')
+  @Header('Cache-Control', 'no-store')
+  suggestions(
+    @CurrentUser() user: User,
     @Param('id', ParseUUIDPipe) id: string,
     @Query('future', new DefaultValuePipe(false), ParseBoolPipe) future: boolean,
-  ): Promise<Topic[]> { return this.service.suggestions(id, future); }
+  ) { return this.service.suggestions(id, future, user); }
   @Post(':id/participants') addParticipant(@Param('id', ParseUUIDPipe) id: string, @Body() input: MeetingParticipantDto): Promise<MeetingUser> { return this.service.addParticipant(id, input); }
   @Delete(':id/participants/:userId') removeParticipant(@Param('id', ParseUUIDPipe) id: string, @Param('userId', ParseUUIDPipe) userId: string): Promise<void> { return this.service.removeParticipant(id, userId); }
   @Post(':id/topics') addTopic(@Param('id', ParseUUIDPipe) id: string, @Body() input: MeetingTopicDto): Promise<MeetingTopic> { return this.service.addTopic(id, input); }
   @Put(':id/topics/order') reorderTopics(@Param('id', ParseUUIDPipe) id: string, @Body() input: ReorderMeetingTopicsDto): Promise<MeetingTopic[]> { return this.service.reorderTopics(id, input.items); }
   @Put(':id/topics/:itemId') updateTopic(@Param('id', ParseUUIDPipe) id: string, @Param('itemId', ParseUUIDPipe) itemId: string, @Body() input: UpdateMeetingTopicDto): Promise<MeetingTopic> { return this.service.updateTopic(id, itemId, input); }
-  @Put(':id/topics/:itemId/fields') updateTopicFields(
+  @Put(':id/topics/:itemId/fields')
+  @Header('Cache-Control', 'no-store')
+  updateTopicFields(
+    @CurrentUser() user: User,
     @Param('id', ParseUUIDPipe) id: string,
     @Param('itemId', ParseUUIDPipe) itemId: string,
     @Body() input: UpdateTopicFieldsDto,
-  ): Promise<Topic> { return this.service.updateTopicFields(id, itemId, input); }
+  ) {
+    return this.service.updateTopicFields(id, itemId, input, user);
+  }
   @Put(':id/topics/:itemId/preparation-context') updatePreparationContext(
     @Param('id', ParseUUIDPipe) id: string,
     @Param('itemId', ParseUUIDPipe) itemId: string,

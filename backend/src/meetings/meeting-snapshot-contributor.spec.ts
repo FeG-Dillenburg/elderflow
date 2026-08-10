@@ -6,13 +6,7 @@ import {
 
 declare module './meeting-snapshot-contributor' {
   interface MeetingTopicTypeSnapshotFields {
-    membershipProcessStatusSnapshot: string | null;
-  }
-}
-
-declare module './meeting-topic.entity' {
-  interface MeetingTopic {
-    membershipProcessStatusSnapshot: string | null;
+    membershipStatusSignalSnapshot: string | null;
   }
 }
 
@@ -20,10 +14,10 @@ describe('MeetingSnapshotRegistry', () => {
   it('applies only registered, persisted type-specific snapshot keys', async () => {
     const registry = new MeetingSnapshotRegistry();
     const contributor = {
-      keys: ['membershipProcessStatusSnapshot'] as const,
+      keys: ['membershipStatusSignalSnapshot'] as const,
       snapshot: jest.fn().mockResolvedValue({
-        membershipProcessStatusSnapshot: 'Nearly ready',
-      } satisfies Pick<MeetingTopicTypeSnapshotFields, 'membershipProcessStatusSnapshot'>),
+        membershipStatusSignalSnapshot: 'nearly_finished',
+      } satisfies Pick<MeetingTopicTypeSnapshotFields, 'membershipStatusSignalSnapshot'>),
     };
     registry.register(contributor);
     const appearance = {} as MeetingTopic;
@@ -32,7 +26,7 @@ describe('MeetingSnapshotRegistry', () => {
 
     await registry.apply(appearance, topic, manager);
 
-    expect(appearance.membershipProcessStatusSnapshot).toBe('Nearly ready');
+    expect(appearance.membershipStatusSignalSnapshot).toBe('nearly_finished');
     expect(contributor.snapshot).toHaveBeenCalledWith(appearance, topic, manager);
   });
 });

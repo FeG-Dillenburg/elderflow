@@ -28,8 +28,12 @@ import { auth } from "../auth/auth";
 import { assignableUsers } from "../auth/roles";
 import { useI18n } from "vue-i18n";
 import { dateInputFormat, formatDate } from "../i18n";
+import { protectedText } from "../e2ee/protected-text";
 
 const canManage = computed(() => !auth.state.user || auth.canManage("topics"));
+const canEditProtected = computed(
+  () => canManage.value && protectedText.state.status === "unlocked",
+);
 const { t } = useI18n();
 const topicTypes = computed(() =>
   canonicalTopicTypes.map((value) => ({ value, label: t(`topicTypes.${value}`) })),
@@ -49,12 +53,37 @@ const topics = ref<Topic[]>([]),
   saving = ref(false),
   error = ref("");
 const responsibleUserOptions = computed(() => assignableUsers(users.value));
+const visibleTopics = computed(() => {
+  const needle = filters.search.trim().toLocaleLowerCase();
+  const dueOn = toLocalDate(filters.dueOn);
+  const filtered = topics.value.filter((topic) => {
+    if (filters.status === "active"
+      ? !["open", "deferred"].includes(topic.status)
+      : topic.status !== filters.status) return false;
+    if (filters.type && topic.type !== filters.type) return false;
+    if (filters.responsibleUserId && topic.responsibleUserId !== filters.responsibleUserId) return false;
+    if (filters.defaultSectionId && topic.defaultSectionId !== filters.defaultSectionId) return false;
+    const dueDate = topic.type === "recurring" ? topic.nextDueDate : topic.followUpDate;
+    if (dueOn && (!dueDate || dueDate > dueOn)) return false;
+    return !needle || [
+        topic.name,
+        topic.description,
+        topic.membershipProcessStatus,
+        topic.godparents,
+      ].some((value) => value?.toLocaleLowerCase().includes(needle));
+  });
+  return [...filtered].sort((left, right) => filters.sort === "name"
+    ? left.name.localeCompare(right.name)
+    : right.updatedAt.localeCompare(left.updatedAt));
+});
 const filters = reactive({
   status: "active",
   type: "",
   responsibleUserId: "",
   defaultSectionId: "",
   dueOn: null as Date | null,
+  search: "",
+  sort: "updated" as "updated" | "name",
 });
 const empty = () => ({
   name: "",
@@ -77,13 +106,7 @@ const load = async () => {
   loading.value = true;
   try {
     [topics.value, users.value, sections.value] = await Promise.all([
-      api.topics({
-        status: filters.status,
-        type: filters.type,
-        responsibleUserId: filters.responsibleUserId,
-        defaultSectionId: filters.defaultSectionId,
-        dueOn: toLocalDate(filters.dueOn) ?? undefined,
-      }),
+      api.topics(),
       api.userDirectory(),
       api.sections(),
     ]);
@@ -127,16 +150,36 @@ onMounted(load);
         v-if="canManage"
         :label="t('topics.new')"
         icon="pi pi-plus"
+        :disabled="!canEditProtected"
+        :aria-describedby="!canEditProtected ? 'topics-locked-help' : undefined"
         @click="open"
       />
     </header>
+    <p v-if="canManage && !canEditProtected" id="topics-locked-help" class="locked-help">
+      {{ t("topics.unlockToEdit") }}
+    </p>
     <div class="filters">
+      <InputText
+        v-model="filters.search"
+        :aria-label="t('topics.searchProtected')"
+        :placeholder="t('topics.searchProtected')"
+        :disabled="protectedText.state.status !== 'unlocked'"
+      />
+      <Select
+        v-model="filters.sort"
+        :options="[
+          { value: 'updated', label: t('topics.sortUpdated') },
+          { value: 'name', label: t('topics.sortName') },
+        ]"
+        option-label="label"
+        option-value="value"
+        :aria-label="t('topics.sort')"
+      />
       <Select
         v-model="filters.status"
         :options="statusOptions"
         option-label="label"
         option-value="value"
-        @change="load"
       />
       <Select
         v-model="filters.type"
@@ -145,7 +188,6 @@ onMounted(load);
         option-value="value"
         show-clear
         :placeholder="t('topics.allTypes')"
-        @change="load"
       />
       <Select
         v-model="filters.defaultSectionId"
@@ -154,7 +196,6 @@ onMounted(load);
         option-value="id"
         show-clear
         :placeholder="t('topics.allSections')"
-        @change="load"
       />
       <Select
         v-model="filters.responsibleUserId"
@@ -163,7 +204,6 @@ onMounted(load);
         option-value="id"
         show-clear
         :placeholder="t('topics.allResponsible')"
-        @change="load"
       >
         <template #option="{ option }">{{ formatUser(option) }}</template>
       </Select>
@@ -172,12 +212,11 @@ onMounted(load);
         :date-format="dateInputFormat()"
         show-button-bar
         :placeholder="t('topics.followUpDueBy')"
-        @value-change="load"
       />
     </div>
     <Message v-if="error" severity="error">{{ error }}</Message>
     <div class="table-card">
-      <DataTable :value="topics" :loading="loading" data-key="id">
+      <DataTable :value="visibleTopics" :loading="loading" data-key="id">
         <Column :header="t('common.topic')">
           <template #body="{ data }">
             <TopicTypeRenderer

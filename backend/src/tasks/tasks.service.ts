@@ -4,19 +4,21 @@ import { FindOptionsWhere, In, LessThan, LessThanOrEqual, Repository } from 'typ
 import { TaskDto, TaskUpdateDto } from './dto/task.dto';
 import { Task } from './task.entity';
 import { codedHttpException } from '../errors/coded-http.exception';
+import { User } from '../users/user.entity';
+import { TaskResponse, taskResponse } from './task-response';
 
 @Injectable()
 export class TasksService {
   constructor(@InjectRepository(Task) private readonly tasks: Repository<Task>) {}
 
-  findAll(filters: {
+  async findAll(filters: {
     status?: string;
     assignedToId?: string;
     topicId?: string;
     meetingId?: string;
     overdue?: boolean;
     dueOn?: string;
-  }): Promise<Task[]> {
+  }, user: User): Promise<TaskResponse[]> {
     const where: FindOptionsWhere<Task> = {};
     where.status = filters.status === 'open' || !filters.status ? In(['open', 'in_progress']) : filters.status;
     if (filters.assignedToId) where.assignedToId = filters.assignedToId;
@@ -24,11 +26,12 @@ export class TasksService {
     if (filters.meetingId) where.meetingId = filters.meetingId;
     if (filters.overdue) where.dueDate = LessThan(new Date().toISOString().slice(0, 10));
     else if (filters.dueOn) where.dueDate = LessThanOrEqual(filters.dueOn);
-    return this.tasks.find({
+    const tasks = await this.tasks.find({
       where,
       relations: { topic: true, meeting: true, assignedTo: true },
       order: { dueDate: 'ASC', createdAt: 'DESC' },
     });
+    return tasks.map((task) => taskResponse(task, user));
   }
 
   create(input: TaskDto): Promise<Task> {

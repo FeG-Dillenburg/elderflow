@@ -5,13 +5,15 @@ import { Meeting } from '../meetings/meeting.entity';
 import { Task } from '../tasks/task.entity';
 import { Topic } from '../topics/topic.entity';
 import { User } from '../users/user.entity';
+import { TopicResponse, topicResponse } from '../topics/topic-response';
+import { TaskResponse, taskResponse } from '../tasks/task-response';
 
 export interface DashboardData {
   nextMeeting: Meeting | null;
-  myOpenTasks: Task[];
-  overdueTasks: Task[];
-  followUpTopics: Topic[];
-  recentTopics: Topic[];
+  myOpenTasks: TaskResponse[];
+  overdueTasks: TaskResponse[];
+  followUpTopics: TopicResponse[];
+  recentTopics: TopicResponse[];
 }
 
 @Injectable()
@@ -47,6 +49,12 @@ export class DashboardService {
         order: { updatedAt: 'DESC' }, take: 8,
       }),
     ]);
-    return { nextMeeting, myOpenTasks, overdueTasks, followUpTopics, recentTopics };
+    return {
+      nextMeeting,
+      myOpenTasks: myOpenTasks.map((task) => taskResponse(task, user)),
+      overdueTasks: overdueTasks.map((task) => taskResponse(task, user)),
+      followUpTopics: followUpTopics.map((topic) => topicResponse(topic, user)),
+      recentTopics: recentTopics.map((topic) => topicResponse(topic, user)),
+    };
   }
 }

@@ -11,6 +11,7 @@ import { TopicsService } from '../src/topics/topics.service';
 import { User } from '../src/users/user.entity';
 import { RecurrenceService } from '../src/recurrence/recurrence.service';
 import { SkippedRecurrence } from '../src/recurrence/skipped-recurrence.entity';
+import { E2eeScalarService } from '../src/e2ee/e2ee-scalar.service';
 
 const databaseUrl = process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL;
 const describeWithPostgres = databaseUrl ? describe : describe.skip;
@@ -20,6 +21,15 @@ describeWithPostgres('Topics with PostgreSQL (integration)', () => {
   let admin: DataSource;
   let database: DataSource;
   let service: TopicsService;
+  const viewer = { id: '00000000-0000-4000-8000-000000000099', role: 'user' } as User;
+  const scalars = {
+    assertContentUser: jest.fn(),
+    validateWrite: jest.fn(async (_manager, _user, context) => ({
+      envelope: Buffer.from([context.fieldId]),
+      commitRevision: '1',
+      duplicate: false,
+    })),
+  } as unknown as E2eeScalarService;
 
   beforeAll(async () => {
     admin = new DataSource({ type: 'postgres', url: databaseUrl });
@@ -38,6 +48,7 @@ describeWithPostgres('Topics with PostgreSQL (integration)', () => {
       database.getRepository(TopicUpdate),
       database.getRepository(MeetingTopic),
       new RecurrenceService(),
+      scalars,
     );
   });
 
@@ -51,8 +62,14 @@ describeWithPostgres('Topics with PostgreSQL (integration)', () => {
 
   it('updates a Topic whose optional relations are not assigned', async () => {
     const topic = await database.getRepository(Topic).save({
-      name: 'Original topic',
-      description: null,
+      nameEnvelope: Buffer.from([1]),
+      nameCommitRevision: '1',
+      descriptionEnvelope: Buffer.from([2]),
+      descriptionCommitRevision: '1',
+      membershipProcessStatusEnvelope: Buffer.from([3]),
+      membershipProcessStatusCommitRevision: '1',
+      godparentsEnvelope: Buffer.from([4]),
+      godparentsCommitRevision: '1',
       type: 'generic',
       status: 'open',
       followUpDate: null,
@@ -64,10 +81,14 @@ describeWithPostgres('Topics with PostgreSQL (integration)', () => {
       recurrenceUnit: null,
     });
 
-    await expect(service.update(topic.id, { name: 'Updated topic' }))
-      .resolves.toMatchObject({ name: 'Updated topic' });
-    await expect(service.findOne(topic.id))
-      .resolves.toMatchObject({ name: 'Updated topic' });
+    await expect(service.update(topic.id, {
+      protected: { nameEnvelope: 'opaque' },
+    } as any, viewer)).resolves.toMatchObject({
+      protected: expect.objectContaining({ nameEnvelope: 'AQ' }),
+    });
+    await expect(service.findOne(topic.id, viewer)).resolves.toMatchObject({
+      protected: expect.objectContaining({ nameEnvelope: 'AQ' }),
+    });
   });
 
   it('persists the first eligible automatic appearance when a Recurring Topic is created', async () => {
@@ -88,8 +109,7 @@ describeWithPostgres('Topics with PostgreSQL (integration)', () => {
     });
 
     const topic = await service.create({
-      name: 'Quarterly review',
-      description: 'Use this preparation checklist',
+      id: '00000000-0000-4000-8000-000000000010',
       type: 'recurring',
       status: 'open',
       followUpDate: null,
@@ -99,14 +119,20 @@ describeWithPostgres('Topics with PostgreSQL (integration)', () => {
       recurrenceFirstDueDate: '2026-08-01',
       recurrenceInterval: 3,
       recurrenceUnit: 'months',
-    });
+      protected: {
+        nameEnvelope: 'one',
+        descriptionEnvelope: 'two',
+        membershipProcessStatusEnvelope: 'three',
+        godparentsEnvelope: 'four',
+      },
+    } as any, viewer);
 
     await expect(database.getRepository(MeetingTopic).findOneByOrFail({
       meetingId: meeting.id,
       topicId: topic.id,
     })).resolves.toMatchObject({
       source: 'recurrence',
-      agendaNote: 'Use this preparation checklist',
+      agendaNote: null,
       noteEditedAt: null,
     });
   });

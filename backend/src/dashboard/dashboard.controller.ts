@@ -1,4 +1,4 @@
-import { Controller, Get } from '@nestjs/common';
+import { Controller, Get, Header } from '@nestjs/common';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { User } from '../users/user.entity';
 import { DashboardData, DashboardService } from './dashboard.service';
@@ -8,5 +8,7 @@ import { Permission } from '../auth/permissions';
 @Permission('dashboard')
 export class DashboardController {
   constructor(private readonly service: DashboardService) {}
-  @Get() get(@CurrentUser() user: User): Promise<DashboardData> { return this.service.get(user); }
+  @Get()
+  @Header('Cache-Control', 'no-store')
+  get(@CurrentUser() user: User): Promise<DashboardData> { return this.service.get(user); }
 }

@@ -9,24 +9,17 @@ import { Topic } from './topic.entity';
 
 declare module '../meetings/meeting-snapshot-contributor' {
   interface MeetingTopicTypeSnapshotFields {
-    membershipProcessStatusSnapshot: string | null;
     membershipStatusSignalSnapshot: string | null;
-    godparentsSnapshot: string | null;
   }
 }
 
-type MembershipSnapshotKey =
-  | 'membershipProcessStatusSnapshot'
-  | 'membershipStatusSignalSnapshot'
-  | 'godparentsSnapshot';
+type MembershipSnapshotKey = 'membershipStatusSignalSnapshot';
 
 @Injectable()
 export class NewMembershipSnapshotContributor
   implements MeetingSnapshotContributor<MembershipSnapshotKey>, OnModuleInit {
   readonly keys = [
-    'membershipProcessStatusSnapshot',
     'membershipStatusSignalSnapshot',
-    'godparentsSnapshot',
   ] as const;
 
   constructor(private readonly registry: MeetingSnapshotRegistry) {}
@@ -42,15 +35,11 @@ export class NewMembershipSnapshotContributor
   ) {
     if (topic.type !== 'new_membership') {
       return {
-        membershipProcessStatusSnapshot: null,
         membershipStatusSignalSnapshot: null,
-        godparentsSnapshot: null,
       };
     }
     return {
-      membershipProcessStatusSnapshot: topic.membershipProcessStatus,
       membershipStatusSignalSnapshot: topic.membershipStatusSignal,
-      godparentsSnapshot: topic.godparents,
     };
   }
 }

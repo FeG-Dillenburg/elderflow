@@ -25,8 +25,14 @@ export class TopicUpdate {
   @Column({ type: 'timestamptz', default: () => 'CURRENT_TIMESTAMP' })
   date: Date;
 
-  @Column({ type: 'text' })
-  text: string;
+  @Column({ name: 'text_envelope', type: 'bytea', nullable: true })
+  textEnvelope: Buffer | null;
+
+  @Column({ name: 'text_commit_revision', type: 'bigint', nullable: true })
+  textCommitRevision: string | null;
+
+  @Column({ name: 'meeting_text', type: 'text', nullable: true })
+  meetingText: string | null;
 
   @Column({ type: 'text', default: 'update' })
   type: string;

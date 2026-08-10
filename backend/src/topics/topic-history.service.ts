@@ -16,6 +16,7 @@ import {
   TopicHistoryTopicDisplay,
 } from './topic-history';
 import { TopicUpdate } from './topic-update.entity';
+import { isE2eeKeyOperator } from '../e2ee/e2ee-role-policy';
 
 type TimedHistoryEntry = TopicHistoryEntry & { sortTime: number };
 
@@ -28,7 +29,7 @@ export class TopicHistoryService {
     @InjectRepository(SkippedRecurrence) private readonly skippedRecurrences: Repository<SkippedRecurrence>,
   ) {}
 
-  async getHistory(topicId: string): Promise<TopicHistoryEntry[]> {
+  async getHistory(topicId: string, viewer: User): Promise<TopicHistoryEntry[]> {
     const topic = await this.topics.findOne({
       where: { id: topicId },
       relations: { responsibleUser: true },
@@ -62,7 +63,7 @@ export class TopicHistoryService {
         grouped.push(update);
         meetingUpdates.set(update.meetingId, grouped);
       } else {
-        entries.push(this.standaloneUpdate(update));
+        entries.push(this.standaloneUpdate(update, viewer));
       }
     }
 
@@ -72,6 +73,7 @@ export class TopicHistoryService {
         topic,
         appearance,
         meetingUpdates.get(appearance.meetingId) ?? [],
+        viewer,
       ));
       meetingUpdates.delete(appearance.meetingId);
     }
@@ -79,7 +81,7 @@ export class TopicHistoryService {
     for (const [meetingId, orphanedMinutes] of meetingUpdates) {
       const meeting = orphanedMinutes.find((update) => update.meeting)?.meeting;
       if (meeting) {
-        entries.push(this.missingAppearance(topic, meetingId, meeting, orphanedMinutes));
+        entries.push(this.missingAppearance(topic, meetingId, meeting, orphanedMinutes, viewer));
       }
     }
 
@@ -92,15 +94,20 @@ export class TopicHistoryService {
       .map(({ sortTime: _sortTime, ...entry }) => entry);
   }
 
-  private standaloneUpdate(update: TopicUpdate): StandaloneUpdateHistoryEntry & { sortTime: number } {
+  private standaloneUpdate(update: TopicUpdate, viewer: User): StandaloneUpdateHistoryEntry & { sortTime: number } {
     return {
       id: `standalone-update:${update.id}`,
       kind: 'standalone_update',
       effectiveAt: update.date.toISOString(),
       sortTime: update.date.getTime(),
       updateId: update.id,
-      text: update.text,
       createdByDisplayName: this.userDisplayName(update.createdBy),
+      protected: isE2eeKeyOperator(viewer.role) && Buffer.isBuffer(update.textEnvelope)
+        ? {
+            textEnvelope: update.textEnvelope.toString('base64url'),
+            textCommitRevision: update.textCommitRevision!,
+          }
+        : null,
     };
   }
 
@@ -108,6 +115,7 @@ export class TopicHistoryService {
     topic: Topic,
     appearance: MeetingTopic,
     updates: TopicUpdate[],
+    viewer: User,
   ): MeetingAppearanceHistoryEntry & { sortTime: number } {
     const meeting = this.meeting(appearance.meeting!);
     const { meetingMinutes, legacyMinutesEntries } =
@@ -124,9 +132,8 @@ export class TopicHistoryService {
       section: appearance.section
         ? { id: appearance.section.id, name: appearance.section.name }
         : null,
-      topic: this.topicDisplay(topic, appearance),
-      preparationContext: topic.type === 'person' ? null : appearance.agendaNote,
-      personNote: topic.type === 'person' ? appearance.agendaNote : null,
+      topic: this.topicDisplay(topic, viewer, appearance),
+      meetingDocumentUnavailable: true,
       meetingMinutes,
       legacyMinutesEntries,
     };
@@ -149,6 +156,7 @@ export class TopicHistoryService {
     meetingId: string,
     meetingEntity: NonNullable<TopicUpdate['meeting']>,
     updates: TopicUpdate[],
+    viewer: User,
   ): MeetingAppearanceHistoryEntry & { sortTime: number } {
     const meeting = this.meeting(meetingEntity);
     const { meetingMinutes, legacyMinutesEntries } =
@@ -162,9 +170,8 @@ export class TopicHistoryService {
       deferredAt: null,
       meeting,
       section: null,
-      topic: this.topicDisplay(topic, undefined, meeting.status === 'completed'),
-      preparationContext: null,
-      personNote: null,
+      topic: this.topicDisplay(topic, viewer, undefined, meeting.status === 'completed'),
+      meetingDocumentUnavailable: true,
       meetingMinutes,
       legacyMinutesEntries,
     };
@@ -172,31 +179,54 @@ export class TopicHistoryService {
 
   private topicDisplay(
     topic: Topic,
+    viewer: User,
     appearance?: MeetingTopic,
     completedFallback = false,
   ): TopicHistoryTopicDisplay {
     const completed = appearance?.meeting?.status === 'completed' || completedFallback;
+    const nameEnvelope = completed ? appearance?.topicNameSnapshotEnvelope : topic.nameEnvelope;
+    const nameCommitRevision = completed
+      ? appearance?.topicNameSnapshotCommitRevision
+      : topic.nameCommitRevision;
+    const membershipProcessStatusEnvelope = completed
+      ? appearance?.membershipProcessStatusSnapshotEnvelope
+      : topic.membershipProcessStatusEnvelope;
+    const membershipProcessStatusCommitRevision = completed
+      ? appearance?.membershipProcessStatusSnapshotCommitRevision
+      : topic.membershipProcessStatusCommitRevision;
+    const godparentsEnvelope = completed ? appearance?.godparentsSnapshotEnvelope : topic.godparentsEnvelope;
+    const godparentsCommitRevision = completed
+      ? appearance?.godparentsSnapshotCommitRevision
+      : topic.godparentsCommitRevision;
+    const canReadProtected = isE2eeKeyOperator(viewer.role)
+      && Buffer.isBuffer(nameEnvelope)
+      && Buffer.isBuffer(membershipProcessStatusEnvelope)
+      && Buffer.isBuffer(godparentsEnvelope)
+      && Boolean(nameCommitRevision)
+      && Boolean(membershipProcessStatusCommitRevision)
+      && Boolean(godparentsCommitRevision);
     return {
+      id: topic.id,
       type: topic.type,
-      name: completed ? appearance?.topicNameSnapshot ?? null : topic.name,
       responsibleUserDisplayName: completed
         ? appearance?.responsibleUserDisplayNameSnapshot ?? null
         : this.userDisplayName(topic.responsibleUser),
-      membershipProcessStatus: topic.type === 'new_membership'
-        ? completed
-          ? appearance?.membershipProcessStatusSnapshot ?? null
-          : topic.membershipProcessStatus
-        : null,
       membershipStatusSignal: topic.type === 'new_membership'
         ? completed
           ? (appearance?.membershipStatusSignalSnapshot as Topic['membershipStatusSignal']) ?? null
           : topic.membershipStatusSignal
         : null,
-      godparents: topic.type === 'new_membership'
-        ? completed
-          ? appearance?.godparentsSnapshot ?? null
-          : topic.godparents
+      protected: canReadProtected
+        ? {
+            nameEnvelope: nameEnvelope.toString('base64url'),
+            nameCommitRevision: nameCommitRevision!,
+            membershipProcessStatusEnvelope: membershipProcessStatusEnvelope.toString('base64url'),
+            membershipProcessStatusCommitRevision: membershipProcessStatusCommitRevision!,
+            godparentsEnvelope: godparentsEnvelope.toString('base64url'),
+            godparentsCommitRevision: godparentsCommitRevision!,
+          }
         : null,
+      protectedUnavailable: !canReadProtected,
     };
   }
 
@@ -204,8 +234,8 @@ export class TopicHistoryService {
     return updates.map((update): TopicHistoryMinutesEntry => ({
       id: update.id,
       effectiveAt: update.date.toISOString(),
-      text: update.text,
       createdByDisplayName: this.userDisplayName(update.createdBy),
+      protectedUnavailable: true,
     })).sort((left, right) => left.effectiveAt.localeCompare(right.effectiveAt) || left.id.localeCompare(right.id));
   }
 

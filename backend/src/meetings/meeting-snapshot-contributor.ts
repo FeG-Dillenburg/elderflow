@@ -37,7 +37,7 @@ export class MeetingSnapshotRegistry {
     for (const contributor of this.contributors) {
       const values = await contributor.snapshot(appearance, topic, manager);
       for (const key of contributor.keys) {
-        appearance[key] = values[key] as MeetingTopic[typeof key];
+        Object.assign(appearance, { [key]: values[key] });
       }
     }
   }

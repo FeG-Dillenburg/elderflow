@@ -25,12 +25,12 @@ describe("DashboardService", () => {
     meetings.findOne.mockResolvedValue(next);
     tasks.find.mockResolvedValueOnce(mine).mockResolvedValueOnce(overdue);
     topics.find.mockResolvedValueOnce(followUps).mockResolvedValueOnce(recent);
-    await expect(service.get({ id: "user" } as any)).resolves.toEqual({
+    await expect(service.get({ id: "user", role: "user" } as any)).resolves.toMatchObject({
       nextMeeting: next,
-      myOpenTasks: mine,
-      overdueTasks: overdue,
-      followUpTopics: followUps,
-      recentTopics: recent,
+      myOpenTasks: [expect.objectContaining({ id: "mine", topic: null })],
+      overdueTasks: [expect.objectContaining({ id: "late", topic: null })],
+      followUpTopics: [expect.objectContaining({ id: "follow", protected: null })],
+      recentTopics: [expect.objectContaining({ id: "recent", protected: null })],
     });
     expect(meetings.findOne).toHaveBeenCalledWith({
       where: { date: MoreThanOrEqual("2026-07-15"), status: "planned" },
@@ -72,12 +72,29 @@ describe("DashboardService", () => {
     meetings.findOne.mockResolvedValue(null);
     tasks.find.mockResolvedValue([]);
     topics.find.mockResolvedValue([]);
-    await expect(service.get({ id: "user" } as any)).resolves.toEqual({
+    await expect(service.get({ id: "user", role: "user" } as any)).resolves.toEqual({
       nextMeeting: null,
       myOpenTasks: [],
       overdueTasks: [],
       followUpTopics: [],
       recentTopics: [],
     });
+  });
+
+  it("withholds dashboard Topic ciphertext from Guest viewers", async () => {
+    const topic = {
+      id: "topic",
+      nameEnvelope: Buffer.from([1]),
+      descriptionEnvelope: Buffer.from([2]),
+      membershipProcessStatusEnvelope: Buffer.from([3]),
+      godparentsEnvelope: Buffer.from([4]),
+    };
+    meetings.findOne.mockResolvedValue(null);
+    tasks.find.mockResolvedValue([]);
+    topics.find.mockResolvedValue([topic]);
+
+    const result = await service.get({ id: "guest", role: "guest" } as any);
+    expect(result.followUpTopics[0]).toMatchObject({ id: "topic", protected: null });
+    expect(JSON.stringify(result)).not.toContain("nameEnvelope");
   });
 });

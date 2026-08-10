@@ -109,7 +109,7 @@ export class RecurrenceService {
           position,
           status: 'planned',
           source: 'recurrence',
-          agendaNote: reusableNotes.shift() ?? topic.description ?? '',
+          agendaNote: reusableNotes.shift() ?? null,
           noteEditedAt: null,
         }));
         nextDue = this.addInterval(meeting.date, topic.recurrenceInterval!, topic.recurrenceUnit!);

@@ -10,19 +10,26 @@ export interface TopicHistoryMeeting {
 }
 
 export interface TopicHistoryTopicDisplay {
+  id: string;
   type: TopicType;
-  name: string | null;
   responsibleUserDisplayName: string | null;
-  membershipProcessStatus: string | null;
   membershipStatusSignal: MembershipStatusSignal | null;
-  godparents: string | null;
+  protected: {
+    nameEnvelope: string;
+    nameCommitRevision: string;
+    membershipProcessStatusEnvelope: string;
+    membershipProcessStatusCommitRevision: string;
+    godparentsEnvelope: string;
+    godparentsCommitRevision: string;
+  } | null;
+  protectedUnavailable: boolean;
 }
 
 export interface TopicHistoryMinutesEntry {
   id: string;
   effectiveAt: string;
-  text: string;
   createdByDisplayName: string | null;
+  protectedUnavailable: true;
 }
 
 export interface StandaloneUpdateHistoryEntry {
@@ -30,8 +37,8 @@ export interface StandaloneUpdateHistoryEntry {
   kind: 'standalone_update';
   effectiveAt: string;
   updateId: string;
-  text: string;
   createdByDisplayName: string | null;
+  protected: { textEnvelope: string; textCommitRevision: string } | null;
 }
 
 export interface MeetingAppearanceHistoryEntry {
@@ -43,8 +50,7 @@ export interface MeetingAppearanceHistoryEntry {
   meeting: TopicHistoryMeeting;
   section: { id: string; name: string } | null;
   topic: TopicHistoryTopicDisplay;
-  preparationContext: string | null;
-  personNote: string | null;
+  meetingDocumentUnavailable: true;
   meetingMinutes: TopicHistoryMinutesEntry | null;
   legacyMinutesEntries: TopicHistoryMinutesEntry[];
 }

@@ -1,8 +1,11 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Put, Query } from '@nestjs/common';
+import { Body, Controller, Get, Header, Param, ParseUUIDPipe, Post, Put, Query } from '@nestjs/common';
 import { TaskDto, TaskUpdateDto } from './dto/task.dto';
 import { Task } from './task.entity';
 import { TasksService } from './tasks.service';
 import { Permission } from '../auth/permissions';
+import { CurrentUser } from '../auth/current-user.decorator';
+import { User } from '../users/user.entity';
+import { TaskResponse } from './task-response';
 
 @Controller('api/tasks')
 @Permission('tasks')
@@ -10,6 +13,7 @@ export class TasksController {
   constructor(private readonly service: TasksService) {}
 
   @Get()
+  @Header('Cache-Control', 'no-store')
   findAll(
     @Query('status') status?: string,
     @Query('assignedToId') assignedToId?: string,
@@ -17,8 +21,12 @@ export class TasksController {
     @Query('meetingId') meetingId?: string,
     @Query('overdue') overdue?: string,
     @Query('dueOn') dueOn?: string,
-  ): Promise<Task[]> {
-    return this.service.findAll({ status, assignedToId, topicId, meetingId, overdue: overdue === 'true', dueOn });
+    @CurrentUser() user?: User,
+  ): Promise<TaskResponse[]> {
+    return this.service.findAll(
+      { status, assignedToId, topicId, meetingId, overdue: overdue === 'true', dueOn },
+      user!,
+    );
   }
 
   @Post()

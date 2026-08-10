@@ -60,7 +60,7 @@ describe('MeetingsController completion boundary', () => {
       .expect(200)
       .expect([]);
 
-    expect(service.suggestions).toHaveBeenCalledWith(meetingId, true);
+    expect(service.suggestions).toHaveBeenCalledWith(meetingId, true, currentUser);
   });
 
   it('writes only independently validated fields through the appearance endpoint', async () => {
@@ -76,12 +76,14 @@ describe('MeetingsController completion boundary', () => {
       .put(`/api/meetings/${meetingId}/topics/${appearanceId}/fields`)
       .send({ membershipStatusSignal: 'attention' })
       .expect(200)
+      .expect('Cache-Control', 'no-store')
       .expect(topic);
 
     expect(service.updateTopicFields).toHaveBeenCalledWith(
       meetingId,
       appearanceId,
       { membershipStatusSignal: 'attention' },
+      currentUser,
     );
   });
 

@@ -10,18 +10,24 @@ describe('Person Topic request shape', () => {
     exceptionFactory: validationExceptionFactory,
   });
   const metadata = { type: 'body', metatype: TopicDto } as const;
+  const protectedScalars = {
+    nameEnvelope: 'name-ciphertext',
+    descriptionEnvelope: 'description-ciphertext',
+    membershipProcessStatusEnvelope: 'process-ciphertext',
+    godparentsEnvelope: 'godparents-ciphertext',
+  };
 
-  it('accepts the canonical common Person fields', async () => {
+  it('accepts the canonical encrypted Person fields without a plaintext request shape', async () => {
     await expect(pipe.transform({
-      name: 'Alex and Sam',
-      description: 'Pastoral context',
+      id: '00000000-0000-4000-8000-000000000010',
+      protected: protectedScalars,
       type: 'person',
       status: 'open',
       responsibleUserId: null,
     }, metadata)).resolves.toMatchObject({
-      name: 'Alex and Sam',
       type: 'person',
       responsibleUserId: null,
+      protected: protectedScalars,
     });
   });
 
@@ -29,7 +35,8 @@ describe('Person Topic request shape', () => {
     'rejects the unrelated %s field with a stable validation code',
     async (field) => {
       await expect(pipe.transform({
-        name: 'Alex',
+        id: '00000000-0000-4000-8000-000000000010',
+        protected: protectedScalars,
         type: 'person',
         status: 'open',
         [field]: field === 'isRecurring' ? true : 'unexpected',
@@ -41,13 +48,12 @@ describe('Person Topic request shape', () => {
 
   it('accepts the typed New membership request shape', async () => {
     await expect(pipe.transform({
-      name: 'Alex and Sam',
+      id: '00000000-0000-4000-8000-000000000010',
+      protected: protectedScalars,
       type: 'new_membership',
       status: 'open',
       responsibleUserId: null,
-      membershipProcessStatus: 'Introductory visit',
       membershipStatusSignal: 'in_progress',
-      godparents: 'Taylor and Robin',
     }, metadata)).resolves.toMatchObject({
       type: 'new_membership',
       membershipStatusSignal: 'in_progress',

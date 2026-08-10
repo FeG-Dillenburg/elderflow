@@ -17,6 +17,8 @@ import { UpdateTopicFieldsDto } from '../topics/dto/topic.dto';
 import { normalizedMembershipTopicState } from '../topics/membership-topic-state';
 import { RecurrenceService } from '../recurrence/recurrence.service';
 import { SkippedRecurrence } from '../recurrence/skipped-recurrence.entity';
+import { TopicResponse, topicResponse, topicUpdateResponse } from '../topics/topic-response';
+import { isE2eeKeyOperator } from '../e2ee/e2ee-role-policy';
 
 export interface MeetingDetail extends Meeting {
   participants: MeetingUser[];
@@ -68,7 +70,12 @@ export class MeetingsService {
       });
       for (const appearance of appearances) {
         const topic = appearance.topic!;
-        appearance.topicNameSnapshot = topic.name;
+        appearance.topicNameSnapshotEnvelope = topic.nameEnvelope;
+        appearance.topicNameSnapshotCommitRevision = topic.nameCommitRevision;
+        appearance.membershipProcessStatusSnapshotEnvelope = topic.membershipProcessStatusEnvelope;
+        appearance.membershipProcessStatusSnapshotCommitRevision = topic.membershipProcessStatusCommitRevision;
+        appearance.godparentsSnapshotEnvelope = topic.godparentsEnvelope;
+        appearance.godparentsSnapshotCommitRevision = topic.godparentsCommitRevision;
         appearance.responsibleUserDisplayNameSnapshot = topic.responsibleUser
           ? `${topic.responsibleUser.firstName} ${topic.responsibleUser.lastName}`.trim()
           : null;
@@ -119,7 +126,7 @@ export class MeetingsService {
     });
   }
 
-  async findOne(id: string): Promise<MeetingDetail> {
+  async findOne(id: string, user: User) {
     const meeting = await this.meetings.findOne({
       where: { id }, relations: { meetingLeader: true, minuteTaker: true },
     });
@@ -133,11 +140,13 @@ export class MeetingsService {
       }),
     ]);
     const topicIds = agenda.map((item) => item.topicId);
+    let updates: TopicUpdate[] = [];
+    let tasks: Task[] = [];
     if (topicIds.length) {
       const pairedTopicIds = agenda
         .filter((item) => item.topic?.type !== 'person')
         .map((item) => item.topicId);
-      const [updates, tasks, earlierAppearances] = await Promise.all([
+      const [loadedUpdates, loadedTasks, earlierAppearances] = await Promise.all([
         this.updates.find({
           where: {
             topicId: In(topicIds),
@@ -169,6 +178,8 @@ export class MeetingsService {
           })
           : Promise.resolve([]),
       ]);
+      updates = loadedUpdates;
+      tasks = loadedTasks;
       const previousAppearanceByTopic = new Map<string, MeetingTopic>();
       for (const appearance of earlierAppearances) {
         if (!previousAppearanceByTopic.has(appearance.topicId)) {
@@ -183,16 +194,16 @@ export class MeetingsService {
         const previousAppearance = previousAppearanceByTopic.get(item.topicId);
         const previousMinutes = previousAppearance
           ? updates.find((update) =>
-            update.topicId === item.topicId &&
-            update.meetingId === previousAppearance.meetingId &&
-            update.type === 'minute')
+            update.topicId === item.topicId
+            && update.meetingId === previousAppearance.meetingId
+            && update.type === 'minute')
           : null;
-        const previousMeetingTexts = previousAppearance &&
-          (previousAppearance.agendaNote || previousMinutes?.text)
+        const previousMeetingTexts = previousAppearance
+          && (previousAppearance.agendaNote || previousMinutes?.meetingText)
           ? {
-            preparationContext: previousAppearance.agendaNote,
-            meetingMinutes: previousMinutes?.text ?? null,
-          }
+              preparationContext: previousAppearance.agendaNote,
+              meetingMinutes: previousMinutes?.meetingText ?? null,
+            }
           : null;
         Object.assign(item, item.topic?.type === 'person'
           ? {
@@ -214,17 +225,14 @@ export class MeetingsService {
             personNote: null,
             meetingMinutes: meetingMinutes
               ? {
-                id: meetingMinutes.id,
-                text: meetingMinutes.text,
-                version: meetingMinutes.version,
-              }
+                  id: meetingMinutes.id,
+                  text: meetingMinutes.meetingText,
+                  version: meetingMinutes.version,
+                }
               : null,
             previousMeetingTexts,
           });
         Object.assign(item.topic!, {
-          updates: updates.filter((update) =>
-            update.topicId === item.topicId &&
-            (meeting.status !== 'completed' || update.meetingId === id)),
           tasks: tasks.filter((task) => task.topicId === item.topicId),
         });
       }
@@ -233,13 +241,53 @@ export class MeetingsService {
       for (const item of agenda) {
         if (item.topic) {
           Object.assign(item.topic, {
-            name: item.topicNameSnapshot ?? item.topic.name,
             responsibleUser: null,
           });
         }
       }
     }
-    return Object.assign(meeting, { participants, agenda });
+    return Object.assign(meeting, {
+      participants,
+      agenda: agenda.map((item) => {
+        const {
+          topicNameSnapshotEnvelope,
+          topicNameSnapshotCommitRevision,
+          membershipProcessStatusSnapshotEnvelope,
+          membershipProcessStatusSnapshotCommitRevision,
+          godparentsSnapshotEnvelope,
+          godparentsSnapshotCommitRevision,
+          topic,
+          ...structural
+        } = item;
+        const canReadSnapshot = isE2eeKeyOperator(user.role)
+          && Buffer.isBuffer(topicNameSnapshotEnvelope)
+          && Buffer.isBuffer(membershipProcessStatusSnapshotEnvelope)
+          && Buffer.isBuffer(godparentsSnapshotEnvelope);
+        return {
+          ...structural,
+          agendaNote: structural.agendaNote,
+          protectedSnapshot: canReadSnapshot
+            ? {
+                nameEnvelope: topicNameSnapshotEnvelope.toString('base64url'),
+                nameCommitRevision: topicNameSnapshotCommitRevision,
+                membershipProcessStatusEnvelope: membershipProcessStatusSnapshotEnvelope.toString('base64url'),
+                membershipProcessStatusCommitRevision: membershipProcessStatusSnapshotCommitRevision,
+                godparentsEnvelope: godparentsSnapshotEnvelope.toString('base64url'),
+                godparentsCommitRevision: godparentsSnapshotCommitRevision,
+              }
+            : null,
+          topic: topic
+            ? {
+                ...topicResponse(topic, user),
+                updates: updates
+                  .filter((update) => update.topicId === item.topicId && !update.meetingId)
+                  .map((update) => topicUpdateResponse(update, user)),
+                tasks: tasks.filter((task) => task.topicId === item.topicId),
+              }
+            : undefined,
+        };
+      }),
+    });
   }
 
   async addParticipant(meetingId: string, input: MeetingParticipantDto): Promise<MeetingUser> {
@@ -308,9 +356,7 @@ export class MeetingsService {
         noteEditedAt: input.agendaNote !== undefined ? new Date() : null,
         agendaNote: input.agendaNote !== undefined
           ? input.agendaNote
-          : topic.type === 'recurring'
-            ? topic.description ?? ''
-            : previousPersonAppearance?.agendaNote ?? null,
+          : previousPersonAppearance?.agendaNote ?? null,
       }));
       await this.recurrence.reconcile(manager);
       return appearance;
@@ -361,7 +407,8 @@ export class MeetingsService {
     meetingId: string,
     id: string,
     input: UpdateTopicFieldsDto,
-  ): Promise<Topic> {
+    user: User,
+  ): Promise<TopicResponse> {
     return this.dataSource.transaction(async (manager) => {
       await lockedMutableMeeting(manager, meetingId);
       const appearance = await manager.findOneBy(MeetingTopic, { id, meetingId });
@@ -384,10 +431,11 @@ export class MeetingsService {
         ...input,
       });
       const saved = await manager.save(Topic, Object.assign(topic, input, typeState));
-      return await manager.findOne(Topic, {
+      const responseTopic = await manager.findOne(Topic, {
         where: { id: topic.id },
         relations: { responsibleUser: true, defaultSection: true },
       }) ?? saved;
+      return topicResponse(responseTopic, user);
     });
   }
 
@@ -508,13 +556,13 @@ export class MeetingsService {
       }
       const saved = current
         ? await manager.save(TopicUpdate, Object.assign(current, {
-          text: input.text,
+          meetingText: input.text,
           version: current.version + 1,
         }))
         : await manager.save(TopicUpdate, manager.create(TopicUpdate, {
           topicId: appearance.topicId,
           meetingId,
-          text: input.text,
+          meetingText: input.text,
           type: 'minute',
           createdById: user.id,
           date: new Date(),
@@ -577,10 +625,10 @@ export class MeetingsService {
     };
     const minutesText = meetingMinutes
       ? {
-        id: meetingMinutes.id ?? null,
-        text: meetingMinutes.text,
-        version: meetingMinutes.version,
-      }
+          id: meetingMinutes.id ?? null,
+          text: meetingMinutes.meetingText,
+          version: meetingMinutes.version,
+        }
       : null;
     return appearance.topic?.type === 'person'
       ? {
@@ -624,7 +672,7 @@ export class MeetingsService {
     });
   }
 
-  async suggestions(meetingId: string, future = false): Promise<Topic[]> {
+  async suggestions(meetingId: string, future = false, user: User) {
     const meeting = await this.meetings.findOneBy({ id: meetingId });
     if (!meeting) throw codedHttpException(HttpStatus.NOT_FOUND, 'MEETING_NOT_FOUND', 'Meeting not found');
     const existing = await this.meetingTopics.find({ where: { meetingId } });
@@ -658,7 +706,7 @@ export class MeetingsService {
         ? topic.nextDueDate
         : topic.followUpDate;
       return future === Boolean(dueDate && dueDate > meeting.date);
-    });
+    }).map((topic) => topicResponse(topic, user));
   }
 
 }
