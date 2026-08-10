@@ -14,6 +14,10 @@ import {
 import { setLanguage } from "../i18n";
 import { installation } from "../installation";
 import { createInitialKeyState, type GeneratedInitialKeyState } from "../e2ee/crypto";
+import {
+  isSharedPassphraseValid,
+  SHARED_PASSPHRASE_MIN_LENGTH,
+} from "../e2ee/shared-passphrase-policy";
 
 type Stage =
   | "loading"
@@ -24,12 +28,30 @@ type Stage =
   | "already-setup"
   | "error";
 
+type UserFormField =
+  | "firstName"
+  | "lastName"
+  | "email"
+  | "password"
+  | "passwordConfirmation"
+  | "sharedPassphrase"
+  | "sharedPassphraseConfirmation";
+
 const stage = ref<Stage>("loading");
 const setupPassword = ref("");
 const form = reactive({
   email: "",
   firstName: "",
   lastName: "",
+  password: "",
+  passwordConfirmation: "",
+  sharedPassphrase: "",
+  sharedPassphraseConfirmation: "",
+});
+const fieldErrors = reactive<Record<UserFormField, string>>({
+  firstName: "",
+  lastName: "",
+  email: "",
   password: "",
   passwordConfirmation: "",
   sharedPassphrase: "",
@@ -79,16 +101,19 @@ async function verifyPassword(): Promise<void> {
 
 async function prepareRecovery(): Promise<void> {
   errorMessage.value = "";
-  if (form.password !== form.passwordConfirmation) {
-    errorMessage.value = t("setup.passwordsMismatch");
-    return;
-  }
-  if (form.sharedPassphrase !== form.sharedPassphraseConfirmation) {
-    errorMessage.value = t("e2ee.passphrasesMismatch");
+  if (!validateUserForm()) return;
+
+  submitting.value = true;
+  try {
+    await api.verifySetupPassword(setupPassword.value);
+  } catch (error) {
+    errorMessage.value =
+      error instanceof Error ? error.message : t("setup.verifyFailed");
+    stage.value = "password";
+    submitting.value = false;
     return;
   }
 
-  submitting.value = true;
   kdfAbort?.abort();
   kdfAbort = new AbortController();
   try {
@@ -101,6 +126,54 @@ async function prepareRecovery(): Promise<void> {
   } finally {
     kdfAbort = null;
     submitting.value = false;
+  }
+}
+
+function validateUserForm(): boolean {
+  for (const field of Object.keys(fieldErrors) as UserFormField[]) {
+    fieldErrors[field] = "";
+  }
+
+  if (!form.firstName.trim()) {
+    fieldErrors.firstName = t("setup.firstNameRequired");
+  } else if (form.firstName.trim().length > 100) {
+    fieldErrors.firstName = t("setup.firstNameTooLong");
+  }
+
+  if (!form.lastName.trim()) {
+    fieldErrors.lastName = t("setup.lastNameRequired");
+  } else if (form.lastName.trim().length > 100) {
+    fieldErrors.lastName = t("setup.lastNameTooLong");
+  }
+
+  const normalizedEmail = form.email.trim();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail) || normalizedEmail.length > 320) {
+    fieldErrors.email = t("setup.emailInvalid");
+  }
+
+  if (form.password.length < 10 || form.password.length > 200) {
+    fieldErrors.password = t("setup.accountPasswordLength");
+  }
+  if (form.password !== form.passwordConfirmation) {
+    fieldErrors.passwordConfirmation = t("setup.accountPasswordsMismatch");
+  }
+
+  if (!isSharedPassphraseValid(form.sharedPassphrase)) {
+    fieldErrors.sharedPassphrase = t("e2ee.sharedPassphraseLength");
+  }
+  if (form.sharedPassphrase !== form.sharedPassphraseConfirmation) {
+    fieldErrors.sharedPassphraseConfirmation = t("e2ee.passphrasesMismatch");
+  }
+
+  const valid = Object.values(fieldErrors).every((message) => !message);
+  if (!valid) errorMessage.value = t("setup.fixHighlightedFields");
+  return valid;
+}
+
+function clearFieldError(field: UserFormField): void {
+  fieldErrors[field] = "";
+  if (Object.values(fieldErrors).every((message) => !message)) {
+    errorMessage.value = "";
   }
 }
 
@@ -225,6 +298,7 @@ function printRecovery(): void {
         <form
           v-else-if="stage === 'user'"
           class="setup-form"
+          novalidate
           @submit.prevent="prepareRecovery"
         >
           <label>
@@ -235,7 +309,13 @@ function printRecovery(): void {
               maxlength="100"
               required
               autofocus
+              :invalid="Boolean(fieldErrors.firstName)"
+              :aria-describedby="fieldErrors.firstName ? 'setup-first-name-error' : undefined"
+              @update:model-value="clearFieldError('firstName')"
             />
+            <small v-if="fieldErrors.firstName" id="setup-first-name-error" class="field-error">
+              {{ fieldErrors.firstName }}
+            </small>
           </label>
           <label>
             <span>{{ t("setup.lastName") }}</span>
@@ -244,7 +324,13 @@ function printRecovery(): void {
               autocomplete="family-name"
               maxlength="100"
               required
+              :invalid="Boolean(fieldErrors.lastName)"
+              :aria-describedby="fieldErrors.lastName ? 'setup-last-name-error' : undefined"
+              @update:model-value="clearFieldError('lastName')"
             />
+            <small v-if="fieldErrors.lastName" id="setup-last-name-error" class="field-error">
+              {{ fieldErrors.lastName }}
+            </small>
           </label>
           <label>
             <span>{{ t("common.email") }}</span>
@@ -254,7 +340,13 @@ function printRecovery(): void {
               autocomplete="username"
               maxlength="320"
               required
+              :invalid="Boolean(fieldErrors.email)"
+              :aria-describedby="fieldErrors.email ? 'setup-email-error' : undefined"
+              @update:model-value="clearFieldError('email')"
             />
+            <small v-if="fieldErrors.email" id="setup-email-error" class="field-error">
+              {{ fieldErrors.email }}
+            </small>
           </label>
           <label>
             <span>{{ t("common.password") }}</span>
@@ -265,7 +357,13 @@ function printRecovery(): void {
               minlength="10"
               maxlength="200"
               required
+              :invalid="Boolean(fieldErrors.password)"
+              :aria-describedby="fieldErrors.password ? 'setup-password-error' : undefined"
+              @update:model-value="clearFieldError('password')"
             />
+            <small v-if="fieldErrors.password" id="setup-password-error" class="field-error">
+              {{ fieldErrors.password }}
+            </small>
           </label>
           <label>
             <span>{{ t("setup.confirmPassword") }}</span>
@@ -277,7 +375,17 @@ function printRecovery(): void {
               minlength="10"
               maxlength="200"
               required
+              :invalid="Boolean(fieldErrors.passwordConfirmation)"
+              :aria-describedby="fieldErrors.passwordConfirmation ? 'setup-password-confirmation-error' : undefined"
+              @update:model-value="clearFieldError('passwordConfirmation')"
             />
+            <small
+              v-if="fieldErrors.passwordConfirmation"
+              id="setup-password-confirmation-error"
+              class="field-error"
+            >
+              {{ fieldErrors.passwordConfirmation }}
+            </small>
           </label>
           <label>
             <span>{{ t("e2ee.sharedPassphrase") }}</span>
@@ -285,9 +393,19 @@ function printRecovery(): void {
               v-model="form.sharedPassphrase"
               toggle-mask
               autocomplete="new-password"
-              minlength="12"
+              :minlength="SHARED_PASSPHRASE_MIN_LENGTH"
               required
+              :invalid="Boolean(fieldErrors.sharedPassphrase)"
+              :aria-describedby="fieldErrors.sharedPassphrase ? 'setup-shared-passphrase-error' : undefined"
+              @update:model-value="clearFieldError('sharedPassphrase')"
             />
+            <small
+              v-if="fieldErrors.sharedPassphrase"
+              id="setup-shared-passphrase-error"
+              class="field-error"
+            >
+              {{ fieldErrors.sharedPassphrase }}
+            </small>
           </label>
           <label>
             <span>{{ t("e2ee.confirmSharedPassphrase") }}</span>
@@ -296,9 +414,19 @@ function printRecovery(): void {
               :feedback="false"
               toggle-mask
               autocomplete="new-password"
-              minlength="12"
+              :minlength="SHARED_PASSPHRASE_MIN_LENGTH"
               required
+              :invalid="Boolean(fieldErrors.sharedPassphraseConfirmation)"
+              :aria-describedby="fieldErrors.sharedPassphraseConfirmation ? 'setup-shared-passphrase-confirmation-error' : undefined"
+              @update:model-value="clearFieldError('sharedPassphraseConfirmation')"
             />
+            <small
+              v-if="fieldErrors.sharedPassphraseConfirmation"
+              id="setup-shared-passphrase-confirmation-error"
+              class="field-error"
+            >
+              {{ fieldErrors.sharedPassphraseConfirmation }}
+            </small>
           </label>
           <Button
             :label="t('e2ee.createRecoverySecret')"
@@ -400,6 +528,11 @@ h1 {
 .acknowledgement {
   grid-template-columns: auto 1fr;
   align-items: start;
+}
+
+.field-error {
+  color: #b91c1c;
+  font-size: 0.85rem;
 }
 
 @media print {

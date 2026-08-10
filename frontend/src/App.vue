@@ -93,6 +93,14 @@ async function logout(): Promise<void> {
           <i :class="item.icon" aria-hidden="true" class="pi" />
           {{ t(item.labelKey) }}
         </RouterLink>
+        <RouterLink
+          v-if="protectedText.isEligible(auth.state.user)"
+          to="/key-recovery"
+          class="nav-link"
+        >
+          <i class="pi pi-key" aria-hidden="true" />
+          {{ t("e2ee.recoveryAction") }}
+        </RouterLink>
       </nav>
       <div class="current-user">
         <RouterLink to="/profile" class="profile-link">
@@ -113,13 +121,6 @@ async function logout(): Promise<void> {
         >
           <i class="pi pi-sign-out" aria-hidden="true" />
         </button>
-        <RouterLink
-          v-if="protectedText.isEligible(auth.state.user)"
-          class="lock-button"
-          to="/key-recovery"
-        >
-          {{ t("e2ee.recoveryAction") }}
-        </RouterLink>
       </div>
     </aside>
     <main class="main-content">
@@ -224,7 +225,9 @@ async function logout(): Promise<void> {
 
 nav {
   display: grid;
+  min-height: 0;
   gap: 0.3rem;
+  overflow-y: auto;
 }
 
 .nav-link {
@@ -245,6 +248,7 @@ nav {
 
 .current-user {
   display: flex;
+  flex: 0 0 auto;
   align-items: center;
   gap: 0.7rem;
   margin-top: auto;

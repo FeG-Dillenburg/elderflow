@@ -147,7 +147,7 @@ export class E2eeService {
         approverId: null,
         approverSessionVersion: null,
         approverSessionId: null,
-        initiatorConfirmedAt: null,
+        initiatorConfirmedAt: now,
         approverConfirmedAt: null,
         state: 'pending_second_operator',
         expectedGeneration: state.generation,
@@ -180,7 +180,6 @@ export class E2eeService {
       ceremony.approverId = user.id;
       ceremony.approverSessionVersion = user.sessionVersion;
       ceremony.approverSessionId = sessionId;
-      ceremony.initiatorConfirmedAt = null;
       ceremony.approverConfirmedAt = this.clock.now();
       ceremony.state = 'ready_to_activate';
       await manager.save(E2eeRecoveryCeremony, ceremony);
@@ -255,7 +254,13 @@ export class E2eeService {
     return this.dataSource.transaction(async (manager) => {
       const ceremony = await this.lockCeremony(manager, id);
       this.assertCeremonyActive(ceremony);
-      if (ceremony.state === 'ready_to_activate') {
+      if (ceremony.state === 'pending_second_operator') {
+        if (ceremony.initiatorId !== user.id || ceremony.initiatorSessionId !== sessionId) {
+          throw new ForbiddenException('Only the initiating application session can confirm presence');
+        }
+        ceremony.initiatorConfirmedAt = this.clock.now();
+        await manager.save(E2eeRecoveryCeremony, ceremony);
+      } else if (ceremony.state === 'ready_to_activate') {
         if (ceremony.initiatorId === user.id && ceremony.initiatorSessionId === sessionId) {
           ceremony.initiatorConfirmedAt = this.clock.now();
         } else if (ceremony.approverId === user.id && ceremony.approverSessionId === sessionId) {

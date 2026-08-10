@@ -20,6 +20,8 @@ describe('E2eeService', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    manager.findOne.mockReset();
+    manager.find.mockReset();
   });
 
   it('returns only versioned wrappers and content-free metadata to an eligible Content user', async () => {
@@ -145,6 +147,57 @@ describe('E2eeService', () => {
       generation: 4,
       sharedPassphraseSlot: Buffer.from('new-shared'),
     }));
+  });
+
+  it('allows immediate activation when the initiator was present shortly before approval', async () => {
+    const ceremony = {
+      id: 'ceremony-1',
+      state: 'pending_second_operator',
+      initiatorId: 'operator-1',
+      initiatorSessionVersion: 2,
+      initiatorSessionId: 'initiator-session',
+      approverId: null,
+      approverSessionVersion: null,
+      approverSessionId: null,
+      initiatorConfirmedAt: null,
+      approverConfirmedAt: null,
+      candidateFingerprint,
+      expectedGeneration: 3,
+      expiresAt: new Date('2026-08-09T10:30:00.000Z'),
+      candidateSharedPassphraseSlot: Buffer.from('new-shared'),
+      activatedGeneration: null,
+    };
+    manager.findOne
+      .mockResolvedValueOnce(ceremony)
+      .mockResolvedValueOnce(ceremony)
+      .mockResolvedValueOnce(ceremony)
+      .mockResolvedValueOnce({ id: 1, generation: 3 });
+    manager.find
+      .mockResolvedValueOnce([
+        { id: 'operator-1', role: 'user', sessionVersion: 2 },
+      ])
+      .mockResolvedValueOnce([
+        { id: 'operator-1', role: 'user', sessionVersion: 2 },
+        { id: 'operator-2', role: 'admin', sessionVersion: 4 },
+      ]);
+
+    await service.confirmRecoveryPresence(
+      { id: 'operator-1', role: 'user', sessionVersion: 2 } as any,
+      'initiator-session',
+      'ceremony-1',
+    );
+    await service.approveRecovery(
+      { id: 'operator-2', role: 'admin', sessionVersion: 4 } as any,
+      'approver-session',
+      'ceremony-1',
+      { candidateFingerprint: candidateFingerprint.toString('base64url') },
+    );
+
+    await expect(service.activateRecovery(
+      { id: 'operator-2', role: 'admin', sessionVersion: 4 } as any,
+      'approver-session',
+      'ceremony-1',
+    )).resolves.toEqual({ activated: true, generation: 4 });
   });
 
   it('aborts when either recorded operator lost eligibility or had their sessions revoked', async () => {

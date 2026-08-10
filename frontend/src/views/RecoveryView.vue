@@ -14,11 +14,19 @@ import {
   type RecoveryCandidate,
 } from "../e2ee/crypto";
 import { recoverySession } from "../e2ee/recovery-session";
+import {
+  isSharedPassphraseValid,
+  SHARED_PASSPHRASE_MIN_LENGTH,
+} from "../e2ee/shared-passphrase-policy";
 
 const { t } = useI18n();
 const router = useRouter();
 const busy = ref(false);
 const errorMessage = ref("");
+const startRecoverySecretError = ref("");
+const approveRecoverySecretError = ref("");
+const startPassphraseError = ref("");
+const approvePassphraseError = ref("");
 const activeCeremonyId = ref<string | null>(null);
 const started = ref<{ id: string; fingerprint: string; expiresAt: string } | null>(null);
 const approved = ref(false);
@@ -27,18 +35,25 @@ const approveForm = reactive({ ceremonyId: "", recoverySecret: "", passphrase: "
 let kdfAbort: AbortController | null = null;
 
 async function startRecovery(): Promise<void> {
+  startPassphraseError.value = "";
+  if (!isSharedPassphraseValid(startForm.passphrase)) {
+    startPassphraseError.value = t("e2ee.sharedPassphraseLength");
+    errorMessage.value = startPassphraseError.value;
+    return;
+  }
   if (startForm.passphrase !== startForm.confirmation) {
     errorMessage.value = t("e2ee.passphrasesMismatch");
     return;
   }
   busy.value = true;
   errorMessage.value = "";
+  startRecoverySecretError.value = "";
   kdfAbort?.abort();
   kdfAbort = new AbortController();
   try {
     const metadata = await api.e2eeRecoveryMetadata();
     const candidate = await createRecoveryCandidate(
-      startForm.recoverySecret,
+      startForm.recoverySecret.trim(),
       startForm.passphrase,
       metadata,
       kdfAbort.signal,
@@ -55,8 +70,13 @@ async function startRecovery(): Promise<void> {
       expiresAt: ceremony.expiresAt,
     };
     clearSecrets(startForm);
-  } catch {
-    errorMessage.value = t("e2ee.recoveryFailed");
+  } catch (error) {
+    if (isRecoverySecretFailure(error)) {
+      startRecoverySecretError.value = t("e2ee.recoverySecretInvalid");
+      errorMessage.value = startRecoverySecretError.value;
+    } else {
+      errorMessage.value = recoveryFailureMessage(error);
+    }
   } finally {
     kdfAbort = null;
     busy.value = false;
@@ -64,8 +84,15 @@ async function startRecovery(): Promise<void> {
 }
 
 async function approveRecovery(): Promise<void> {
+  approvePassphraseError.value = "";
+  if (!isSharedPassphraseValid(approveForm.passphrase)) {
+    approvePassphraseError.value = t("e2ee.sharedPassphraseLength");
+    errorMessage.value = approvePassphraseError.value;
+    return;
+  }
   busy.value = true;
   errorMessage.value = "";
+  approveRecoverySecretError.value = "";
   kdfAbort?.abort();
   kdfAbort = new AbortController();
   try {
@@ -78,20 +105,28 @@ async function approveRecovery(): Promise<void> {
       candidateSharedPassphraseSlot: ceremony.candidateSharedPassphraseSlot,
     };
     const verified = await verifyRecoveryCandidate(
-      approveForm.recoverySecret,
+      approveForm.recoverySecret.trim(),
       approveForm.passphrase,
       metadata,
       candidate,
       kdfAbort.signal,
     );
-    if (!verified) throw new Error("candidate mismatch");
+    if (!verified) {
+      errorMessage.value = t("e2ee.recoveryCandidateMismatch");
+      return;
+    }
     await api.approveE2eeRecovery(ceremony.id, candidate.candidateFingerprint);
     activeCeremonyId.value = ceremony.id;
     recoverySession.set(ceremony.id);
     approved.value = true;
     clearSecrets(approveForm);
-  } catch {
-    errorMessage.value = t("e2ee.recoveryFailed");
+  } catch (error) {
+    if (isRecoverySecretFailure(error)) {
+      approveRecoverySecretError.value = t("e2ee.recoverySecretInvalid");
+      errorMessage.value = approveRecoverySecretError.value;
+    } else {
+      errorMessage.value = recoveryFailureMessage(error);
+    }
   } finally {
     kdfAbort = null;
     busy.value = false;
@@ -107,8 +142,8 @@ async function activateRecovery(): Promise<void> {
     recoverySession.clear();
     auth.logout();
     await router.push("/login");
-  } catch {
-    errorMessage.value = t("e2ee.recoveryFailed");
+  } catch (error) {
+    errorMessage.value = recoveryFailureMessage(error);
   } finally {
     busy.value = false;
   }
@@ -129,6 +164,17 @@ function clearSecrets(form: Record<string, string>): void {
     if (key !== "ceremonyId") form[key] = "";
   });
 }
+
+function isRecoverySecretFailure(error: unknown): boolean {
+  return error instanceof Error && error.message === "E2EE_RECOVERY_FAILED";
+}
+
+function recoveryFailureMessage(error: unknown): string {
+  if (error instanceof Error && error.message && !error.message.startsWith("E2EE_")) {
+    return error.message;
+  }
+  return t("e2ee.recoveryFailed");
+}
 </script>
 
 <template>
@@ -148,15 +194,51 @@ function clearSecrets(form: Record<string, string>): void {
         <h2>{{ t("e2ee.startRecovery") }}</h2>
         <label>
           <span>{{ t("e2ee.recoverySecret") }}</span>
-          <InputText v-model="startForm.recoverySecret" autocomplete="off" required />
+          <InputText
+            v-model="startForm.recoverySecret"
+            autocomplete="off"
+            required
+            :invalid="Boolean(startRecoverySecretError)"
+            :aria-describedby="startRecoverySecretError ? 'start-recovery-secret-error' : undefined"
+            @update:model-value="startRecoverySecretError = ''"
+          />
+          <small
+            v-if="startRecoverySecretError"
+            id="start-recovery-secret-error"
+            class="field-error"
+          >
+            {{ startRecoverySecretError }}
+          </small>
         </label>
         <label>
           <span>{{ t("e2ee.newSharedPassphrase") }}</span>
-          <Password v-model="startForm.passphrase" :feedback="false" autocomplete="new-password" required />
+          <Password
+            v-model="startForm.passphrase"
+            :feedback="false"
+            autocomplete="new-password"
+            required
+            :minlength="SHARED_PASSPHRASE_MIN_LENGTH"
+            :invalid="Boolean(startPassphraseError)"
+            :aria-describedby="startPassphraseError ? 'start-passphrase-error' : undefined"
+            @update:model-value="startPassphraseError = ''"
+          />
+          <small
+            v-if="startPassphraseError"
+            id="start-passphrase-error"
+            class="field-error"
+          >
+            {{ startPassphraseError }}
+          </small>
         </label>
         <label>
           <span>{{ t("e2ee.confirmSharedPassphrase") }}</span>
-          <Password v-model="startForm.confirmation" :feedback="false" autocomplete="new-password" required />
+          <Password
+            v-model="startForm.confirmation"
+            :feedback="false"
+            autocomplete="new-password"
+            required
+            :minlength="SHARED_PASSPHRASE_MIN_LENGTH"
+          />
         </label>
         <Button type="submit" :label="t('e2ee.startRecovery')" :loading="busy" />
         <Message v-if="started" severity="info" :closable="false">
@@ -172,11 +254,41 @@ function clearSecrets(form: Record<string, string>): void {
         </label>
         <label>
           <span>{{ t("e2ee.recoverySecret") }}</span>
-          <InputText v-model="approveForm.recoverySecret" autocomplete="off" required />
+          <InputText
+            v-model="approveForm.recoverySecret"
+            autocomplete="off"
+            required
+            :invalid="Boolean(approveRecoverySecretError)"
+            :aria-describedby="approveRecoverySecretError ? 'approve-recovery-secret-error' : undefined"
+            @update:model-value="approveRecoverySecretError = ''"
+          />
+          <small
+            v-if="approveRecoverySecretError"
+            id="approve-recovery-secret-error"
+            class="field-error"
+          >
+            {{ approveRecoverySecretError }}
+          </small>
         </label>
         <label>
           <span>{{ t("e2ee.newSharedPassphrase") }}</span>
-          <Password v-model="approveForm.passphrase" :feedback="false" autocomplete="new-password" required />
+          <Password
+            v-model="approveForm.passphrase"
+            :feedback="false"
+            autocomplete="new-password"
+            required
+            :minlength="SHARED_PASSPHRASE_MIN_LENGTH"
+            :invalid="Boolean(approvePassphraseError)"
+            :aria-describedby="approvePassphraseError ? 'approve-passphrase-error' : undefined"
+            @update:model-value="approvePassphraseError = ''"
+          />
+          <small
+            v-if="approvePassphraseError"
+            id="approve-passphrase-error"
+            class="field-error"
+          >
+            {{ approvePassphraseError }}
+          </small>
         </label>
         <Button type="submit" :label="t('e2ee.verifyAndApprove')" :loading="busy" />
         <Button
@@ -234,6 +346,11 @@ h2 {
 :deep(.p-password),
 :deep(.p-password-input) {
   width: 100%;
+}
+
+.field-error {
+  color: #b91c1c;
+  font-size: 0.85rem;
 }
 
 @media (max-width: 760px) {

@@ -1,5 +1,4 @@
-import { BadRequestException, Body, Controller, Get, Header, Headers, HttpCode, Param, Post, Res } from '@nestjs/common';
-import type { Response } from 'express';
+import { BadRequestException, Body, Controller, Get, Header, Headers, HttpCode, Param, Post, StreamableFile } from '@nestjs/common';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { User } from '../users/user.entity';
 import { ApproveRecoveryDto, RegisterClientEpochDto } from './dto/e2ee.dto';
@@ -23,17 +22,15 @@ export class E2eeController {
   @Get('key-state/shared-passphrase-slot')
   @CeremonyAllowed()
   @Header('Cache-Control', 'no-store')
-  keyStateSharedSlot(@CurrentUser() user: User, @Res({ passthrough: true }) response: Response): Promise<Buffer> {
-    response.setHeader('Content-Type', E2EE_MEDIA_TYPE);
-    return this.service.keyWrapper(user, 'shared-passphrase-slot');
+  async keyStateSharedSlot(@CurrentUser() user: User): Promise<StreamableFile> {
+    return this.binaryResponse(await this.service.keyWrapper(user, 'shared-passphrase-slot'));
   }
 
   @Get('key-state/content-key-wrapper')
   @CeremonyAllowed()
   @Header('Cache-Control', 'no-store')
-  keyStateContentWrapper(@CurrentUser() user: User, @Res({ passthrough: true }) response: Response): Promise<Buffer> {
-    response.setHeader('Content-Type', E2EE_MEDIA_TYPE);
-    return this.service.keyWrapper(user, 'content-key-wrapper');
+  async keyStateContentWrapper(@CurrentUser() user: User): Promise<StreamableFile> {
+    return this.binaryResponse(await this.service.keyWrapper(user, 'content-key-wrapper'));
   }
 
   @Get('recovery-metadata')
@@ -46,9 +43,8 @@ export class E2eeController {
   @Get('recovery-slot')
   @CeremonyAllowed()
   @Header('Cache-Control', 'no-store')
-  recoverySlot(@CurrentUser() user: User, @Res({ passthrough: true }) response: Response): Promise<Buffer> {
-    response.setHeader('Content-Type', E2EE_MEDIA_TYPE);
-    return this.service.recoverySlot(user);
+  async recoverySlot(@CurrentUser() user: User): Promise<StreamableFile> {
+    return this.binaryResponse(await this.service.recoverySlot(user));
   }
 
   @Post('client-epochs')
@@ -100,10 +96,9 @@ export class E2eeController {
   recoveryCandidate(
     @CurrentUser() user: User,
     @Param('id') id: string,
-    @Res({ passthrough: true }) response: Response,
-  ): Promise<Buffer> {
-    response.setHeader('Content-Type', E2EE_MEDIA_TYPE);
-    return this.service.recoveryCandidate(user, id);
+  ): Promise<StreamableFile> {
+    return this.service.recoveryCandidate(user, id)
+      .then((buffer) => this.binaryResponse(buffer));
   }
 
   @Post('recovery-ceremonies/:id/activate')
@@ -128,5 +123,12 @@ export class E2eeController {
   @HttpCode(204)
   abortRecovery(@CurrentUser() user: User, @CurrentSessionId() sessionId: string, @Param('id') id: string): Promise<void> {
     return this.service.abortRecovery(user, sessionId, id);
+  }
+
+  private binaryResponse(buffer: Buffer): StreamableFile {
+    return new StreamableFile(buffer, {
+      type: E2EE_MEDIA_TYPE,
+      length: buffer.length,
+    });
   }
 }
