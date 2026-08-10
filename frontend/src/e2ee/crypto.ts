@@ -24,7 +24,6 @@ const encoder = new Encoder({
   useRecords: false,
 });
 const decoder = new Decoder({ mapsAsObjects: false, useRecords: false });
-const utf8 = new TextEncoder();
 
 export interface InitialKeyState {
   organizationId: string;

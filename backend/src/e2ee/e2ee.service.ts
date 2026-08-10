@@ -1,4 +1,4 @@
-import { ConflictException, ForbiddenException, HttpStatus, Inject, Injectable } from '@nestjs/common';
+import { ForbiddenException, HttpStatus, Inject, Injectable } from '@nestjs/common';
 import { DataSource, EntityManager, In, IsNull } from 'typeorm';
 import { createHash, timingSafeEqual } from 'node:crypto';
 import { User } from '../users/user.entity';
@@ -55,7 +55,6 @@ export class E2eeService {
 
   async recoveryMetadata(user: User) {
     this.assertKeyOperator(user);
-    const state = await this.requiredKeyState();
     return {
       ...(await this.keyState(user)),
     };
