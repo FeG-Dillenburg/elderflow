@@ -7,7 +7,9 @@ describe('DevelopmentIdentityGuard', () => {
   const reflector = { getAllAndOverride: jest.fn() };
   const users = { findOne: jest.fn() };
   const sessions = { verify: jest.fn() };
-  const guard = new DevelopmentIdentityGuard(config as any, reflector as any, users as any, sessions as any);
+  const ceremonies = { findOne: jest.fn() };
+  const dataSource = { getRepository: jest.fn().mockReturnValue(ceremonies) };
+  const guard = new DevelopmentIdentityGuard(config as any, reflector as any, users as any, sessions as any, dataSource as any);
   const context = (method = 'GET', authorization?: string) => {
     const request: any = { method, headers: { authorization } };
     return {
@@ -18,7 +20,11 @@ describe('DevelopmentIdentityGuard', () => {
     } as any;
   };
 
-  beforeEach(() => jest.clearAllMocks());
+  beforeEach(() => {
+    jest.clearAllMocks();
+    dataSource.getRepository.mockReturnValue(ceremonies);
+    ceremonies.findOne.mockResolvedValue(null);
+  });
 
   it('bypasses public handlers', async () => {
     reflector.getAllAndOverride.mockReturnValueOnce(true);
@@ -28,8 +34,8 @@ describe('DevelopmentIdentityGuard', () => {
 
   it('authenticates a bearer session and attaches its active user', async () => {
     reflector.getAllAndOverride.mockReturnValueOnce(false).mockReturnValueOnce('topics');
-    sessions.verify.mockReturnValue({ sub: 'user-id' });
-    const user = { id: 'user-id', role: 'user' };
+    sessions.verify.mockReturnValue({ sub: 'user-id', sid: 'session-id', ver: 2 });
+    const user = { id: 'user-id', role: 'user', sessionVersion: 2 };
     users.findOne.mockResolvedValue(user);
     const requestContext = context('POST', 'Bearer signed-token');
     await expect(guard.canActivate(requestContext)).resolves.toBe(true);
@@ -37,12 +43,42 @@ describe('DevelopmentIdentityGuard', () => {
     expect(requestContext.request.user).toBe(user);
   });
 
+  it('rejects every application session issued before a key-state activation', async () => {
+    reflector.getAllAndOverride.mockReturnValueOnce(false);
+    sessions.verify.mockReturnValue({ sub: 'user-id', sid: 'session-id', ver: 4 });
+    users.findOne.mockResolvedValue({ id: 'user-id', role: 'user', sessionVersion: 5 });
+
+    await expect(guard.canActivate(context('GET', 'Bearer old-token'))).rejects.toThrow('Session was revoked');
+  });
+
+  it('allows a revoked token only when the activation handler opts into idempotent retry', async () => {
+    reflector.getAllAndOverride.mockReturnValueOnce(false).mockReturnValueOnce(true).mockReturnValueOnce(undefined);
+    sessions.verify.mockReturnValue({ sub: 'user-id', sid: 'session-id', ver: 4 });
+    const user = { id: 'user-id', role: 'user', sessionVersion: 5 };
+    users.findOne.mockResolvedValue(user);
+    const requestContext = context('POST', 'Bearer old-token');
+
+    await expect(guard.canActivate(requestContext)).resolves.toBe(true);
+    expect(requestContext.request.user).toBe(user);
+  });
+
+  it('reserves a participating application session exclusively for ceremony handlers', async () => {
+    sessions.verify.mockReturnValue({ sub: 'user-id', sid: 'ceremony-session', ver: 2 });
+    users.findOne.mockResolvedValue({ id: 'user-id', role: 'user', sessionVersion: 2 });
+    ceremonies.findOne.mockResolvedValue({ id: 'ceremony-id', state: 'ready_to_activate' });
+    reflector.getAllAndOverride.mockReturnValueOnce(false).mockReturnValueOnce(false);
+
+    await expect(guard.canActivate(context('GET', 'Bearer token'))).rejects.toThrow(
+      'This session is reserved for an active key ceremony',
+    );
+  });
+
   it('rejects missing authentication in production and unknown session users', async () => {
     reflector.getAllAndOverride.mockReturnValue(false);
     config.get.mockReturnValue('production');
     await expect(guard.canActivate(context())).rejects.toThrow(UnauthorizedException);
 
-    sessions.verify.mockReturnValue({ sub: 'missing' });
+    sessions.verify.mockReturnValue({ sub: 'missing', sid: 'session-id', ver: 1 });
     users.findOne.mockResolvedValue(null);
     await expect(guard.canActivate(context('GET', 'Bearer token'))).rejects.toThrow('Session user does not exist');
   });
@@ -68,26 +104,26 @@ describe('DevelopmentIdentityGuard', () => {
     ['user', 'authSettings', 'GET'],
   ])('rejects %s access to %s %s', async (role, category, method) => {
     reflector.getAllAndOverride.mockReturnValueOnce(false).mockReturnValueOnce(category);
-    sessions.verify.mockReturnValue({ sub: 'user-id' });
-    users.findOne.mockResolvedValue({ id: 'user-id', role });
+    sessions.verify.mockReturnValue({ sub: 'user-id', sid: 'session-id', ver: 1 });
+    users.findOne.mockResolvedValue({ id: 'user-id', role, sessionVersion: 1 });
     await expect(guard.canActivate(context(method, 'Bearer token'))).rejects.toThrow(ForbiddenException);
   });
 
   it('allows guest reads and admin writes in permitted domains', async () => {
     reflector.getAllAndOverride.mockReturnValueOnce(false).mockReturnValueOnce('meetings');
-    sessions.verify.mockReturnValue({ sub: 'guest' });
-    users.findOne.mockResolvedValue({ id: 'guest', role: 'guest' });
+    sessions.verify.mockReturnValue({ sub: 'guest', sid: 'guest-session', ver: 1 });
+    users.findOne.mockResolvedValue({ id: 'guest', role: 'guest', sessionVersion: 1 });
     await expect(guard.canActivate(context('GET', 'Bearer token'))).resolves.toBe(true);
 
     reflector.getAllAndOverride.mockReturnValueOnce(false).mockReturnValueOnce('users');
-    sessions.verify.mockReturnValue({ sub: 'admin' });
-    users.findOne.mockResolvedValue({ id: 'admin', role: 'admin' });
+    sessions.verify.mockReturnValue({ sub: 'admin', sid: 'admin-session', ver: 1 });
+    users.findOne.mockResolvedValue({ id: 'admin', role: 'admin', sessionVersion: 1 });
     await expect(guard.canActivate(context('PATCH', 'Bearer token'))).resolves.toBe(true);
   });
 
   it('allows guests to load shared content references', async () => {
-    sessions.verify.mockReturnValue({ sub: 'guest' });
-    users.findOne.mockResolvedValue({ id: 'guest', role: 'guest' });
+    sessions.verify.mockReturnValue({ sub: 'guest', sid: 'guest-session', ver: 1 });
+    users.findOne.mockResolvedValue({ id: 'guest', role: 'guest', sessionVersion: 1 });
 
     reflector.getAllAndOverride.mockReturnValueOnce(false).mockReturnValueOnce('references');
     await expect(guard.canActivate(context('GET', 'Bearer token'))).resolves.toBe(true);
@@ -95,8 +131,8 @@ describe('DevelopmentIdentityGuard', () => {
 
   it('allows IT admins to view users without granting user-management access', async () => {
     reflector.getAllAndOverride.mockReturnValueOnce(false).mockReturnValueOnce('users');
-    sessions.verify.mockReturnValue({ sub: 'it-admin' });
-    users.findOne.mockResolvedValue({ id: 'it-admin', role: 'it-admin' });
+    sessions.verify.mockReturnValue({ sub: 'it-admin', sid: 'it-session', ver: 1 });
+    users.findOne.mockResolvedValue({ id: 'it-admin', role: 'it-admin', sessionVersion: 1 });
     await expect(guard.canActivate(context('GET', 'Bearer token'))).resolves.toBe(true);
   });
 });

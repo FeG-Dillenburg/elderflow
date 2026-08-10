@@ -27,6 +27,9 @@ export class User {
   @Column({ name: 'password_hash', type: 'text', nullable: true, select: false })
   passwordHash: string | null;
 
+  @Column({ name: 'session_version', type: 'integer', default: 1 })
+  sessionVersion: number;
+
   @Column({ name: 'archived_at', type: 'timestamptz', nullable: true })
   archivedAt: Date | null;
 

@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Put, Query } from '@nestjs/common';
-import { TaskDto } from './dto/task.dto';
+import { TaskDto, TaskUpdateDto } from './dto/task.dto';
 import { Task } from './task.entity';
 import { TasksService } from './tasks.service';
 import { Permission } from '../auth/permissions';
@@ -25,7 +25,7 @@ export class TasksController {
   create(@Body() input: TaskDto): Promise<Task> { return this.service.create(input); }
 
   @Put(':id')
-  update(@Param('id', ParseUUIDPipe) id: string, @Body() input: TaskDto): Promise<Task> {
+  update(@Param('id', ParseUUIDPipe) id: string, @Body() input: TaskUpdateDto): Promise<Task> {
     return this.service.update(id, input);
   }
 }

@@ -1,5 +1,5 @@
-import { Transform } from 'class-transformer';
-import { IsEmail, IsIn, IsNotEmpty, IsString, MaxLength, MinLength } from 'class-validator';
+import { Transform, Type } from 'class-transformer';
+import { Equals, IsBase64, IsDefined, IsEmail, IsIn, IsNotEmpty, IsString, IsUUID, MaxLength, MinLength, ValidateNested } from 'class-validator';
 import { SupportedLanguage, supportedLanguages } from '../../installation/language';
 
 export class SetupPasswordDto {
@@ -7,6 +7,32 @@ export class SetupPasswordDto {
   @IsNotEmpty()
   @MaxLength(200)
   setupPassword: string;
+}
+
+export class InitialE2eeKeyStateDto {
+  @IsUUID()
+  organizationId: string;
+
+  @IsUUID()
+  orkId: string;
+
+  @IsUUID()
+  ockId: string;
+
+  @IsBase64({ urlSafe: true })
+  @MaxLength(16_384)
+  sharedPassphraseSlot: string;
+
+  @IsBase64({ urlSafe: true })
+  @MaxLength(16_384)
+  recoverySlot: string;
+
+  @IsBase64({ urlSafe: true })
+  @MaxLength(16_384)
+  contentKeyWrapper: string;
+
+  @Equals(2)
+  custodyCopiesAcknowledged: number;
 }
 
 export class CreateInitialUserDto extends SetupPasswordDto {
@@ -34,4 +60,9 @@ export class CreateInitialUserDto extends SetupPasswordDto {
   @MinLength(10)
   @MaxLength(200)
   password: string;
+
+  @IsDefined()
+  @ValidateNested()
+  @Type(() => InitialE2eeKeyStateDto)
+  e2ee: InitialE2eeKeyStateDto;
 }

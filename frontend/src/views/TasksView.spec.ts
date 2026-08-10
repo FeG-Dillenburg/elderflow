@@ -49,7 +49,7 @@ describe("TasksView", () => {
     );
     expect(vm.form.title).toBe("");
   });
-  it("completes a task while preserving all existing fields and handles errors", async () => {
+  it("completes a task through a structural-only patch and handles errors", async () => {
     const wrapper = await view();
     const vm: any = wrapper.vm;
     vi.spyOn(api, "updateTask").mockResolvedValue({} as any);
@@ -64,12 +64,6 @@ describe("TasksView", () => {
     };
     await vm.complete(task);
     expect(api.updateTask).toHaveBeenCalledWith("task", {
-      title: "Call",
-      description: "text",
-      topicId: "topic",
-      meetingId: "meeting",
-      assignedToId: "user",
-      dueDate: "2026-07-20",
       status: "done",
     });
     vi.spyOn(api, "tasks").mockRejectedValueOnce(new Error("Load failed"));

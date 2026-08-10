@@ -3,6 +3,8 @@ import DashboardView from '../views/DashboardView.vue';
 import { auth } from '../auth/auth';
 import type { PermissionCategory } from '../api/domain';
 import { installation, setupRedirect } from '../installation';
+import { isE2eeKeyOperator } from '../e2ee/roles';
+import { recoverySession } from '../e2ee/recovery-session';
 
 const router = createRouter({
   history: createWebHistory(),
@@ -19,6 +21,7 @@ const router = createRouter({
     { path: '/agenda-sections', name: 'agenda-sections', component: () => import('../views/AgendaSectionsView.vue'), meta: { permission: 'contentSettings' } },
     { path: '/users', name: 'users', component: () => import('../views/UsersView.vue'), meta: { permission: 'users' } },
     { path: '/profile', name: 'profile', component: () => import('../views/ProfileView.vue') },
+    { path: '/key-recovery', name: 'key-recovery', component: () => import('../views/RecoveryView.vue'), meta: { keyOperator: true } },
   ],
 });
 
@@ -29,6 +32,8 @@ router.beforeEach(async (to) => {
   await auth.initialize();
   if (to.meta.public) return auth.state.user ? { path: '/' } : true;
   if (!auth.state.user) return { path: '/login', query: { redirect: to.fullPath } };
+  if (recoverySession.isActive() && to.name !== 'key-recovery') return { path: '/key-recovery' };
+  if (to.meta.keyOperator && !isE2eeKeyOperator(auth.state.user)) return { path: '/profile' };
   const permission = to.meta.permission as PermissionCategory | undefined;
   if (permission && !auth.canView(permission)) {
     const fallback = (['dashboard', 'meetings', 'topics', 'tasks', 'users', 'contentSettings'] as PermissionCategory[])

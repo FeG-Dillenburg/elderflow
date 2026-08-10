@@ -9,6 +9,7 @@ import { NewMembershipTopics1720000007000 } from './1720000007000-NewMembershipT
 import { RecurringTopics1720000008000 } from './1720000008000-RecurringTopics';
 import { MeetingTopicDeferrals1720000009000 } from './1720000009000-MeetingTopicDeferrals';
 import { MeetingAppearanceTexts1720000010000 } from './1720000010000-MeetingAppearanceTexts';
+import { E2eeKeyState1720000011000 } from './1720000011000-E2eeKeyState';
 
 export const migrations = [
   CreateUsers1720000000000,
@@ -22,4 +23,5 @@ export const migrations = [
   RecurringTopics1720000008000,
   MeetingTopicDeferrals1720000009000,
   MeetingAppearanceTexts1720000010000,
+  E2eeKeyState1720000011000,
 ];

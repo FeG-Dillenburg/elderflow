@@ -32,9 +32,9 @@ import {
   type AgendaSection,
   type Meeting,
   type MeetingTopic,
-  type TopicInput,
   type User,
 } from "../api/domain";
+import { isProtectedTextDevelopmentWriteAllowed } from "../e2ee/content-visibility";
 import { useI18n } from "vue-i18n";
 import { dateInputFormat, formatDate, formatTime } from "../i18n";
 
@@ -149,27 +149,11 @@ const removeParticipant = async (userId: string) => {
   await api.removeParticipant(id, userId);
   await load();
 };
-const topicInput = (item: MeetingTopic, status: string): TopicInput => ({
-  name: item.topic!.name,
-  description: item.topic!.description,
-  type: item.topic!.type,
-  status,
-  followUpDate: item.topic!.followUpDate,
-  responsibleUserId: item.topic!.responsibleUserId,
-  defaultSectionId: item.topic!.defaultSectionId,
-  defaultPosition: item.topic!.defaultPosition,
-  recurrenceFirstDueDate: item.topic!.recurrenceFirstDueDate,
-  recurrenceInterval: item.topic!.recurrenceInterval,
-  recurrenceUnit: item.topic!.recurrenceUnit,
-  membershipProcessStatus: item.topic!.membershipProcessStatus,
-  membershipStatusSignal: item.topic!.membershipStatusSignal,
-  godparents: item.topic!.godparents,
-} as TopicInput);
 const setTopicStatus = async (item: MeetingTopic, status: string) => {
   error.value = "";
   try {
     const wasDeferred = item.topic?.status === "deferred";
-    await api.updateTopic(item.topicId, topicInput(item, status));
+    await api.updateTopic(item.topicId, { status });
     const appearanceStatus = status === "done"
       ? "done"
       : item.status === "done"
@@ -244,14 +228,16 @@ const openEdit = () => {
 const saveMeeting = async () => {
   if (!meeting.value || !editForm.date || !editForm.beginTime) return;
   await api.updateMeeting(id, {
-    title: editForm.title.trim() || null,
     date: toLocalDate(editForm.date)!,
     beginTime: toLocalTime(editForm.beginTime),
     status: editForm.status,
     meetingLeaderId: editForm.meetingLeaderId,
     minuteTakerId: editForm.minuteTakerId,
-    generalNotes: editForm.generalNotes || null,
-    openingInput: editForm.openingInput || null,
+    ...(isProtectedTextDevelopmentWriteAllowed() ? {
+      title: editForm.title.trim() || null,
+      generalNotes: editForm.generalNotes || null,
+      openingInput: editForm.openingInput || null,
+    } : {}),
   });
   editVisible.value = false;
   await load();

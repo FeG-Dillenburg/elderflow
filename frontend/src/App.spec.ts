@@ -24,6 +24,13 @@ describe('App', () => {
     for (const path of ['/', '/meetings', '/topics', '/tasks', '/users', '/agenda-sections', '/profile']) {
       expect(wrapper.html()).toContain(`href="${path}"`);
     }
+    const navigation = wrapper.get('nav');
+    const navigationHtml = navigation.html();
+    expect(navigationHtml).toContain('href="/key-recovery"');
+    expect(navigationHtml.indexOf('href="/key-recovery"')).toBeGreaterThan(
+      navigationHtml.indexOf('href="/agenda-sections"'),
+    );
+    expect(wrapper.get('.current-user').html()).not.toContain('href="/key-recovery"');
     expect(wrapper.get('.brand-icon').attributes('src')).toMatch(
       /^(?:\/elderflow-logo\.svg|data:image\/svg\+xml)/,
     );
@@ -42,6 +49,7 @@ describe('App', () => {
     expect(wrapper.text()).toContain('IT admin');
     expect(wrapper.html()).toContain('href="/users"');
     expect(wrapper.html()).not.toContain('href="/meetings"');
+    expect(wrapper.html()).not.toContain('href="/key-recovery"');
   });
 
   it('hides the user directory navigation for a guest', () => {
@@ -53,6 +61,7 @@ describe('App', () => {
     expect(wrapper.html()).not.toContain('href="/users"');
     expect(wrapper.html()).toContain('href="/meetings"');
     expect(wrapper.html()).toContain('href="/topics"');
+    expect(wrapper.html()).not.toContain('href="/key-recovery"');
   });
 
   it('renders only the route outlet while signed out', () => {

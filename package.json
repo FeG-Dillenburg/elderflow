@@ -6,6 +6,12 @@
   "engines": {
     "node": ">=20"
   },
+  "pnpm": {
+    "overrides": {
+      "@types/libsodium-wrappers": "0.7.14",
+      "libsodium-sumo": "0.7.15"
+    }
+  },
   "scripts": {
     "dev": "node scripts/dev.mjs",
     "dev:down": "docker compose -f backend/docker-compose.yml down",

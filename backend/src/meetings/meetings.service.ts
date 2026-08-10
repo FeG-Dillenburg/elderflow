@@ -5,7 +5,7 @@ import { AgendaSection } from '../agenda-sections/agenda-section.entity';
 import { Task } from '../tasks/task.entity';
 import { Topic } from '../topics/topic.entity';
 import { TopicUpdate } from '../topics/topic-update.entity';
-import { MeetingDto, MeetingParticipantDto, MeetingTopicDto, MeetingTopicOrderItemDto, UpdateMeetingTopicDto } from './dto/meeting.dto';
+import { MeetingDto, MeetingParticipantDto, MeetingTopicDto, MeetingTopicOrderItemDto, MeetingUpdateDto, UpdateMeetingTopicDto } from './dto/meeting.dto';
 import { MeetingAppearanceTexts, MeetingTopic } from './meeting-topic.entity';
 import { MeetingUser } from './meeting-user.entity';
 import { Meeting } from './meeting.entity';
@@ -103,7 +103,7 @@ export class MeetingsService {
     });
   }
 
-  async update(id: string, input: MeetingDto): Promise<Meeting> {
+  async update(id: string, input: MeetingUpdateDto): Promise<Meeting> {
     return this.dataSource.transaction(async (manager) => {
       const meeting = await lockedMutableMeeting(manager, id);
       if (input.status === 'completed') {

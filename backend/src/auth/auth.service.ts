@@ -34,7 +34,7 @@ export class AuthService {
     if (!user?.passwordHash || !(await compare(input.password, user.passwordHash))) {
       throw codedHttpException(HttpStatus.UNAUTHORIZED, 'AUTH_CREDENTIALS_INVALID', 'Invalid email or password');
     }
-    return { token: this.sessions.create(user.id), user: this.present(user) };
+    return { token: this.sessions.create(user.id, user.sessionVersion), user: this.present(user) };
   }
 
   present(user: User): AuthUser {

@@ -50,6 +50,23 @@ export class TopicDto {
   @IsOptional() @IsIn(RECURRENCE_UNITS) recurrenceUnit?: RecurrenceUnit | null;
 }
 
+export class TopicPatchDto {
+  @IsOptional() @IsString() @IsNotEmpty() name?: string;
+  @IsOptional() @IsString() description?: string | null;
+  @IsOptional() @IsString() type?: TopicType;
+  @IsOptional() @IsIn(TOPIC_STATUSES) status?: string;
+  @IsOptional() @IsString() followUpDate?: string | null;
+  @IsOptional() @IsUUID() responsibleUserId?: string | null;
+  @IsOptional() @IsString() membershipProcessStatus?: string | null;
+  @IsOptional() @IsIn(MEMBERSHIP_STATUS_SIGNALS) membershipStatusSignal?: MembershipStatusSignal | null;
+  @IsOptional() @IsString() godparents?: string | null;
+  @IsOptional() @IsUUID() defaultSectionId?: string | null;
+  @IsOptional() @IsInt() @Min(1) defaultPosition?: number | null;
+  @IsOptional() @IsString() recurrenceFirstDueDate?: string | null;
+  @IsOptional() @IsInt() @Min(1) recurrenceInterval?: number | null;
+  @IsOptional() @IsIn(RECURRENCE_UNITS) recurrenceUnit?: RecurrenceUnit | null;
+}
+
 type MembershipFieldNames =
   | 'membershipProcessStatus'
   | 'membershipStatusSignal'

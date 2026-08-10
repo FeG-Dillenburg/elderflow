@@ -1,10 +1,12 @@
 import { HttpException, HttpStatus, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { createHmac, timingSafeEqual } from 'node:crypto';
+import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
 import { codedHttpException } from '../errors/coded-http.exception';
 
 interface SessionPayload {
   sub: string;
+  sid: string;
+  ver: number;
   exp: number;
 }
 
@@ -12,9 +14,11 @@ interface SessionPayload {
 export class SessionService {
   constructor(private readonly config: ConfigService) {}
 
-  create(userId: string): string {
+  create(userId: string, sessionVersion: number): string {
     const payload: SessionPayload = {
       sub: userId,
+      sid: randomUUID(),
+      ver: sessionVersion,
       exp: Math.floor(Date.now() / 1000) + 60 * 60 * 12,
     };
     const encoded = Buffer.from(JSON.stringify(payload)).toString('base64url');
@@ -31,7 +35,7 @@ export class SessionService {
     }
     try {
       const payload = JSON.parse(Buffer.from(encoded, 'base64url').toString('utf8')) as SessionPayload;
-      if (!payload.sub || !payload.exp || payload.exp <= Math.floor(Date.now() / 1000)) {
+      if (!payload.sub || !payload.sid || !Number.isInteger(payload.ver) || payload.ver < 1 || !payload.exp || payload.exp <= Math.floor(Date.now() / 1000)) {
         throw codedHttpException(HttpStatus.UNAUTHORIZED, 'AUTH_SESSION_EXPIRED', 'Session expired');
       }
       return payload;

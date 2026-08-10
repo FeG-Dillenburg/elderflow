@@ -11,6 +11,7 @@ import { clearSessionToken, getSessionToken } from './auth/session';
 import { bindPrimeVueLocale, i18n, primeVueLocale, setLanguage } from './i18n';
 import { loadApplicationContext } from './i18n/initialize';
 import { installation } from './installation';
+import { protectedText } from './e2ee/protected-text';
 
 const hadSession = Boolean(getSessionToken());
 const context = await loadApplicationContext({
@@ -28,6 +29,7 @@ installation.ready = true;
 auth.completeInitialization(context.user);
 if (hadSession && !context.user) clearSessionToken();
 setLanguage(context.language);
+if (context.user) await protectedText.offerUnlock(context.user);
 
 const app = createApp(App)
   .use(router)

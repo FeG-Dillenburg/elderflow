@@ -23,6 +23,7 @@ import { useI18n } from "vue-i18n";
 import { dateInputFormat } from "../i18n";
 import { topicNameTranslationKey } from "../topics/topicTypes";
 import { toTopicInput } from "../topics/types/new-membership/topicInput";
+import { isProtectedTextDevelopmentWriteAllowed } from "../e2ee/content-visibility";
 
 const props = withDefaults(defineProps<{
   topic: Topic;
@@ -102,7 +103,17 @@ async function save(): Promise<void> {
       ...form,
       followUpDate: toLocalDate(form.followUpDate),
     });
-    await api.updateTopic(props.topic.id, input);
+    const {
+      name,
+      description,
+      membershipProcessStatus,
+      membershipStatusSignal,
+      godparents,
+      ...structural
+    } = input;
+    await api.updateTopic(props.topic.id, isProtectedTextDevelopmentWriteAllowed()
+      ? input
+      : structural);
     visible.value = false;
     emit("saved");
   } catch (error) {

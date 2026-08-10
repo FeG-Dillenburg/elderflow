@@ -2,12 +2,32 @@ import { flushPromises, mount } from '@vue/test-utils';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import SetupView from './SetupView.vue';
 import { installation } from '../installation';
+import { Decoder } from 'cbor-x';
+
+const createInitialKeyState = vi.hoisted(() => vi.fn());
+vi.mock('../e2ee/crypto', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../e2ee/crypto')>()),
+  createInitialKeyState,
+}));
+
+const generatedKeyState = {
+  recoveryText: 'EFR1.AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8',
+  e2ee: {
+    organizationId: '00000000-0000-4000-8000-000000000001',
+    orkId: '00000000-0000-4000-8000-000000000003',
+    ockId: '00000000-0000-4000-8000-000000000004',
+    sharedPassphraseSlot: 'shared-wrapper',
+    recoverySlot: 'recovery-wrapper',
+    contentKeyWrapper: 'content-wrapper',
+    custodyCopiesAcknowledged: 2 as const,
+  },
+};
 
 const stubs = {
   RouterLink: { props: ['to'], template: '<a :href="to"><slot /></a>' },
   Button: { props: ['label'], template: '<button>{{ label }}</button>' },
-  InputText: { props: ['modelValue'], template: '<input />' },
-  Password: { props: ['modelValue'], template: '<input />' },
+  InputText: { props: ['modelValue', 'invalid'], template: '<input :aria-invalid="invalid ? \'true\' : \'false\'" />' },
+  Password: { props: ['modelValue', 'invalid'], template: '<input :aria-invalid="invalid ? \'true\' : \'false\'" />' },
   Message: { template: '<div><slot /></div>' },
 };
 
@@ -16,6 +36,8 @@ describe('SetupView', () => {
     vi.restoreAllMocks();
     installation.setupRequired = true;
     installation.defaultLanguage = null;
+    createInitialKeyState.mockReset();
+    createInitialKeyState.mockResolvedValue(generatedKeyState);
   });
 
   it('shows the colorful Elderflow wordmark', () => {
@@ -59,12 +81,13 @@ describe('SetupView', () => {
       method: 'POST', body: JSON.stringify({ setupPassword: 'startup-password' }),
     }));
     expect(vm.stage).toBe('user');
-    expect(wrapper.text()).toContain('Create superadmin');
+    expect(wrapper.text()).toContain('Create Recovery Secret');
   });
 
-  it('creates the initial user without allowing the role to be selected', async () => {
+  it('creates browser key state, verifies two paper copies, and creates the initial user without a selectable role', async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ setupRequired: true, defaultLanguage: null }) })
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ valid: true }) })
       .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ id: 'user-id', role: 'superadmin' }) });
     vi.stubGlobal('fetch', fetchMock);
     const wrapper = mount(SetupView, { global: { stubs } });
@@ -72,26 +95,107 @@ describe('SetupView', () => {
     const vm = wrapper.vm as unknown as {
       stage: string;
       setupPassword: string;
-      form: { email: string; firstName: string; lastName: string; password: string; passwordConfirmation: string };
+      form: { email: string; firstName: string; lastName: string; password: string; passwordConfirmation: string; sharedPassphrase: string; sharedPassphraseConfirmation: string };
+      prepareRecovery: () => Promise<void>;
       createUser: () => Promise<void>;
+      firstCopyAcknowledged: boolean;
+      secondCopyAcknowledged: boolean;
     };
     vm.stage = 'user';
     vm.setupPassword = 'startup-password';
     Object.assign(vm.form, {
       email: 'ada@example.com', firstName: 'Ada', lastName: 'Lovelace', password: 'password123!', passwordConfirmation: 'password123!',
+      sharedPassphrase: 'correct horse battery staple', sharedPassphraseConfirmation: 'correct horse battery staple',
     });
+    await vm.prepareRecovery();
+    expect(fetchMock).toHaveBeenNthCalledWith(2, 'http://localhost:3000/api/setup/verify', expect.objectContaining({
+      method: 'POST', body: JSON.stringify({ setupPassword: 'startup-password' }),
+    }));
+    expect(createInitialKeyState).toHaveBeenCalledWith(
+      'correct horse battery staple',
+      expect.any(AbortSignal),
+    );
+    expect(vm.stage).toBe('recovery');
+    expect(wrapper.text()).toContain(generatedKeyState.recoveryText);
+    vm.firstCopyAcknowledged = true;
+    vm.secondCopyAcknowledged = true;
     await vm.createUser();
 
-    expect(fetchMock).toHaveBeenNthCalledWith(2, 'http://localhost:3000/api/setup', expect.objectContaining({
+    expect(fetchMock).toHaveBeenNthCalledWith(3, 'http://localhost:3000/api/setup', expect.objectContaining({
       method: 'POST',
-      body: JSON.stringify({
-        setupPassword: 'startup-password', defaultLanguage: 'en', email: 'ada@example.com', firstName: 'Ada', lastName: 'Lovelace', password: 'password123!',
-      }),
+      headers: expect.objectContaining({ 'Content-Type': 'application/vnd.elderflow.e2ee+cbor;v=1' }),
     }));
+    const setupBody = fetchMock.mock.calls[2][1].body as Uint8Array;
+    const decoded = new Decoder({ mapsAsObjects: false, useRecords: false }).decode(setupBody) as unknown[];
+    expect(decoded.slice(0, 6)).toEqual([
+      'en', 'startup-password', 'ada@example.com', 'Ada', 'Lovelace', 'password123!',
+    ]);
+    expect((decoded[6] as unknown[]).slice(0, 3)).toEqual([
+      generatedKeyState.e2ee.organizationId, generatedKeyState.e2ee.orkId, generatedKeyState.e2ee.ockId,
+    ]);
     expect(vm.stage).toBe('complete');
     expect(installation.setupRequired).toBe(false);
     expect(installation.defaultLanguage).toBe('en');
     expect(wrapper.text()).toContain('Setup complete');
+  });
+
+  it('shows specific field errors and does not generate a Recovery Secret for invalid account data', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true, json: () => Promise.resolve({ setupRequired: true, defaultLanguage: null }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const wrapper = mount(SetupView, { global: { stubs } });
+    await flushPromises();
+    const vm = wrapper.vm as unknown as {
+      stage: string;
+      form: { email: string; firstName: string; lastName: string; password: string; passwordConfirmation: string; sharedPassphrase: string; sharedPassphraseConfirmation: string };
+      fieldErrors: { email: string; password: string };
+      errorMessage: string;
+      prepareRecovery: () => Promise<void>;
+    };
+    vm.stage = 'user';
+    Object.assign(vm.form, {
+      email: 'not-an-email', firstName: 'Ada', lastName: 'Lovelace', password: 'short', passwordConfirmation: 'short',
+      sharedPassphrase: 'correct horse battery staple', sharedPassphraseConfirmation: 'correct horse battery staple',
+    });
+    await vm.prepareRecovery();
+    await wrapper.vm.$nextTick();
+
+    expect(vm.stage).toBe('user');
+    expect(vm.errorMessage).toBe('Please correct the highlighted fields before creating the Recovery Secret.');
+    expect(vm.fieldErrors.email).toBe('Enter a valid email address.');
+    expect(vm.fieldErrors.password).toBe('The account password must be between 10 and 200 characters.');
+    expect(wrapper.text()).toContain('The account password must be between 10 and 200 characters.');
+    expect(wrapper.findAll('[aria-invalid="true"]')).toHaveLength(2);
+    expect(createInitialKeyState).not.toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('rechecks the setup password before generating browser key state', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ setupRequired: true, defaultLanguage: null }) })
+      .mockResolvedValueOnce({ ok: false, json: () => Promise.resolve({ code: 'SETUP_PASSWORD_INVALID', message: 'Invalid setup password' }) });
+    vi.stubGlobal('fetch', fetchMock);
+    const wrapper = mount(SetupView, { global: { stubs } });
+    await flushPromises();
+    const vm = wrapper.vm as unknown as {
+      stage: string;
+      setupPassword: string;
+      form: { email: string; firstName: string; lastName: string; password: string; passwordConfirmation: string; sharedPassphrase: string; sharedPassphraseConfirmation: string };
+      prepareRecovery: () => Promise<void>;
+    };
+    vm.stage = 'user';
+    vm.setupPassword = 'obsolete-password';
+    Object.assign(vm.form, {
+      email: 'ada@example.com', firstName: 'Ada', lastName: 'Lovelace', password: 'password123!', passwordConfirmation: 'password123!',
+      sharedPassphrase: 'correct horse battery staple', sharedPassphraseConfirmation: 'correct horse battery staple',
+    });
+
+    await vm.prepareRecovery();
+
+    expect(vm.stage).toBe('password');
+    expect(createInitialKeyState).not.toHaveBeenCalled();
+    expect(wrapper.text()).toContain('The setup password is invalid.');
   });
 
   it('preselects a regional browser language and switches the setup screen immediately', async () => {
@@ -119,14 +223,16 @@ describe('SetupView', () => {
     const vm = wrapper.vm as unknown as {
       stage: string;
       form: { password: string; passwordConfirmation: string };
+      fieldErrors: { passwordConfirmation: string };
       errorMessage: string;
-      createUser: () => Promise<void>;
+      prepareRecovery: () => Promise<void>;
     };
     vm.stage = 'user';
     vm.form.password = 'password123!';
     vm.form.passwordConfirmation = 'different-password';
-    await vm.createUser();
-    expect(vm.errorMessage).toBe('Passwords do not match');
+    await vm.prepareRecovery();
+    expect(vm.errorMessage).toBe('Please correct the highlighted fields before creating the Recovery Secret.');
+    expect(vm.fieldErrors.passwordConfirmation).toBe('The account passwords do not match.');
     expect(fetch).toHaveBeenCalledTimes(1);
   });
 });

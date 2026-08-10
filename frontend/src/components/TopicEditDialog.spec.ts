@@ -66,7 +66,7 @@ describe("TopicEditDialog", () => {
     expect(wrapper.emitted("update:visible")?.[0]).toEqual([false]);
   });
 
-  it("repopulates all fields on prop changes and saves full mapped input", async () => {
+  it("repopulates all fields on prop changes and saves structural fields while Protected text is unavailable", async () => {
     vi.spyOn(api, "updateTopic").mockResolvedValue({} as any);
     const wrapper = mount(TopicEditDialog, {
       shallow: true,
@@ -92,10 +92,13 @@ describe("TopicEditDialog", () => {
     expect(api.updateTopic).toHaveBeenCalledWith(
       "topic",
       expect.objectContaining({
-        name: "New",
         followUpDate: "2026-07-20",
         defaultPosition: null,
       }),
+    );
+    expect(api.updateTopic).not.toHaveBeenCalledWith(
+      "topic",
+      expect.objectContaining({ name: expect.anything() }),
     );
     expect(wrapper.emitted("saved")).toHaveLength(1);
     expect(wrapper.emitted("update:visible")?.[0]).toEqual([false]);
@@ -144,7 +147,11 @@ describe("TopicEditDialog", () => {
     await vm.save();
     expect(api.updateTopic).toHaveBeenCalledWith(
       "topic",
-      expect.objectContaining({ type: "person", name: "Alex and Sam" }),
+      expect.objectContaining({ type: "person" }),
+    );
+    expect(api.updateTopic).not.toHaveBeenCalledWith(
+      "topic",
+      expect.objectContaining({ name: expect.anything() }),
     );
   });
 

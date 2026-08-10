@@ -6,6 +6,8 @@ import { auth } from "./auth/auth";
 import { roleLabel } from "./auth/roles";
 import router from "./router";
 import { useI18n } from "vue-i18n";
+import UnlockDialog from "./e2ee/UnlockDialog.vue";
+import { protectedText } from "./e2ee/protected-text";
 
 const { t } = useI18n();
 const navigation: Array<{
@@ -55,6 +57,9 @@ const visibleNavigation = computed(() =>
   navigation.filter((item) => auth.canView(item.permission)),
 );
 const isSetupRoute = computed(() => router.currentRoute.value.name === "setup");
+const protectedRouteKey = computed(
+  () => `${router.currentRoute.value.fullPath}:${protectedText.state.status}`,
+);
 
 async function logout(): Promise<void> {
   auth.logout();
@@ -88,6 +93,14 @@ async function logout(): Promise<void> {
           <i :class="item.icon" aria-hidden="true" class="pi" />
           {{ t(item.labelKey) }}
         </RouterLink>
+        <RouterLink
+          v-if="protectedText.isEligible(auth.state.user)"
+          to="/key-recovery"
+          class="nav-link"
+        >
+          <i class="pi pi-key" aria-hidden="true" />
+          {{ t("e2ee.recoveryAction") }}
+        </RouterLink>
       </nav>
       <div class="current-user">
         <RouterLink to="/profile" class="profile-link">
@@ -111,8 +124,41 @@ async function logout(): Promise<void> {
       </div>
     </aside>
     <main class="main-content">
-      <RouterView />
+      <div
+        v-if="protectedText.isEligible(auth.state.user)"
+        class="protected-text-status"
+      >
+        <span
+          class="status-indicator"
+          :class="`status-${protectedText.state.status}`"
+          role="status"
+        >
+          {{
+            protectedText.state.status === "unlocked"
+              ? t("e2ee.unlocked")
+              : t("e2ee.locked")
+          }}
+        </span>
+        <button
+          v-if="protectedText.isEligible(auth.state.user)"
+          type="button"
+          class="lock-button"
+          @click="
+            protectedText.state.status === 'unlocked'
+              ? protectedText.lock('explicit')
+              : protectedText.showUnlock()
+          "
+        >
+          {{
+            protectedText.state.status === "unlocked"
+              ? t("e2ee.lockAction")
+              : t("e2ee.unlockAction")
+          }}
+        </button>
+      </div>
+      <RouterView :key="protectedRouteKey" />
     </main>
+    <UnlockDialog v-if="protectedText.isEligible(auth.state.user)" />
   </div>
   <RouterView v-else />
 </template>
@@ -179,7 +225,9 @@ async function logout(): Promise<void> {
 
 nav {
   display: grid;
+  min-height: 0;
   gap: 0.3rem;
+  overflow-y: auto;
 }
 
 .nav-link {
@@ -200,6 +248,7 @@ nav {
 
 .current-user {
   display: flex;
+  flex: 0 0 auto;
   align-items: center;
   gap: 0.7rem;
   margin-top: auto;
@@ -260,6 +309,31 @@ nav {
 .main-content {
   min-width: 0;
   padding: 2.25rem;
+}
+
+.protected-text-status {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 0.65rem;
+  margin-bottom: 1rem;
+}
+
+.status-indicator {
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.status-unlocked {
+  color: #177245;
+}
+
+.lock-button {
+  border: 0;
+  background: transparent;
+  color: #334155;
+  text-decoration: underline;
+  cursor: pointer;
 }
 
 @media (max-width: 760px) {

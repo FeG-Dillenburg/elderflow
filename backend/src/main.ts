@@ -2,9 +2,12 @@ import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { ApiErrorFilter, validationExceptionFactory } from './errors/api-error.filter';
+import { raw } from 'express';
+import { isE2eeMediaType } from './e2ee/e2ee-protocol';
 
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule);
+  app.use(raw({ type: isE2eeMediaType, limit: '16kb' }));
   app.enableCors();
   app.useGlobalFilters(new ApiErrorFilter());
   app.useGlobalPipes(

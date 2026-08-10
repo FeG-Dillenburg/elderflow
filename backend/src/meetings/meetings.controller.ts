@@ -13,6 +13,7 @@ import {
 } from '@nestjs/common';
 import {
   MeetingDto,
+  MeetingUpdateDto,
   MeetingParticipantDto,
   MeetingTopicDto,
   ReorderMeetingTopicsDto,
@@ -41,7 +42,7 @@ export class MeetingsController {
     @CurrentUser() user: User,
   ): Promise<Meeting> { return this.service.complete(id, user); }
   @Get(':id') findOne(@Param('id', ParseUUIDPipe) id: string): Promise<MeetingDetail> { return this.service.findOne(id); }
-  @Put(':id') update(@Param('id', ParseUUIDPipe) id: string, @Body() input: MeetingDto): Promise<Meeting> { return this.service.update(id, input); }
+  @Put(':id') update(@Param('id', ParseUUIDPipe) id: string, @Body() input: MeetingUpdateDto): Promise<Meeting> { return this.service.update(id, input); }
   @Get(':id/suggestions') suggestions(
     @Param('id', ParseUUIDPipe) id: string,
     @Query('future', new DefaultValuePipe(false), ParseBoolPipe) future: boolean,

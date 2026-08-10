@@ -115,12 +115,6 @@ const create = async () => {
 };
 const complete = async (task: Task) => {
   await api.updateTask(task.id, {
-    title: task.title,
-    description: task.description,
-    topicId: task.topicId,
-    meetingId: task.meetingId,
-    assignedToId: task.assignedToId,
-    dueDate: task.dueDate,
     status: "done",
   });
   await load();

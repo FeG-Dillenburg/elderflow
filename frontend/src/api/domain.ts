@@ -2,6 +2,10 @@ import type { SupportedLanguage } from '../i18n/language';
 import { localizeApiError, type ApiErrorPayload } from '../i18n/api-errors';
 import { formatDate, translate } from '../i18n';
 import type { TopicType } from '../topics/topicTypes';
+import type { InitialKeyState, PublicKeyState, RecoveryKeyState } from '../e2ee/crypto';
+import { Encoder } from 'cbor-x';
+import { base64UrlToBytes, bytesToBase64Url, E2EE_MEDIA_TYPE } from '../e2ee/protocol';
+import { applyProtectedTextVisibility, getProtectedTextDevelopmentHeaders } from '../e2ee/content-visibility';
 export type { TopicType } from '../topics/topicTypes';
 export type RecurrenceUnit = 'weeks' | 'months';
 export type AgendaAppearanceSource = 'manual' | 'recurrence';
@@ -31,6 +35,7 @@ export interface InitialUserInput {
   firstName: string;
   lastName: string;
   password: string;
+  e2ee: InitialKeyState;
 }
 
 export interface AgendaSection {
@@ -316,21 +321,86 @@ export interface DashboardData {
 }
 
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000';
+const cborEncoder = new Encoder({ mapsAsObjects: false, structuredClone: false, tagUint8Array: false, useRecords: false });
 import { getSessionToken } from '../auth/session';
 
 export async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const token = getSessionToken();
   const response = await fetch(`${apiBaseUrl}${path}`, {
     ...options,
-    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}), ...options?.headers },
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...getProtectedTextDevelopmentHeaders(),
+      ...options?.headers,
+    },
   });
   if (!response.ok) {
     const payload = (await response.json().catch(() => null)) as ApiErrorPayload | null;
+    notifyAuthorizationLoss(payload);
     throw new Error(localizeApiError(payload, translate));
   }
   if (response.status === 204 || response.headers?.get('content-length') === '0') return undefined as T;
+  return applyProtectedTextVisibility(await response.json()) as T;
+}
+
+async function requestBinary(path: string): Promise<string> {
+  const token = getSessionToken();
+  const response = await fetch(`${apiBaseUrl}${path}`, {
+    headers: { Accept: E2EE_MEDIA_TYPE, ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+  });
+  if (!response.ok) {
+    const payload = (await response.json().catch(() => null)) as ApiErrorPayload | null;
+    notifyAuthorizationLoss(payload);
+    throw new Error(localizeApiError(payload, translate));
+  }
+  if (!response.headers.get('content-type')?.replaceAll(' ', '').startsWith(E2EE_MEDIA_TYPE)) {
+    throw new Error('E2EE_BINARY_RESPONSE_INVALID');
+  }
+  return bytesToBase64Url(new Uint8Array(await response.arrayBuffer()));
+}
+
+async function requestWithBinaryBody<T>(path: string, body: Uint8Array, headers: Record<string, string> = {}): Promise<T> {
+  const token = getSessionToken();
+  const response = await fetch(`${apiBaseUrl}${path}`, {
+    method: 'POST',
+    body: Uint8Array.from(body),
+    headers: { 'Content-Type': E2EE_MEDIA_TYPE, ...(token ? { Authorization: `Bearer ${token}` } : {}), ...headers },
+  });
+  if (!response.ok) {
+    const payload = (await response.json().catch(() => null)) as ApiErrorPayload | null;
+    notifyAuthorizationLoss(payload);
+    throw new Error(localizeApiError(payload, translate));
+  }
   return response.json() as Promise<T>;
 }
+
+function notifyAuthorizationLoss(payload: ApiErrorPayload | null): void {
+  if (typeof window !== 'undefined' && ['AUTH_SESSION_REVOKED', 'AUTH_USER_NOT_FOUND'].includes(payload?.code ?? '')) {
+    window.dispatchEvent(new CustomEvent('elderflow:authorization-loss'));
+  }
+}
+
+function encodeSetupRequest(input: InitialUserInput): Uint8Array {
+  return Uint8Array.from(cborEncoder.encode([
+    input.defaultLanguage,
+    input.setupPassword,
+    input.email,
+    input.firstName,
+    input.lastName,
+    input.password,
+    [
+      input.e2ee.organizationId,
+      input.e2ee.orkId,
+      input.e2ee.ockId,
+      base64UrlToBytes(input.e2ee.sharedPassphraseSlot),
+      base64UrlToBytes(input.e2ee.recoverySlot),
+      base64UrlToBytes(input.e2ee.contentKeyWrapper),
+      input.e2ee.custodyCopiesAcknowledged,
+    ],
+  ]));
+}
+
 
 const query = (values: Record<string, string | boolean | null | undefined>): string => {
   const params = new URLSearchParams();
@@ -344,10 +414,49 @@ const query = (values: Record<string, string | boolean | null | undefined>): str
 export const api = {
   installation: () => request<{ setupRequired: boolean; defaultLanguage: SupportedLanguage | null }>('/api/installation'),
   verifySetupPassword: (setupPassword: string) => request<{ valid: true }>('/api/setup/verify', { method: 'POST', body: JSON.stringify({ setupPassword }) }),
-  createInitialUser: (input: InitialUserInput) => request<User>('/api/setup', { method: 'POST', body: JSON.stringify(input) }),
+  createInitialUser: (input: InitialUserInput) => requestWithBinaryBody<User>('/api/setup', encodeSetupRequest(input)),
   login: (input: { email: string; password: string }) => request<{ token: string; user: AuthUser }>('/api/auth/login', { method: 'POST', body: JSON.stringify(input) }),
   me: () => request<AuthUser>('/api/auth/me'),
   updateProfile: (input: { email: string; firstName: string; lastName: string; language: SupportedLanguage | null; password?: string }) => request<AuthUser>('/api/auth/profile', { method: 'PATCH', body: JSON.stringify(input) }),
+  e2eeKeyMetadata: () => request<Omit<PublicKeyState, 'sharedPassphraseSlot' | 'contentKeyWrapper'>>('/api/e2ee/key-state'),
+  e2eeKeyState: async () => {
+    const [metadata, sharedPassphraseSlot, contentKeyWrapper] = await Promise.all([
+      api.e2eeKeyMetadata(),
+      requestBinary('/api/e2ee/key-state/shared-passphrase-slot'),
+      requestBinary('/api/e2ee/key-state/content-key-wrapper'),
+    ]);
+    return { ...metadata, sharedPassphraseSlot, contentKeyWrapper };
+  },
+  e2eeRecoveryMetadata: async () => {
+    const [metadata, sharedPassphraseSlot, contentKeyWrapper, recoverySlot] = await Promise.all([
+      request<Omit<RecoveryKeyState, 'sharedPassphraseSlot' | 'contentKeyWrapper' | 'recoverySlot'>>('/api/e2ee/recovery-metadata'),
+      requestBinary('/api/e2ee/key-state/shared-passphrase-slot'),
+      requestBinary('/api/e2ee/key-state/content-key-wrapper'),
+      requestBinary('/api/e2ee/recovery-slot'),
+    ]);
+    return { ...metadata, sharedPassphraseSlot, contentKeyWrapper, recoverySlot };
+  },
+  registerE2eeClientEpoch: (input: { id: string; noncePrefix: string; signingPublicKey: string }) => request<{ registered: true }>('/api/e2ee/client-epochs', { method: 'POST', body: JSON.stringify(input) }),
+  revokeE2eeClientEpoch: (id: string) => request<void>(`/api/e2ee/client-epochs/${id}/revoke`, { method: 'POST' }),
+  startE2eeRecovery: (input: { expectedGeneration: number; candidateFingerprint: string; candidateSharedPassphraseSlot: string }) => requestWithBinaryBody<{ id: string; state: string; expiresAt: string }>(
+    '/api/e2ee/recovery-ceremonies',
+    base64UrlToBytes(input.candidateSharedPassphraseSlot),
+    {
+      'X-ElderFlow-Expected-Generation': String(input.expectedGeneration),
+      'X-ElderFlow-Candidate-Fingerprint': input.candidateFingerprint,
+    },
+  ),
+  approveE2eeRecovery: (id: string, candidateFingerprint: string) => request<{ id: string; state: string; expiresAt: string }>(`/api/e2ee/recovery-ceremonies/${id}/approve`, { method: 'POST', body: JSON.stringify({ candidateFingerprint }) }),
+  e2eeRecoveryCeremony: async (id: string) => {
+    const [metadata, candidateSharedPassphraseSlot] = await Promise.all([
+      request<{ id: string; state: string; expectedGeneration: number; candidateFingerprint: string; expiresAt: string }>(`/api/e2ee/recovery-ceremonies/${id}`),
+      requestBinary(`/api/e2ee/recovery-ceremonies/${id}/candidate-shared-passphrase-slot`),
+    ]);
+    return { ...metadata, candidateSharedPassphraseSlot };
+  },
+  activateE2eeRecovery: (id: string) => request<{ activated: true; generation: number }>(`/api/e2ee/recovery-ceremonies/${id}/activate`, { method: 'POST' }),
+  confirmE2eeRecoveryPresence: (id: string) => request<{ confirmed: true }>(`/api/e2ee/recovery-ceremonies/${id}/confirm-presence`, { method: 'POST' }),
+  abortE2eeRecovery: (id: string) => request<void>(`/api/e2ee/recovery-ceremonies/${id}/abort`, { method: 'POST' }),
   users: () => request<User[]>('/api/users'),
   userDirectory: () => request<User[]>('/api/user-directory'),
   dashboard: () => request<DashboardData>('/api/dashboard'),
@@ -358,7 +467,7 @@ export const api = {
   topics: (filters: Record<string, string | undefined> = {}) => request<Topic[]>(`/api/topics${query(filters)}`),
   topic: (id: string) => request<Topic>(`/api/topics/${id}`),
   createTopic: (input: TopicInput) => request<Topic>('/api/topics', { method: 'POST', body: JSON.stringify(input) }),
-  updateTopic: (id: string, input: TopicInput) => request<Topic>(`/api/topics/${id}`, { method: 'PUT', body: JSON.stringify(input) }),
+  updateTopic: (id: string, input: Partial<TopicInput>) => request<Topic>(`/api/topics/${id}`, { method: 'PUT', body: JSON.stringify(input) }),
   topicUpdates: (id: string) => request<TopicUpdate[]>(`/api/topics/${id}/updates`),
   topicHistory: (id: string) => request<TopicHistoryEntry[]>(`/api/topics/${id}/history`),
   addTopicUpdate: (id: string, input: { text: string; type: string; meetingId?: string | null }) => request<TopicUpdate>(`/api/topics/${id}/updates`, { method: 'POST', body: JSON.stringify(input) }),
@@ -367,7 +476,7 @@ export const api = {
   meetings: () => request<Meeting[]>('/api/meetings'),
   meeting: (id: string) => request<Meeting>(`/api/meetings/${id}`),
   createMeeting: (input: MeetingInput) => request<Meeting>('/api/meetings', { method: 'POST', body: JSON.stringify(input) }),
-  updateMeeting: (id: string, input: MeetingInput) => request<Meeting>(`/api/meetings/${id}`, { method: 'PUT', body: JSON.stringify(input) }),
+  updateMeeting: (id: string, input: Partial<MeetingInput>) => request<Meeting>(`/api/meetings/${id}`, { method: 'PUT', body: JSON.stringify(input) }),
   completeMeeting: (id: string) => request<Meeting>(`/api/meetings/${id}/complete`, { method: 'POST' }),
   meetingSuggestions: (id: string, options?: { future?: boolean }) =>
     request<Topic[]>(`/api/meetings/${id}/suggestions${query({
@@ -407,7 +516,7 @@ export const api = {
   restoreRecurrence: (meetingId: string, topicId: string) => request<void>(`/api/meetings/${meetingId}/recurrences/${topicId}/restore`, { method: 'POST' }),
   tasks: (filters: Record<string, string | boolean | undefined> = {}) => request<Task[]>(`/api/tasks${query(filters)}`),
   createTask: (input: TaskInput) => request<Task>('/api/tasks', { method: 'POST', body: JSON.stringify(input) }),
-  updateTask: (id: string, input: TaskInput) => request<Task>(`/api/tasks/${id}`, { method: 'PUT', body: JSON.stringify(input) }),
+  updateTask: (id: string, input: Partial<TaskInput>) => request<Task>(`/api/tasks/${id}`, { method: 'PUT', body: JSON.stringify(input) }),
 };
 
 export const formatUser = (user?: User | null): string => user ? `${user.firstName} ${user.lastName}` : translate('common.unassigned');

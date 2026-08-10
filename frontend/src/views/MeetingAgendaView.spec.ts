@@ -153,6 +153,8 @@ describe("MeetingAgendaView", () => {
     ).toEqual(["b", "c", "d"]);
   });
   it("keeps standalone Updates separate from paired Meeting minutes", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-07-15T12:00:00Z"));
     const completedMeeting = structuredClone(meeting);
     completedMeeting.status = "completed";
     completedMeeting.agenda[0].topic.updates = [
@@ -265,10 +267,13 @@ describe("MeetingAgendaView", () => {
     expect(api.updateMeeting).toHaveBeenCalledWith(
       "meeting-1",
       expect.objectContaining({
-        title: null,
         date: "2026-07-16",
         beginTime: "08:05",
       }),
+    );
+    expect(api.updateMeeting).not.toHaveBeenCalledWith(
+      "meeting-1",
+      expect.objectContaining({ title: expect.anything() }),
     );
     vm.editForm.date = null;
     await vm.saveMeeting();

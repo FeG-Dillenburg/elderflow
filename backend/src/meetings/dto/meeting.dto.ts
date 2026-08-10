@@ -12,6 +12,17 @@ export class MeetingDto {
   @IsOptional() @IsString() openingInput?: string | null;
 }
 
+export class MeetingUpdateDto {
+  @IsOptional() @IsString() title?: string | null;
+  @IsOptional() @IsString() @IsNotEmpty() date?: string;
+  @IsOptional() @IsString() @IsNotEmpty() beginTime?: string;
+  @IsOptional() @IsIn(['planned', 'in_progress', 'completed']) status?: string;
+  @IsOptional() @IsUUID() meetingLeaderId?: string | null;
+  @IsOptional() @IsUUID() minuteTakerId?: string | null;
+  @IsOptional() @IsString() generalNotes?: string | null;
+  @IsOptional() @IsString() openingInput?: string | null;
+}
+
 export class MeetingParticipantDto {
   @IsUUID() userId: string;
   @IsIn(['present', 'absent', 'excused', 'unknown']) attendanceStatus: string;
