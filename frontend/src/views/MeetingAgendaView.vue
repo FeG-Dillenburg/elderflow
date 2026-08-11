@@ -131,7 +131,7 @@ const recent = (item: MeetingTopic) => {
   const updates = [...(item.topic?.updates ?? [])];
 
   return updates
-    .filter((update) => !update.meetingId && timestamp(update.date) >= cutoff)
+    .filter((update) => timestamp(update.date) >= cutoff)
     .sort((left, right) => timestamp(right.date) - timestamp(left.date))
     .slice(0, 3)
     .sort((left, right) => timestamp(left.date) - timestamp(right.date));
@@ -263,6 +263,12 @@ onMounted(load);
   <section class="agenda-page">
     <Message v-if="error" severity="error">{{ error }}</Message>
     <template v-if="meeting">
+      <Message
+        v-if="meeting.collaboration && !meeting.collaboration.available"
+        severity="info"
+      >
+        {{ t("e2ee.collaborationUnavailable") }}
+      </Message>
       <header class="meeting-header">
         <div>
           <p class="eyebrow">{{ t("meetingAgenda.eyebrow") }}</p>

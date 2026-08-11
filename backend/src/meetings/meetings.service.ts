@@ -1,34 +1,40 @@
-import { HttpStatus, Injectable } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, EntityManager, In, LessThan, Repository } from 'typeorm';
-import { AgendaSection } from '../agenda-sections/agenda-section.entity';
-import { Task } from '../tasks/task.entity';
-import { taskSummaryResponse } from '../tasks/task-response';
+import { HttpStatus, Injectable } from "@nestjs/common";
+import { InjectRepository } from "@nestjs/typeorm";
+import { createHash } from "node:crypto";
+import { DataSource, In, LessThan, Repository } from "typeorm";
+import { AgendaSection } from "../agenda-sections/agenda-section.entity";
+import { E2eeScalarService } from "../e2ee/e2ee-scalar.service";
+import { isE2eeKeyOperator } from "../e2ee/e2ee-role-policy";
+import { MEETING_SCALAR_FIELDS, SCALAR_AGGREGATES } from "../e2ee/scalar-registry";
+import { codedHttpException } from "../errors/coded-http.exception";
+import { RecurrenceService } from "../recurrence/recurrence.service";
+import { SkippedRecurrence } from "../recurrence/skipped-recurrence.entity";
+import { Task } from "../tasks/task.entity";
+import { assignedTaskSummaryRelations, assignedTaskSummarySelect } from "../tasks/task-projection";
+import { taskSummaryResponse } from "../tasks/task-response";
+import { Topic } from "../topics/topic.entity";
+import { normalizedMembershipTopicState } from "../topics/membership-topic-state";
+import { TopicResponse, topicResponse, topicUpdateResponse } from "../topics/topic-response";
+import { TopicUpdate } from "../topics/topic-update.entity";
+import { UpdateTopicFieldsDto } from "../topics/dto/topic.dto";
+import { User } from "../users/user.entity";
 import {
-  assignedTaskSummaryRelations,
-  assignedTaskSummarySelect,
-} from '../tasks/task-projection';
-import { Topic } from '../topics/topic.entity';
-import { TopicUpdate } from '../topics/topic-update.entity';
-import { MeetingDto, MeetingParticipantDto, MeetingTopicDto, MeetingTopicOrderItemDto, MeetingUpdateDto, UpdateMeetingTopicDto } from './dto/meeting.dto';
-import { MeetingAppearanceTexts, MeetingTopic } from './meeting-topic.entity';
-import { MeetingUser } from './meeting-user.entity';
-import { Meeting } from './meeting.entity';
-import { codedHttpException } from '../errors/coded-http.exception';
-import { User } from '../users/user.entity';
-import { MeetingSnapshotRegistry } from './meeting-snapshot-contributor';
-import { lockedMutableMeeting } from './meeting-mutation-boundary';
-import { UpdateTopicFieldsDto } from '../topics/dto/topic.dto';
-import { normalizedMembershipTopicState } from '../topics/membership-topic-state';
-import { RecurrenceService } from '../recurrence/recurrence.service';
-import { SkippedRecurrence } from '../recurrence/skipped-recurrence.entity';
-import { TopicResponse, topicResponse, topicUpdateResponse } from '../topics/topic-response';
-import { isE2eeKeyOperator } from '../e2ee/e2ee-role-policy';
-
-export interface MeetingDetail extends Meeting {
-  participants: MeetingUser[];
-  agenda: MeetingTopic[];
-}
+  MeetingDto,
+  MeetingParticipantDto,
+  MeetingTopicDto,
+  MeetingTopicOrderItemDto,
+  MeetingUpdateDto,
+  UpdateMeetingTopicDto,
+} from "./dto/meeting.dto";
+import { MeetingDocumentMutation } from "./meeting-document-mutation.entity";
+import { MeetingDocument } from "./meeting-document.entity";
+import { MeetingDocumentService } from "./meeting-document.service";
+import { MeetingSnapshotRegistry } from "./meeting-snapshot-contributor";
+import { MeetingTopic } from "./meeting-topic.entity";
+import { MeetingUser } from "./meeting-user.entity";
+import { lockedMutableMeeting } from "./meeting-mutation-boundary";
+import { meetingResponse } from "./meeting-response";
+import { Meeting } from "./meeting.entity";
 
 @Injectable()
 export class MeetingsService {
@@ -43,32 +49,31 @@ export class MeetingsService {
     @InjectRepository(AgendaSection) private readonly sections: Repository<AgendaSection>,
     private readonly snapshots: MeetingSnapshotRegistry,
     private readonly recurrence: RecurrenceService,
+    private readonly scalars: E2eeScalarService,
+    private readonly documents: MeetingDocumentService,
   ) {}
 
-  async complete(id: string, user: User): Promise<Meeting> {
+  async complete(id: string, user: User) {
     return this.dataSource.transaction(async (manager) => {
       const meeting = await manager.findOne(Meeting, {
         where: { id },
-        lock: { mode: 'pessimistic_write' },
+        lock: { mode: "pessimistic_write" },
       });
-      if (!meeting) {
-        throw codedHttpException(HttpStatus.NOT_FOUND, 'MEETING_NOT_FOUND', 'Meeting not found');
-      }
-      if (meeting.status !== 'in_progress') {
+      if (!meeting) throw codedHttpException(HttpStatus.NOT_FOUND, "MEETING_NOT_FOUND", "Meeting not found");
+      if (meeting.status !== "in_progress") {
         throw codedHttpException(
           HttpStatus.CONFLICT,
-          'MEETING_COMPLETION_INVALID_STATUS',
-          'Only an in-progress Meeting can be completed',
+          "MEETING_COMPLETION_INVALID_STATUS",
+          "Only an in-progress Meeting can be completed",
         );
       }
       if (user.id !== meeting.meetingLeaderId && user.id !== meeting.minuteTakerId) {
         throw codedHttpException(
           HttpStatus.FORBIDDEN,
-          'MEETING_COMPLETION_FORBIDDEN',
-          'Only the Meeting leader or Minute taker can complete this Meeting',
+          "MEETING_COMPLETION_FORBIDDEN",
+          "Only the Meeting leader or Minute taker can complete this Meeting",
         );
       }
-
       const appearances = await manager.find(MeetingTopic, {
         where: { meetingId: id },
         relations: { topic: { responsibleUser: true } },
@@ -86,228 +91,211 @@ export class MeetingsService {
           : null;
         await this.snapshots.apply(appearance, topic, manager);
       }
-      if (appearances.length) {
-        await manager.save(MeetingTopic, appearances);
-      }
-      meeting.status = 'completed';
-      const saved = await manager.save(Meeting, meeting);
-      await this.recurrence.reconcile(manager);
-      return saved;
+      if (appearances.length) await manager.save(MeetingTopic, appearances);
+      const document = await manager.findOneByOrFail(MeetingDocument, { meetingId: id });
+      document.completedServerSequence = document.currentServerSequence;
+      await manager.save(document);
+      meeting.status = "completed";
+      return meetingResponse(await manager.save(Meeting, meeting), user);
     });
   }
 
-  findAll(): Promise<Meeting[]> {
-    return this.meetings.find({ relations: { meetingLeader: true, minuteTaker: true }, order: { date: 'DESC' } });
-  }
-
-  async create(input: MeetingDto): Promise<Meeting> {
-    if (input.status === 'completed') {
-      throw codedHttpException(
-        HttpStatus.CONFLICT,
-        'MEETING_STATUS_TRANSITION_INVALID',
-        'A Meeting can only become completed through the completion action',
-      );
-    }
-    return this.dataSource.transaction(async (manager) => {
-      const meeting = await manager.save(Meeting, manager.create(Meeting, input));
-      await this.recurrence.reconcile(manager);
-      return meeting;
+  async findAll(user: User) {
+    const meetings = await this.meetings.find({
+      relations: { meetingLeader: true, minuteTaker: true },
+      order: { date: "DESC" },
     });
+    return meetings.map((meeting) => meetingResponse(meeting, user));
   }
 
-  async update(id: string, input: MeetingUpdateDto): Promise<Meeting> {
+  async create(input: MeetingDto, user: User) {
+    this.documents.assertContentUser(user);
     return this.dataSource.transaction(async (manager) => {
-      const meeting = await lockedMutableMeeting(manager, id);
-      if (input.status === 'completed') {
+      const existing = await manager.findOne(Meeting, { where: { id: input.id } });
+      if (existing) {
         throw codedHttpException(
           HttpStatus.CONFLICT,
-          'MEETING_STATUS_TRANSITION_INVALID',
-          'Complete an in-progress Meeting through the completion action',
+          "MEETING_CREATE_RETRY_MISMATCH",
+          "Meeting identifier is already used",
         );
       }
-      const saved = await manager.save(Meeting, Object.assign(meeting, input));
-      await this.recurrence.reconcile(manager);
-      return saved;
+      const title = await this.scalars.validateWrite(
+        manager,
+        user,
+        {
+          aggregateType: SCALAR_AGGREGATES.meeting,
+          recordId: input.id,
+          fieldId: MEETING_SCALAR_FIELDS.title.fieldId,
+        },
+        input.protected.titleEnvelope,
+        null,
+      );
+      const { protected: _protected, document, ...structural } = input;
+      const meeting = await manager.save(Meeting, manager.create(Meeting, {
+        ...structural,
+        titleEnvelope: title.envelope,
+        titleCommitRevision: title.commitRevision,
+      }));
+      await this.documents.createInitial(manager, user, meeting.id, document);
+      return meetingResponse(meeting, user);
+    });
+  }
+
+  async update(id: string, input: MeetingUpdateDto, user: User) {
+    return this.dataSource.transaction(async (manager) => {
+      const meeting = await lockedMutableMeeting(manager, id);
+      if (input.protected?.titleEnvelope) {
+        const title = await this.scalars.validateWrite(
+          manager,
+          user,
+          {
+            aggregateType: SCALAR_AGGREGATES.meeting,
+            recordId: id,
+            fieldId: MEETING_SCALAR_FIELDS.title.fieldId,
+          },
+          input.protected.titleEnvelope,
+          meeting.titleCommitRevision,
+        );
+        if (!title.duplicate) {
+          meeting.titleEnvelope = title.envelope;
+          meeting.titleCommitRevision = title.commitRevision;
+        }
+      }
+      const { protected: _protected, ...structural } = input;
+      Object.assign(meeting, structural);
+      return meetingResponse(await manager.save(Meeting, meeting), user);
     });
   }
 
   async findOne(id: string, user: User) {
     const meeting = await this.meetings.findOne({
-      where: { id }, relations: { meetingLeader: true, minuteTaker: true },
+      where: { id },
+      relations: { meetingLeader: true, minuteTaker: true },
     });
-    if (!meeting) throw codedHttpException(HttpStatus.NOT_FOUND, 'MEETING_NOT_FOUND', 'Meeting not found');
-    const [participants, agenda] = await Promise.all([
+    if (!meeting) throw codedHttpException(HttpStatus.NOT_FOUND, "MEETING_NOT_FOUND", "Meeting not found");
+    const [participants, agenda, workspace] = await Promise.all([
       this.participants.find({ where: { meetingId: id }, relations: { user: true } }),
       this.meetingTopics.find({
         where: { meetingId: id },
         relations: { section: true, topic: { responsibleUser: true } },
-        order: { section: { position: 'ASC' }, position: 'ASC' },
+        order: { section: { position: "ASC" }, position: "ASC" },
       }),
+      isE2eeKeyOperator(user.role)
+        ? this.documents.bootstrap(this.meetings.manager, user, id)
+        : Promise.resolve(null),
     ]);
     const topicIds = agenda.map((item) => item.topicId);
-    let updates: TopicUpdate[] = [];
-    let tasks: Task[] = [];
-    if (topicIds.length) {
-      const pairedTopicIds = agenda
-        .filter((item) => item.topic?.type !== 'person')
-        .map((item) => item.topicId);
-      const [loadedUpdates, loadedTasks, earlierAppearances] = await Promise.all([
-        this.updates.find({
-          where: {
-            topicId: In(topicIds),
-            ...(meeting.status === 'completed' ? { meetingId: id } : {}),
-          },
-          relations: { createdBy: true, meeting: true },
-          order: { date: 'DESC' },
-        }),
-        this.tasks.find({
-          where: { topicId: In(topicIds), status: In(['open', 'in_progress']) },
-          relations: assignedTaskSummaryRelations,
-          select: assignedTaskSummarySelect,
-          order: { dueDate: 'ASC' },
-        }),
-        meeting.status === 'planned' && pairedTopicIds.length
-          ? this.meetingTopics.find({
+    const [standaloneUpdates, tasks, earlierAppearances] = topicIds.length
+      ? await Promise.all([
+          this.updates.find({
+            where: { topicId: In(topicIds) },
+            relations: { createdBy: true },
+            order: { date: "DESC" },
+          }),
+          this.tasks.find({
+            where: { topicId: In(topicIds), status: In(["open", "in_progress"]) },
+            relations: assignedTaskSummaryRelations,
+            select: assignedTaskSummarySelect,
+            order: { dueDate: "ASC" },
+          }),
+          this.meetingTopics.find({
             where: [
+              { topicId: In(topicIds), meeting: { date: LessThan(meeting.date) } },
               {
-                topicId: In(pairedTopicIds),
-                meeting: { date: LessThan(meeting.date) },
-              },
-              {
-                topicId: In(pairedTopicIds),
-                meeting: {
-                  date: meeting.date,
-                  beginTime: LessThan(meeting.beginTime),
-                },
+                topicId: In(topicIds),
+                meeting: { date: meeting.date, beginTime: LessThan(meeting.beginTime) },
               },
             ],
             relations: { meeting: true },
-            order: { meeting: { date: 'DESC', beginTime: 'DESC' } },
-          })
-          : Promise.resolve([]),
-      ]);
-      updates = loadedUpdates;
-      tasks = loadedTasks;
-      const previousAppearanceByTopic = new Map<string, MeetingTopic>();
-      for (const appearance of earlierAppearances) {
-        if (!previousAppearanceByTopic.has(appearance.topicId)) {
-          previousAppearanceByTopic.set(appearance.topicId, appearance);
+            order: { meeting: { date: "DESC", beginTime: "DESC" } },
+          }),
+        ])
+      : [[], [], []] as [TopicUpdate[], Task[], MeetingTopic[]];
+    const previousByTopic = new Map<string, MeetingTopic>();
+    for (const appearance of earlierAppearances) {
+      if (!previousByTopic.has(appearance.topicId)) previousByTopic.set(appearance.topicId, appearance);
+    }
+    const priorMeetingIds = isE2eeKeyOperator(user.role)
+      ? [...new Set([...previousByTopic.values()].map((item) => item.meetingId))]
+      : [];
+    const priorDocuments = (await Promise.all(
+      priorMeetingIds.map((priorMeetingId) =>
+        this.documents.bootstrap(this.meetings.manager, user, priorMeetingId)),
+    )).filter((value): value is NonNullable<typeof value> => value !== null);
+    return {
+      ...meetingResponse(meeting, user),
+      participants: participants.map((participant) => ({
+        id: participant.id,
+        meetingId: participant.meetingId,
+        userId: participant.userId,
+        attendanceStatus: participant.attendanceStatus,
+        user: participant.user ? {
+          id: participant.user.id,
+          email: participant.user.email,
+          firstName: participant.user.firstName,
+          lastName: participant.user.lastName,
+          role: participant.user.role,
+          language: participant.user.language,
+        } : null,
+      })),
+      agenda: agenda.map((item) => this.appearanceResponse(
+        item,
+        standaloneUpdates,
+        tasks,
+        user,
+        previousByTopic.get(item.topicId),
+      )),
+      workspace: workspace
+        ? { ...workspace, priorDocuments }
+        : null,
+      collaboration: { available: false },
+    };
+  }
+
+  async appendWorkspaceUpdate(
+    meetingId: string,
+    envelope: string,
+    user: User,
+    appearanceId?: string,
+  ) {
+    return this.dataSource.transaction(async (manager) => {
+      const result = await this.documents.appendUpdate(manager, user, meetingId, envelope);
+      if (appearanceId) {
+        const appearance = await manager.findOneBy(MeetingTopic, { id: appearanceId, meetingId });
+        if (!appearance) {
+          throw codedHttpException(
+            HttpStatus.NOT_FOUND,
+            "AGENDA_TOPIC_NOT_FOUND",
+            "Agenda topic not found",
+          );
+        }
+        if (!appearance.contentEditedAt) {
+          appearance.contentEditedAt = new Date();
+          await manager.save(MeetingTopic, appearance);
         }
       }
-      for (const item of agenda) {
-        const meetingMinutes = updates
-          .filter((update) => update.topicId === item.topicId && update.meetingId === id)
-          .sort((left, right) =>
-            right.date.getTime() - left.date.getTime() || right.id.localeCompare(left.id))[0];
-        const previousAppearance = previousAppearanceByTopic.get(item.topicId);
-        const previousMinutes = previousAppearance
-          ? updates.find((update) =>
-            update.topicId === item.topicId
-            && update.meetingId === previousAppearance.meetingId
-            && update.type === 'minute')
-          : null;
-        const previousMeetingTexts = previousAppearance
-          && (previousAppearance.agendaNote || previousMinutes?.meetingText)
-          ? {
-              preparationContext: previousAppearance.agendaNote,
-              meetingMinutes: previousMinutes?.meetingText ?? null,
-            }
-          : null;
-        Object.assign(item, item.topic?.type === 'person'
-          ? {
-            preparationContext: null,
-            personNote: {
-              id: item.id,
-              text: item.agendaNote,
-              version: item.noteVersion,
-            },
-            meetingMinutes: null,
-            previousMeetingTexts: null,
-          }
-          : {
-            preparationContext: {
-              id: item.id,
-              text: item.agendaNote,
-              version: item.noteVersion,
-            },
-            personNote: null,
-            meetingMinutes: meetingMinutes
-              ? {
-                  id: meetingMinutes.id,
-                  text: meetingMinutes.meetingText,
-                  version: meetingMinutes.version,
-                }
-              : null,
-            previousMeetingTexts,
-          });
-        Object.assign(item.topic!, {
-          tasks: tasks
-            .filter((task) => task.topicId === item.topicId)
-            .map((task) => taskSummaryResponse(task, user)),
-        });
-      }
-    }
-    if (meeting.status === 'completed') {
-      for (const item of agenda) {
-        if (item.topic) {
-          Object.assign(item.topic, {
-            responsibleUser: null,
-          });
-        }
-      }
-    }
-    return Object.assign(meeting, {
-      participants,
-      agenda: agenda.map((item) => {
-        const {
-          topicNameSnapshotEnvelope,
-          topicNameSnapshotCommitRevision,
-          membershipProcessStatusSnapshotEnvelope,
-          membershipProcessStatusSnapshotCommitRevision,
-          godparentsSnapshotEnvelope,
-          godparentsSnapshotCommitRevision,
-          topic,
-          ...structural
-        } = item;
-        const canReadSnapshot = isE2eeKeyOperator(user.role)
-          && Buffer.isBuffer(topicNameSnapshotEnvelope)
-          && Buffer.isBuffer(membershipProcessStatusSnapshotEnvelope)
-          && Buffer.isBuffer(godparentsSnapshotEnvelope);
-        return {
-          ...structural,
-          agendaNote: structural.agendaNote,
-          protectedSnapshot: canReadSnapshot
-            ? {
-                nameEnvelope: topicNameSnapshotEnvelope.toString('base64url'),
-                nameCommitRevision: topicNameSnapshotCommitRevision,
-                membershipProcessStatusEnvelope: membershipProcessStatusSnapshotEnvelope.toString('base64url'),
-                membershipProcessStatusCommitRevision: membershipProcessStatusSnapshotCommitRevision,
-                godparentsEnvelope: godparentsSnapshotEnvelope.toString('base64url'),
-                godparentsCommitRevision: godparentsSnapshotCommitRevision,
-              }
-            : null,
-          topic: topic
-            ? {
-                ...topicResponse(topic, user),
-                updates: updates
-                  .filter((update) => update.topicId === item.topicId && !update.meetingId)
-                  .map((update) => topicUpdateResponse(update, user)),
-                tasks: tasks
-                  .filter((task) => task.topicId === item.topicId)
-                  .map((task) => taskSummaryResponse(task, user)),
-              }
-            : undefined,
-        };
-      }),
+      return {
+        status: result.duplicate ? "duplicate" : "accepted",
+        updateId: result.update.id,
+        serverSequence: result.update.serverSequence,
+      };
     });
+  }
+
+  async workspace(meetingId: string, user: User) {
+    if (!(await this.meetings.exists({ where: { id: meetingId } }))) {
+      throw codedHttpException(HttpStatus.NOT_FOUND, "MEETING_NOT_FOUND", "Meeting not found");
+    }
+    return this.documents.bootstrap(this.meetings.manager, user, meetingId);
   }
 
   async addParticipant(meetingId: string, input: MeetingParticipantDto): Promise<MeetingUser> {
     return this.dataSource.transaction(async (manager) => {
       await lockedMutableMeeting(manager, meetingId);
       const existing = await manager.findOneBy(MeetingUser, { meetingId, userId: input.userId });
-      if (existing) return manager.save(MeetingUser, Object.assign(existing, input));
-      return manager.save(MeetingUser, manager.create(MeetingUser, { meetingId, ...input }));
+      return manager.save(MeetingUser, existing
+        ? Object.assign(existing, input)
+        : manager.create(MeetingUser, { meetingId, ...input }));
     });
   }
 
@@ -318,59 +306,125 @@ export class MeetingsService {
     });
   }
 
-  async addTopic(meetingId: string, input: MeetingTopicDto): Promise<MeetingTopic> {
+  async addTopic(meetingId: string, input: MeetingTopicDto, user: User): Promise<MeetingTopic> {
+    this.documents.assertContentUser(user);
     return this.dataSource.transaction(async (manager) => {
-      const meeting = await lockedMutableMeeting(manager, meetingId);
-      const topic = await manager.findOne(Topic, {
-        where: { id: input.topicId },
-        lock: { mode: 'pessimistic_write' },
-      });
-      if (!topic) throw codedHttpException(HttpStatus.NOT_FOUND, 'TOPIC_NOT_FOUND', 'Topic not found');
-      const section = await manager.findOneBy(AgendaSection, { id: input.sectionId });
-      if (!section) throw codedHttpException(HttpStatus.NOT_FOUND, 'AGENDA_SECTION_NOT_FOUND', 'Agenda section not found');
-      const existing = await manager.findOneBy(MeetingTopic, { meetingId, topicId: input.topicId });
-      if (existing) throw codedHttpException(HttpStatus.CONFLICT, 'AGENDA_TOPIC_CONFLICT', 'Topic is already on this agenda');
+      await lockedMutableMeeting(manager, meetingId);
+      const requestFingerprint = this.meetingTopicRequestFingerprint(input);
+      const replay = await manager.findOneBy(MeetingDocumentMutation, { id: input.mutationId });
+      if (replay) {
+        const appearance = await manager.findOneBy(MeetingTopic, {
+          id: replay.appearanceId,
+          meetingId,
+        });
+        const updateMatches = await this.documents.storedUpdateMatches(
+          manager,
+          replay.updateId,
+          input.initialUpdateEnvelope,
+        );
+        const structureMatches = appearance
+          && replay.meetingId === meetingId
+          && replay.appearanceId === input.id
+          && (replay.sourceAppearanceId ?? null) === (input.sourceAppearanceId ?? null)
+          && replay.requestFingerprint.equals(requestFingerprint)
+          && updateMatches;
+        if (!structureMatches) {
+          throw codedHttpException(
+            HttpStatus.CONFLICT,
+            "MEETING_MUTATION_RETRY_MISMATCH",
+            "Meeting mutation was retried with different structure",
+          );
+        }
+        return appearance!;
+      }
+      const [topic, section, existing, source] = await Promise.all([
+        manager.findOne(Topic, { where: { id: input.topicId }, lock: { mode: "pessimistic_write" } }),
+        manager.findOneBy(AgendaSection, { id: input.sectionId }),
+        manager.findOneBy(MeetingTopic, { meetingId, topicId: input.topicId }),
+        input.sourceAppearanceId
+          ? manager.findOne(MeetingTopic, {
+              where: { id: input.sourceAppearanceId },
+              lock: { mode: "pessimistic_write" },
+            })
+          : Promise.resolve(null),
+      ]);
+      if (!topic) throw codedHttpException(HttpStatus.NOT_FOUND, "TOPIC_NOT_FOUND", "Topic not found");
+      if (!section) throw codedHttpException(HttpStatus.NOT_FOUND, "AGENDA_SECTION_NOT_FOUND", "Agenda section not found");
+      if (existing && existing.id !== source?.id) {
+        throw codedHttpException(HttpStatus.CONFLICT, "AGENDA_TOPIC_CONFLICT", "Topic is already on this agenda");
+      }
+      const sourceMeeting = source
+        ? await lockedMutableMeeting(manager, source.meetingId)
+        : null;
+      if (input.sourceAppearanceId && (
+        !source
+        || source.topicId !== input.topicId
+        || source.source !== "recurrence"
+        || source.contentEditedAt !== null
+        || sourceMeeting?.status !== "planned"
+      )) {
+        throw codedHttpException(
+          HttpStatus.CONFLICT,
+          "RECURRENCE_RECONCILIATION_CHANGED",
+          "Recurring Topic structure changed; reload before reconciling",
+        );
+      }
+      let recurrencePosition: number | undefined;
+      if ((input.source ?? "manual") === "recurrence") {
+        const plan = await this.recurrence.plan(manager, topic.id);
+        const planned = plan.moves.find((move) =>
+          move.meetingId === meetingId
+          && move.sectionId === input.sectionId
+          && (input.position === undefined || move.position === input.position)
+          && (move.sourceAppearance?.id ?? null) === (input.sourceAppearanceId ?? null));
+        if (!planned) {
+          throw codedHttpException(
+            HttpStatus.CONFLICT,
+            "RECURRENCE_RECONCILIATION_CHANGED",
+            "Recurring Topic structure changed; reload before reconciling",
+          );
+        }
+        recurrencePosition = planned.position;
+      }
+      if (source) {
+        await manager.remove(MeetingTopic, source);
+        await this.normalizeSectionPositions(manager, source.meetingId, source.sectionId);
+      }
       const items = await manager.find(MeetingTopic, {
-        where: { meetingId, sectionId: input.sectionId }, order: { position: 'ASC' },
+        where: { meetingId, sectionId: input.sectionId },
+        order: { position: "ASC" },
       });
-      const position = input.position ?? (items[items.length - 1]?.position ?? 0) + 1;
-      if (input.position !== undefined && position > items.length + 1) {
-        throw codedHttpException(HttpStatus.BAD_REQUEST, 'AGENDA_POSITION_INVALID', 'Position must be within the agenda section');
+      const position = input.position ?? recurrencePosition ?? items.length + 1;
+      if (position > items.length + 1) {
+        throw codedHttpException(HttpStatus.BAD_REQUEST, "AGENDA_POSITION_INVALID", "Position must be within the agenda section");
       }
       const shifted = items.filter((item) => item.position >= position);
       for (const item of shifted) item.position += 1;
       if (shifted.length) await manager.save(MeetingTopic, shifted);
-      const previousPersonAppearance = topic.type === 'person' && input.agendaNote === undefined
-        ? await manager.findOne(MeetingTopic, {
-          where: [
-            {
-              topicId: topic.id,
-              meeting: { date: LessThan(meeting.date) },
-            },
-            {
-              topicId: topic.id,
-              meeting: {
-                date: meeting.date,
-                beginTime: LessThan(meeting.beginTime),
-              },
-            },
-          ],
-          relations: { meeting: true },
-          order: { meeting: { date: 'DESC', beginTime: 'DESC' } },
-        })
-        : null;
-      const appearance = await manager.save(MeetingTopic, manager.create(MeetingTopic, {
-        ...input,
+      const opaque = await this.documents.appendUpdate(
+        manager,
+        user,
         meetingId,
+        input.initialUpdateEnvelope,
+      );
+      const appearance = await manager.save(MeetingTopic, manager.create(MeetingTopic, {
+        id: input.id,
+        meetingId,
+        topicId: input.topicId,
+        sectionId: input.sectionId,
         position,
-        status: 'planned',
-        source: 'manual',
-        noteEditedAt: input.agendaNote !== undefined ? new Date() : null,
-        agendaNote: input.agendaNote !== undefined
-          ? input.agendaNote
-          : previousPersonAppearance?.agendaNote ?? null,
+        plannedDuration: input.plannedDuration,
+        status: "planned",
+        source: input.source ?? "manual",
       }));
-      await this.recurrence.reconcile(manager);
+      await manager.save(MeetingDocumentMutation, manager.create(MeetingDocumentMutation, {
+        id: input.mutationId,
+        meetingId,
+        appearanceId: appearance.id,
+        sourceAppearanceId: input.sourceAppearanceId ?? null,
+        updateId: opaque.update.id,
+        requestFingerprint,
+      }));
       return appearance;
     });
   }
@@ -379,26 +433,24 @@ export class MeetingsService {
     return this.dataSource.transaction(async (manager) => {
       await lockedMutableMeeting(manager, meetingId);
       const ids = input.map((item) => item.id);
-      if (new Set(ids).size !== ids.length) throw codedHttpException(HttpStatus.BAD_REQUEST, 'AGENDA_TOPIC_IDS_DUPLICATE', 'Agenda topic IDs must be unique');
+      if (new Set(ids).size !== ids.length) throw codedHttpException(HttpStatus.BAD_REQUEST, "AGENDA_TOPIC_IDS_DUPLICATE", "Agenda topic IDs must be unique");
       const current = await manager.find(MeetingTopic, { where: { meetingId } });
       if (current.length !== input.length || current.some((item) => !ids.includes(item.id))) {
-        throw codedHttpException(HttpStatus.CONFLICT, 'AGENDA_CHANGED', 'Agenda changed; reload before reordering');
+        throw codedHttpException(HttpStatus.CONFLICT, "AGENDA_CHANGED", "Agenda changed; reload before reordering");
       }
       const sectionIds = [...new Set(input.map((item) => item.sectionId))];
-      const availableSections = await manager.find(AgendaSection, { where: { id: In(sectionIds) } });
-      if (availableSections.length !== sectionIds.length) throw codedHttpException(HttpStatus.BAD_REQUEST, 'AGENDA_SECTION_INVALID', 'An agenda section does not exist');
+      if ((await manager.countBy(AgendaSection, { id: In(sectionIds) })) !== sectionIds.length) {
+        throw codedHttpException(HttpStatus.BAD_REQUEST, "AGENDA_SECTION_INVALID", "An agenda section does not exist");
+      }
       const bySection = new Map<string, number[]>();
       for (const item of input) bySection.set(item.sectionId, [...(bySection.get(item.sectionId) ?? []), item.position]);
       for (const positions of bySection.values()) {
-        const sorted = [...positions].sort((a, b) => a - b);
-        if (sorted.some((position, index) => position !== index + 1)) {
-          throw codedHttpException(HttpStatus.BAD_REQUEST, 'AGENDA_POSITIONS_INVALID', 'Positions must be consecutive and start at 1 in every section');
+        if ([...positions].sort((a, b) => a - b).some((position, index) => position !== index + 1)) {
+          throw codedHttpException(HttpStatus.BAD_REQUEST, "AGENDA_POSITIONS_INVALID", "Positions must be consecutive and start at 1");
         }
       }
       const requested = new Map(input.map((item) => [item.id, item]));
-      const ordered = current.map((item) => Object.assign(item, requested.get(item.id)!));
-      await manager.save(MeetingTopic, ordered);
-      return ordered.sort((left, right) => left.sectionId.localeCompare(right.sectionId) || left.position - right.position);
+      return manager.save(MeetingTopic, current.map((item) => Object.assign(item, requested.get(item.id)!)));
     });
   }
 
@@ -406,7 +458,7 @@ export class MeetingsService {
     return this.dataSource.transaction(async (manager) => {
       await lockedMutableMeeting(manager, meetingId);
       const item = await manager.findOneBy(MeetingTopic, { id, meetingId });
-      if (!item) throw codedHttpException(HttpStatus.NOT_FOUND, 'AGENDA_TOPIC_NOT_FOUND', 'Agenda topic not found');
+      if (!item) throw codedHttpException(HttpStatus.NOT_FOUND, "AGENDA_TOPIC_NOT_FOUND", "Agenda topic not found");
       const { deferred, ...changes } = input;
       Object.assign(item, changes);
       if (deferred === true && !item.deferredAt) item.deferredAt = new Date();
@@ -424,301 +476,181 @@ export class MeetingsService {
     return this.dataSource.transaction(async (manager) => {
       await lockedMutableMeeting(manager, meetingId);
       const appearance = await manager.findOneBy(MeetingTopic, { id, meetingId });
-      if (!appearance) {
-        throw codedHttpException(
-          HttpStatus.NOT_FOUND,
-          'AGENDA_TOPIC_NOT_FOUND',
-          'Agenda topic not found',
-        );
-      }
+      if (!appearance) throw codedHttpException(HttpStatus.NOT_FOUND, "AGENDA_TOPIC_NOT_FOUND", "Agenda topic not found");
       const topic = await manager.findOne(Topic, {
         where: { id: appearance.topicId },
-        lock: { mode: 'pessimistic_write' },
+        lock: { mode: "pessimistic_write" },
       });
-      if (!topic) {
-        throw codedHttpException(HttpStatus.NOT_FOUND, 'TOPIC_NOT_FOUND', 'Topic not found');
-      }
-      const typeState = normalizedMembershipTopicState(topic.type, {
-        ...topic,
-        ...input,
-      });
-      const saved = await manager.save(Topic, Object.assign(topic, input, typeState));
-      const responseTopic = await manager.findOne(Topic, {
-        where: { id: topic.id },
-        relations: { responsibleUser: true, defaultSection: true },
-      }) ?? saved;
-      return topicResponse(responseTopic, user);
+      if (!topic) throw codedHttpException(HttpStatus.NOT_FOUND, "TOPIC_NOT_FOUND", "Topic not found");
+      Object.assign(topic, input, normalizedMembershipTopicState(topic.type, { ...topic, ...input }));
+      return topicResponse(await manager.save(Topic, topic), user);
     });
-  }
-
-  async updatePreparationContext(
-    meetingId: string,
-    id: string,
-    text: string | null,
-    version: number,
-  ): Promise<MeetingAppearanceTexts> {
-    return this.dataSource.transaction(async (manager) => {
-      const { meeting, appearance } = await this.lockedTextAppearance(manager, meetingId, id);
-      if (meeting.status !== 'planned') {
-        throw codedHttpException(
-          HttpStatus.CONFLICT,
-          'MEETING_PREPARATION_CONTEXT_READ_ONLY',
-          'Preparation context can only be changed while the Meeting is planned',
-        );
-      }
-      if (appearance.topic?.type === 'person') {
-        throw codedHttpException(
-          HttpStatus.BAD_REQUEST,
-          'MEETING_TEXT_TOPIC_TYPE_INVALID',
-          'Person Topics use one Meeting topic note',
-        );
-      }
-      this.assertTextVersion(appearance.noteVersion, version);
-      appearance.agendaNote = text;
-      appearance.noteEditedAt = new Date();
-      appearance.noteVersion += 1;
-      const saved = await manager.save(MeetingTopic, appearance);
-      await this.recurrence.reconcile(manager);
-      const meetingMinutes = await this.currentMeetingMinutes(
-        manager,
-        saved.topicId,
-        meetingId,
-      );
-      return this.appearanceTexts(saved, meetingMinutes);
-    });
-  }
-
-  async updatePersonNote(
-    meetingId: string,
-    id: string,
-    text: string | null,
-    version: number,
-  ): Promise<MeetingAppearanceTexts> {
-    return this.dataSource.transaction(async (manager) => {
-      const { appearance } = await this.lockedTextAppearance(manager, meetingId, id);
-      if (appearance.topic?.type !== 'person') {
-        throw codedHttpException(
-          HttpStatus.BAD_REQUEST,
-          'MEETING_TEXT_TOPIC_TYPE_INVALID',
-          'Only Person Topics use a single Meeting topic note',
-        );
-      }
-      this.assertTextVersion(appearance.noteVersion, version);
-      appearance.agendaNote = text;
-      appearance.noteEditedAt = new Date();
-      appearance.noteVersion += 1;
-      const saved = await manager.save(MeetingTopic, appearance);
-      return this.appearanceTexts(saved, null);
-    });
-  }
-
-  async updateMeetingMinutes(
-    meetingId: string,
-    id: string,
-    input: { text: string; version: number | null },
-    user: User,
-  ): Promise<MeetingAppearanceTexts> {
-    return this.dataSource.transaction(async (manager) => {
-      const meeting = await lockedMutableMeeting(manager, meetingId);
-      if (meeting.status !== 'in_progress') {
-        throw codedHttpException(
-          HttpStatus.CONFLICT,
-          'MEETING_MINUTES_STATUS_INVALID',
-          'Meeting minutes can only be changed while the Meeting is in progress',
-        );
-      }
-      if (user.id !== meeting.meetingLeaderId && user.id !== meeting.minuteTakerId) {
-        throw codedHttpException(
-          HttpStatus.FORBIDDEN,
-          'MEETING_MINUTES_FORBIDDEN',
-          'Only the Meeting leader or Minute taker can change Meeting minutes',
-        );
-      }
-      const appearance = await manager.findOne(MeetingTopic, {
-        where: { id, meetingId },
-        relations: { topic: true },
-        lock: { mode: 'pessimistic_write', tables: ['meeting_topics'] },
-      });
-      if (!appearance) {
-        throw codedHttpException(
-          HttpStatus.NOT_FOUND,
-          'AGENDA_TOPIC_NOT_FOUND',
-          'Agenda topic not found',
-        );
-      }
-      if (appearance.topic?.type === 'person') {
-        throw codedHttpException(
-          HttpStatus.BAD_REQUEST,
-          'MEETING_TEXT_TOPIC_TYPE_INVALID',
-          'Person Topics do not have a separate Meeting-minutes value',
-        );
-      }
-      const minutes = await manager.find(TopicUpdate, {
-        where: { topicId: appearance.topicId, meetingId },
-        order: { date: 'DESC', id: 'DESC' },
-        lock: { mode: 'pessimistic_write' },
-      });
-      const current = minutes[0];
-      if ((current?.version ?? null) !== input.version) {
-        throw codedHttpException(
-          HttpStatus.CONFLICT,
-          'MEETING_TEXT_STALE',
-          'Meeting text changed; retry with the latest version',
-        );
-      }
-      const saved = current
-        ? await manager.save(TopicUpdate, Object.assign(current, {
-          meetingText: input.text,
-          version: current.version + 1,
-        }))
-        : await manager.save(TopicUpdate, manager.create(TopicUpdate, {
-          topicId: appearance.topicId,
-          meetingId,
-          meetingText: input.text,
-          type: 'minute',
-          createdById: user.id,
-          date: new Date(),
-          version: 1,
-        }));
-      return this.appearanceTexts(appearance, saved);
-    });
-  }
-
-  private async lockedTextAppearance(
-    manager: EntityManager,
-    meetingId: string,
-    id: string,
-  ): Promise<{ meeting: Meeting; appearance: MeetingTopic }> {
-    const meeting = await lockedMutableMeeting(manager, meetingId);
-    const appearance = await manager.findOne(MeetingTopic, {
-      where: { id, meetingId },
-      relations: { topic: true },
-      lock: { mode: 'pessimistic_write', tables: ['meeting_topics'] },
-    });
-    if (!appearance) {
-      throw codedHttpException(
-        HttpStatus.NOT_FOUND,
-        'AGENDA_TOPIC_NOT_FOUND',
-        'Agenda topic not found',
-      );
-    }
-    return { meeting, appearance };
-  }
-
-  private assertTextVersion(current: number, requested: number): void {
-    if (current !== requested) {
-      throw codedHttpException(
-        HttpStatus.CONFLICT,
-        'MEETING_TEXT_STALE',
-        'Meeting text changed; retry with the latest version',
-      );
-    }
-  }
-
-  private async currentMeetingMinutes(
-    manager: EntityManager,
-    topicId: string,
-    meetingId: string,
-  ): Promise<TopicUpdate | null> {
-    return manager.findOne(TopicUpdate, {
-      where: { topicId, meetingId },
-      order: { date: 'DESC', id: 'DESC' },
-    });
-  }
-
-  private appearanceTexts(
-    appearance: MeetingTopic,
-    meetingMinutes: TopicUpdate | null,
-  ): MeetingAppearanceTexts {
-    const appearanceText = {
-      id: appearance.id,
-      text: appearance.agendaNote,
-      version: appearance.noteVersion,
-    };
-    const minutesText = meetingMinutes
-      ? {
-          id: meetingMinutes.id ?? null,
-          text: meetingMinutes.meetingText,
-          version: meetingMinutes.version,
-        }
-      : null;
-    return appearance.topic?.type === 'person'
-      ? {
-        preparationContext: null,
-        personNote: appearanceText,
-        meetingMinutes: null,
-      }
-      : {
-        preparationContext: appearanceText,
-        personNote: null,
-        meetingMinutes: minutesText,
-      };
   }
 
   async removeTopic(meetingId: string, id: string): Promise<void> {
     await this.dataSource.transaction(async (manager) => {
       await lockedMutableMeeting(manager, meetingId);
       const appearance = await manager.findOneBy(MeetingTopic, { id, meetingId });
-      if (!appearance) throw codedHttpException(HttpStatus.NOT_FOUND, 'AGENDA_TOPIC_NOT_FOUND', 'Agenda topic not found');
-      if (appearance.source === 'recurrence') {
+      if (!appearance) throw codedHttpException(HttpStatus.NOT_FOUND, "AGENDA_TOPIC_NOT_FOUND", "Agenda topic not found");
+      if (appearance.source === "recurrence") {
         const existing = await manager.findOneBy(SkippedRecurrence, { topicId: appearance.topicId, meetingId });
-        if (!existing) {
-          await manager.save(SkippedRecurrence, manager.create(SkippedRecurrence, {
-            topicId: appearance.topicId,
-            meetingId,
-          }));
-        }
+        if (!existing) await manager.save(SkippedRecurrence, manager.create(SkippedRecurrence, {
+          topicId: appearance.topicId,
+          meetingId,
+        }));
       }
       await manager.remove(MeetingTopic, appearance);
-      await this.recurrence.reconcile(manager);
+      await this.normalizeSectionPositions(manager, meetingId, appearance.sectionId);
     });
+  }
+
+  async removeReconciledTopic(meetingId: string, id: string, user: User): Promise<void> {
+    this.documents.assertContentUser(user);
+    await this.dataSource.transaction(async (manager) => {
+      await lockedMutableMeeting(manager, meetingId);
+      const appearance = await manager.findOneBy(MeetingTopic, { id, meetingId });
+      if (!appearance
+        || appearance.source !== "recurrence"
+        || appearance.contentEditedAt !== null) {
+        throw codedHttpException(
+          HttpStatus.CONFLICT,
+          "RECURRENCE_RECONCILIATION_CHANGED",
+          "Recurring Topic structure changed; reload before reconciling",
+        );
+      }
+      const plan = await this.recurrence.plan(manager, appearance.topicId);
+      if (!plan.removals.some((removal) => removal.id === id && removal.meetingId === meetingId)) {
+        throw codedHttpException(
+          HttpStatus.CONFLICT,
+          "RECURRENCE_RECONCILIATION_CHANGED",
+          "Recurring Topic structure changed; reload before reconciling",
+        );
+      }
+      await manager.remove(MeetingTopic, appearance);
+      await this.normalizeSectionPositions(manager, meetingId, appearance.sectionId);
+    });
+  }
+
+  private async normalizeSectionPositions(
+    manager: Parameters<typeof lockedMutableMeeting>[0],
+    meetingId: string,
+    sectionId: string,
+  ): Promise<void> {
+    const items = await manager.find(MeetingTopic, {
+      where: { meetingId, sectionId },
+      order: { position: "ASC", id: "ASC" },
+    });
+    const changed = items.filter((item, index) => item.position !== index + 1);
+    for (const item of changed) item.position = items.indexOf(item) + 1;
+    if (changed.length) await manager.save(MeetingTopic, changed);
   }
 
   async restoreRecurrence(meetingId: string, topicId: string): Promise<void> {
     await this.dataSource.transaction(async (manager) => {
       await lockedMutableMeeting(manager, meetingId);
       const skip = await manager.findOneBy(SkippedRecurrence, { topicId, meetingId });
-      if (!skip) throw codedHttpException(HttpStatus.NOT_FOUND, 'SKIPPED_RECURRENCE_NOT_FOUND', 'Skipped recurrence not found');
+      if (!skip) throw codedHttpException(HttpStatus.NOT_FOUND, "SKIPPED_RECURRENCE_NOT_FOUND", "Skipped recurrence not found");
       await manager.remove(SkippedRecurrence, skip);
-      await this.recurrence.reconcile(manager);
     });
   }
 
-  async suggestions(meetingId: string, future = false, user: User) {
+  async suggestions(meetingId: string, future: boolean, user: User) {
     const meeting = await this.meetings.findOneBy({ id: meetingId });
-    if (!meeting) throw codedHttpException(HttpStatus.NOT_FOUND, 'MEETING_NOT_FOUND', 'Meeting not found');
+    if (!meeting) throw codedHttpException(HttpStatus.NOT_FOUND, "MEETING_NOT_FOUND", "Meeting not found");
     const existing = await this.meetingTopics.find({ where: { meetingId } });
-    const excluded = existing.map((item) => item.topicId);
     const candidates = await this.topics.find({
-      where: { status: In(['open', 'deferred']) },
+      where: { status: In(["open", "deferred"]) },
       relations: { responsibleUser: true, defaultSection: true },
-      order: { followUpDate: 'ASC', updatedAt: 'DESC' },
+      order: { followUpDate: "ASC", updatedAt: "DESC" },
     });
-    const available = candidates.filter((topic) => !excluded.includes(topic.id));
-    const recurringTopicIds = available
-      .filter((topic) => topic.type === 'recurring')
-      .map((topic) => topic.id);
-    const recurringAppearances = recurringTopicIds.length
-      ? await this.meetingTopics.find({
-        where: { topicId: In(recurringTopicIds) },
-        relations: { meeting: true },
+    const recurringIds = candidates.filter((topic) => topic.type === "recurring").map((topic) => topic.id);
+    const [recurringAppearances, skipped] = await Promise.all([
+      recurringIds.length
+        ? this.meetingTopics.find({
+          where: { topicId: In(recurringIds) },
+          relations: { meeting: true },
+        })
+        : Promise.resolve([]),
+      this.dataSource.manager.find(SkippedRecurrence, { where: { meetingId } }),
+    ]);
+    return candidates
+      .filter((topic) => !existing.some((item) => item.topicId === topic.id))
+      .filter((topic) => !skipped.some((item) => item.topicId === topic.id))
+      .filter((topic) => {
+        const dueDate = topic.type === "recurring"
+          ? this.recurrence.nextDueDate(
+            topic,
+            recurringAppearances
+              .filter((appearance) => appearance.topicId === topic.id && appearance.meeting)
+              .map((appearance) => appearance.meeting!.date),
+          )
+          : topic.followUpDate;
+        return future === Boolean(dueDate && dueDate > meeting.date);
       })
-      : [];
-    for (const topic of available) {
-      if (topic.type !== 'recurring') continue;
-      topic.nextDueDate = this.recurrence.nextDueDate(
-        topic,
-        recurringAppearances
-          .filter((appearance) => appearance.topicId === topic.id)
-          .map((appearance) => appearance.meeting!.date),
-      );
-    }
-    return available.filter((topic) => {
-      const dueDate = topic.type === 'recurring'
-        ? topic.nextDueDate
-        : topic.followUpDate;
-      return future === Boolean(dueDate && dueDate > meeting.date);
-    }).map((topic) => topicResponse(topic, user));
+      .map((topic) => topicResponse(topic, user));
   }
 
+  private meetingTopicRequestFingerprint(input: MeetingTopicDto): Buffer {
+    return createHash("sha256").update(JSON.stringify({
+      id: input.id,
+      mutationId: input.mutationId,
+      topicId: input.topicId,
+      sectionId: input.sectionId,
+      position: input.position ?? null,
+      positionSupplied: input.position !== undefined,
+      plannedDuration: input.plannedDuration ?? null,
+      plannedDurationSupplied: input.plannedDuration !== undefined,
+      source: input.source ?? null,
+      sourceSupplied: input.source !== undefined,
+      sourceAppearanceId: input.sourceAppearanceId ?? null,
+      sourceAppearanceIdSupplied: input.sourceAppearanceId !== undefined,
+      initialUpdateEnvelope: input.initialUpdateEnvelope,
+    })).digest();
+  }
+
+  private appearanceResponse(
+    item: MeetingTopic,
+    updates: TopicUpdate[],
+    tasks: Task[],
+    user: User,
+    previous?: MeetingTopic,
+  ) {
+    const {
+      topicNameSnapshotEnvelope,
+      topicNameSnapshotCommitRevision,
+      membershipProcessStatusSnapshotEnvelope,
+      membershipProcessStatusSnapshotCommitRevision,
+      godparentsSnapshotEnvelope,
+      godparentsSnapshotCommitRevision,
+      topic,
+      ...structural
+    } = item;
+    return {
+      ...structural,
+      previousAppearance: previous
+        ? { appearanceId: previous.id, meetingId: previous.meetingId }
+        : null,
+      protectedSnapshot: topicNameSnapshotEnvelope
+        ? {
+            nameEnvelope: topicNameSnapshotEnvelope.toString("base64url"),
+            nameCommitRevision: topicNameSnapshotCommitRevision,
+            membershipProcessStatusEnvelope: membershipProcessStatusSnapshotEnvelope?.toString("base64url") ?? null,
+            membershipProcessStatusCommitRevision: membershipProcessStatusSnapshotCommitRevision,
+            godparentsEnvelope: godparentsSnapshotEnvelope?.toString("base64url") ?? null,
+            godparentsCommitRevision: godparentsSnapshotCommitRevision,
+          }
+        : null,
+      topic: topic
+        ? {
+            ...topicResponse(topic, user),
+            updates: updates
+              .filter((update) => update.topicId === item.topicId)
+              .map((update) => topicUpdateResponse(update, user)),
+            tasks: tasks
+              .filter((task) => task.topicId === item.topicId)
+              .map((task) => taskSummaryResponse(task, user)),
+          }
+        : undefined,
+    };
+  }
 }

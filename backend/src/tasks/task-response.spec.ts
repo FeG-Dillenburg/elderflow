@@ -17,6 +17,8 @@ describe('taskResponse', () => {
     meetingId: 'meeting',
     meeting: {
       id: 'meeting',
+      titleEnvelope: Buffer.from('meeting-title'),
+      titleCommitRevision: '5',
       title: 'must-not-leak',
       date: '2026-07-20',
       beginTime: '19:30',
@@ -55,6 +57,10 @@ describe('taskResponse', () => {
       meetingId: 'meeting',
       meeting: {
         id: 'meeting',
+        protected: {
+          titleEnvelope: Buffer.from('meeting-title').toString('base64url'),
+          titleCommitRevision: '5',
+        },
         date: '2026-07-20',
         beginTime: '19:30',
         status: 'planned',

@@ -1,16 +1,18 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { FindOptionsWhere, In, IsNull, Repository } from 'typeorm';
+import { FindOptionsWhere, In, Repository } from 'typeorm';
 import { User } from '../users/user.entity';
 import { DiscriminatedTopicDto, TopicUpdateDto } from './dto/topic.dto';
 import { TOPIC_TYPES, Topic, TopicType } from './topic.entity';
 import { codedHttpException } from '../errors/coded-http.exception';
 import { TopicUpdate } from './topic-update.entity';
 import { MeetingTopic } from '../meetings/meeting-topic.entity';
+import { Meeting } from '../meetings/meeting.entity';
 import { normalizedMembershipTopicState } from './membership-topic-state';
 import { RecurrenceService } from '../recurrence/recurrence.service';
 import { SkippedRecurrence } from '../recurrence/skipped-recurrence.entity';
 import { E2eeScalarService } from '../e2ee/e2ee-scalar.service';
+import { isE2eeKeyOperator } from '../e2ee/e2ee-role-policy';
 import { topicResponse, topicUpdateResponse } from './topic-response';
 import {
   SCALAR_AGGREGATES,
@@ -103,7 +105,7 @@ export class TopicsService {
         ...encrypted,
         ...this.normalizedRecurrenceState(input.type, input),
       }));
-      await this.recurrence.reconcile(manager);
+      if (topic.type === 'recurring') await this.recurrence.validate(manager, topic);
       return topicResponse(topic, user);
     });
   }
@@ -156,7 +158,7 @@ export class TopicsService {
         encrypted,
         this.normalizedRecurrenceState(effectiveType, candidate),
       ));
-      await this.recurrence.reconcile(manager);
+      if (saved.type === 'recurring') await this.recurrence.validate(manager, saved);
       return topicResponse(saved, user);
     });
   }
@@ -222,19 +224,12 @@ export class TopicsService {
 
   async getUpdates(topicId: string, user: User) {
     await this.findOneEntity(topicId);
-    const updates = await this.updates.find({ where: { topicId, meetingId: IsNull() }, relations: { createdBy: true }, order: { date: 'DESC' } });
+    const updates = await this.updates.find({ where: { topicId }, relations: { createdBy: true }, order: { date: 'DESC' } });
     return updates.map((update) => topicUpdateResponse(update, user));
   }
 
   async addUpdate(topicId: string, input: TopicUpdateDto, user: User) {
     this.scalars.assertContentUser(user);
-    if (input.meetingId) {
-      throw codedHttpException(
-        HttpStatus.BAD_REQUEST,
-        'MEETING_MINUTES_ENDPOINT_REQUIRED',
-        'Meeting minutes must be changed through their Meeting appearance',
-      );
-    }
     return this.topics.manager.transaction(async (manager) => {
       const topic = await manager.getRepository(Topic).findOne({
         where: { id: topicId },
@@ -260,7 +255,6 @@ export class TopicsService {
       if (existing) {
         if (!scalar.duplicate
           || existing.topicId !== topicId
-          || existing.meetingId !== null
           || existing.type !== (input.type ?? 'update')) {
           throw codedHttpException(
             HttpStatus.CONFLICT,
@@ -276,7 +270,6 @@ export class TopicsService {
         createdById: user.id,
         date: new Date(),
         type: input.type ?? 'update',
-        meetingId: null,
         textEnvelope: scalar.envelope,
         textCommitRevision: scalar.commitRevision,
       }));
@@ -328,12 +321,24 @@ export class TopicsService {
     return fields.every((field) => (topic[field] ?? null) === (input[field] ?? null));
   }
 
-  async getAppearances(topicId: string) {
+  async getAppearances(topicId: string, user: User, beforeMeetingId?: string) {
     await this.findOneEntity(topicId);
     const appearances = await this.appearances.find({
       where: { topicId }, relations: { meeting: true, section: true }, order: { meeting: { date: 'DESC' } },
     });
-    return appearances.map((appearance) => ({
+    const target = beforeMeetingId
+      ? await this.topics.manager.findOneBy(Meeting, { id: beforeMeetingId })
+      : null;
+    if (beforeMeetingId && !target) {
+      throw codedHttpException(HttpStatus.NOT_FOUND, 'MEETING_NOT_FOUND', 'Meeting not found');
+    }
+    return appearances
+      .filter((appearance) => !target || Boolean(appearance.meeting && [
+        appearance.meeting.date,
+        appearance.meeting.beginTime,
+        appearance.meeting.id,
+      ].join('|') < [target.date, target.beginTime, target.id].join('|')))
+      .map((appearance) => ({
       id: appearance.id,
       meetingId: appearance.meetingId,
       topicId: appearance.topicId,
@@ -345,7 +350,12 @@ export class TopicsService {
       meeting: appearance.meeting
         ? {
             id: appearance.meeting.id,
-            title: appearance.meeting.title,
+            protected: isE2eeKeyOperator(user.role) && Buffer.isBuffer(appearance.meeting.titleEnvelope)
+              ? {
+                  titleEnvelope: appearance.meeting.titleEnvelope.toString('base64url'),
+                  titleCommitRevision: appearance.meeting.titleCommitRevision,
+                }
+              : null,
             date: appearance.meeting.date,
             beginTime: appearance.meeting.beginTime,
             status: appearance.meeting.status,
@@ -358,13 +368,38 @@ export class TopicsService {
             position: appearance.section.position,
           }
         : null,
-    }));
+      }));
   }
 
-  async getSkippedRecurrences(topicId: string): Promise<SkippedRecurrence[]> {
+  async recurrenceReconciliation(topicId: string, user: User) {
+    this.scalars.assertContentUser(user);
+    return this.recurrence.plan(this.topics.manager, topicId);
+  }
+
+  async getSkippedRecurrences(topicId: string, user: User) {
     await this.findOneEntity(topicId);
-    return this.topics.manager.find(SkippedRecurrence, {
+    const skips = await this.topics.manager.find(SkippedRecurrence, {
       where: { topicId }, relations: { meeting: true }, order: { meeting: { date: 'DESC' } },
     });
+    return skips.map((skip) => ({
+      id: skip.id,
+      topicId: skip.topicId,
+      meetingId: skip.meetingId,
+      createdAt: skip.createdAt,
+      meeting: skip.meeting
+        ? {
+            id: skip.meeting.id,
+            protected: isE2eeKeyOperator(user.role) && Buffer.isBuffer(skip.meeting.titleEnvelope)
+              ? {
+                  titleEnvelope: skip.meeting.titleEnvelope.toString('base64url'),
+                  titleCommitRevision: skip.meeting.titleCommitRevision,
+                }
+              : null,
+            date: skip.meeting.date,
+            beginTime: skip.meeting.beginTime,
+            status: skip.meeting.status,
+          }
+        : null,
+    }));
   }
 }

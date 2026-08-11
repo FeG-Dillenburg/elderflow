@@ -9,6 +9,16 @@ import { SkippedRecurrence } from './skipped-recurrence.entity';
 
 type RecurrenceConfiguration = Pick<Topic, 'recurrenceFirstDueDate' | 'recurrenceInterval' | 'recurrenceUnit'>;
 
+export interface RecurrenceReconciliationPlan {
+  moves: Array<{
+    meetingId: string;
+    sectionId: string;
+    position: number;
+    sourceAppearance: { id: string; meetingId: string } | null;
+  }>;
+  removals: Array<{ id: string; meetingId: string }>;
+}
+
 @Injectable()
 export class RecurrenceService {
   addInterval(date: string, interval: number, unit: RecurrenceUnit): string {
@@ -35,85 +45,119 @@ export class RecurrenceService {
       : configuration.recurrenceFirstDueDate;
   }
 
-  async reconcile(manager: EntityManager): Promise<void> {
-    const topics = await manager.find(Topic, {
-      where: { type: 'recurring' },
-      order: { id: 'ASC' },
-      lock: { mode: 'pessimistic_write' },
-    });
-    const meetings = await manager.find(Meeting, { order: { date: 'ASC', beginTime: 'ASC', id: 'ASC' } });
-    if (!topics.length || !meetings.length) return;
+  async validate(manager: EntityManager, topic: Topic): Promise<void> {
+    await this.buildPlan(manager, topic);
+  }
 
+  async plan(manager: EntityManager, topicId: string): Promise<RecurrenceReconciliationPlan> {
+    const topic = await manager.findOne(Topic, { where: { id: topicId } });
+    if (!topic) throw codedHttpException(HttpStatus.NOT_FOUND, 'TOPIC_NOT_FOUND', 'Topic not found');
+    if (topic.type !== 'recurring') {
+      throw codedHttpException(HttpStatus.BAD_REQUEST, 'RECURRENCE_CONFIGURATION_INVALID', 'Topic is not recurring');
+    }
+    return this.buildPlan(manager, topic);
+  }
+
+  private async buildPlan(
+    manager: EntityManager,
+    topic: Topic,
+  ): Promise<RecurrenceReconciliationPlan> {
+    const meetings = await manager.find(Meeting, { order: { date: 'ASC', beginTime: 'ASC', id: 'ASC' } });
+    if (!meetings.length) return { moves: [], removals: [] };
     const meetingIds = meetings.map(({ id }) => id);
-    for (const topic of topics) {
-      const appearances = await manager.find(MeetingTopic, {
+    const [appearances, skips] = await Promise.all([
+      manager.find(MeetingTopic, {
         where: { topicId: topic.id, meetingId: In(meetingIds) },
         relations: { meeting: true },
-      });
-      const skips = await manager.find(SkippedRecurrence, { where: { topicId: topic.id, meetingId: In(meetingIds) } });
-      const skippedMeetingIds = new Set(skips.map(({ meetingId }) => meetingId));
-      const movable = appearances.filter((item) =>
-        item.source === 'recurrence' && item.noteEditedAt === null && item.meeting?.status === 'planned');
-      const reusableNotes = movable
-        .sort((left, right) => left.meeting!.date.localeCompare(right.meeting!.date))
-        .map((item) => item.agendaNote);
-      if (movable.length) await manager.remove(MeetingTopic, movable);
-      if (topic.status !== 'open') continue;
-      const fixedByMeeting = new Map(
-        appearances.filter((item) => !movable.includes(item)).map((item) => [item.meetingId, item]),
-      );
-      let nextDue = topic.recurrenceFirstDueDate!;
-      for (const meeting of meetings) {
-        const fixed = fixedByMeeting.get(meeting.id);
-        if (fixed) {
-          if (fixed.source === 'recurrence' && meeting.status === 'planned' && meeting.date < nextDue) {
-            throw codedHttpException(
-              HttpStatus.CONFLICT,
-              'RECURRENCE_EDITED_APPEARANCE_CONFLICT',
-              'A preserved Recurring Topic appearance conflicts with the calculated schedule',
-            );
-          }
-          nextDue = this.addInterval(meeting.date, topic.recurrenceInterval!, topic.recurrenceUnit!);
-          continue;
-        }
-        if (meeting.status !== 'planned' || meeting.date < nextDue || skippedMeetingIds.has(meeting.id)) continue;
-        const nextPreservedMeeting = meetings.slice(meetings.indexOf(meeting) + 1)
-          .find((laterMeeting) => fixedByMeeting.has(laterMeeting.id));
-        const dueAfterCurrentMeeting = this.addInterval(
-          meeting.date,
-          topic.recurrenceInterval!,
-          topic.recurrenceUnit!,
-        );
-        if (nextPreservedMeeting && nextPreservedMeeting.date < dueAfterCurrentMeeting) {
+      }),
+      manager.find(SkippedRecurrence, { where: { topicId: topic.id, meetingId: In(meetingIds) } }),
+    ]);
+    const movable = appearances
+      .filter((item) => item.source === 'recurrence'
+        && item.contentEditedAt === null
+        && item.meeting?.status === 'planned')
+      .sort((left, right) => left.meeting!.date.localeCompare(right.meeting!.date));
+    if (topic.status !== 'open') {
+      return {
+        moves: [],
+        removals: movable.map(({ id, meetingId }) => ({ id, meetingId })),
+      };
+    }
+    const fixedByMeeting = new Map(
+      appearances.filter((item) => !movable.includes(item)).map((item) => [item.meetingId, item]),
+    );
+    const skippedMeetingIds = new Set(skips.map(({ meetingId }) => meetingId));
+    const desired: Meeting[] = [];
+    let nextDue = topic.recurrenceFirstDueDate!;
+    for (const [index, meeting] of meetings.entries()) {
+      const fixed = fixedByMeeting.get(meeting.id);
+      if (fixed) {
+        if (fixed.source === 'recurrence' && meeting.status === 'planned' && meeting.date < nextDue) {
           throw codedHttpException(
             HttpStatus.CONFLICT,
             'RECURRENCE_EDITED_APPEARANCE_CONFLICT',
             'A preserved Recurring Topic appearance conflicts with the calculated schedule',
           );
         }
-        const sectionId = topic.defaultSectionId;
-        if (!sectionId || !(await manager.exists(AgendaSection, { where: { id: sectionId } }))) {
-          throw codedHttpException(HttpStatus.BAD_REQUEST, 'RECURRENCE_CONFIGURATION_INVALID', 'Recurring Topic default section is invalid');
-        }
-        const sectionItems = await manager.find(MeetingTopic, {
-          where: { meetingId: meeting.id, sectionId }, order: { position: 'ASC' },
-        });
-        const position = Math.min(topic.defaultPosition ?? sectionItems.length + 1, sectionItems.length + 1);
-        const shifted = sectionItems.filter((item) => item.position >= position);
-        for (const item of shifted) item.position += 1;
-        if (shifted.length) await manager.save(MeetingTopic, shifted);
-        await manager.save(MeetingTopic, manager.create(MeetingTopic, {
-          meetingId: meeting.id,
-          topicId: topic.id,
-          sectionId,
-          position,
-          status: 'planned',
-          source: 'recurrence',
-          agendaNote: reusableNotes.shift() ?? null,
-          noteEditedAt: null,
-        }));
         nextDue = this.addInterval(meeting.date, topic.recurrenceInterval!, topic.recurrenceUnit!);
+        continue;
       }
+      if (meeting.status !== 'planned' || meeting.date < nextDue || skippedMeetingIds.has(meeting.id)) continue;
+      const nextPreservedMeeting = meetings.slice(index + 1).find((later) => fixedByMeeting.has(later.id));
+      const dueAfterCurrentMeeting = this.addInterval(
+        meeting.date,
+        topic.recurrenceInterval!,
+        topic.recurrenceUnit!,
+      );
+      if (nextPreservedMeeting && nextPreservedMeeting.date < dueAfterCurrentMeeting) {
+        throw codedHttpException(
+          HttpStatus.CONFLICT,
+          'RECURRENCE_EDITED_APPEARANCE_CONFLICT',
+          'A preserved Recurring Topic appearance conflicts with the calculated schedule',
+        );
+      }
+      desired.push(meeting);
+      nextDue = dueAfterCurrentMeeting;
     }
+
+    const sectionId = topic.defaultSectionId;
+    if (desired.length && (!sectionId || !(await manager.exists(AgendaSection, { where: { id: sectionId } })))) {
+      throw codedHttpException(HttpStatus.BAD_REQUEST, 'RECURRENCE_CONFIGURATION_INVALID', 'Recurring Topic default section is invalid');
+    }
+    const targets = await Promise.all(desired.map(async (meeting) => {
+      const exact = movable.find((item) => item.meetingId === meeting.id);
+      const sectionItems = (await manager.find(MeetingTopic, {
+        where: { meetingId: meeting.id, sectionId: sectionId! },
+        order: { position: 'ASC' },
+      })).filter((item) => item.id !== exact?.id);
+      const position = Math.min(topic.defaultPosition ?? sectionItems.length + 1, sectionItems.length + 1);
+      return {
+        meeting,
+        position,
+        stable: exact?.sectionId === sectionId && exact.position === position,
+      };
+    }));
+    const stableMeetingIds = new Set(
+      targets.filter(({ stable }) => stable).map(({ meeting }) => meeting.id),
+    );
+    const reusable = movable.filter((item) => !stableMeetingIds.has(item.meetingId));
+    const moves = [] as RecurrenceReconciliationPlan['moves'];
+    for (const { meeting, position, stable } of targets) {
+      if (stable) continue;
+      const exactIndex = reusable.findIndex((item) => item.meetingId === meeting.id);
+      const source = reusable.splice(exactIndex >= 0 ? exactIndex : 0, 1)[0] ?? null;
+      moves.push({
+        meetingId: meeting.id,
+        sectionId: sectionId!,
+        position,
+        sourceAppearance: source
+          ? { id: source.id, meetingId: source.meetingId }
+          : null,
+      });
+    }
+    return {
+      moves,
+      removals: reusable.map(({ id, meetingId }) => ({ id, meetingId })),
+    };
   }
 }

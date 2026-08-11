@@ -12,6 +12,12 @@ import { Topic } from '../src/topics/topic.entity';
 import { User } from '../src/users/user.entity';
 import { RecurrenceService } from '../src/recurrence/recurrence.service';
 import { SkippedRecurrence } from '../src/recurrence/skipped-recurrence.entity';
+import { E2eeScalarService } from '../src/e2ee/e2ee-scalar.service';
+import { MeetingDocumentService } from '../src/meetings/meeting-document.service';
+import { MeetingDocument } from '../src/meetings/meeting-document.entity';
+import { MeetingDocumentSnapshot } from '../src/meetings/meeting-document-snapshot.entity';
+import { MeetingDocumentUpdate } from '../src/meetings/meeting-document-update.entity';
+import { MeetingDocumentMutation } from '../src/meetings/meeting-document-mutation.entity';
 
 const databaseUrl = process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL;
 const describeWithPostgres = databaseUrl ? describe : describe.skip;
@@ -34,7 +40,11 @@ describeWithPostgres('Meeting completion with PostgreSQL (integration)', () => {
       type: 'postgres',
       url: databaseUrl,
       schema,
-      entities: [User, AgendaSection, Topic, TopicUpdate, Meeting, MeetingUser, MeetingTopic, Task, SkippedRecurrence],
+      entities: [
+        User, AgendaSection, Topic, TopicUpdate, Meeting, MeetingUser, MeetingTopic,
+        Task, SkippedRecurrence, MeetingDocument, MeetingDocumentSnapshot,
+        MeetingDocumentUpdate, MeetingDocumentMutation,
+      ],
       synchronize: true,
     });
     await database.initialize();
@@ -50,6 +60,8 @@ describeWithPostgres('Meeting completion with PostgreSQL (integration)', () => {
       database.getRepository(AgendaSection),
       snapshots,
       new RecurrenceService(),
+      new E2eeScalarService(),
+      new MeetingDocumentService(),
     );
   });
 
@@ -65,6 +77,10 @@ describeWithPostgres('Meeting completion with PostgreSQL (integration)', () => {
     await database.query(`
       TRUNCATE TABLE
         "${schema}"."topic_updates",
+        "${schema}"."meeting_document_mutations",
+        "${schema}"."meeting_document_updates",
+        "${schema}"."meeting_document_snapshots",
+        "${schema}"."meeting_documents",
         "${schema}"."tasks",
         "${schema}"."meeting_topics",
         "${schema}"."meeting_users",
@@ -117,21 +133,29 @@ describeWithPostgres('Meeting completion with PostgreSQL (integration)', () => {
       recurrenceUnit: null,
     });
     meeting = await database.getRepository(Meeting).save({
-      title: null,
+      titleEnvelope: Buffer.from([1]),
+      titleCommitRevision: '1',
       date: '2026-07-19',
       beginTime: '19:30',
       status: 'in_progress',
       meetingLeaderId: leader.id,
       minuteTakerId: null,
-      generalNotes: null,
-      openingInput: null,
+    });
+    await database.getRepository(MeetingDocument).save({
+      id: '00000000-0000-4000-8000-000000000099',
+      meetingId: meeting.id,
+      envelopeFormat: 1,
+      cryptoSuite: 1,
+      meetingCodec: 2,
+      activeSnapshotId: '00000000-0000-4000-8000-000000000098',
+      currentServerSequence: '0',
+      completedServerSequence: null,
     });
     appearance = await database.getRepository(MeetingTopic).save({
       meetingId: meeting.id,
       topicId: topic.id,
       sectionId: section.id,
       position: 1,
-      agendaNote: null,
       plannedDuration: 15,
       status: 'planned',
       topicNameSnapshotEnvelope: null,
@@ -195,7 +219,6 @@ describeWithPostgres('Meeting completion with PostgreSQL (integration)', () => {
     });
     await expect(database.getRepository(MeetingTopic).findOneByOrFail({ id: appearance.id }))
       .resolves.toMatchObject({
-        agendaNote: null,
         topicNameSnapshotEnvelope: Buffer.from([1]),
       });
   });

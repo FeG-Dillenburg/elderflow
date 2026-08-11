@@ -11,6 +11,7 @@ import {
 import { Topic } from '../topics/topic.entity';
 import { accountResponse, topicLabelResponse } from '../topics/topic-response';
 import { User } from '../users/user.entity';
+import { isE2eeKeyOperator } from '../e2ee/e2ee-role-policy';
 
 const dashboardTopicResponse = (topic: Topic, viewer: User) => ({
   ...topicLabelResponse(topic, viewer),
@@ -20,9 +21,15 @@ const dashboardTopicResponse = (topic: Topic, viewer: User) => ({
   responsibleUser: accountResponse(topic.responsibleUser),
 });
 
-const nextMeetingResponse = (meeting: Meeting | null) => meeting
+const nextMeetingResponse = (meeting: Meeting | null, viewer: User) => meeting
   ? {
       id: meeting.id,
+      protected: isE2eeKeyOperator(viewer.role) && Buffer.isBuffer(meeting.titleEnvelope)
+        ? {
+            titleEnvelope: meeting.titleEnvelope.toString('base64url'),
+            titleCommitRevision: meeting.titleCommitRevision,
+          }
+        : null,
       date: meeting.date,
       beginTime: meeting.beginTime,
       status: meeting.status,
@@ -77,6 +84,8 @@ export class DashboardService {
         relations: { meetingLeader: true },
         select: {
           id: true,
+          titleEnvelope: true,
+          titleCommitRevision: true,
           date: true,
           beginTime: true,
           status: true,
@@ -131,7 +140,7 @@ export class DashboardService {
       }),
     ]);
     return {
-      nextMeeting: nextMeetingResponse(nextMeeting),
+      nextMeeting: nextMeetingResponse(nextMeeting, user),
       myOpenTasks: myOpenTasks.map((task) => taskSummaryResponse(task, user)),
       overdueTasks: overdueTasks.map((task) => taskSummaryResponse(task, user)),
       followUpTopics: followUpTopics.map((topic) => dashboardTopicResponse(topic, user)),

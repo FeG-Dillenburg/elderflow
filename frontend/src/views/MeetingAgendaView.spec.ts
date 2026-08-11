@@ -152,15 +152,15 @@ describe("MeetingAgendaView", () => {
       (wrapper.vm as any).recent(item).map((update: any) => update.id),
     ).toEqual(["b", "c", "d"]);
   });
-  it("keeps standalone Updates separate from paired Meeting minutes", async () => {
+  it("shows only standalone Updates from the retained Update store", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-07-15T12:00:00Z"));
     const completedMeeting = structuredClone(meeting);
     completedMeeting.status = "completed";
     completedMeeting.agenda[0].topic.updates = [
-      { id: "later-update", meetingId: null, date: "2026-07-15T12:00:00Z" },
-      { id: "other-minute", meetingId: "other", date: "2026-07-14T12:00:00Z" },
-      { id: "own-old-minute", meetingId: "meeting-1", date: "2025-01-01T12:00:00Z" },
+      { id: "later-update", date: "2026-07-15T12:00:00Z" },
+      { id: "other-update", date: "2026-07-14T12:00:00Z" },
+      { id: "old-update", date: "2025-01-01T12:00:00Z" },
     ];
     vi.spyOn(api, "meeting").mockResolvedValueOnce(completedMeeting);
 
@@ -168,7 +168,7 @@ describe("MeetingAgendaView", () => {
     const vm: any = wrapper.vm;
 
     expect(vm.recent(vm.meeting.agenda[0]).map((update: any) => update.id))
-      .toEqual(["later-update"]);
+      .toEqual(["other-update", "later-update"]);
   });
   it("passes completed Person snapshots to a read-only agenda renderer", async () => {
     const completedMeeting = structuredClone(meeting);
@@ -176,7 +176,11 @@ describe("MeetingAgendaView", () => {
     completedMeeting.agenda[0].topic.type = "person";
     completedMeeting.agenda[0].topic.name = "Later live name";
     completedMeeting.agenda[0].topicNameSnapshot = "Recorded person";
-    completedMeeting.agenda[0].agendaNote = "Recorded note";
+    completedMeeting.agenda[0].personNote = {
+      id: "item-1",
+      text: "Recorded note",
+      version: 0,
+    };
     vi.spyOn(api, "meeting").mockResolvedValueOnce(completedMeeting);
 
     const wrapper = await view();
@@ -185,7 +189,7 @@ describe("MeetingAgendaView", () => {
     expect(renderer.props("canEdit")).toBe(false);
     expect(renderer.props("item")).toMatchObject({
       topicNameSnapshot: "Recorded person",
-      agendaNote: "Recorded note",
+      personNote: expect.objectContaining({ text: "Recorded note" }),
     });
   });
   it("manages Meeting participants independently of paired Minutes editing", async () => {
@@ -305,7 +309,7 @@ describe("MeetingAgendaView", () => {
       "item-1",
       { text: "Saved note", version: 0 },
     );
-    expect(appearance.agendaNote).toBe("Saved note");
+    expect(appearance.personNote?.text).toBe("Saved note");
     expect(api.meeting).toHaveBeenCalledTimes(1);
   });
   it("reports a localized Topic status failure without updating the Meeting appearance", async () => {

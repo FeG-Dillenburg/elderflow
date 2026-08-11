@@ -125,5 +125,4 @@ export class TopicUpdateDto {
   @IsUUID() id: string;
   @IsString() @IsNotEmpty() textEnvelope: string;
   @IsOptional() @IsString() type?: string;
-  @IsOptional() @IsUUID() meetingId?: string | null;
 }

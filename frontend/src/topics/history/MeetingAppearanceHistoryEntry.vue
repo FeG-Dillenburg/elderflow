@@ -25,10 +25,9 @@ const topicSnapshotValueCount = computed(() => Number(showTopicName.value)
 const appearanceNote = computed(() => props.entry.topic.type === "person"
   ? props.entry.personNote
   : props.entry.preparationContext);
-const minutesEntries = computed(() => [
-  ...props.entry.legacyMinutesEntries,
-  ...(props.entry.meetingMinutes ? [props.entry.meetingMinutes] : []),
-]);
+const minutesEntries = computed(() => props.entry.meetingMinutes
+  ? [props.entry.meetingMinutes]
+  : []);
 </script>
 
 <template>

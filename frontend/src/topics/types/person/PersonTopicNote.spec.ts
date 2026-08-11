@@ -6,7 +6,7 @@ const item = () => ({
   id: "appearance",
   meetingId: "meeting",
   topicId: "topic",
-  agendaNote: "Initial note",
+  personNote: { id: "appearance", text: "Initial note", version: 0 },
 }) as any;
 
 const Textarea = {

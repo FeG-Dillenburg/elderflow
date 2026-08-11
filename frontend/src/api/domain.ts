@@ -6,6 +6,13 @@ import type { InitialKeyState, PublicKeyState, RecoveryKeyState } from '../e2ee/
 import { Encoder } from 'cbor-x';
 import { base64UrlToBytes, bytesToBase64Url, E2EE_MEDIA_TYPE } from '../e2ee/protocol';
 import { applyProtectedTextVisibility, getProtectedTextDevelopmentHeaders } from '../e2ee/content-visibility';
+import { protectMeetingTitle, unprotectMeetingTitle, type EncryptedMeetingTitle } from '../e2ee/meeting-scalars';
+import {
+  meetingDocumentSession,
+  type EncryptedWorkspace,
+} from '../e2ee/meeting-document-session';
+import { meetingFragmentId } from '../e2ee/meeting-document-codec';
+import { scalarSession } from '../e2ee/scalar-session';
 import {
   protectStandaloneUpdate,
   protectTopicInput,
@@ -181,6 +188,8 @@ export interface Meeting {
   openingInput: string | null;
   participants?: MeetingParticipant[];
   agenda?: MeetingTopic[];
+  workspace?: EncryptedWorkspace | null;
+  collaboration?: { available: false };
 }
 
 export type MeetingInput = Omit<Meeting, 'id' | 'meetingLeader' | 'minuteTaker' | 'participants' | 'agenda'>;
@@ -204,11 +213,6 @@ export interface MeetingAppearanceTexts {
   meetingMinutes: VersionedMeetingText | null;
 }
 
-export interface PreviousMeetingTexts {
-  preparationContext: string | null;
-  meetingMinutes: string | null;
-}
-
 export interface MeetingTopic {
   id: string;
   meetingId: string;
@@ -217,14 +221,11 @@ export interface MeetingTopic {
   section?: AgendaSection;
   topic?: Topic;
   position: number;
-  agendaNote: string | null;
-  noteVersion?: number;
   preparationContext?: VersionedMeetingText | null;
   personNote?: VersionedMeetingText | null;
   meetingMinutes?: VersionedMeetingText | null;
-  previousMeetingTexts?: PreviousMeetingTexts | null;
   source?: AgendaAppearanceSource;
-  noteEditedAt?: string | null;
+  contentEditedAt?: string | null;
   deferredAt?: string | null;
   plannedDuration: number | null;
   status: string;
@@ -235,6 +236,7 @@ export interface MeetingTopic {
   godparentsSnapshot?: string | null;
   protectedSnapshot?: EncryptedTopicSnapshot | null;
   meeting?: Meeting;
+  previousAppearance?: { appearanceId: string; meetingId: string } | null;
 }
 
 export interface SkippedRecurrence {
@@ -245,10 +247,19 @@ export interface SkippedRecurrence {
   createdAt: string;
 }
 
+interface RecurrenceReconciliationPlan {
+  moves: Array<{
+    meetingId: string;
+    sectionId: string;
+    position: number;
+    sourceAppearance: { id: string; meetingId: string } | null;
+  }>;
+  removals: Array<{ id: string; meetingId: string }>;
+}
+
 export interface TopicUpdate {
   id: string;
   topicId: string;
-  meetingId: string | null;
   meeting?: Meeting | null;
   date: string;
   text: string;
@@ -302,7 +313,6 @@ export type TopicHistoryEntry =
       preparationContext: string | null;
       personNote: string | null;
       meetingMinutes: TopicHistoryMinutesEntry | null;
-      legacyMinutesEntries: TopicHistoryMinutesEntry[];
     }
   | {
       id: string;
@@ -478,6 +488,54 @@ function encodeSetupRequest(input: InitialUserInput): Uint8Array {
   ]));
 }
 
+function encodeMeetingCreateRequest(
+  id: string,
+  titleEnvelope: string,
+  document: { documentId: string; snapshotId: string; snapshotEnvelope: string },
+  input: Omit<MeetingInput, 'title' | 'generalNotes' | 'openingInput'>,
+): Uint8Array {
+  return Uint8Array.from(cborEncoder.encode([
+    id,
+    base64UrlToBytes(titleEnvelope),
+    document.documentId,
+    document.snapshotId,
+    base64UrlToBytes(document.snapshotEnvelope),
+    input.date,
+    input.beginTime,
+    input.status,
+    input.meetingLeaderId ?? null,
+    input.minuteTakerId ?? null,
+  ]));
+}
+
+function encodeMeetingTopicMutation(input: {
+  id: string;
+  mutationId: string;
+  topicId: string;
+  sectionId: string;
+  initialUpdateEnvelope: string;
+  source?: 'manual' | 'recurrence';
+  position?: number;
+  plannedDuration?: number | null;
+  sourceAppearanceId?: string;
+}): Uint8Array {
+  return Uint8Array.from(cborEncoder.encode([
+    input.id,
+    input.mutationId,
+    input.topicId,
+    input.sectionId,
+    base64UrlToBytes(input.initialUpdateEnvelope),
+    input.source ?? null,
+    input.source !== undefined,
+    input.position ?? null,
+    input.position !== undefined,
+    input.plannedDuration ?? null,
+    input.plannedDuration !== undefined,
+    input.sourceAppearanceId ?? null,
+    input.sourceAppearanceId !== undefined,
+  ]));
+}
+
 
 const query = (values: Record<string, string | boolean | null | undefined>): string => {
   const params = new URLSearchParams();
@@ -490,11 +548,74 @@ const query = (values: Record<string, string | boolean | null | undefined>): str
 
 type EncryptedDashboardTopicSummary = Omit<DashboardTopicSummary, 'name'> & EncryptedTopicLabel;
 type EncryptedDashboardData = Omit<DashboardData, 'myOpenTasks' | 'overdueTasks' | 'followUpTopics' | 'recentTopics' | 'nextMeeting'> & {
-  nextMeeting: Omit<NonNullable<DashboardData['nextMeeting']>, 'title'> | null;
+  nextMeeting: (Omit<NonNullable<DashboardData['nextMeeting']>, 'title'> & EncryptedMeetingTitle) | null;
   myOpenTasks: EncryptedTaskSummaryResponse[];
   overdueTasks: EncryptedTaskSummaryResponse[];
   followUpTopics: EncryptedDashboardTopicSummary[];
   recentTopics: EncryptedDashboardTopicSummary[];
+};
+
+type EncryptedMeetingResponse = Omit<Meeting, 'title' | 'generalNotes' | 'openingInput'>
+  & EncryptedMeetingTitle;
+
+const unprotectMeeting = async (response: EncryptedMeetingResponse): Promise<Meeting> => {
+  const { protected: protectedTitle, ...structural } = response;
+  const meeting: Meeting = {
+    ...structural,
+    title: await unprotectMeetingTitle(response.id, protectedTitle),
+    generalNotes: null,
+    openingInput: null,
+  };
+  if (!response.workspace) return meeting;
+  try {
+    await meetingDocumentSession.load(response.id, response.workspace);
+    const fragments = meetingDocumentSession.hydrateFragments(
+      response.id,
+      (response.agenda ?? []).map((item) => ({
+        id: item.id,
+        person: item.topic?.type === 'person',
+      })),
+    );
+    meeting.generalNotes = fragments.generalNotes;
+    meeting.openingInput = fragments.openingInput;
+    meeting.agenda = (response.agenda ?? []).map((item) => {
+      const values = fragments.appearances.get(item.id)!;
+      const preparationContext = values.preparationContext === null
+        ? null
+        : { id: item.id, text: values.preparationContext, version: 0 };
+      const personNote = values.personNote === null
+        ? null
+        : { id: item.id, text: values.personNote, version: 0 };
+      const meetingMinutes = values.meetingMinutes === null
+        ? null
+        : { id: item.id, text: values.meetingMinutes, version: 0 };
+      return {
+        ...item,
+        preparationContext,
+        personNote,
+        meetingMinutes,
+      };
+    });
+  } catch {
+    const placeholder = translate(scalarSession.isUnlocked()
+      ? 'e2ee.unavailablePlaceholder'
+      : 'e2ee.lockedPlaceholder');
+    meeting.generalNotes = placeholder;
+    meeting.openingInput = placeholder;
+    meeting.agenda = (response.agenda ?? []).map((item) => ({
+      ...item,
+      preparationContext: item.topic?.type === 'person'
+        ? null
+        : { id: item.id, text: placeholder, version: 0 },
+      personNote: item.topic?.type === 'person'
+        ? { id: item.id, text: placeholder, version: 0 }
+        : null,
+      meetingMinutes: item.topic?.type === 'person'
+        ? null
+        : { id: item.id, text: placeholder, version: 0 },
+    }));
+  }
+  return meeting;
 };
 
 const unprotectDashboardTopic = async (
@@ -561,7 +682,10 @@ export const api = {
     return {
       ...data,
       nextMeeting: data.nextMeeting
-        ? { ...data.nextMeeting, title: translate('e2ee.unavailablePlaceholder') }
+        ? {
+            ...data.nextMeeting,
+            title: await unprotectMeetingTitle(data.nextMeeting.id, data.nextMeeting.protected),
+          }
         : null,
       myOpenTasks: await Promise.all(data.myOpenTasks.map((task) => unprotectTaskSummary(task))),
       overdueTasks: await Promise.all(data.overdueTasks.map((task) => unprotectTaskSummary(task))),
@@ -579,25 +703,41 @@ export const api = {
   topic: async (id: string) => unprotectTopic(await request<EncryptedTopicResponse>(`/api/topics/${id}`)),
   createTopic: async (input: TopicInput) => {
     const encrypted = await protectTopicInput(crypto.randomUUID(), input);
-    return unprotectTopic(await request<EncryptedTopicResponse>('/api/topics', {
+    const topic = await unprotectTopic(await request<EncryptedTopicResponse>('/api/topics', {
       method: 'POST',
       body: JSON.stringify(encrypted),
     }));
+    if (topic.type === 'recurring') await reconcileRecurringTopic(topic);
+    return topic;
   },
-  updateTopic: async (id: string, input: Partial<TopicInput>) => unprotectTopic(
-    await request<EncryptedTopicResponse>(`/api/topics/${id}`, {
+  updateTopic: async (id: string, input: Partial<TopicInput>) => {
+    const topic = await unprotectTopic(await request<EncryptedTopicResponse>(`/api/topics/${id}`, {
       method: 'PUT',
       body: JSON.stringify(await protectTopicPatch(id, input)),
-    }),
-  ),
+    }));
+    if (topic.type === 'recurring') await reconcileRecurringTopic(topic);
+    return topic;
+  },
   topicUpdates: async (id: string) => Promise.all(
     (await request<EncryptedTopicUpdateResponse[]>(`/api/topics/${id}/updates`))
       .map((update) => unprotectTopicUpdate(update)),
   ),
-  topicHistory: async (id: string) => unprotectTopicHistory(
-    await request<Array<Record<string, unknown>>>(`/api/topics/${id}/history`),
-  ),
-  addTopicUpdate: async (id: string, input: { text: string; type: string; meetingId?: string | null }) => {
+  topicHistory: async (id: string) => {
+    const entries = await request<Array<Record<string, unknown>>>(`/api/topics/${id}/history`);
+    if (!scalarSession.isUnlocked()) return unprotectTopicHistory(entries);
+    const meetingIds = [...new Set(entries
+      .filter((entry) => entry.kind === 'meeting_appearance')
+      .map((entry) => (entry.meeting as { id: string }).id))];
+    const workspaces = new Map<string, EncryptedWorkspace>();
+    await Promise.all(meetingIds.map(async (meetingId) => {
+      const workspace = await request<EncryptedWorkspace | null>(
+        `/api/meetings/${meetingId}/workspace`,
+      );
+      if (workspace) workspaces.set(meetingId, workspace);
+    }));
+    return unprotectTopicHistory(entries, undefined, workspaces);
+  },
+  addTopicUpdate: async (id: string, input: { text: string; type: string }) => {
     const updateId = crypto.randomUUID();
     const encrypted = await protectStandaloneUpdate(updateId, input.text);
     return unprotectTopicUpdate(await request<EncryptedTopicUpdateResponse>(`/api/topics/${id}/updates`, {
@@ -605,11 +745,18 @@ export const api = {
       body: JSON.stringify({ ...encrypted, type: input.type }),
     }));
   },
-  topicAppearances: (id: string) => request<MeetingTopic[]>(`/api/topics/${id}/appearances`),
+  topicAppearances: (id: string, options?: { beforeMeetingId?: string }) => request<MeetingTopic[]>(
+    `/api/topics/${id}/appearances${query({ beforeMeetingId: options?.beforeMeetingId })}`,
+  ),
   skippedRecurrences: (id: string) => request<SkippedRecurrence[]>(`/api/topics/${id}/skipped-recurrences`),
-  meetings: () => request<Meeting[]>('/api/meetings'),
+  meetings: async () => Promise.all(
+    (await request<EncryptedMeetingResponse[]>('/api/meetings')).map((meeting) =>
+      unprotectMeeting(meeting)),
+  ),
   meeting: async (id: string) => {
-    const meeting = await request<Meeting>(`/api/meetings/${id}`);
+    const meeting = await unprotectMeeting(
+      await request<EncryptedMeetingResponse>(`/api/meetings/${id}`),
+    );
     if (meeting.agenda) {
       meeting.agenda = await Promise.all(meeting.agenda.map(async (item) => {
         if (!item.topic) return item;
@@ -636,9 +783,90 @@ export const api = {
     }
     return meeting;
   },
-  createMeeting: (input: MeetingInput) => request<Meeting>('/api/meetings', { method: 'POST', body: JSON.stringify(input) }),
-  updateMeeting: (id: string, input: Partial<MeetingInput>) => request<Meeting>(`/api/meetings/${id}`, { method: 'PUT', body: JSON.stringify(input) }),
-  completeMeeting: (id: string) => request<Meeting>(`/api/meetings/${id}/complete`, { method: 'POST' }),
+  createMeeting: async (input: MeetingInput) => {
+    const id = crypto.randomUUID();
+    const document = await meetingDocumentSession.createInitial(id);
+    const { title, generalNotes: _generalNotes, openingInput: _openingInput, ...structural } = input;
+    await unprotectMeeting(await requestWithBinaryBody<EncryptedMeetingResponse>(
+      '/api/meetings',
+      encodeMeetingCreateRequest(
+        id,
+        await protectMeetingTitle(id, title),
+        document,
+        structural,
+      ),
+    ));
+    await reconcileAllRecurringTopics();
+    return api.meeting(id);
+  },
+  updateMeeting: async (id: string, input: Partial<MeetingInput>) => {
+    const { title, generalNotes, openingInput, ...structural } = input;
+    const body: Record<string, unknown> = { ...structural };
+    if (title !== undefined) {
+      body.protected = { titleEnvelope: await protectMeetingTitle(id, title) };
+    }
+    if (generalNotes !== undefined) {
+      await api.appendMeetingWorkspaceUpdate(
+        id,
+        await meetingDocumentSession.createFragmentUpdate(
+          id,
+          'meeting/general-notes',
+          generalNotes ?? '',
+        ),
+      );
+    }
+    if (openingInput !== undefined) {
+      await api.appendMeetingWorkspaceUpdate(
+        id,
+        await meetingDocumentSession.createFragmentUpdate(
+          id,
+          'meeting/opening-input',
+          openingInput ?? '',
+        ),
+      );
+    }
+    const saved = await unprotectMeeting(await request<EncryptedMeetingResponse>(`/api/meetings/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    }));
+    if (input.date !== undefined || input.status !== undefined) {
+      await reconcileAllRecurringTopics();
+    }
+    return saved;
+  },
+  appendMeetingWorkspaceUpdate: async (
+    id: string,
+    envelope: string,
+    appearanceId?: string,
+  ) => {
+    try {
+      return await requestWithBinaryBody<{
+        status: 'accepted' | 'duplicate';
+        updateId: string;
+        serverSequence: string;
+      }>(
+        `/api/meetings/${id}/workspace/updates`,
+        base64UrlToBytes(envelope),
+        appearanceId ? { 'X-ElderFlow-Appearance-Id': appearanceId } : {},
+      );
+    } catch (error) {
+      try {
+        const workspace = await request<EncryptedWorkspace | null>(`/api/meetings/${id}/workspace`);
+        if (workspace) await meetingDocumentSession.load(id, workspace);
+        else meetingDocumentSession.discard(id);
+      } catch {
+        meetingDocumentSession.discard(id);
+      }
+      throw error;
+    }
+  },
+  completeMeeting: async (id: string) => {
+    const meeting = await unprotectMeeting(
+      await request<EncryptedMeetingResponse>(`/api/meetings/${id}/complete`, { method: 'POST' }),
+    );
+    await reconcileAllRecurringTopics();
+    return meeting;
+  },
   meetingSuggestions: async (id: string, options?: { future?: boolean }) => Promise.all(
     (await request<EncryptedTopicResponse[]>(`/api/meetings/${id}/suggestions${query({
       future: options?.future ? true : undefined,
@@ -646,7 +874,74 @@ export const api = {
   ),
   addParticipant: (meetingId: string, input: { userId: string; attendanceStatus: string }) => request<MeetingParticipant>(`/api/meetings/${meetingId}/participants`, { method: 'POST', body: JSON.stringify(input) }),
   removeParticipant: (meetingId: string, userId: string) => request<void>(`/api/meetings/${meetingId}/participants/${userId}`, { method: 'DELETE' }),
-  addMeetingTopic: (meetingId: string, input: { topicId: string; sectionId: string; position?: number }) => request<MeetingTopic>(`/api/meetings/${meetingId}/topics`, { method: 'POST', body: JSON.stringify(input) }),
+  addMeetingTopic: async (
+    meetingId: string,
+    input: {
+      topicId: string;
+      sectionId: string;
+      position?: number;
+      topic?: Topic;
+      source?: 'manual' | 'recurrence';
+      sourceAppearance?: { id: string; meetingId: string } | null;
+    },
+  ) => {
+    const appearanceId = crypto.randomUUID();
+    const person = input.topic?.type === 'person';
+    let initialText = input.topic?.type === 'recurring' ? input.topic.description ?? '' : '';
+    if (person || input.topic?.type === 'recurring') {
+      const priorAppearance = input.sourceAppearance
+        ?? (await api.topicAppearances(input.topicId, { beforeMeetingId: meetingId }))[0];
+      if (priorAppearance) {
+        const priorWorkspace = await request<EncryptedWorkspace | null>(
+          `/api/meetings/${priorAppearance.meetingId}/workspace`,
+        );
+        if (priorWorkspace) {
+          const sessionId = `copy-forward:${priorAppearance.meetingId}`;
+          await meetingDocumentSession.load(sessionId, priorWorkspace);
+          const priorValues = meetingDocumentSession.hydrateFragments(sessionId, [{
+            id: priorAppearance.id,
+            person,
+          }]).appearances.get(priorAppearance.id);
+          initialText = person
+            ? priorValues?.personNote ?? ''
+            : priorValues?.preparationContext ?? '';
+        }
+      }
+    }
+    const initialUpdateEnvelope = await meetingDocumentSession.createFragmentUpdate(
+      meetingId,
+      meetingFragmentId(person ? 'personNote' : 'preparationContext', appearanceId),
+      initialText,
+    );
+    const {
+      topic: _topic,
+      sourceAppearance,
+      ...structural
+    } = input;
+    try {
+      return await requestWithBinaryBody<MeetingTopic>(
+        `/api/meetings/${meetingId}/topics`,
+        encodeMeetingTopicMutation({
+          ...structural,
+          id: appearanceId,
+          mutationId: crypto.randomUUID(),
+          sourceAppearanceId: sourceAppearance?.id,
+          initialUpdateEnvelope,
+        }),
+      );
+    } catch (error) {
+      try {
+        const workspace = await request<EncryptedWorkspace | null>(
+          `/api/meetings/${meetingId}/workspace`,
+        );
+        if (workspace) await meetingDocumentSession.load(meetingId, workspace);
+        else meetingDocumentSession.discard(meetingId);
+      } catch {
+        meetingDocumentSession.discard(meetingId);
+      }
+      throw error;
+    }
+  },
   reorderMeetingTopics: (meetingId: string, items: Array<{ id: string; sectionId: string; position: number }>) => request<MeetingTopic[]>(`/api/meetings/${meetingId}/topics/order`, { method: 'PUT', body: JSON.stringify({ items }) }),
   updateMeetingTopic: (meetingId: string, item: MeetingTopic, options?: { deferred?: boolean }) => request<MeetingTopic>(`/api/meetings/${meetingId}/topics/${item.id}`, { method: 'PUT', body: JSON.stringify({ sectionId: item.sectionId, position: item.position, plannedDuration: item.plannedDuration, status: item.status, deferred: options?.deferred }) }),
   updateMeetingTopicFields: async (
@@ -659,49 +954,83 @@ export const api = {
       body: JSON.stringify(input),
     }),
   ),
-  updateMeetingPreparationContext: (
+  updateMeetingPreparationContext: async (
     meetingId: string,
     itemId: string,
     input: { text: string | null; version: number },
-  ) => request<MeetingAppearanceTexts>(`/api/meetings/${meetingId}/topics/${itemId}/preparation-context`, {
-    method: 'PUT',
-    body: JSON.stringify(input),
-  }),
-  updatePersonMeetingNote: (
+  ): Promise<MeetingAppearanceTexts> => {
+    const envelope = await meetingDocumentSession.createFragmentUpdate(
+      meetingId,
+      meetingFragmentId('preparationContext', itemId),
+      input.text ?? '',
+    );
+    await api.appendMeetingWorkspaceUpdate(meetingId, envelope, itemId);
+    return {
+      preparationContext: { id: itemId, text: input.text, version: input.version + 1 },
+      personNote: null,
+      meetingMinutes: null,
+    };
+  },
+  updatePersonMeetingNote: async (
     meetingId: string,
     itemId: string,
     input: { text: string | null; version: number },
-  ) => request<MeetingAppearanceTexts>(`/api/meetings/${meetingId}/topics/${itemId}/person-note`, {
-    method: 'PUT',
-    body: JSON.stringify(input),
-  }),
-  updateMeetingMinutes: (
+  ): Promise<MeetingAppearanceTexts> => {
+    const envelope = await meetingDocumentSession.createFragmentUpdate(
+      meetingId,
+      meetingFragmentId('personNote', itemId),
+      input.text ?? '',
+    );
+    await api.appendMeetingWorkspaceUpdate(meetingId, envelope, itemId);
+    return {
+      preparationContext: null,
+      personNote: { id: itemId, text: input.text, version: input.version + 1 },
+      meetingMinutes: null,
+    };
+  },
+  updateMeetingMinutes: async (
     meetingId: string,
     itemId: string,
     input: { text: string; version: number | null },
-  ) => request<MeetingAppearanceTexts>(`/api/meetings/${meetingId}/topics/${itemId}/minutes`, {
-    method: 'PUT',
-    body: JSON.stringify(input),
-  }),
-  removeMeetingTopic: (meetingId: string, itemId: string) => request<void>(`/api/meetings/${meetingId}/topics/${itemId}`, { method: 'DELETE' }),
-  restoreRecurrence: (meetingId: string, topicId: string) => request<void>(`/api/meetings/${meetingId}/recurrences/${topicId}/restore`, { method: 'POST' }),
+  ): Promise<MeetingAppearanceTexts> => {
+    const envelope = await meetingDocumentSession.createFragmentUpdate(
+      meetingId,
+      meetingFragmentId('meetingMinutes', itemId),
+      input.text,
+    );
+    await api.appendMeetingWorkspaceUpdate(meetingId, envelope);
+    return {
+      preparationContext: null,
+      personNote: null,
+      meetingMinutes: { id: itemId, text: input.text, version: (input.version ?? 0) + 1 },
+    };
+  },
+  removeMeetingTopic: async (meetingId: string, itemId: string) => {
+    await request<void>(`/api/meetings/${meetingId}/topics/${itemId}`, { method: 'DELETE' });
+    await reconcileAllRecurringTopics();
+  },
+  restoreRecurrence: async (meetingId: string, topicId: string) => {
+    await request<void>(`/api/meetings/${meetingId}/recurrences/${topicId}/restore`, { method: 'POST' });
+    const topic = await api.topic(topicId);
+    if (topic.type === 'recurring') await reconcileRecurringTopic(topic);
+  },
   tasks: async (filters: Record<string, string | boolean | undefined> = {}) => Promise.all(
     (await request<EncryptedTaskResponse[]>(`/api/tasks${query(filters)}`)).map((task) => unprotectTask(task)),
   ),
   taskReferences: async (): Promise<TaskReferences> => {
     const references = await request<{
       topics: EncryptedTopicLabel[];
-      meetings: Array<Omit<TaskMeetingReference, 'title'>>;
+      meetings: Array<Omit<TaskMeetingReference, 'title'> & EncryptedMeetingTitle>;
     }>('/api/tasks/references');
     return {
       topics: (await Promise.all(
         references.topics.map((topic) => unprotectTopicLabel(topic)),
       ))
         .filter((topic): topic is TaskTopicReference => topic !== null),
-      meetings: references.meetings.map((meeting) => ({
+      meetings: await Promise.all(references.meetings.map(async (meeting) => ({
         ...meeting,
-        title: translate('e2ee.unavailablePlaceholder'),
-      })),
+        title: await unprotectMeetingTitle(meeting.id, meeting.protected),
+      }))),
     };
   },
   createTask: async (input: TaskInput) => {
@@ -718,6 +1047,33 @@ export const api = {
     }),
   ),
 };
+
+async function reconcileRecurringTopic(topic: Topic): Promise<void> {
+  const plan = await request<RecurrenceReconciliationPlan>(
+    `/api/topics/${topic.id}/recurrence-reconciliation`,
+  );
+  for (const move of plan.moves) {
+    await api.addMeetingTopic(move.meetingId, {
+      topicId: topic.id,
+      sectionId: move.sectionId,
+      position: move.position,
+      topic,
+      source: 'recurrence',
+      sourceAppearance: move.sourceAppearance,
+    });
+  }
+  for (const removal of plan.removals) {
+    await request<void>(
+      `/api/meetings/${removal.meetingId}/topics/${removal.id}/reconciliation`,
+      { method: 'DELETE' },
+    );
+  }
+}
+
+async function reconcileAllRecurringTopics(): Promise<void> {
+  const topics = await api.topics({ type: 'recurring' });
+  for (const topic of topics) await reconcileRecurringTopic(topic);
+}
 
 export const formatUser = (user?: User | null): string => user ? `${user.firstName} ${user.lastName}` : translate('common.unassigned');
 export const meetingLabel = (meeting: Pick<Meeting, 'title' | 'date'>): string => meeting.title || translate('meetings.defaultTitle', { date: formatDate(`${meeting.date}T12:00:00`) });

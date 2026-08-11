@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { api, formatUser, meetingLabel, request, toLocalDate } from "./domain";
 import { setProtectedContentUnlocked } from "../e2ee/content-visibility";
 import { Decoder } from "cbor-x";
+import { meetingDocumentSession } from "../e2ee/meeting-document-session";
 
 const response = (body: unknown, options: Partial<Response> = {}) =>
   ({
@@ -278,23 +279,111 @@ describe("domain API client", () => {
   it("serializes an optional insertion position and complete transactional reorder payload", async () => {
     const fetch = vi.fn().mockResolvedValue(response({}));
     vi.stubGlobal("fetch", fetch);
+    vi.spyOn(meetingDocumentSession, "createFragmentUpdate").mockResolvedValue("AQID");
     await api.addMeetingTopic("meeting", { topicId: "topic", sectionId: "section", position: 2 });
     await api.reorderMeetingTopics("meeting", [
       { id: "item-1", sectionId: "section", position: 1 },
       { id: "item-2", sectionId: "section", position: 2 },
     ]);
-    expect(fetch.mock.calls.map((call) => [call[0], call[1]?.method, JSON.parse(call[1]?.body)])).toEqual([
-      ["http://localhost:3000/api/meetings/meeting/topics", "POST", { topicId: "topic", sectionId: "section", position: 2 }],
-      ["http://localhost:3000/api/meetings/meeting/topics/order", "PUT", {
+    expect(fetch.mock.calls.map((call) => [call[0], call[1]?.method])).toEqual([
+      ["http://localhost:3000/api/meetings/meeting/topics", "POST"],
+      ["http://localhost:3000/api/meetings/meeting/topics/order", "PUT"],
+    ]);
+    const mutation = new Decoder({ mapsAsObjects: false, useRecords: false })
+      .decode(fetch.mock.calls[0][1].body) as unknown[];
+    expect(mutation).toEqual([
+      expect.any(String),
+      expect.any(String),
+      "topic",
+      "section",
+      expect.any(Uint8Array),
+      null,
+      false,
+      2,
+      true,
+      null,
+      false,
+      null,
+      false,
+    ]);
+    expect(JSON.parse(fetch.mock.calls[1][1].body)).toEqual({
         items: [
           { id: "item-1", sectionId: "section", position: 1 },
           { id: "item-2", sectionId: "section", position: 2 },
         ],
-      }],
-    ]);
+      });
+  });
+  it("copies recurring Preparation context from the planned prior workspace into an independent target fragment", async () => {
+    const fetch = vi.fn()
+      .mockResolvedValueOnce(response({ documentId: "source-document" }))
+      .mockResolvedValueOnce(response({ id: "target-appearance" }));
+    vi.stubGlobal("fetch", fetch);
+    vi.spyOn(meetingDocumentSession, "load").mockResolvedValue();
+    vi.spyOn(meetingDocumentSession, "hydrateFragments").mockReturnValue({
+      generalNotes: "",
+      openingInput: "",
+      appearances: new Map([["source-appearance", {
+        preparationContext: "Prior context",
+        personNote: null,
+        meetingMinutes: "",
+      }]]),
+    });
+    const createUpdate = vi.spyOn(meetingDocumentSession, "createFragmentUpdate")
+      .mockResolvedValue("AQID");
+
+    await api.addMeetingTopic("target-meeting", {
+      topicId: "topic",
+      sectionId: "section",
+      topic: { type: "recurring", description: "Template" } as any,
+      source: "recurrence",
+      sourceAppearance: { id: "source-appearance", meetingId: "source-meeting" },
+    });
+
+    expect(meetingDocumentSession.load).toHaveBeenCalledWith(
+      "copy-forward:source-meeting",
+      expect.objectContaining({ documentId: "source-document" }),
+    );
+    expect(createUpdate).toHaveBeenCalledWith(
+      "target-meeting",
+      expect.stringMatching(/^appearance\/[^/]+\/preparation-context$/),
+      "Prior context",
+    );
+  });
+  it("copies a Person note from the prior Meeting into the target Person fragment", async () => {
+    const fetch = vi.fn()
+      .mockResolvedValueOnce(response({ documentId: "source-document" }))
+      .mockResolvedValueOnce(response({ id: "target-appearance" }));
+    vi.stubGlobal("fetch", fetch);
+    vi.spyOn(meetingDocumentSession, "load").mockResolvedValue();
+    vi.spyOn(meetingDocumentSession, "hydrateFragments").mockReturnValue({
+      generalNotes: "",
+      openingInput: "",
+      appearances: new Map([["source-appearance", {
+        preparationContext: null,
+        personNote: "Prior Person note",
+        meetingMinutes: null,
+      }]]),
+    });
+    const createUpdate = vi.spyOn(meetingDocumentSession, "createFragmentUpdate")
+      .mockResolvedValue("AQID");
+
+    await api.addMeetingTopic("target-meeting", {
+      topicId: "topic",
+      sectionId: "section",
+      topic: { type: "person" } as any,
+      sourceAppearance: { id: "source-appearance", meetingId: "source-meeting" },
+    });
+
+    expect(createUpdate).toHaveBeenCalledWith(
+      "target-meeting",
+      expect.stringMatching(/^appearance\/[^/]+\/person-note$/),
+      "Prior Person note",
+    );
   });
   it("uses the explicit completion action without a mutable Meeting payload", async () => {
-    const fetch = vi.fn().mockResolvedValue(response({ status: "completed" }));
+    const fetch = vi.fn()
+      .mockResolvedValueOnce(response({ status: "completed" }))
+      .mockResolvedValueOnce(response([]));
     vi.stubGlobal("fetch", fetch);
 
     await api.completeMeeting("meeting");
@@ -305,9 +394,10 @@ describe("domain API client", () => {
     );
     expect(fetch.mock.calls[0][1]?.body).toBeUndefined();
   });
-  it("writes versioned preparation context through its semantic endpoint", async () => {
+  it("writes preparation context through an opaque document update", async () => {
     const fetch = vi.fn().mockResolvedValue(response({ agendaNote: "Context", noteVersion: 2 }));
     vi.stubGlobal("fetch", fetch);
+    vi.spyOn(meetingDocumentSession, "createFragmentUpdate").mockResolvedValue("AQID");
 
     await api.updateMeetingPreparationContext("meeting", "appearance", {
       text: "Context",
@@ -315,12 +405,32 @@ describe("domain API client", () => {
     });
 
     expect(fetch).toHaveBeenCalledWith(
-      "http://localhost:3000/api/meetings/meeting/topics/appearance/preparation-context",
+      "http://localhost:3000/api/meetings/meeting/workspace/updates",
       expect.objectContaining({
-        method: "PUT",
-        body: JSON.stringify({ text: "Context", version: 1 }),
+        method: "POST",
+        body: expect.any(Uint8Array),
+        headers: expect.objectContaining({
+          "Content-Type": "application/vnd.elderflow.e2ee+cbor;v=1",
+          "X-ElderFlow-Appearance-Id": "appearance",
+        }),
       }),
     );
+  });
+  it("discards a locally mutated workspace when atomic-failure recovery also fails", async () => {
+    const mutationFailure = new Error("mutation failed");
+    const fetch = vi.fn()
+      .mockRejectedValueOnce(mutationFailure)
+      .mockRejectedValueOnce(new Error("recovery failed"));
+    vi.stubGlobal("fetch", fetch);
+    vi.spyOn(meetingDocumentSession, "createFragmentUpdate").mockResolvedValue("AQID");
+    const discard = vi.spyOn(meetingDocumentSession, "discard");
+
+    await expect(api.updateMeetingPreparationContext("meeting", "appearance", {
+      text: "Context",
+      version: 1,
+    })).rejects.toBe(mutationFailure);
+
+    expect(discard).toHaveBeenCalledWith("meeting");
   });
   it("writes one or more inline Topic fields through the narrow patch endpoint", async () => {
     const fetch = vi.fn().mockResolvedValue(response({

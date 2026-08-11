@@ -12,7 +12,6 @@ import {
   StandaloneUpdateHistoryEntry,
   TopicHistoryEntry,
   TopicHistoryMeeting,
-  TopicHistoryMinutesEntry,
   TopicHistoryTopicDisplay,
 } from './topic-history';
 import { TopicUpdate } from './topic-update.entity';
@@ -41,7 +40,7 @@ export class TopicHistoryService {
     const [updates, appearances, skippedRecurrences] = await Promise.all([
       this.updates.find({
         where: { topicId },
-        relations: { createdBy: true, meeting: { minuteTaker: true } },
+        relations: { createdBy: true },
       }),
       this.appearances.find({
         where: { topicId },
@@ -55,38 +54,16 @@ export class TopicHistoryService {
         : Promise.resolve([]),
     ]);
 
-    const meetingUpdates = new Map<string, TopicUpdate[]>();
-    const entries: TimedHistoryEntry[] = [];
-    for (const update of updates) {
-      if (update.meetingId) {
-        const grouped = meetingUpdates.get(update.meetingId) ?? [];
-        grouped.push(update);
-        meetingUpdates.set(update.meetingId, grouped);
-      } else {
-        entries.push(this.standaloneUpdate(update, viewer));
-      }
-    }
+    const entries: TimedHistoryEntry[] = updates.map((update) =>
+      this.standaloneUpdate(update, viewer));
 
     for (const appearance of appearances) {
       if (!appearance.meeting) continue;
-      entries.push(this.meetingAppearance(
-        topic,
-        appearance,
-        meetingUpdates.get(appearance.meetingId) ?? [],
-        viewer,
-      ));
-      meetingUpdates.delete(appearance.meetingId);
-    }
-
-    for (const [meetingId, orphanedMinutes] of meetingUpdates) {
-      const meeting = orphanedMinutes.find((update) => update.meeting)?.meeting;
-      if (meeting) {
-        entries.push(this.missingAppearance(topic, meetingId, meeting, orphanedMinutes, viewer));
-      }
+      entries.push(this.meetingAppearance(topic, appearance, viewer));
     }
 
     for (const skip of skippedRecurrences) {
-      if (skip.meeting) entries.push(this.skippedRecurrence(skip));
+      if (skip.meeting) entries.push(this.skippedRecurrence(skip, viewer));
     }
 
     return entries
@@ -114,12 +91,9 @@ export class TopicHistoryService {
   private meetingAppearance(
     topic: Topic,
     appearance: MeetingTopic,
-    updates: TopicUpdate[],
     viewer: User,
   ): MeetingAppearanceHistoryEntry & { sortTime: number } {
-    const meeting = this.meeting(appearance.meeting!);
-    const { meetingMinutes, legacyMinutesEntries } =
-      this.classifiedMinutes(topic, updates);
+    const meeting = this.meeting(appearance.meeting!, viewer);
 
     return {
       id: `meeting-appearance:${appearance.id}`,
@@ -133,14 +107,15 @@ export class TopicHistoryService {
         ? { id: appearance.section.id, name: appearance.section.name }
         : null,
       topic: this.topicDisplay(topic, viewer, appearance),
-      meetingDocumentUnavailable: true,
-      meetingMinutes,
-      legacyMinutesEntries,
+      meetingDocument: { meetingId: meeting.id, appearanceId: appearance.id },
     };
   }
 
-  private skippedRecurrence(skip: SkippedRecurrence): SkippedRecurrenceHistoryEntry & { sortTime: number } {
-    const meeting = this.meeting(skip.meeting!);
+  private skippedRecurrence(
+    skip: SkippedRecurrence,
+    viewer: User,
+  ): SkippedRecurrenceHistoryEntry & { sortTime: number } {
+    const meeting = this.meeting(skip.meeting!, viewer);
     return {
       id: `skipped-recurrence:${skip.id}`,
       kind: 'skipped_recurrence',
@@ -148,32 +123,6 @@ export class TopicHistoryService {
       sortTime: this.meetingSortTime(meeting),
       skippedRecurrenceId: skip.id,
       meeting,
-    };
-  }
-
-  private missingAppearance(
-    topic: Topic,
-    meetingId: string,
-    meetingEntity: NonNullable<TopicUpdate['meeting']>,
-    updates: TopicUpdate[],
-    viewer: User,
-  ): MeetingAppearanceHistoryEntry & { sortTime: number } {
-    const meeting = this.meeting(meetingEntity);
-    const { meetingMinutes, legacyMinutesEntries } =
-      this.classifiedMinutes(topic, updates);
-    return {
-      id: `meeting-appearance:missing:${meetingId}`,
-      kind: 'meeting_appearance',
-      effectiveAt: this.meetingEffectiveAt(meeting),
-      sortTime: this.meetingSortTime(meeting),
-      appearanceId: null,
-      deferredAt: null,
-      meeting,
-      section: null,
-      topic: this.topicDisplay(topic, viewer, undefined, meeting.status === 'completed'),
-      meetingDocumentUnavailable: true,
-      meetingMinutes,
-      legacyMinutesEntries,
     };
   }
 
@@ -230,35 +179,18 @@ export class TopicHistoryService {
     };
   }
 
-  private minutes(updates: TopicUpdate[]): TopicHistoryMinutesEntry[] {
-    return updates.map((update): TopicHistoryMinutesEntry => ({
-      id: update.id,
-      effectiveAt: update.date.toISOString(),
-      createdByDisplayName: this.userDisplayName(update.createdBy),
-      protectedUnavailable: true,
-    })).sort((left, right) => left.effectiveAt.localeCompare(right.effectiveAt) || left.id.localeCompare(right.id));
-  }
-
-  private classifiedMinutes(
-    topic: Topic,
-    updates: TopicUpdate[],
-  ): Pick<MeetingAppearanceHistoryEntry, 'meetingMinutes' | 'legacyMinutesEntries'> {
-    const minutes = this.minutes(updates);
-    return topic.type === 'person'
-      ? {
-        meetingMinutes: null,
-        legacyMinutesEntries: minutes,
-      }
-      : {
-        meetingMinutes: minutes[minutes.length - 1] ?? null,
-        legacyMinutesEntries: minutes.slice(0, -1),
-      };
-  }
-
-  private meeting(meeting: NonNullable<MeetingTopic['meeting']>): TopicHistoryMeeting {
+  private meeting(
+    meeting: NonNullable<MeetingTopic['meeting']>,
+    viewer: User,
+  ): TopicHistoryMeeting {
     return {
       id: meeting.id,
-      title: meeting.title,
+      protected: isE2eeKeyOperator(viewer.role) && Buffer.isBuffer(meeting.titleEnvelope)
+        ? {
+            titleEnvelope: meeting.titleEnvelope.toString('base64url'),
+            titleCommitRevision: meeting.titleCommitRevision,
+          }
+        : null,
       date: meeting.date,
       beginTime: meeting.beginTime,
       status: meeting.status,

@@ -91,21 +91,20 @@ describeWithPostgres('Topics with PostgreSQL (integration)', () => {
     });
   });
 
-  it('persists the first eligible automatic appearance when a Recurring Topic is created', async () => {
+  it('does not create a Recurring Topic appearance without a client-authored encrypted fragment', async () => {
     const section = await database.getRepository(AgendaSection).save({
       name: 'Reports',
       position: 1,
       isDefault: true,
     });
     const meeting = await database.getRepository(Meeting).save({
-      title: null,
+      titleEnvelope: Buffer.from([1]),
+      titleCommitRevision: '1',
       date: '2026-08-10',
       beginTime: '19:00',
       status: 'planned',
       meetingLeaderId: null,
       minuteTakerId: null,
-      generalNotes: null,
-      openingInput: null,
     });
 
     const topic = await service.create({
@@ -127,13 +126,9 @@ describeWithPostgres('Topics with PostgreSQL (integration)', () => {
       },
     } as any, viewer);
 
-    await expect(database.getRepository(MeetingTopic).findOneByOrFail({
+    await expect(database.getRepository(MeetingTopic).findOneBy({
       meetingId: meeting.id,
       topicId: topic.id,
-    })).resolves.toMatchObject({
-      source: 'recurrence',
-      agendaNote: null,
-      noteEditedAt: null,
-    });
+    })).resolves.toBeNull();
   });
 });

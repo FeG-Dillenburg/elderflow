@@ -219,6 +219,7 @@ const onAgendaChange = async (
         topicId: temporary.id,
         sectionId: group.section.id,
         position: event.added!.newIndex + 1,
+        topic: temporary as unknown as SuggestionClone,
       }),
     );
     return;
@@ -233,7 +234,7 @@ const add = async (topic: Topic) => {
     sections.value[0]?.id;
   if (!sectionId) return;
   await withReload(() =>
-    api.addMeetingTopic(id, { topicId: topic.id, sectionId }),
+    api.addMeetingTopic(id, { topicId: topic.id, sectionId, topic }),
   );
 };
 
@@ -293,7 +294,7 @@ const createAndAdd = async () => {
     }));
     const sectionId = form.defaultSectionId || sections.value[0]?.id;
     if (sectionId)
-      await api.addMeetingTopic(id, { topicId: topic.id, sectionId });
+      await api.addMeetingTopic(id, { topicId: topic.id, sectionId, topic });
   });
   newVisible.value = false;
 };
@@ -305,6 +306,12 @@ onMounted(load);
   <section class="page">
     <Message v-if="error" severity="error">{{ error }}</Message>
     <template v-if="meeting">
+      <Message
+        v-if="meeting.collaboration && !meeting.collaboration.available"
+        severity="info"
+      >
+        {{ t("e2ee.collaborationUnavailable") }}
+      </Message>
       <header class="page-header">
         <div>
           <p class="eyebrow">{{ t("meetingPreparation.eyebrow") }}</p>

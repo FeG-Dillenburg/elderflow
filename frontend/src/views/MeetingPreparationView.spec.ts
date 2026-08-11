@@ -163,18 +163,22 @@ describe("MeetingPreparationView", () => {
     expect(api.addMeetingTopic).toHaveBeenLastCalledWith("meeting-1", {
       topicId: "topic-3",
       sectionId: "second",
+      topic,
     });
     vm.selectedSections["topic-3"] = "first";
     await vm.add(topic);
     expect(api.addMeetingTopic).toHaveBeenLastCalledWith("meeting-1", {
       topicId: "topic-3",
       sectionId: "first",
+      topic,
     });
     vm.selectedSections = {};
-    await vm.add({ id: "topic-4", defaultSectionId: null });
+    const firstSectionTopic = { id: "topic-4", defaultSectionId: null };
+    await vm.add(firstSectionTopic);
     expect(api.addMeetingTopic).toHaveBeenLastCalledWith("meeting-1", {
       topicId: "topic-4",
       sectionId: "first",
+      topic: firstSectionTopic,
     });
     vm.sections = [];
     const calls = (api.addMeetingTopic as any).mock.calls.length;
@@ -193,6 +197,7 @@ describe("MeetingPreparationView", () => {
       topicId: "topic-3",
       sectionId: "first",
       position: 1,
+      topic: expect.objectContaining({ id: "topic-3" }),
     });
     expect(target.items).toHaveLength(0);
     expect(vm.suggestions).toHaveLength(1);
@@ -229,6 +234,7 @@ describe("MeetingPreparationView", () => {
     expect(api.addMeetingTopic).toHaveBeenLastCalledWith("meeting-1", {
       topicId: "new-topic",
       sectionId: "first",
+      topic: expect.objectContaining({ id: "new-topic" }),
     });
     vm.sections = [];
     await vm.createAndAdd();
@@ -311,8 +317,8 @@ describe("MeetingPreparationView", () => {
       appearance.id,
       { text: "Saved context", version: 0 },
     );
-    expect(appearance.agendaNote).toBe("Saved context");
-    expect(result.agendaNote).toBe("Saved context");
+    expect(appearance.personNote?.text).toBe("Saved context");
+    expect(result.personNote?.text).toBe("Saved context");
     expect(api.meeting).toHaveBeenCalledTimes(1);
   });
 
