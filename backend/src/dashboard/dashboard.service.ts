@@ -41,6 +41,7 @@ const dashboardTopicSelect: FindOptionsSelect<Topic> = {
   nameCommitRevision: true,
   status: true,
   followUpDate: true,
+  updatedAt: true,
   responsibleUserId: true,
   responsibleUser: {
     id: true,
