@@ -8,11 +8,17 @@ export class Task {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ type: 'text' })
-  title: string;
+  @Column({ name: 'title_envelope', type: 'bytea' })
+  titleEnvelope: Buffer;
 
-  @Column({ type: 'text', nullable: true })
-  description: string | null;
+  @Column({ name: 'title_commit_revision', type: 'bigint', default: 1 })
+  titleCommitRevision: string;
+
+  @Column({ name: 'description_envelope', type: 'bytea' })
+  descriptionEnvelope: Buffer;
+
+  @Column({ name: 'description_commit_revision', type: 'bigint', default: 1 })
+  descriptionCommitRevision: string;
 
   @Column({ name: 'topic_id', type: 'uuid', nullable: true })
   topicId: string | null;

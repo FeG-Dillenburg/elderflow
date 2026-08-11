@@ -11,6 +11,7 @@ import { MeetingTopicDeferrals1720000009000 } from './1720000009000-MeetingTopic
 import { MeetingAppearanceTexts1720000010000 } from './1720000010000-MeetingAppearanceTexts';
 import { E2eeKeyState1720000011000 } from './1720000011000-E2eeKeyState';
 import { EncryptedTopicScalars1720000012000 } from './1720000012000-EncryptedTopicScalars';
+import { EncryptedTaskScalars1720000013000 } from './1720000013000-EncryptedTaskScalars';
 
 export const migrations = [
   CreateUsers1720000000000,
@@ -26,4 +27,5 @@ export const migrations = [
   MeetingAppearanceTexts1720000010000,
   E2eeKeyState1720000011000,
   EncryptedTopicScalars1720000012000,
+  EncryptedTaskScalars1720000013000,
 ];

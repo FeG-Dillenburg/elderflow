@@ -1,8 +1,28 @@
-import { IsIn, IsNotEmpty, IsOptional, IsString, IsUUID } from 'class-validator';
+import { Type } from 'class-transformer';
+import {
+  IsDefined,
+  IsIn,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  IsUUID,
+  ValidateNested,
+} from 'class-validator';
+
+export class TaskEncryptedScalarsDto {
+  @IsString() @IsNotEmpty() titleEnvelope: string;
+  @IsString() @IsNotEmpty() descriptionEnvelope: string;
+}
+
+export class TaskEncryptedScalarPatchDto {
+  @IsOptional() @IsString() @IsNotEmpty() titleEnvelope?: string;
+  @IsOptional() @IsString() @IsNotEmpty() descriptionEnvelope?: string;
+}
 
 export class TaskDto {
-  @IsString() @IsNotEmpty() title: string;
-  @IsOptional() @IsString() description?: string | null;
+  @IsUUID() id: string;
+  @IsDefined() @ValidateNested() @Type(() => TaskEncryptedScalarsDto)
+  protected: TaskEncryptedScalarsDto;
   @IsOptional() @IsUUID() topicId?: string | null;
   @IsOptional() @IsUUID() meetingId?: string | null;
   @IsOptional() @IsUUID() assignedToId?: string | null;
@@ -11,8 +31,8 @@ export class TaskDto {
 }
 
 export class TaskUpdateDto {
-  @IsOptional() @IsString() @IsNotEmpty() title?: string;
-  @IsOptional() @IsString() description?: string | null;
+  @IsOptional() @ValidateNested() @Type(() => TaskEncryptedScalarPatchDto)
+  protected?: TaskEncryptedScalarPatchDto;
   @IsOptional() @IsUUID() topicId?: string | null;
   @IsOptional() @IsUUID() meetingId?: string | null;
   @IsOptional() @IsUUID() assignedToId?: string | null;

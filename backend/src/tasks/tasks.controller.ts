@@ -1,6 +1,5 @@
 import { Body, Controller, Get, Header, Param, ParseUUIDPipe, Post, Put, Query } from '@nestjs/common';
 import { TaskDto, TaskUpdateDto } from './dto/task.dto';
-import { Task } from './task.entity';
 import { TasksService } from './tasks.service';
 import { Permission } from '../auth/permissions';
 import { CurrentUser } from '../auth/current-user.decorator';
@@ -29,11 +28,25 @@ export class TasksController {
     );
   }
 
+  @Get('references')
+  @Header('Cache-Control', 'no-store')
+  references(@CurrentUser() user: User) {
+    return this.service.references(user);
+  }
+
   @Post()
-  create(@Body() input: TaskDto): Promise<Task> { return this.service.create(input); }
+  @Header('Cache-Control', 'no-store')
+  create(@Body() input: TaskDto, @CurrentUser() user: User): Promise<TaskResponse> {
+    return this.service.create(input, user);
+  }
 
   @Put(':id')
-  update(@Param('id', ParseUUIDPipe) id: string, @Body() input: TaskUpdateDto): Promise<Task> {
-    return this.service.update(id, input);
+  @Header('Cache-Control', 'no-store')
+  update(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() input: TaskUpdateDto,
+    @CurrentUser() user: User,
+  ): Promise<TaskResponse> {
+    return this.service.update(id, input, user);
   }
 }

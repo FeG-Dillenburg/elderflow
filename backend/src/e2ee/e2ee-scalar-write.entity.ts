@@ -1,6 +1,7 @@
 import { Column, CreateDateColumn, Entity, PrimaryColumn } from "typeorm";
 import {
   ScalarAggregateType,
+  TaskScalarFieldId,
   TopicScalarFieldId,
   UpdateScalarFieldId,
 } from "./scalar-registry";
@@ -14,7 +15,7 @@ export class E2eeScalarWrite {
   recordId: string;
 
   @PrimaryColumn({ name: "field_id", type: "integer" })
-  fieldId: TopicScalarFieldId | UpdateScalarFieldId;
+  fieldId: TopicScalarFieldId | UpdateScalarFieldId | TaskScalarFieldId;
 
   @PrimaryColumn({ name: "write_counter", type: "bigint" })
   writeCounter: string;
