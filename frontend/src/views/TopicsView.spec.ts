@@ -11,7 +11,7 @@ const stubs = {
   DatePicker: true,
   Dialog: { template: "<div><slot /><slot name=\"footer\" /></div>" },
   InputText: true,
-  Message: true,
+  Message: { template: '<div><slot /></div>' },
   Select: true,
   Tag: true,
   TopicTypeRenderer: { template: '<div class="topic-type-renderer"><slot /></div>' },
@@ -94,6 +94,22 @@ describe("TopicsView", () => {
     );
     await vm.create();
     expect(vm.saving).toBe(false);
-    expect(vm.error).toBe("Save failed");
+    expect(vm.createError).toBe("Save failed");
+  });
+  it("shows a creation failure inside the dialog that remains open", async () => {
+    const wrapper = await view();
+    const vm: any = wrapper.vm;
+    vi.spyOn(api, "createTopic").mockRejectedValueOnce(
+      new Error("Encrypted Topic rejected"),
+    );
+    vm.open();
+    vm.form.name = "Council plans";
+
+    await vm.create();
+    await wrapper.vm.$nextTick();
+
+    expect(vm.visible).toBe(true);
+    expect(wrapper.find(".topic-create-error").text())
+      .toContain("Encrypted Topic rejected");
   });
 });

@@ -51,7 +51,8 @@ const topics = ref<Topic[]>([]),
   loading = ref(true),
   visible = ref(false),
   saving = ref(false),
-  error = ref("");
+  error = ref(""),
+  createError = ref("");
 const responsibleUserOptions = computed(() => assignableUsers(users.value));
 const visibleTopics = computed(() => {
   const needle = filters.search.trim().toLocaleLowerCase();
@@ -118,10 +119,13 @@ const load = async () => {
 };
 const open = () => {
   Object.assign(form, empty());
+  createError.value = "";
   visible.value = true;
 };
 const create = async () => {
+  if (saving.value) return;
   saving.value = true;
+  createError.value = "";
   try {
     const input = toTopicInput({
       ...form,
@@ -131,7 +135,9 @@ const create = async () => {
     visible.value = false;
     await load();
   } catch (e) {
-    error.value = e instanceof Error ? e.message : t("topics.createFailed");
+    createError.value = e instanceof Error
+      ? e.message
+      : t("topics.createFailed");
   } finally {
     saving.value = false;
   }
@@ -258,6 +264,14 @@ onMounted(load);
       :header="t('topics.createTitle')"
       :style="{ width: '46rem', maxWidth: 'calc(100vw - 2rem)' }"
     >
+      <Message
+        v-if="createError"
+        class="topic-create-error"
+        severity="error"
+        role="alert"
+      >
+        {{ createError }}
+      </Message>
       <form id="topic-form" class="form" @submit.prevent="create">
         <TopicTypeRadioGroup id="topic-form-type" v-model="form.type" />
         <div class="row">
@@ -325,6 +339,7 @@ onMounted(load);
       <template #footer>
         <Button
           :label="t('common.cancel')"
+          :disabled="saving"
           severity="secondary"
           text
           @click="visible = false"
