@@ -820,7 +820,14 @@ describe("MeetingsService", () => {
     const ownMinute = { id: "own-minute", topicId: "topic", meetingId: "meeting", type: "minute" };
     const laterStandaloneUpdate = { id: "later-update", topicId: "topic", meetingId: null, type: "update" };
     const otherMeetingMinute = { id: "other-minute", topicId: "topic", meetingId: "other-meeting", type: "minute" };
-    const openTask = { id: "open-task", topicId: "topic" };
+    const openTask = {
+      id: "open-task",
+      topicId: "topic",
+      titleEnvelope: Buffer.from([21]),
+      titleCommitRevision: "1",
+      descriptionEnvelope: Buffer.from([22]),
+      descriptionCommitRevision: "1",
+    };
     meetings.findOne.mockResolvedValue({ id: "meeting", status: "completed" });
     participants.find.mockResolvedValue([]);
     meetingTopics.find.mockResolvedValue([appearance]);
@@ -835,7 +842,19 @@ describe("MeetingsService", () => {
         protected: null,
       }),
     ]);
-    expect((result.agenda[0].topic as any).tasks).toEqual([openTask]);
+    expect((result.agenda[0].topic as any).tasks).toEqual([
+      expect.objectContaining({
+        id: "open-task",
+        topicId: "topic",
+        protected: {
+          titleEnvelope: "FQ",
+          titleCommitRevision: "1",
+        },
+      }),
+    ]);
+    expect(tasks.find).toHaveBeenCalledWith(expect.objectContaining({
+      select: expect.not.objectContaining({ descriptionEnvelope: true }),
+    }));
   });
 
   it("rejects missing meetings when finding details", async () => {

@@ -131,6 +131,63 @@ describe("domain API client", () => {
       expect.any(Object),
     );
   });
+  it("loads narrow Task references with explicit unavailable Meeting labels", async () => {
+    const fetch = vi.fn().mockResolvedValue(response({
+      topics: [{ id: "topic", protected: null }],
+      meetings: [{
+        id: "meeting",
+        date: "2026-08-20",
+        beginTime: "19:30",
+        status: "planned",
+      }],
+    }));
+    vi.stubGlobal("fetch", fetch);
+
+    await expect(api.taskReferences()).resolves.toEqual({
+      topics: [{ id: "topic", name: "Protected text is unavailable." }],
+      meetings: [expect.objectContaining({
+        id: "meeting",
+        title: "Protected text is unavailable.",
+      })],
+    });
+    expect(fetch).toHaveBeenCalledWith(
+      "http://localhost:3000/api/tasks/references",
+      expect.any(Object),
+    );
+  });
+  it("projects locked dashboard summaries without description or Meeting-title overfetch", async () => {
+    const fetch = vi.fn().mockResolvedValue(response({
+      nextMeeting: {
+        id: "meeting",
+        date: "2026-08-20",
+        beginTime: "19:30",
+        status: "planned",
+        meetingLeaderId: null,
+        meetingLeader: null,
+      },
+      myOpenTasks: [{
+        id: "task",
+        topicId: null,
+        meetingId: null,
+        assignedToId: null,
+        assignedTo: null,
+        dueDate: null,
+        status: "open",
+        completedAt: null,
+        protected: { titleEnvelope: "opaque", titleCommitRevision: "1" },
+      }],
+      overdueTasks: [],
+      followUpTopics: [],
+      recentTopics: [],
+    }));
+    vi.stubGlobal("fetch", fetch);
+
+    const dashboard = await api.dashboard();
+
+    expect(dashboard.nextMeeting?.title).toBe("Protected text is unavailable.");
+    expect(dashboard.myOpenTasks[0].title).toBe("Unlock Protected text to view this content.");
+    expect(dashboard.myOpenTasks[0]).not.toHaveProperty("description");
+  });
   it("loads Topic history from the single grouped read-model endpoint", async () => {
     const fetch = vi.fn().mockResolvedValue(response([]));
     vi.stubGlobal("fetch", fetch);

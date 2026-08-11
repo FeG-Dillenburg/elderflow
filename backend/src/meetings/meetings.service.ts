@@ -3,6 +3,11 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, EntityManager, In, LessThan, Repository } from 'typeorm';
 import { AgendaSection } from '../agenda-sections/agenda-section.entity';
 import { Task } from '../tasks/task.entity';
+import { taskSummaryResponse } from '../tasks/task-response';
+import {
+  assignedTaskSummaryRelations,
+  assignedTaskSummarySelect,
+} from '../tasks/task-projection';
 import { Topic } from '../topics/topic.entity';
 import { TopicUpdate } from '../topics/topic-update.entity';
 import { MeetingDto, MeetingParticipantDto, MeetingTopicDto, MeetingTopicOrderItemDto, MeetingUpdateDto, UpdateMeetingTopicDto } from './dto/meeting.dto';
@@ -156,7 +161,10 @@ export class MeetingsService {
           order: { date: 'DESC' },
         }),
         this.tasks.find({
-          where: { topicId: In(topicIds), status: In(['open', 'in_progress']) }, relations: { assignedTo: true }, order: { dueDate: 'ASC' },
+          where: { topicId: In(topicIds), status: In(['open', 'in_progress']) },
+          relations: assignedTaskSummaryRelations,
+          select: assignedTaskSummarySelect,
+          order: { dueDate: 'ASC' },
         }),
         meeting.status === 'planned' && pairedTopicIds.length
           ? this.meetingTopics.find({
@@ -233,7 +241,9 @@ export class MeetingsService {
             previousMeetingTexts,
           });
         Object.assign(item.topic!, {
-          tasks: tasks.filter((task) => task.topicId === item.topicId),
+          tasks: tasks
+            .filter((task) => task.topicId === item.topicId)
+            .map((task) => taskSummaryResponse(task, user)),
         });
       }
     }
@@ -282,7 +292,9 @@ export class MeetingsService {
                 updates: updates
                   .filter((update) => update.topicId === item.topicId && !update.meetingId)
                   .map((update) => topicUpdateResponse(update, user)),
-                tasks: tasks.filter((task) => task.topicId === item.topicId),
+                tasks: tasks
+                  .filter((task) => task.topicId === item.topicId)
+                  .map((task) => taskSummaryResponse(task, user)),
               }
             : undefined,
         };

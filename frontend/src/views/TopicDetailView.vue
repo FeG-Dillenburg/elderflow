@@ -149,6 +149,8 @@ onMounted(load);
             icon="pi pi-plus"
             :label="t('topicDetail.addTask')"
             outlined
+            :disabled="!canEditProtected"
+            :title="!canEditProtected ? t('tasks.unlockToEdit') : undefined"
             @click="taskVisible = true"
           />
         </div>
@@ -216,7 +218,7 @@ onMounted(load);
             <div class="aside-heading">
               <h2>{{ t("topicDetail.openTasks") }}</h2>
               <Button
-                v-if="canManage"
+                v-if="canEditProtected"
                 :aria-label="t('topicDetail.addTask')"
                 icon="pi pi-plus"
                 rounded
@@ -250,7 +252,7 @@ onMounted(load);
       @saved="load"
     />
     <Dialog
-      v-if="canManage"
+      v-if="canEditProtected"
       v-model:visible="taskVisible"
       :style="{ width: '38rem', maxWidth: 'calc(100vw - 2rem)' }"
       :header="t('topicDetail.addFollowUpTask')"

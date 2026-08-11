@@ -4,7 +4,7 @@ import { TopicUpdate } from "./topic-update.entity";
 import { Topic } from "./topic.entity";
 import { TOPIC_SCALAR_FIELDS } from "../e2ee/scalar-registry";
 
-const account = (user?: User | null) => user
+export const accountResponse = (user?: User | null) => user
   ? {
       id: user.id,
       email: user.email,
@@ -25,7 +25,7 @@ export function topicResponse(topic: Topic, viewer: User) {
     status: topic.status,
     followUpDate: topic.followUpDate,
     responsibleUserId: topic.responsibleUserId,
-    responsibleUser: account(topic.responsibleUser),
+    responsibleUser: accountResponse(topic.responsibleUser),
     membershipStatusSignal: topic.membershipStatusSignal,
     defaultSectionId: topic.defaultSectionId,
     defaultSection: topic.defaultSection
@@ -66,11 +66,25 @@ export function topicUpdateResponse(update: TopicUpdate, viewer: User) {
     meetingId: update.meetingId,
     date: update.date,
     type: update.type,
-    createdBy: account(update.createdBy),
+    createdBy: accountResponse(update.createdBy),
     protected: canReadProtected
       ? {
           textEnvelope: update.textEnvelope!.toString("base64url"),
           textCommitRevision: update.textCommitRevision!,
+        }
+      : null,
+  };
+}
+
+export function topicLabelResponse(topic: Topic, viewer: User) {
+  const canReadProtected = isE2eeKeyOperator(viewer.role)
+    && Buffer.isBuffer(topic.nameEnvelope);
+  return {
+    id: topic.id,
+    protected: canReadProtected
+      ? {
+          nameEnvelope: topic.nameEnvelope.toString('base64url'),
+          nameCommitRevision: topic.nameCommitRevision,
         }
       : null,
   };

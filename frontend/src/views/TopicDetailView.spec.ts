@@ -207,6 +207,17 @@ describe("TopicDetailView", () => {
     );
     expect(vm.task.title).toBe("");
   });
+  it("disables protected Task creation with a localized explanation while locked", async () => {
+    protectedText.state.status = "locked";
+
+    const wrapper = await view();
+    const addTask = wrapper.findAllComponents({ name: "Button" })
+      .find((button) => button.attributes("label") === "Add task");
+
+    expect(addTask?.attributes("disabled")).toBeDefined();
+    expect(addTask?.attributes("title")).toBe("Unlock Protected text to create or edit Tasks.");
+    expect(wrapper.findComponent({ name: "Dialog" }).exists()).toBe(false);
+  });
   it("reports failed loading", async () => {
     vi.spyOn(api, "topic").mockRejectedValueOnce(new Error("Unavailable"));
     const wrapper = await view();

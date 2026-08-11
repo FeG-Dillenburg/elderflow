@@ -20,8 +20,7 @@ describe("TasksView", () => {
     vi.restoreAllMocks();
     vi.spyOn(api, "tasks").mockResolvedValue([]);
     vi.spyOn(api, "userDirectory").mockResolvedValue([]);
-    vi.spyOn(api, "topics").mockResolvedValue([]);
-    vi.spyOn(api, "meetings").mockResolvedValue([]);
+    vi.spyOn(api, "taskReferences").mockResolvedValue({ topics: [], meetings: [] });
   });
   const view = async () => {
     const wrapper = mount(TasksView, { shallow: true, global: { stubs } });
@@ -38,7 +37,7 @@ describe("TasksView", () => {
     vm.form.title = "Call";
     vm.form.description = "";
     vm.form.dueDate = new Date(2026, 6, 16);
-    await vm.create();
+    await vm.save();
     expect(api.createTask).toHaveBeenCalledWith(
       expect.objectContaining({
         title: "Call",
@@ -73,8 +72,51 @@ describe("TasksView", () => {
     vi.spyOn(api, "createTask").mockRejectedValueOnce(
       new Error("Create failed"),
     );
-    await vm.create();
+    await vm.save();
     expect(vm.saving).toBe(false);
     expect(vm.error).toBe("Create failed");
+  });
+
+  it("filters decrypted Task content locally without sending search text", async () => {
+    vi.mocked(api.tasks).mockResolvedValueOnce([
+      { id: "one", title: "Call family", description: "Discuss care" },
+      { id: "two", title: "Budget", description: "Review numbers" },
+    ] as any);
+    const wrapper = await view();
+    const vm: any = wrapper.vm;
+
+    vm.search = "care";
+    await wrapper.vm.$nextTick();
+
+    expect(vm.visibleTasks.map((task: any) => task.id)).toEqual(["one"]);
+    expect(api.tasks).toHaveBeenCalledTimes(1);
+    expect(api.tasks).not.toHaveBeenCalledWith(expect.objectContaining({ search: expect.anything() }));
+  });
+
+  it("edits encrypted Task content through the public API", async () => {
+    const wrapper = await view();
+    const vm: any = wrapper.vm;
+    const task = {
+      id: "task",
+      title: "Old title",
+      description: "Old description",
+      topicId: "topic",
+      meetingId: "meeting",
+      assignedToId: "user",
+      dueDate: "2026-07-20",
+      status: "open",
+    };
+    vm.edit(task);
+    expect(vm.form).toMatchObject({ title: "Old title", meetingId: "meeting" });
+    vi.spyOn(api, "updateTask").mockResolvedValue({} as any);
+    vm.form.title = "New title";
+
+    await vm.save();
+
+    expect(api.updateTask).toHaveBeenCalledWith("task", expect.objectContaining({
+      title: "New title",
+      description: "Old description",
+      meetingId: "meeting",
+    }));
   });
 });

@@ -18,6 +18,16 @@ import {
   type EncryptedTopicSnapshot,
   type EncryptedTopicUpdateResponse,
 } from '../e2ee/topic-scalars';
+import {
+  protectTaskInput,
+  protectTaskPatch,
+  unprotectTask,
+  unprotectTaskSummary,
+  unprotectTopicLabel,
+  type EncryptedTaskResponse,
+  type EncryptedTaskSummaryResponse,
+  type EncryptedTopicLabel,
+} from '../e2ee/task-scalars';
 export type { TopicType } from '../topics/topicTypes';
 export type RecurrenceUnit = 'weeks' | 'months';
 export type AgendaAppearanceSource = 'manual' | 'recurrence';
@@ -307,15 +317,33 @@ export interface Task {
   title: string;
   description: string | null;
   topicId: string | null;
-  topic?: Topic | null;
+  topic?: TaskTopicReference | null;
   meetingId: string | null;
-  meeting?: Meeting | null;
+  meeting?: TaskMeetingReference | null;
   assignedToId: string | null;
   assignedTo?: User | null;
   dueDate: string | null;
   status: string;
   createdAt: string;
   completedAt: string | null;
+}
+
+export interface TaskTopicReference {
+  id: string;
+  name: string;
+}
+
+export interface TaskMeetingReference {
+  id: string;
+  title: string | null;
+  date: string;
+  beginTime: string;
+  status: string;
+}
+
+export interface TaskReferences {
+  topics: TaskTopicReference[];
+  meetings: TaskMeetingReference[];
 }
 
 export type TaskInput = Omit<Task, 'id' | 'topic' | 'meeting' | 'assignedTo' | 'createdAt' | 'completedAt'>;
@@ -340,12 +368,33 @@ export type TopicFieldPatch =
       membershipStatusSignal?: never;
     });
 
+export interface DashboardTopicSummary {
+  id: string;
+  name: string;
+  status: string;
+  followUpDate: string | null;
+  responsibleUserId: string | null;
+  responsibleUser?: User | null;
+}
+
+export interface DashboardTaskSummary {
+  id: string;
+  title: string;
+  topicId: string | null;
+  meetingId: string | null;
+  assignedToId: string | null;
+  assignedTo?: User | null;
+  dueDate: string | null;
+  status: string;
+  completedAt: string | null;
+}
+
 export interface DashboardData {
-  nextMeeting: Meeting | null;
-  myOpenTasks: Task[];
-  overdueTasks: Task[];
-  followUpTopics: Topic[];
-  recentTopics: Topic[];
+  nextMeeting: Pick<Meeting, 'id' | 'title' | 'date' | 'beginTime' | 'status' | 'meetingLeaderId' | 'meetingLeader'> | null;
+  myOpenTasks: DashboardTaskSummary[];
+  overdueTasks: DashboardTaskSummary[];
+  followUpTopics: DashboardTopicSummary[];
+  recentTopics: DashboardTopicSummary[];
 }
 
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000';
@@ -439,12 +488,25 @@ const query = (values: Record<string, string | boolean | null | undefined>): str
   return result ? `?${result}` : '';
 };
 
-const unprotectTaskTopic = async (task: Task): Promise<Task> => ({
-  ...task,
-  topic: task.topic
-    ? await unprotectTopic(task.topic as unknown as EncryptedTopicResponse)
-    : null,
-});
+type EncryptedDashboardTopicSummary = Omit<DashboardTopicSummary, 'name'> & EncryptedTopicLabel;
+type EncryptedDashboardData = Omit<DashboardData, 'myOpenTasks' | 'overdueTasks' | 'followUpTopics' | 'recentTopics' | 'nextMeeting'> & {
+  nextMeeting: Omit<NonNullable<DashboardData['nextMeeting']>, 'title'> | null;
+  myOpenTasks: EncryptedTaskSummaryResponse[];
+  overdueTasks: EncryptedTaskSummaryResponse[];
+  followUpTopics: EncryptedDashboardTopicSummary[];
+  recentTopics: EncryptedDashboardTopicSummary[];
+};
+
+const unprotectDashboardTopic = async (
+  response: EncryptedDashboardTopicSummary,
+): Promise<DashboardTopicSummary> => {
+  const { protected: _protected, ...structural } = response;
+  return {
+    ...structural,
+    name: (await unprotectTopicLabel(response))?.name
+      ?? translate('e2ee.unavailablePlaceholder'),
+  };
+};
 
 export const api = {
   installation: () => request<{ setupRequired: boolean; defaultLanguage: SupportedLanguage | null }>('/api/installation'),
@@ -495,17 +557,16 @@ export const api = {
   users: () => request<User[]>('/api/users'),
   userDirectory: () => request<User[]>('/api/user-directory'),
   dashboard: async () => {
-    const data = await request<DashboardData>('/api/dashboard');
+    const data = await request<EncryptedDashboardData>('/api/dashboard');
     return {
       ...data,
-      myOpenTasks: await Promise.all(data.myOpenTasks.map(unprotectTaskTopic)),
-      overdueTasks: await Promise.all(data.overdueTasks.map(unprotectTaskTopic)),
-      followUpTopics: await Promise.all(
-        data.followUpTopics.map((topic) => unprotectTopic(topic as unknown as EncryptedTopicResponse)),
-      ),
-      recentTopics: await Promise.all(
-        data.recentTopics.map((topic) => unprotectTopic(topic as unknown as EncryptedTopicResponse)),
-      ),
+      nextMeeting: data.nextMeeting
+        ? { ...data.nextMeeting, title: translate('e2ee.unavailablePlaceholder') }
+        : null,
+      myOpenTasks: await Promise.all(data.myOpenTasks.map((task) => unprotectTaskSummary(task))),
+      overdueTasks: await Promise.all(data.overdueTasks.map((task) => unprotectTaskSummary(task))),
+      followUpTopics: await Promise.all(data.followUpTopics.map(unprotectDashboardTopic)),
+      recentTopics: await Promise.all(data.recentTopics.map(unprotectDashboardTopic)),
     };
   },
   sections: () => request<AgendaSection[]>('/api/agenda-sections'),
@@ -554,8 +615,12 @@ export const api = {
         if (!item.topic) return item;
         const encrypted = item.topic as unknown as EncryptedTopicResponse;
         const encryptedUpdates = (item.topic as unknown as { updates?: EncryptedTopicUpdateResponse[] }).updates;
+        const encryptedTasks = (item.topic as unknown as { tasks?: EncryptedTaskSummaryResponse[] }).tasks;
         const topic = await unprotectTopic(encrypted);
         topic.updates = await Promise.all((encryptedUpdates ?? []).map((update) => unprotectTopicUpdate(update)));
+        topic.tasks = await Promise.all(
+          (encryptedTasks ?? []).map((task) => unprotectTaskSummary(task)),
+        ) as Task[];
         if (item.protectedSnapshot || meeting.status === 'completed') {
           const snapshot = await unprotectTopicSnapshot(item.topicId, item.protectedSnapshot ?? null);
           return {
@@ -621,10 +686,37 @@ export const api = {
   removeMeetingTopic: (meetingId: string, itemId: string) => request<void>(`/api/meetings/${meetingId}/topics/${itemId}`, { method: 'DELETE' }),
   restoreRecurrence: (meetingId: string, topicId: string) => request<void>(`/api/meetings/${meetingId}/recurrences/${topicId}/restore`, { method: 'POST' }),
   tasks: async (filters: Record<string, string | boolean | undefined> = {}) => Promise.all(
-    (await request<Task[]>(`/api/tasks${query(filters)}`)).map(unprotectTaskTopic),
+    (await request<EncryptedTaskResponse[]>(`/api/tasks${query(filters)}`)).map((task) => unprotectTask(task)),
   ),
-  createTask: (input: TaskInput) => request<Task>('/api/tasks', { method: 'POST', body: JSON.stringify(input) }),
-  updateTask: (id: string, input: Partial<TaskInput>) => request<Task>(`/api/tasks/${id}`, { method: 'PUT', body: JSON.stringify(input) }),
+  taskReferences: async (): Promise<TaskReferences> => {
+    const references = await request<{
+      topics: EncryptedTopicLabel[];
+      meetings: Array<Omit<TaskMeetingReference, 'title'>>;
+    }>('/api/tasks/references');
+    return {
+      topics: (await Promise.all(
+        references.topics.map((topic) => unprotectTopicLabel(topic)),
+      ))
+        .filter((topic): topic is TaskTopicReference => topic !== null),
+      meetings: references.meetings.map((meeting) => ({
+        ...meeting,
+        title: translate('e2ee.unavailablePlaceholder'),
+      })),
+    };
+  },
+  createTask: async (input: TaskInput) => {
+    const encrypted = await protectTaskInput(crypto.randomUUID(), input);
+    return unprotectTask(await request<EncryptedTaskResponse>('/api/tasks', {
+      method: 'POST',
+      body: JSON.stringify(encrypted),
+    }));
+  },
+  updateTask: async (id: string, input: Partial<TaskInput>) => unprotectTask(
+    await request<EncryptedTaskResponse>(`/api/tasks/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(await protectTaskPatch(id, input)),
+    }),
+  ),
 };
 
 export const formatUser = (user?: User | null): string => user ? `${user.firstName} ${user.lastName}` : translate('common.unassigned');
