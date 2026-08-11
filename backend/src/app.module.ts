@@ -15,7 +15,7 @@ import { migrations } from './database/migrations';
 import { SetupModule } from './setup/setup.module';
 import { E2eeModule } from './e2ee/e2ee.module';
 import { APP_INTERCEPTOR } from '@nestjs/core';
-import { ProtectedTextGateInterceptor } from './e2ee/protected-text-gate.interceptor';
+import { ProtectedTextBoundaryInterceptor } from './e2ee/protected-text-boundary.interceptor';
 
 @Module({
   imports: [
@@ -35,10 +35,6 @@ import { ProtectedTextGateInterceptor } from './e2ee/protected-text-gate.interce
           is: 'production',
           then: Joi.required(),
           otherwise: Joi.string().default('elderflow-development-session-secret'),
-        }),
-        E2EE_DEVELOPMENT_GATE: Joi.boolean().default(false).when('NODE_ENV', {
-          is: 'production',
-          then: Joi.valid(false),
         }),
       }),
     }),
@@ -66,7 +62,7 @@ import { ProtectedTextGateInterceptor } from './e2ee/protected-text-gate.interce
   controllers: [AppController],
   providers: [
     DatabaseService,
-    { provide: APP_INTERCEPTOR, useClass: ProtectedTextGateInterceptor },
+    { provide: APP_INTERCEPTOR, useClass: ProtectedTextBoundaryInterceptor },
   ],
 })
 export class AppModule {}

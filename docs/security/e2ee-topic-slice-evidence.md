@@ -34,14 +34,12 @@ The opt-in running-instance test creates the exact fixture, checks unlocked proj
 
 ```sh
 VITE_API_BASE_URL=http://127.0.0.1:3998 \
-VITE_E2EE_DEVELOPMENT_GATE=true \
 E2EE_EVIDENCE_API_URL=http://127.0.0.1:3998 \
 E2EE_EVIDENCE_PHASE=create \
 E2EE_EVIDENCE_SETUP_PASSWORD=<startup-password> \
 pnpm --filter @elderflow/frontend exec vitest run src/e2ee/topic-slice-running-instance.spec.ts
 
 VITE_API_BASE_URL=http://127.0.0.1:3998 \
-VITE_E2EE_DEVELOPMENT_GATE=true \
 E2EE_EVIDENCE_API_URL=http://127.0.0.1:3998 \
 E2EE_EVIDENCE_PHASE=verify \
 pnpm --filter @elderflow/frontend exec vitest run src/e2ee/topic-slice-running-instance.spec.ts

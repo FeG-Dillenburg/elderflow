@@ -3,7 +3,6 @@ import sodium from "libsodium-wrappers-sumo";
 import { beforeAll, describe, expect, it } from "vitest";
 import { api, type AgendaSection, type Topic, type TopicInput } from "../api/domain";
 import vectors from "../../../docs/security/e2ee-v1-key-vectors.json";
-import { setProtectedContentUnlocked } from "./content-visibility";
 import { translate } from "../i18n";
 import { bytesToBase64Url } from "./protocol";
 import { base64UrlToBytes } from "./protocol";
@@ -56,7 +55,6 @@ evidence("Topic E2EE running instance", () => {
       password: "Evidence-account-49!",
     });
     token = login.token;
-    setProtectedContentUnlocked(true);
 
     const signing = sodium.crypto_sign_seed_keypair(
       hexToBytes(vectors.signedNullScalar.signingSeedHex),
@@ -189,7 +187,6 @@ evidence("Topic E2EE running instance", () => {
     expect(rawPayload).not.toContain(marker);
 
     scalarSession.lock();
-    setProtectedContentUnlocked(false);
     const locked = await Promise.all(encryptedTopics.map((topic) => unprotectTopic(topic)));
     expect(locked).toHaveLength(4);
     expect(locked.every(({ name }) => name === translate("e2ee.lockedPlaceholder"))).toBe(true);

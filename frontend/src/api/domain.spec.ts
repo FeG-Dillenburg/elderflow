@@ -1,6 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { api, formatUser, meetingLabel, request, toLocalDate } from "./domain";
-import { setProtectedContentUnlocked } from "../e2ee/content-visibility";
 import { Decoder } from "cbor-x";
 import { meetingDocumentSession } from "../e2ee/meeting-document-session";
 
@@ -15,7 +14,6 @@ const response = (body: unknown, options: Partial<Response> = {}) =>
 
 describe("domain API client", () => {
   afterEach(() => {
-    setProtectedContentUnlocked(false);
     vi.unstubAllEnvs();
     vi.unstubAllGlobals();
   });
@@ -199,44 +197,6 @@ describe("domain API client", () => {
       "http://localhost:3000/api/topics/topic/history",
       expect.any(Object),
     );
-  });
-  it("localizes server-redacted Protected text while preserving structural fields", async () => {
-    const fetch = vi.fn().mockResolvedValue(response({
-      id: "topic", type: "general", status: "open", followUpDate: "2026-08-10",
-      name: "__ELDERFLOW_PROTECTED_TEXT_REDACTED__",
-      description: "__ELDERFLOW_PROTECTED_TEXT_REDACTED__",
-    }));
-    vi.stubGlobal("fetch", fetch);
-
-    await expect(api.topic("topic")).resolves.toMatchObject({
-      id: "topic", status: "open", followUpDate: "2026-08-10",
-      name: "Protected text is unavailable.",
-      description: "Protected text is unavailable.",
-    });
-  });
-
-  it("only advertises the local development plaintext path while unlocked", async () => {
-    vi.stubEnv("VITE_E2EE_DEVELOPMENT_GATE", "true");
-    const fetch = vi.fn().mockResolvedValue(response({ id: "one" }));
-    vi.stubGlobal("fetch", fetch);
-
-    await request("/api/topics");
-    setProtectedContentUnlocked(true);
-    await request("/api/topics");
-
-    expect(fetch.mock.calls[0][1].headers).not.toHaveProperty("X-Elderflow-E2EE-Unlocked");
-    expect(fetch.mock.calls[1][1].headers).toMatchObject({ "X-Elderflow-E2EE-Unlocked": "1" });
-  });
-  it("describes redacted local development content as locked until unlock", async () => {
-    vi.stubEnv("VITE_E2EE_DEVELOPMENT_GATE", "true");
-    const fetch = vi.fn().mockResolvedValue(response({
-      title: "__ELDERFLOW_PROTECTED_TEXT_REDACTED__",
-    }));
-    vi.stubGlobal("fetch", fetch);
-
-    await expect(request("/api/tasks/task")).resolves.toMatchObject({
-      title: "Unlock Protected text to view this content.",
-    });
   });
   it("requests future Meeting suggestions explicitly", async () => {
     const fetch = vi.fn().mockResolvedValue(response([]));

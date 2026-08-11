@@ -6,7 +6,6 @@ import { UnlockSession, type LockReason } from './unlock-session';
 import { recoverySession } from './recovery-session';
 import { isE2eeKeyOperator } from './roles';
 import { bytesToBase64Url } from './protocol';
-import { setProtectedContentUnlocked } from './content-visibility';
 import { scalarSession } from './scalar-session';
 import { meetingDocumentSession } from './meeting-document-session';
 
@@ -102,7 +101,6 @@ export const protectedText = {
         signingPrivateKey: signing.privateKey,
       });
       state.status = 'unlocked';
-      setProtectedContentUnlocked(true);
       state.promptVisible = false;
       startAuthorizationPolling();
     } catch (error) {
@@ -130,7 +128,6 @@ function finishLock(): void {
   if (authorizationPoll) clearInterval(authorizationPoll);
   authorizationPoll = null;
   state.status = 'locked';
-  setProtectedContentUnlocked(false);
   state.promptVisible = false;
   state.error = false;
   epochId = null;

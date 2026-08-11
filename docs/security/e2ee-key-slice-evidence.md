@@ -4,7 +4,7 @@
 
 This is the first encrypted development release and intentionally has no plaintext migration or dual-read path. Reset synthetic development data before exercising setup:
 
-The secure defaults `E2EE_DEVELOPMENT_GATE=false` and `VITE_E2EE_DEVELOPMENT_GATE=false` redact legacy Protected-text response fields on the server and replace them with localized unavailable placeholders in the browser, while preserving structural dates, ordering, assignments, statuses, and route navigation. Legacy writes containing Protected-text fields are rejected while the gate is unavailable; partial update contracts keep structural assignment, date, ordering, and status mutations usable. Guests are always redacted and cannot use the legacy write path. Set both gates to `true` only for local synthetic-data testing: the browser shows a locked placeholder until unlock, advertises the development path only while its key session is unlocked, and the backend refuses to enable that path in production. Relock remounts the active route so plaintext view state is discarded immediately.
+Protected text has no plaintext compatibility mode. The frontend always uses encrypted content contracts, and the backend always rejects legacy writes containing Protected-text fields. Partial update contracts keep structural assignment, date, ordering, and status mutations usable. Guests receive role-aware projections without ciphertext, while eligible users see localized locked placeholders until their local key session is unlocked. Relock remounts the active route so plaintext view state is discarded immediately.
 
 ```sh
 pnpm dev:down --volumes

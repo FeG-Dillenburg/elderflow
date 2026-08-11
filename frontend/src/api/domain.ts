@@ -5,7 +5,6 @@ import type { TopicType } from '../topics/topicTypes';
 import type { InitialKeyState, PublicKeyState, RecoveryKeyState } from '../e2ee/crypto';
 import { Encoder } from 'cbor-x';
 import { base64UrlToBytes, bytesToBase64Url, E2EE_MEDIA_TYPE } from '../e2ee/protocol';
-import { applyProtectedTextVisibility, getProtectedTextDevelopmentHeaders } from '../e2ee/content-visibility';
 import { protectMeetingTitle, unprotectMeetingTitle, type EncryptedMeetingTitle } from '../e2ee/meeting-scalars';
 import {
   meetingDocumentSession,
@@ -418,7 +417,6 @@ export async function request<T>(path: string, options?: RequestInit): Promise<T
     headers: {
       'Content-Type': 'application/json',
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...getProtectedTextDevelopmentHeaders(),
       ...options?.headers,
     },
   });
@@ -428,7 +426,7 @@ export async function request<T>(path: string, options?: RequestInit): Promise<T
     throw new Error(localizeApiError(payload, translate));
   }
   if (response.status === 204 || response.headers?.get('content-length') === '0') return undefined as T;
-  return applyProtectedTextVisibility(await response.json()) as T;
+  return await response.json() as T;
 }
 
 async function requestBinary(path: string): Promise<string> {
