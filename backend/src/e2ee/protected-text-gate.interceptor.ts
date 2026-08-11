@@ -19,8 +19,6 @@ const PROTECTED_KEYS = new Set([
   'godparentsSnapshot',
   'membershipProcessStatus',
   'membershipProcessStatusSnapshot',
-  'membershipStatusSignal',
-  'membershipStatusSignalSnapshot',
 ]);
 
 @Injectable()
