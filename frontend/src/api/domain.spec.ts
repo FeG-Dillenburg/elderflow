@@ -191,11 +191,10 @@ describe("domain API client", () => {
       expect.any(Object),
     );
   });
-  it("sends representative GET/POST/PUT/DELETE requests and a mutable meeting-topic payload", async () => {
+  it("sends representative GET/PUT/DELETE requests and a mutable meeting-topic payload", async () => {
     const fetch = vi.fn().mockResolvedValue(response({}));
     vi.stubGlobal("fetch", fetch);
     await api.topic("topic");
-    await api.createTopic({ name: "Topic" } as any);
     await api.updateMeetingTopic("meeting", {
       id: "item",
       sectionId: "section",
@@ -208,11 +207,10 @@ describe("domain API client", () => {
     await api.deleteSection("section");
     expect(fetch.mock.calls.map((call) => [call[0], call[1]?.method])).toEqual([
       ["http://localhost:3000/api/topics/topic", undefined],
-      ["http://localhost:3000/api/topics", "POST"],
       ["http://localhost:3000/api/meetings/meeting/topics/item", "PUT"],
       ["http://localhost:3000/api/agenda-sections/section", "DELETE"],
     ]);
-    expect(JSON.parse(fetch.mock.calls[2][1].body)).toEqual({
+    expect(JSON.parse(fetch.mock.calls[1][1].body)).toEqual({
       sectionId: "section",
       position: 2,
       plannedDuration: 10,
@@ -268,11 +266,22 @@ describe("domain API client", () => {
     );
   });
   it("writes one or more inline Topic fields through the narrow patch endpoint", async () => {
-    const fetch = vi.fn().mockResolvedValue(response({ membershipStatusSignal: "attention" }));
+    const fetch = vi.fn().mockResolvedValue(response({
+      id: "topic",
+      type: "new_membership",
+      membershipStatusSignal: "attention",
+      protected: null,
+    }));
     vi.stubGlobal("fetch", fetch);
 
-    await api.updateMeetingTopicFields("meeting", "appearance", {
+    const saved = await api.updateMeetingTopicFields("meeting", "appearance", {
       membershipStatusSignal: "attention",
+    });
+
+    expect(saved).toMatchObject({
+      id: "topic",
+      membershipStatusSignal: "attention",
+      name: expect.any(String),
     });
 
     expect(fetch).toHaveBeenCalledWith(

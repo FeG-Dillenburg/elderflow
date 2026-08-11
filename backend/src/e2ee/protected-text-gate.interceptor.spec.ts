@@ -22,12 +22,14 @@ describe('ProtectedTextGateInterceptor', () => {
     const result = await lastValueFrom(interceptor.intercept(context('user'), {
       handle: () => of({
         id: 'topic-id', type: 'general', status: 'open', followUpDate: '2026-08-10',
+        membershipStatusSignal: 'attention',
         name: 'Private name', description: 'Private description',
       }),
     } as any));
 
     expect(result).toEqual({
       id: 'topic-id', type: 'general', status: 'open', followUpDate: '2026-08-10',
+      membershipStatusSignal: 'attention',
       name: PROTECTED_TEXT_REDACTED, description: PROTECTED_TEXT_REDACTED,
     });
   });
@@ -73,6 +75,26 @@ describe('ProtectedTextGateInterceptor', () => {
 
     expect(() => interceptor.intercept(context('user', '/api/meetings/id/topics/order', {
       method: 'PUT', body: { items: [{ id: 'one', sectionId: 'two', position: 1 }] },
+    }), { handle: () => of(null) } as any)).not.toThrow();
+  });
+
+  it('allows an encrypted Topic write with a structural membership signal', () => {
+    config.get.mockImplementation((key: string) => key === 'NODE_ENV' ? 'production' : false);
+
+    expect(() => interceptor.intercept(context('user', '/api/topics', {
+      method: 'POST',
+      body: {
+        id: 'topic-id',
+        type: 'new_membership',
+        status: 'open',
+        membershipStatusSignal: 'new',
+        protected: {
+          nameEnvelope: 'encrypted-name',
+          descriptionEnvelope: 'encrypted-description',
+          membershipProcessStatusEnvelope: 'encrypted-process-status',
+          godparentsEnvelope: 'encrypted-godparents',
+        },
+      },
     }), { handle: () => of(null) } as any)).not.toThrow();
   });
 

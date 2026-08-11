@@ -6,6 +6,18 @@ import type { InitialKeyState, PublicKeyState, RecoveryKeyState } from '../e2ee/
 import { Encoder } from 'cbor-x';
 import { base64UrlToBytes, bytesToBase64Url, E2EE_MEDIA_TYPE } from '../e2ee/protocol';
 import { applyProtectedTextVisibility, getProtectedTextDevelopmentHeaders } from '../e2ee/content-visibility';
+import {
+  protectStandaloneUpdate,
+  protectTopicInput,
+  protectTopicPatch,
+  unprotectTopic,
+  unprotectTopicHistory,
+  unprotectTopicSnapshot,
+  unprotectTopicUpdate,
+  type EncryptedTopicResponse,
+  type EncryptedTopicSnapshot,
+  type EncryptedTopicUpdateResponse,
+} from '../e2ee/topic-scalars';
 export type { TopicType } from '../topics/topicTypes';
 export type RecurrenceUnit = 'weeks' | 'months';
 export type AgendaAppearanceSource = 'manual' | 'recurrence';
@@ -211,6 +223,7 @@ export interface MeetingTopic {
   membershipProcessStatusSnapshot?: string | null;
   membershipStatusSignalSnapshot?: MembershipStatusSignal | null;
   godparentsSnapshot?: string | null;
+  protectedSnapshot?: EncryptedTopicSnapshot | null;
   meeting?: Meeting;
 }
 
@@ -307,10 +320,25 @@ export interface Task {
 
 export type TaskInput = Omit<Task, 'id' | 'topic' | 'meeting' | 'assignedTo' | 'createdAt' | 'completedAt'>;
 
-export type TopicFieldPatch = Partial<Pick<
+export type StructuralTopicFieldPatch = Partial<Pick<
   Topic,
-  'responsibleUserId' | 'membershipProcessStatus' | 'membershipStatusSignal' | 'godparents'
+  'responsibleUserId' | 'membershipStatusSignal'
 >>;
+
+type ProtectedTopicFieldPatch = Partial<Pick<
+  Topic,
+  'membershipProcessStatus' | 'godparents'
+>>;
+
+export type TopicFieldPatch =
+  | (StructuralTopicFieldPatch & {
+      membershipProcessStatus?: never;
+      godparents?: never;
+    })
+  | (ProtectedTopicFieldPatch & {
+      responsibleUserId?: never;
+      membershipStatusSignal?: never;
+    });
 
 export interface DashboardData {
   nextMeeting: Meeting | null;
@@ -411,6 +439,13 @@ const query = (values: Record<string, string | boolean | null | undefined>): str
   return result ? `?${result}` : '';
 };
 
+const unprotectTaskTopic = async (task: Task): Promise<Task> => ({
+  ...task,
+  topic: task.topic
+    ? await unprotectTopic(task.topic as unknown as EncryptedTopicResponse)
+    : null,
+});
+
 export const api = {
   installation: () => request<{ setupRequired: boolean; defaultLanguage: SupportedLanguage | null }>('/api/installation'),
   verifySetupPassword: (setupPassword: string) => request<{ valid: true }>('/api/setup/verify', { method: 'POST', body: JSON.stringify({ setupPassword }) }),
@@ -459,35 +494,106 @@ export const api = {
   abortE2eeRecovery: (id: string) => request<void>(`/api/e2ee/recovery-ceremonies/${id}/abort`, { method: 'POST' }),
   users: () => request<User[]>('/api/users'),
   userDirectory: () => request<User[]>('/api/user-directory'),
-  dashboard: () => request<DashboardData>('/api/dashboard'),
+  dashboard: async () => {
+    const data = await request<DashboardData>('/api/dashboard');
+    return {
+      ...data,
+      myOpenTasks: await Promise.all(data.myOpenTasks.map(unprotectTaskTopic)),
+      overdueTasks: await Promise.all(data.overdueTasks.map(unprotectTaskTopic)),
+      followUpTopics: await Promise.all(
+        data.followUpTopics.map((topic) => unprotectTopic(topic as unknown as EncryptedTopicResponse)),
+      ),
+      recentTopics: await Promise.all(
+        data.recentTopics.map((topic) => unprotectTopic(topic as unknown as EncryptedTopicResponse)),
+      ),
+    };
+  },
   sections: () => request<AgendaSection[]>('/api/agenda-sections'),
   createSection: (input: Omit<AgendaSection, 'id'>) => request<AgendaSection>('/api/agenda-sections', { method: 'POST', body: JSON.stringify(input) }),
   updateSection: (id: string, input: Omit<AgendaSection, 'id'>) => request<AgendaSection>(`/api/agenda-sections/${id}`, { method: 'PUT', body: JSON.stringify(input) }),
   deleteSection: (id: string) => request<void>(`/api/agenda-sections/${id}`, { method: 'DELETE' }),
-  topics: (filters: Record<string, string | undefined> = {}) => request<Topic[]>(`/api/topics${query(filters)}`),
-  topic: (id: string) => request<Topic>(`/api/topics/${id}`),
-  createTopic: (input: TopicInput) => request<Topic>('/api/topics', { method: 'POST', body: JSON.stringify(input) }),
-  updateTopic: (id: string, input: Partial<TopicInput>) => request<Topic>(`/api/topics/${id}`, { method: 'PUT', body: JSON.stringify(input) }),
-  topicUpdates: (id: string) => request<TopicUpdate[]>(`/api/topics/${id}/updates`),
-  topicHistory: (id: string) => request<TopicHistoryEntry[]>(`/api/topics/${id}/history`),
-  addTopicUpdate: (id: string, input: { text: string; type: string; meetingId?: string | null }) => request<TopicUpdate>(`/api/topics/${id}/updates`, { method: 'POST', body: JSON.stringify(input) }),
+  topics: async (filters: Record<string, string | undefined> = {}) => Promise.all(
+    (await request<EncryptedTopicResponse[]>(`/api/topics${query(filters)}`)).map((topic) => unprotectTopic(topic)),
+  ),
+  topic: async (id: string) => unprotectTopic(await request<EncryptedTopicResponse>(`/api/topics/${id}`)),
+  createTopic: async (input: TopicInput) => {
+    const encrypted = await protectTopicInput(crypto.randomUUID(), input);
+    return unprotectTopic(await request<EncryptedTopicResponse>('/api/topics', {
+      method: 'POST',
+      body: JSON.stringify(encrypted),
+    }));
+  },
+  updateTopic: async (id: string, input: Partial<TopicInput>) => unprotectTopic(
+    await request<EncryptedTopicResponse>(`/api/topics/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(await protectTopicPatch(id, input)),
+    }),
+  ),
+  topicUpdates: async (id: string) => Promise.all(
+    (await request<EncryptedTopicUpdateResponse[]>(`/api/topics/${id}/updates`))
+      .map((update) => unprotectTopicUpdate(update)),
+  ),
+  topicHistory: async (id: string) => unprotectTopicHistory(
+    await request<Array<Record<string, unknown>>>(`/api/topics/${id}/history`),
+  ),
+  addTopicUpdate: async (id: string, input: { text: string; type: string; meetingId?: string | null }) => {
+    const updateId = crypto.randomUUID();
+    const encrypted = await protectStandaloneUpdate(updateId, input.text);
+    return unprotectTopicUpdate(await request<EncryptedTopicUpdateResponse>(`/api/topics/${id}/updates`, {
+      method: 'POST',
+      body: JSON.stringify({ ...encrypted, type: input.type }),
+    }));
+  },
   topicAppearances: (id: string) => request<MeetingTopic[]>(`/api/topics/${id}/appearances`),
   skippedRecurrences: (id: string) => request<SkippedRecurrence[]>(`/api/topics/${id}/skipped-recurrences`),
   meetings: () => request<Meeting[]>('/api/meetings'),
-  meeting: (id: string) => request<Meeting>(`/api/meetings/${id}`),
+  meeting: async (id: string) => {
+    const meeting = await request<Meeting>(`/api/meetings/${id}`);
+    if (meeting.agenda) {
+      meeting.agenda = await Promise.all(meeting.agenda.map(async (item) => {
+        if (!item.topic) return item;
+        const encrypted = item.topic as unknown as EncryptedTopicResponse;
+        const encryptedUpdates = (item.topic as unknown as { updates?: EncryptedTopicUpdateResponse[] }).updates;
+        const topic = await unprotectTopic(encrypted);
+        topic.updates = await Promise.all((encryptedUpdates ?? []).map((update) => unprotectTopicUpdate(update)));
+        if (item.protectedSnapshot || meeting.status === 'completed') {
+          const snapshot = await unprotectTopicSnapshot(item.topicId, item.protectedSnapshot ?? null);
+          return {
+            ...item,
+            topic,
+            topicNameSnapshot: snapshot.name,
+            membershipProcessStatusSnapshot: snapshot.membershipProcessStatus,
+            godparentsSnapshot: snapshot.godparents,
+          };
+        }
+        return { ...item, topic };
+      }));
+    }
+    return meeting;
+  },
   createMeeting: (input: MeetingInput) => request<Meeting>('/api/meetings', { method: 'POST', body: JSON.stringify(input) }),
   updateMeeting: (id: string, input: Partial<MeetingInput>) => request<Meeting>(`/api/meetings/${id}`, { method: 'PUT', body: JSON.stringify(input) }),
   completeMeeting: (id: string) => request<Meeting>(`/api/meetings/${id}/complete`, { method: 'POST' }),
-  meetingSuggestions: (id: string, options?: { future?: boolean }) =>
-    request<Topic[]>(`/api/meetings/${id}/suggestions${query({
+  meetingSuggestions: async (id: string, options?: { future?: boolean }) => Promise.all(
+    (await request<EncryptedTopicResponse[]>(`/api/meetings/${id}/suggestions${query({
       future: options?.future ? true : undefined,
-    })}`),
+    })}`)).map((topic) => unprotectTopic(topic)),
+  ),
   addParticipant: (meetingId: string, input: { userId: string; attendanceStatus: string }) => request<MeetingParticipant>(`/api/meetings/${meetingId}/participants`, { method: 'POST', body: JSON.stringify(input) }),
   removeParticipant: (meetingId: string, userId: string) => request<void>(`/api/meetings/${meetingId}/participants/${userId}`, { method: 'DELETE' }),
   addMeetingTopic: (meetingId: string, input: { topicId: string; sectionId: string; position?: number }) => request<MeetingTopic>(`/api/meetings/${meetingId}/topics`, { method: 'POST', body: JSON.stringify(input) }),
   reorderMeetingTopics: (meetingId: string, items: Array<{ id: string; sectionId: string; position: number }>) => request<MeetingTopic[]>(`/api/meetings/${meetingId}/topics/order`, { method: 'PUT', body: JSON.stringify({ items }) }),
   updateMeetingTopic: (meetingId: string, item: MeetingTopic, options?: { deferred?: boolean }) => request<MeetingTopic>(`/api/meetings/${meetingId}/topics/${item.id}`, { method: 'PUT', body: JSON.stringify({ sectionId: item.sectionId, position: item.position, plannedDuration: item.plannedDuration, status: item.status, deferred: options?.deferred }) }),
-  updateMeetingTopicFields: (meetingId: string, itemId: string, input: TopicFieldPatch) => request<Topic>(`/api/meetings/${meetingId}/topics/${itemId}/fields`, { method: 'PUT', body: JSON.stringify(input) }),
+  updateMeetingTopicFields: async (
+    meetingId: string,
+    itemId: string,
+    input: StructuralTopicFieldPatch,
+  ) => unprotectTopic(
+    await request<EncryptedTopicResponse>(`/api/meetings/${meetingId}/topics/${itemId}/fields`, {
+      method: 'PUT',
+      body: JSON.stringify(input),
+    }),
+  ),
   updateMeetingPreparationContext: (
     meetingId: string,
     itemId: string,
@@ -514,7 +620,9 @@ export const api = {
   }),
   removeMeetingTopic: (meetingId: string, itemId: string) => request<void>(`/api/meetings/${meetingId}/topics/${itemId}`, { method: 'DELETE' }),
   restoreRecurrence: (meetingId: string, topicId: string) => request<void>(`/api/meetings/${meetingId}/recurrences/${topicId}/restore`, { method: 'POST' }),
-  tasks: (filters: Record<string, string | boolean | undefined> = {}) => request<Task[]>(`/api/tasks${query(filters)}`),
+  tasks: async (filters: Record<string, string | boolean | undefined> = {}) => Promise.all(
+    (await request<Task[]>(`/api/tasks${query(filters)}`)).map(unprotectTaskTopic),
+  ),
   createTask: (input: TaskInput) => request<Task>('/api/tasks', { method: 'POST', body: JSON.stringify(input) }),
   updateTask: (id: string, input: Partial<TaskInput>) => request<Task>(`/api/tasks/${id}`, { method: 'PUT', body: JSON.stringify(input) }),
 };

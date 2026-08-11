@@ -2,6 +2,7 @@ import { flushPromises, mount } from "@vue/test-utils";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { api } from "../api/domain";
 import TopicDetailView from "./TopicDetailView.vue";
+import { protectedText } from "../e2ee/protected-text";
 vi.mock("vue-router", () => ({
   RouterLink: { template: "<a><slot /></a>" },
   useRoute: () => ({ params: { id: "topic-1" } }),
@@ -33,6 +34,7 @@ const topic: any = {
 describe("TopicDetailView", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    protectedText.state.status = "unlocked";
     vi.spyOn(api, "topic").mockResolvedValue(structuredClone(topic));
     vi.spyOn(api, "topicHistory").mockResolvedValue([]);
     vi.spyOn(api, "topicUpdates").mockResolvedValue([]);

@@ -98,8 +98,14 @@ describeWithPostgres('Meeting completion with PostgreSQL (integration)', () => {
       isDefault: true,
     });
     const topic = await database.getRepository(Topic).save({
-      name: 'Recorded topic',
-      description: null,
+      nameEnvelope: Buffer.from([1]),
+      nameCommitRevision: '1',
+      descriptionEnvelope: Buffer.from([2]),
+      descriptionCommitRevision: '1',
+      membershipProcessStatusEnvelope: Buffer.from([3]),
+      membershipProcessStatusCommitRevision: '1',
+      godparentsEnvelope: Buffer.from([4]),
+      godparentsCommitRevision: '1',
       type: 'generic',
       status: 'open',
       followUpDate: null,
@@ -128,7 +134,8 @@ describeWithPostgres('Meeting completion with PostgreSQL (integration)', () => {
       agendaNote: null,
       plannedDuration: 15,
       status: 'planned',
-      topicNameSnapshot: null,
+      topicNameSnapshotEnvelope: null,
+      topicNameSnapshotCommitRevision: null,
       responsibleUserDisplayNameSnapshot: null,
     });
   });
@@ -142,7 +149,7 @@ describeWithPostgres('Meeting completion with PostgreSQL (integration)', () => {
       .resolves.toMatchObject({ status: 'in_progress' });
     await expect(database.getRepository(MeetingTopic).findOneByOrFail({ id: appearance.id }))
       .resolves.toMatchObject({
-        topicNameSnapshot: null,
+        topicNameSnapshotEnvelope: null,
         responsibleUserDisplayNameSnapshot: null,
       });
   });
@@ -152,7 +159,8 @@ describeWithPostgres('Meeting completion with PostgreSQL (integration)', () => {
 
     await expect(database.getRepository(MeetingTopic).findOneByOrFail({ id: appearance.id }))
       .resolves.toMatchObject({
-        topicNameSnapshot: 'Recorded topic',
+        topicNameSnapshotEnvelope: Buffer.from([1]),
+        topicNameSnapshotCommitRevision: '1',
         responsibleUserDisplayNameSnapshot: 'Ada Lovelace',
       });
     await expect(service.complete(meeting.id, leader)).rejects.toMatchObject({
@@ -186,6 +194,9 @@ describeWithPostgres('Meeting completion with PostgreSQL (integration)', () => {
       response: expect.objectContaining({ code: 'MEETING_COMPLETED_IMMUTABLE' }),
     });
     await expect(database.getRepository(MeetingTopic).findOneByOrFail({ id: appearance.id }))
-      .resolves.toMatchObject({ agendaNote: null, topicNameSnapshot: 'Recorded topic' });
+      .resolves.toMatchObject({
+        agendaNote: null,
+        topicNameSnapshotEnvelope: Buffer.from([1]),
+      });
   });
 });

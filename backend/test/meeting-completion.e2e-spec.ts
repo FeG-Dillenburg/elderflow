@@ -17,6 +17,7 @@ import { TopicsController } from '../src/topics/topics.controller';
 import { TopicsService } from '../src/topics/topics.service';
 import { RecurrenceService } from '../src/recurrence/recurrence.service';
 import { TopicHistoryService } from '../src/topics/topic-history.service';
+import { E2eeScalarService } from '../src/e2ee/e2ee-scalar.service';
 
 const MEETING_ID = '00000000-0000-4000-8000-000000000001';
 const USER_ID = '00000000-0000-4000-8000-000000000002';
@@ -46,7 +47,16 @@ describe('Meeting completion lifecycle (e2e)', () => {
             return draft.meeting;
           }
           if (entity === Topic) {
-            return { id: TOPIC_ID, name: 'Recorded topic', responsibleUser: null };
+            return {
+              id: TOPIC_ID,
+              nameEnvelope: Buffer.from([1]),
+              nameCommitRevision: '1',
+              membershipProcessStatusEnvelope: Buffer.from([2]),
+              membershipProcessStatusCommitRevision: '1',
+              godparentsEnvelope: Buffer.from([3]),
+              godparentsCommitRevision: '1',
+              responsibleUser: null,
+            };
           }
           return null;
         }),
@@ -86,6 +96,10 @@ describe('Meeting completion lifecycle (e2e)', () => {
         MeetingsService,
         TopicsService,
         { provide: TopicHistoryService, useValue: { getHistory: jest.fn() } },
+        { provide: E2eeScalarService, useValue: {
+          assertContentUser: jest.fn(),
+          validateWrite: jest.fn(),
+        } },
         { provide: RecurrenceService, useValue: { reconcile: jest.fn(), nextDueDate: jest.fn() } },
         { provide: DataSource, useValue: dataSource },
         { provide: getRepositoryToken(Meeting), useValue: repository },
@@ -100,7 +114,7 @@ describe('Meeting completion lifecycle (e2e)', () => {
     snapshots = module.get(MeetingSnapshotRegistry);
     app = module.createNestApplication({ logger: false });
     app.use((request_: any, _response: any, next: () => void) => {
-      request_.user = { id: USER_ID };
+      request_.user = { id: USER_ID, role: 'user' };
       next();
     });
     await app.init();
@@ -120,11 +134,17 @@ describe('Meeting completion lifecycle (e2e)', () => {
       id: APPEARANCE_ID,
       meetingId: MEETING_ID,
       topicId: TOPIC_ID,
-      topicNameSnapshot: null,
+      topicNameSnapshotEnvelope: null,
+      topicNameSnapshotCommitRevision: null,
       responsibleUserDisplayNameSnapshot: null,
       topic: {
         id: TOPIC_ID,
-        name: 'Recorded topic',
+        nameEnvelope: Buffer.from([1]),
+        nameCommitRevision: '1',
+        membershipProcessStatusEnvelope: Buffer.from([2]),
+        membershipProcessStatusCommitRevision: '1',
+        godparentsEnvelope: Buffer.from([3]),
+        godparentsCommitRevision: '1',
         responsibleUser: { firstName: 'Ada', lastName: 'Lovelace' },
       },
     }];
@@ -138,7 +158,7 @@ describe('Meeting completion lifecycle (e2e)', () => {
       .expect(500);
 
     expect(state.meeting.status).toBe('in_progress');
-    expect(state.appearances[0].topicNameSnapshot).toBeNull();
+    expect(state.appearances[0].topicNameSnapshotEnvelope).toBeNull();
   });
 
   it('atomically snapshots and completes once using a pessimistic Meeting lock', async () => {
@@ -149,7 +169,7 @@ describe('Meeting completion lifecycle (e2e)', () => {
 
     expect(state.meeting.status).toBe('completed');
     expect(state.appearances[0]).toMatchObject({
-      topicNameSnapshot: 'Recorded topic',
+      topicNameSnapshotEnvelope: Buffer.from([1]),
       responsibleUserDisplayNameSnapshot: 'Ada Lovelace',
     });
     expect(lockQueries).toContainEqual(expect.objectContaining({

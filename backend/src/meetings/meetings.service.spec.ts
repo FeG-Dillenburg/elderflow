@@ -1,8 +1,10 @@
 import { BadRequestException, ConflictException, ForbiddenException, NotFoundException } from "@nestjs/common";
 import { In, LessThan, QueryFailedError } from "typeorm";
 import { MeetingsService } from "./meetings.service";
+import { User } from "../users/user.entity";
 
 describe("MeetingsService", () => {
+  const viewer = { id: "viewer", role: "user" } as User;
   const manager = {
     save: jest.fn(),
     create: jest.fn(),
@@ -90,7 +92,12 @@ describe("MeetingsService", () => {
       id: "appearance",
       agendaNote: "Appearance-owned note",
       topic: {
-        name: "Current topic name",
+        nameEnvelope: Buffer.from([1]),
+        nameCommitRevision: "2",
+        membershipProcessStatusEnvelope: Buffer.from([2]),
+        membershipProcessStatusCommitRevision: "3",
+        godparentsEnvelope: Buffer.from([3]),
+        godparentsCommitRevision: "4",
         responsibleUser: { firstName: "Ada", lastName: "Lovelace" },
       },
     };
@@ -103,7 +110,10 @@ describe("MeetingsService", () => {
     expect(meeting.status).toBe("completed");
     expect(appearance).toMatchObject({
       agendaNote: "Appearance-owned note",
-      topicNameSnapshot: "Current topic name",
+      topicNameSnapshotEnvelope: Buffer.from([1]),
+      topicNameSnapshotCommitRevision: "2",
+      membershipProcessStatusSnapshotEnvelope: Buffer.from([2]),
+      godparentsSnapshotEnvelope: Buffer.from([3]),
       responsibleUserDisplayNameSnapshot: "Ada Lovelace",
     });
     expect(manager.save).toHaveBeenCalledWith(expect.anything(), [appearance]);
@@ -132,7 +142,7 @@ describe("MeetingsService", () => {
   it("collects type-specific snapshots inside the centralized completion transaction", async () => {
     const extensibleSnapshots = {
       apply: jest.fn(async (appearance) => {
-        Object.assign(appearance, { membershipProcessStatusSnapshot: "Nearly ready" });
+        Object.assign(appearance, { membershipStatusSignalSnapshot: "nearly_finished" });
       }),
     };
     const extensibleService = new MeetingsService(
@@ -155,7 +165,15 @@ describe("MeetingsService", () => {
     };
     const appearance = {
       id: "appearance",
-      topic: { name: "Membership", responsibleUser: null },
+      topic: {
+        nameEnvelope: Buffer.from([1]),
+        nameCommitRevision: "1",
+        membershipProcessStatusEnvelope: Buffer.from([2]),
+        membershipProcessStatusCommitRevision: "1",
+        godparentsEnvelope: Buffer.from([3]),
+        godparentsCommitRevision: "1",
+        responsibleUser: null,
+      },
     };
     manager.findOne.mockResolvedValue(meeting);
     manager.find.mockResolvedValue([appearance]);
@@ -165,7 +183,7 @@ describe("MeetingsService", () => {
     expect(extensibleSnapshots.apply).toHaveBeenCalledWith(appearance, appearance.topic, manager);
     expect(appearance).toMatchObject({
       responsibleUserDisplayNameSnapshot: null,
-      membershipProcessStatusSnapshot: "Nearly ready",
+      membershipStatusSignalSnapshot: "nearly_finished",
     });
   });
 
@@ -176,7 +194,7 @@ describe("MeetingsService", () => {
     ["agenda membership", () => service.addTopic("meeting", { topicId: "topic", sectionId: "section" } as any)],
     ["agenda ordering", () => service.reorderTopics("meeting", [])],
     ["agenda values", () => service.updateTopic("meeting", "appearance", { plannedDuration: 20 } as any)],
-    ["Topic type fields", () => service.updateTopicFields("meeting", "appearance", { membershipProcessStatus: "changed" })],
+    ["Topic type fields", () => service.updateTopicFields("meeting", "appearance", { membershipStatusSignal: "attention" }, viewer)],
     ["preparation context", () => service.updatePreparationContext("meeting", "appearance", "changed", 0)],
     ["agenda removal", () => service.removeTopic("meeting", "appearance")],
   ])("rejects changes to completed %s with a stable error", async (_label, mutate) => {
@@ -194,27 +212,49 @@ describe("MeetingsService", () => {
       membershipProcessStatus: "Earlier",
       membershipStatusSignal: "new",
       godparents: null,
+      nameEnvelope: Buffer.from([1]),
+      nameCommitRevision: "1",
+      descriptionEnvelope: Buffer.from([2]),
+      descriptionCommitRevision: "1",
+      membershipProcessStatusEnvelope: Buffer.from([3]),
+      membershipProcessStatusCommitRevision: "1",
+      godparentsEnvelope: Buffer.from([4]),
+      godparentsCommitRevision: "1",
+      secretRelation: { plaintext: "must not escape" },
     };
     manager.findOne
       .mockResolvedValueOnce({ id: "meeting", status: "in_progress" })
       .mockResolvedValueOnce(topic)
-      .mockResolvedValueOnce({ ...topic, membershipProcessStatus: "Current" });
+      .mockResolvedValueOnce({
+        ...topic,
+        membershipProcessStatus: "Current",
+        membershipStatusSignal: "attention",
+      });
     manager.findOneBy.mockResolvedValue({
       id: "appearance",
       meetingId: "meeting",
       topicId: "topic",
     });
 
-    await expect(service.updateTopicFields("meeting", "appearance", {
-      membershipProcessStatus: "Current",
-    })).resolves.toMatchObject({ membershipProcessStatus: "Current" });
+    const response = await service.updateTopicFields("meeting", "appearance", {
+      membershipStatusSignal: "attention",
+    }, viewer);
+    expect(response).toMatchObject({
+      id: "topic",
+      membershipStatusSignal: "attention",
+      protected: {
+        nameEnvelope: expect.any(String),
+        descriptionEnvelope: expect.any(String),
+      },
+    });
+    expect(response).not.toHaveProperty("secretRelation");
     expect(manager.findOneBy).toHaveBeenCalledWith(expect.anything(), {
       id: "appearance",
       meetingId: "meeting",
     });
     expect(manager.save).toHaveBeenCalledWith(
       expect.anything(),
-      expect.objectContaining({ membershipProcessStatus: "Current" }),
+      expect.objectContaining({ membershipStatusSignal: "attention" }),
     );
   });
 
@@ -375,19 +415,19 @@ describe("MeetingsService", () => {
     )).resolves.toMatchObject({
       preparationContext: expect.objectContaining({ id: "appearance" }),
       personNote: null,
-      meetingMinutes: { text: "First Minutes", version: 1 },
+      meetingMinutes: expect.objectContaining({ text: "First Minutes", version: 1 }),
     });
     expect(manager.create).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
       topicId: "topic",
       meetingId: "meeting",
-      text: "First Minutes",
+      meetingText: "First Minutes",
       type: "minute",
       createdById: "taker",
       version: 1,
     }));
 
-    const earlier = { id: "earlier", date: new Date("2026-07-23T18:00:00Z"), text: "Earlier", version: 0 };
-    const current = { id: "current", date: new Date("2026-07-23T19:00:00Z"), text: "Current", version: 3 };
+    const earlier = { id: "earlier", date: new Date("2026-07-23T18:00:00Z"), meetingText: "Earlier", version: 0 };
+    const current = { id: "current", date: new Date("2026-07-23T19:00:00Z"), meetingText: "Current", version: 3 };
     manager.findOne
       .mockResolvedValueOnce(meeting)
       .mockResolvedValueOnce(appearance);
@@ -401,7 +441,7 @@ describe("MeetingsService", () => {
     )).resolves.toMatchObject({
       meetingMinutes: { id: "current", text: "Revised", version: 4 },
     });
-    expect(earlier.text).toBe("Earlier");
+    expect(earlier.meetingText).toBe("Earlier");
   });
 
   it("scopes the appearance lock so PostgreSQL can save Meeting minutes through the Topic join", async () => {
@@ -445,10 +485,7 @@ describe("MeetingsService", () => {
       { text: "Recorded Minutes", version: null },
       { id: "leader" } as any,
     )).resolves.toMatchObject({
-      meetingMinutes: {
-        text: "Recorded Minutes",
-        version: 1,
-      },
+      meetingMinutes: expect.objectContaining({ text: "Recorded Minutes", version: 1 }),
     });
   });
 
@@ -558,7 +595,7 @@ describe("MeetingsService", () => {
     meetingTopics.find.mockResolvedValue(agenda);
     updates.find.mockResolvedValue([{ topicId: "one" }]);
     tasks.find.mockResolvedValue([{ topicId: "two" }]);
-    const result = await service.findOne("meeting");
+    const result = await service.findOne("meeting", viewer);
     const loadedAgenda = result.agenda as any[];
     expect(loadedAgenda[0].topic.updates).toHaveLength(1);
     expect(loadedAgenda[0].topic.tasks).toHaveLength(0);
@@ -575,7 +612,7 @@ describe("MeetingsService", () => {
     });
     meetings.findOne.mockResolvedValue({ id: "empty" });
     meetingTopics.find.mockResolvedValue([]);
-    await service.findOne("empty");
+    await service.findOne("empty", viewer);
     expect(updates.find).toHaveBeenCalledTimes(1);
     expect(tasks.find).toHaveBeenCalledTimes(1);
   });
@@ -604,7 +641,7 @@ describe("MeetingsService", () => {
         topicId: "generic",
         meetingId: "meeting",
         date: new Date("2026-07-23T18:00:00Z"),
-        text: "Older Minutes",
+        meetingText: "Older Minutes",
         version: 0,
       },
       {
@@ -612,13 +649,13 @@ describe("MeetingsService", () => {
         topicId: "generic",
         meetingId: "meeting",
         date: new Date("2026-07-23T19:00:00Z"),
-        text: "Current Minutes",
+        meetingText: "Current Minutes",
         version: 3,
       },
     ]);
     tasks.find.mockResolvedValue([]);
 
-    const result = await service.findOne("meeting");
+    const result = await service.findOne("meeting", viewer);
 
     expect(result.agenda[0]).toMatchObject({
       preparationContext: {
@@ -689,7 +726,7 @@ describe("MeetingsService", () => {
         topicId: "topic",
         meetingId: "previous-meeting",
         type: "minute",
-        text: "Latest Meeting minutes",
+        meetingText: "Latest Meeting minutes",
         date: new Date("2026-07-23T20:30:00Z"),
       },
       {
@@ -697,13 +734,13 @@ describe("MeetingsService", () => {
         topicId: "topic",
         meetingId: "older-meeting",
         type: "minute",
-        text: "Older Meeting minutes",
+        meetingText: "Older Meeting minutes",
         date: new Date("2026-07-16T20:30:00Z"),
       },
     ]);
     tasks.find.mockResolvedValue([]);
 
-    const result = await service.findOne("meeting");
+    const result = await service.findOne("meeting", viewer);
 
     expect(result.agenda[0]).toMatchObject({
       previousMeetingTexts: {
@@ -734,10 +771,22 @@ describe("MeetingsService", () => {
     const appearance: any = {
       id: "appearance",
       topicId: "topic",
-      topicNameSnapshot: "Recorded name",
+      topicNameSnapshotEnvelope: Buffer.from([11]),
+      topicNameSnapshotCommitRevision: "4",
+      membershipProcessStatusSnapshotEnvelope: Buffer.from([12]),
+      membershipProcessStatusSnapshotCommitRevision: "5",
+      godparentsSnapshotEnvelope: Buffer.from([13]),
+      godparentsSnapshotCommitRevision: "6",
       responsibleUserDisplayNameSnapshot: "Recorded Owner",
       topic: {
-        name: "Later live name",
+        nameEnvelope: Buffer.from([1]),
+        nameCommitRevision: "7",
+        descriptionEnvelope: Buffer.from([2]),
+        descriptionCommitRevision: "7",
+        membershipProcessStatusEnvelope: Buffer.from([3]),
+        membershipProcessStatusCommitRevision: "7",
+        godparentsEnvelope: Buffer.from([4]),
+        godparentsCommitRevision: "7",
         responsibleUser: { firstName: "Later", lastName: "Owner" },
       },
     };
@@ -747,19 +796,26 @@ describe("MeetingsService", () => {
     updates.find.mockResolvedValue([]);
     tasks.find.mockResolvedValue([]);
 
-    const result = await service.findOne("meeting");
+    const result = await service.findOne("meeting", viewer);
 
-    expect(result.agenda[0].topic).toMatchObject({ name: "Recorded name" });
+    expect(result.agenda[0].topic).toMatchObject({
+      protected: expect.objectContaining({ nameEnvelope: "AQ" }),
+    });
+    expect((result.agenda[0] as any).protectedSnapshot).toMatchObject({
+      nameEnvelope: "Cw",
+      membershipProcessStatusEnvelope: "DA",
+      godparentsEnvelope: "DQ",
+    });
     expect(result.agenda[0].topic?.responsibleUser).toBeNull();
     expect(result.agenda[0].responsibleUserDisplayNameSnapshot).toBe("Recorded Owner");
   });
 
-  it("returns only this Meeting's Minutes entries for a completed Meeting while retaining open tasks", async () => {
+  it("returns only standalone protected updates for a completed Meeting while retaining open tasks", async () => {
     const appearance: any = {
       id: "appearance",
       topicId: "topic",
-      topicNameSnapshot: "Recorded name",
-      topic: { name: "Live name" },
+      topicNameSnapshotEnvelope: Buffer.from([11]),
+      topic: { nameEnvelope: Buffer.from([1]) },
     };
     const ownMinute = { id: "own-minute", topicId: "topic", meetingId: "meeting", type: "minute" };
     const laterStandaloneUpdate = { id: "later-update", topicId: "topic", meetingId: null, type: "update" };
@@ -771,15 +827,20 @@ describe("MeetingsService", () => {
     updates.find.mockResolvedValue([laterStandaloneUpdate, otherMeetingMinute, ownMinute]);
     tasks.find.mockResolvedValue([openTask]);
 
-    const result = await service.findOne("meeting");
+    const result = await service.findOne("meeting", viewer);
 
-    expect((result.agenda[0].topic as any).updates).toEqual([ownMinute]);
+    expect((result.agenda[0].topic as any).updates).toEqual([
+      expect.objectContaining({
+        id: "later-update",
+        protected: null,
+      }),
+    ]);
     expect((result.agenda[0].topic as any).tasks).toEqual([openTask]);
   });
 
   it("rejects missing meetings when finding details", async () => {
     meetings.findOne.mockResolvedValue(null);
-    await expect(service.findOne("missing")).rejects.toThrow(NotFoundException);
+    await expect(service.findOne("missing", viewer)).rejects.toThrow(NotFoundException);
   });
   it("reconciles recurring Topics after Meeting creation", async () => {
     manager.create.mockImplementation((_type, value) => value);
@@ -928,6 +989,26 @@ describe("MeetingsService", () => {
       ([type]: [any]) => type.name === "MeetingTopic",
     )).toBe(false);
   });
+  it("leaves recurring appearance content unavailable until the encrypted Meeting workspace initializes it", async () => {
+    manager.findOne.mockImplementation(async (type: any) => type.name === "Meeting"
+      ? {
+        id: "meeting",
+        status: "planned",
+        date: "2026-07-22",
+        beginTime: "19:30:00",
+      }
+      : { id: "recurring", type: "recurring" });
+    manager.findOneBy.mockImplementation(async (type: any) => {
+      if (type.name === "AgendaSection") return { id: "section" };
+      return null;
+    });
+    manager.find.mockResolvedValue([]);
+
+    await expect(service.addTopic("meeting", {
+      topicId: "recurring",
+      sectionId: "section",
+    } as any)).resolves.toMatchObject({ agendaNote: null });
+  });
   it("inserts an explicitly positioned topic transactionally and shifts later rows", async () => {
     manager.findOne.mockImplementation(async (type: any) => type.name === "Meeting"
       ? { id: "meeting", status: "planned" }
@@ -1024,7 +1105,7 @@ describe("MeetingsService", () => {
     ]);
     recurrence.nextDueDate.mockImplementation((topic: any) =>
       topic.id === "recurring-due" ? "2026-07-20" : "2026-08-01");
-    await expect(service.suggestions("meeting")).resolves.toEqual([
+    await expect(service.suggestions("meeting", false, viewer)).resolves.toMatchObject([
       { id: "available", type: "generic", followUpDate: null },
       { id: "follow-up-due", type: "generic", followUpDate: "2026-07-20" },
       {
@@ -1033,7 +1114,7 @@ describe("MeetingsService", () => {
         nextDueDate: "2026-07-20",
       },
     ]);
-    await expect(service.suggestions("meeting", true)).resolves.toEqual([
+    await expect(service.suggestions("meeting", true, viewer)).resolves.toMatchObject([
       { id: "follow-up-future", type: "generic", followUpDate: "2026-07-21" },
       {
         id: "recurring-future",
@@ -1047,7 +1128,7 @@ describe("MeetingsService", () => {
       order: { followUpDate: "ASC", updatedAt: "DESC" },
     });
     meetings.findOneBy.mockResolvedValue(null);
-    await expect(service.suggestions("missing")).rejects.toThrow(
+    await expect(service.suggestions("missing", false, viewer)).rejects.toThrow(
       NotFoundException,
     );
   });

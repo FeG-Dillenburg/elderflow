@@ -4,23 +4,19 @@ import { Topic } from './topic.entity';
 import { NewMembershipSnapshotContributor } from './new-membership-snapshot.contributor';
 
 describe('NewMembershipSnapshotContributor', () => {
-  it('captures membership values through the centralized snapshot registry', async () => {
+  it('copies only the structural membership signal', async () => {
     const registry = new MeetingSnapshotRegistry();
     new NewMembershipSnapshotContributor(registry).onModuleInit();
     const appearance = {} as MeetingTopic;
     const topic = {
       type: 'new_membership',
-      membershipProcessStatus: 'Membership class booked',
       membershipStatusSignal: 'in_progress',
-      godparents: 'Taylor and Robin',
-    } as Topic;
+    } as unknown as Topic;
 
     await registry.apply(appearance, topic, {} as any);
 
     expect(appearance).toMatchObject({
-      membershipProcessStatusSnapshot: 'Membership class booked',
       membershipStatusSignalSnapshot: 'in_progress',
-      godparentsSnapshot: 'Taylor and Robin',
     });
   });
 
@@ -32,9 +28,7 @@ describe('NewMembershipSnapshotContributor', () => {
     await registry.apply(appearance, { type: 'person' } as Topic, {} as any);
 
     expect(appearance).toMatchObject({
-      membershipProcessStatusSnapshot: null,
       membershipStatusSignalSnapshot: null,
-      godparentsSnapshot: null,
     });
   });
 });

@@ -1,4 +1,5 @@
 import {
+  IsDefined,
   IsIn,
   IsInt,
   IsNotEmpty,
@@ -7,8 +8,10 @@ import {
   IsUUID,
   Min,
   registerDecorator,
+  ValidateNested,
   ValidationArguments,
 } from 'class-validator';
+import { Type } from 'class-transformer';
 import {
   MEMBERSHIP_STATUS_SIGNALS,
   MembershipStatusSignal,
@@ -32,17 +35,30 @@ const IsNewMembershipField = () =>
     });
   };
 
+export class TopicEncryptedScalarsDto {
+  @IsString() @IsNotEmpty() nameEnvelope: string;
+  @IsString() @IsNotEmpty() descriptionEnvelope: string;
+  @IsString() @IsNotEmpty() membershipProcessStatusEnvelope: string;
+  @IsString() @IsNotEmpty() godparentsEnvelope: string;
+}
+
+export class TopicEncryptedScalarPatchDto {
+  @IsOptional() @IsString() @IsNotEmpty() nameEnvelope?: string;
+  @IsOptional() @IsString() @IsNotEmpty() descriptionEnvelope?: string;
+  @IsOptional() @IsString() @IsNotEmpty() membershipProcessStatusEnvelope?: string;
+  @IsOptional() @IsString() @IsNotEmpty() godparentsEnvelope?: string;
+}
+
 export class TopicDto {
-  @IsString() @IsNotEmpty() name: string;
-  @IsOptional() @IsString() description?: string | null;
+  @IsUUID() id: string;
+  @IsDefined() @ValidateNested() @Type(() => TopicEncryptedScalarsDto)
+  protected: TopicEncryptedScalarsDto;
   @IsString() type: TopicType;
   @IsIn(TOPIC_STATUSES) status: string;
   @IsOptional() @IsString() followUpDate?: string | null;
   @IsOptional() @IsUUID() responsibleUserId?: string | null;
-  @IsOptional() @IsString() @IsNewMembershipField() membershipProcessStatus?: string | null;
   @IsOptional() @IsIn(MEMBERSHIP_STATUS_SIGNALS) @IsNewMembershipField()
   membershipStatusSignal?: MembershipStatusSignal | null;
-  @IsOptional() @IsString() @IsNewMembershipField() godparents?: string | null;
   @IsOptional() @IsUUID() defaultSectionId?: string | null;
   @IsOptional() @IsInt() @Min(1) defaultPosition?: number | null;
   @IsOptional() @IsString() recurrenceFirstDueDate?: string | null;
@@ -51,15 +67,13 @@ export class TopicDto {
 }
 
 export class TopicPatchDto {
-  @IsOptional() @IsString() @IsNotEmpty() name?: string;
-  @IsOptional() @IsString() description?: string | null;
+  @IsOptional() @ValidateNested() @Type(() => TopicEncryptedScalarPatchDto)
+  protected?: TopicEncryptedScalarPatchDto;
   @IsOptional() @IsString() type?: TopicType;
   @IsOptional() @IsIn(TOPIC_STATUSES) status?: string;
   @IsOptional() @IsString() followUpDate?: string | null;
   @IsOptional() @IsUUID() responsibleUserId?: string | null;
-  @IsOptional() @IsString() membershipProcessStatus?: string | null;
   @IsOptional() @IsIn(MEMBERSHIP_STATUS_SIGNALS) membershipStatusSignal?: MembershipStatusSignal | null;
-  @IsOptional() @IsString() godparents?: string | null;
   @IsOptional() @IsUUID() defaultSectionId?: string | null;
   @IsOptional() @IsInt() @Min(1) defaultPosition?: number | null;
   @IsOptional() @IsString() recurrenceFirstDueDate?: string | null;
@@ -67,10 +81,7 @@ export class TopicPatchDto {
   @IsOptional() @IsIn(RECURRENCE_UNITS) recurrenceUnit?: RecurrenceUnit | null;
 }
 
-type MembershipFieldNames =
-  | 'membershipProcessStatus'
-  | 'membershipStatusSignal'
-  | 'godparents';
+type MembershipFieldNames = 'membershipStatusSignal';
 
 type RecurrenceFieldNames =
   | 'recurrenceFirstDueDate'
@@ -82,9 +93,7 @@ type CommonTopicDto = Omit<TopicDto, 'type' | MembershipFieldNames | RecurrenceF
 export type DiscriminatedTopicDto = CommonTopicDto & (
   | {
       type: 'new_membership';
-      membershipProcessStatus?: string | null;
       membershipStatusSignal?: MembershipStatusSignal | null;
-      godparents?: string | null;
       recurrenceFirstDueDate?: null;
       recurrenceInterval?: null;
       recurrenceUnit?: null;
@@ -96,15 +105,11 @@ export type DiscriminatedTopicDto = CommonTopicDto & (
       recurrenceFirstDueDate: string;
       recurrenceInterval: number;
       recurrenceUnit: RecurrenceUnit;
-      membershipProcessStatus?: null;
       membershipStatusSignal?: null;
-      godparents?: null;
     }
   | {
       type: Exclude<TopicType, 'new_membership' | 'recurring'>;
-      membershipProcessStatus?: null;
       membershipStatusSignal?: null;
-      godparents?: null;
       recurrenceFirstDueDate?: null;
       recurrenceInterval?: null;
       recurrenceUnit?: null;
@@ -113,13 +118,12 @@ export type DiscriminatedTopicDto = CommonTopicDto & (
 
 export class UpdateTopicFieldsDto {
   @IsOptional() @IsUUID() responsibleUserId?: string | null;
-  @IsOptional() @IsString() membershipProcessStatus?: string | null;
   @IsOptional() @IsIn(MEMBERSHIP_STATUS_SIGNALS) membershipStatusSignal?: MembershipStatusSignal;
-  @IsOptional() @IsString() godparents?: string | null;
 }
 
 export class TopicUpdateDto {
-  @IsString() @IsNotEmpty() text: string;
+  @IsUUID() id: string;
+  @IsString() @IsNotEmpty() textEnvelope: string;
   @IsOptional() @IsString() type?: string;
   @IsOptional() @IsUUID() meetingId?: string | null;
 }

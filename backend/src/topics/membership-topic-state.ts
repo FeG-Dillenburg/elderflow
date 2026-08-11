@@ -8,7 +8,7 @@ import {
 
 type MembershipTopicState = Pick<
   Topic,
-  'membershipProcessStatus' | 'membershipStatusSignal' | 'godparents'
+  'membershipStatusSignal'
 >;
 
 export const normalizedMembershipTopicState = (
@@ -18,16 +18,12 @@ export const normalizedMembershipTopicState = (
   defaultSignal = false,
 ): Partial<MembershipTopicState> => {
   const fields: MembershipTopicState = {
-    membershipProcessStatus: input.membershipProcessStatus ?? null,
     membershipStatusSignal: input.membershipStatusSignal ?? null,
-    godparents: input.godparents ?? null,
   };
   if (type !== 'new_membership') {
     if (converting) {
       return {
-        membershipProcessStatus: null,
         membershipStatusSignal: null,
-        godparents: null,
       };
     }
     if (Object.values(fields).some((value) => value !== null)) {

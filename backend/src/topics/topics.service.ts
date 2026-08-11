@@ -1,6 +1,6 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { FindOptionsWhere, In, Repository } from 'typeorm';
+import { FindOptionsWhere, In, IsNull, Repository } from 'typeorm';
 import { User } from '../users/user.entity';
 import { DiscriminatedTopicDto, TopicUpdateDto } from './dto/topic.dto';
 import { TOPIC_TYPES, Topic, TopicType } from './topic.entity';
@@ -10,6 +10,13 @@ import { MeetingTopic } from '../meetings/meeting-topic.entity';
 import { normalizedMembershipTopicState } from './membership-topic-state';
 import { RecurrenceService } from '../recurrence/recurrence.service';
 import { SkippedRecurrence } from '../recurrence/skipped-recurrence.entity';
+import { E2eeScalarService } from '../e2ee/e2ee-scalar.service';
+import { topicResponse, topicUpdateResponse } from './topic-response';
+import {
+  SCALAR_AGGREGATES,
+  TOPIC_SCALAR_FIELDS,
+  UPDATE_SCALAR_FIELDS,
+} from '../e2ee/scalar-registry';
 
 @Injectable()
 export class TopicsService {
@@ -18,9 +25,10 @@ export class TopicsService {
     @InjectRepository(TopicUpdate) private readonly updates: Repository<TopicUpdate>,
     @InjectRepository(MeetingTopic) private readonly appearances: Repository<MeetingTopic>,
     private readonly recurrence: RecurrenceService,
+    private readonly scalars: E2eeScalarService,
   ) {}
 
-  async findAll(filters: { status?: string; type?: string; responsibleUserId?: string; defaultSectionId?: string; dueOn?: string }): Promise<Topic[]> {
+  async findAll(filters: { status?: string; type?: string; responsibleUserId?: string; defaultSectionId?: string; dueOn?: string }, user: User) {
     const where: FindOptionsWhere<Topic> = {};
     if (filters.status) where.status = filters.status === 'active' ? In(['open', 'deferred']) : filters.status;
     if (filters.type) {
@@ -31,14 +39,19 @@ export class TopicsService {
     if (filters.defaultSectionId) where.defaultSectionId = filters.defaultSectionId;
     const topics = await this.topics.find({ where, relations: { responsibleUser: true, defaultSection: true }, order: { updatedAt: 'DESC' } });
     await Promise.all(topics.map((topic) => this.attachNextDueDate(topic)));
-    return filters.dueOn
+    const filtered = filters.dueOn
       ? topics.filter((topic) => topic.type === 'recurring'
         ? Boolean(topic.nextDueDate && topic.nextDueDate <= filters.dueOn!)
         : Boolean(topic.followUpDate && topic.followUpDate <= filters.dueOn!))
       : topics;
+    return filtered.map((topic) => topicResponse(topic, user));
   }
 
-  async findOne(id: string): Promise<Topic> {
+  async findOne(id: string, user: User) {
+    return topicResponse(await this.findOneEntity(id), user);
+  }
+
+  private async findOneEntity(id: string): Promise<Topic> {
     const topic = await this.topics.findOne({
       where: { id },
       relations: { responsibleUser: true, defaultSection: true },
@@ -48,23 +61,55 @@ export class TopicsService {
     return topic;
   }
 
-  async create(input: DiscriminatedTopicDto): Promise<Topic> {
+  async create(input: DiscriminatedTopicDto, user: User) {
+    this.scalars.assertContentUser(user);
     this.assertSupportedType(input.type);
     this.assertRecurrenceConfiguration(input.type, input);
     return this.topics.manager.transaction(async (manager) => {
       const topics = manager.getRepository(Topic);
+      const existing = await topics.findOne({
+        where: { id: input.id },
+        relations: { responsibleUser: true, defaultSection: true },
+      });
+      if (existing) {
+        const encryptedRetry = await this.validateTopicScalars(
+          manager,
+          user,
+          input.id,
+          input.protected,
+          existing,
+        );
+        if (Object.keys(encryptedRetry).length || !this.sameCreateStructure(existing, input)) {
+          throw codedHttpException(
+            HttpStatus.CONFLICT,
+            'TOPIC_CREATE_RETRY_MISMATCH',
+            'Topic create identifier was retried with different content',
+          );
+        }
+        return topicResponse(existing, user);
+      }
       const values = normalizedMembershipTopicState(input.type, input, false, true);
+      const encrypted = await this.validateTopicScalars(
+        manager,
+        user,
+        input.id,
+        input.protected,
+        null,
+      );
+      const { protected: _protected, ...structural } = input;
       const topic = await topics.save(topics.create({
-        ...input,
+        ...structural,
         ...values,
+        ...encrypted,
         ...this.normalizedRecurrenceState(input.type, input),
       }));
       await this.recurrence.reconcile(manager);
-      return topic;
+      return topicResponse(topic, user);
     });
   }
 
-  async update(id: string, input: Partial<DiscriminatedTopicDto>): Promise<Topic> {
+  async update(id: string, input: Partial<DiscriminatedTopicDto>, user: User) {
+    this.scalars.assertContentUser(user);
     return this.topics.manager.transaction(async (manager) => {
       const topics = manager.getRepository(Topic);
       const topic = await topics.findOne({
@@ -93,14 +138,26 @@ export class TopicsService {
       const candidate = { ...topic, ...input };
       this.assertRecurrenceConfiguration(effectiveType, candidate);
       const typeState = normalizedMembershipTopicState(effectiveType, candidate, converted, converted);
+      if (converted && (!input.protected?.membershipProcessStatusEnvelope || !input.protected.godparentsEnvelope)) {
+        throw codedHttpException(
+          HttpStatus.BAD_REQUEST,
+          'E2EE_TOPIC_TYPE_SCALARS_REQUIRED',
+          'Topic type changes require fresh encrypted membership scalars',
+        );
+      }
+      const encrypted = input.protected
+        ? await this.validateTopicScalars(manager, user, id, input.protected, topic)
+        : {};
+      const { protected: _protected, ...structural } = input;
       const saved = await topics.save(Object.assign(
         topic,
-        input,
+        structural,
         typeState,
+        encrypted,
         this.normalizedRecurrenceState(effectiveType, candidate),
       ));
       await this.recurrence.reconcile(manager);
-      return saved;
+      return topicResponse(saved, user);
     });
   }
 
@@ -163,12 +220,14 @@ export class TopicsService {
     );
   }
 
-  async getUpdates(topicId: string): Promise<TopicUpdate[]> {
-    await this.findOne(topicId);
-    return this.updates.find({ where: { topicId }, relations: { createdBy: true, meeting: true }, order: { date: 'DESC' } });
+  async getUpdates(topicId: string, user: User) {
+    await this.findOneEntity(topicId);
+    const updates = await this.updates.find({ where: { topicId, meetingId: IsNull() }, relations: { createdBy: true }, order: { date: 'DESC' } });
+    return updates.map((update) => topicUpdateResponse(update, user));
   }
 
-  async addUpdate(topicId: string, input: TopicUpdateDto, user: User): Promise<TopicUpdate> {
+  async addUpdate(topicId: string, input: TopicUpdateDto, user: User) {
+    this.scalars.assertContentUser(user);
     if (input.meetingId) {
       throw codedHttpException(
         HttpStatus.BAD_REQUEST,
@@ -183,19 +242,127 @@ export class TopicsService {
       });
       if (!topic) throw codedHttpException(HttpStatus.NOT_FOUND, 'TOPIC_NOT_FOUND', 'Topic not found');
       const updates = manager.getRepository(TopicUpdate);
-      return updates.save(updates.create({ ...input, topicId, createdById: user.id, date: new Date() }));
+      const existing = await updates.findOne({
+        where: { id: input.id },
+        relations: { createdBy: true },
+      });
+      const scalar = await this.scalars.validateWrite(
+        manager,
+        user,
+        {
+          aggregateType: SCALAR_AGGREGATES.update,
+          recordId: input.id,
+          fieldId: UPDATE_SCALAR_FIELDS.text,
+        },
+        input.textEnvelope,
+        existing?.textCommitRevision ?? null,
+      );
+      if (existing) {
+        if (!scalar.duplicate
+          || existing.topicId !== topicId
+          || existing.meetingId !== null
+          || existing.type !== (input.type ?? 'update')) {
+          throw codedHttpException(
+            HttpStatus.CONFLICT,
+            'TOPIC_UPDATE_RETRY_MISMATCH',
+            'Topic Update identifier was retried with different content',
+          );
+        }
+        return topicUpdateResponse(existing, user);
+      }
+      const update = await updates.save(updates.create({
+        id: input.id,
+        topicId,
+        createdById: user.id,
+        date: new Date(),
+        type: input.type ?? 'update',
+        meetingId: null,
+        textEnvelope: scalar.envelope,
+        textCommitRevision: scalar.commitRevision,
+      }));
+      return topicUpdateResponse(update, user);
     });
   }
 
-  async getAppearances(topicId: string): Promise<MeetingTopic[]> {
-    await this.findOne(topicId);
-    return this.appearances.find({
+  private async validateTopicScalars(
+    manager: Parameters<E2eeScalarService['validateWrite']>[0],
+    user: User,
+    recordId: string,
+    input: Partial<DiscriminatedTopicDto['protected']>,
+    current: Topic | null,
+  ): Promise<Partial<Topic>> {
+    const result: Partial<Topic> = {};
+    for (const { envelopeProperty, revisionProperty, fieldId } of Object.values(TOPIC_SCALAR_FIELDS)) {
+      const encoded = input[envelopeProperty];
+      if (!encoded) continue;
+      const write = await this.scalars.validateWrite(
+        manager,
+        user,
+        { aggregateType: SCALAR_AGGREGATES.topic, recordId, fieldId },
+        encoded,
+        current ? String(current[revisionProperty]) : null,
+      );
+      if (!write.duplicate || !current) {
+        Object.assign(result, {
+          [envelopeProperty]: write.envelope,
+          [revisionProperty]: write.commitRevision,
+        });
+      }
+    }
+    return result;
+  }
+
+  private sameCreateStructure(topic: Topic, input: DiscriminatedTopicDto): boolean {
+    const fields = [
+      'type',
+      'status',
+      'followUpDate',
+      'responsibleUserId',
+      'membershipStatusSignal',
+      'defaultSectionId',
+      'defaultPosition',
+      'recurrenceFirstDueDate',
+      'recurrenceInterval',
+      'recurrenceUnit',
+    ] as const;
+    return fields.every((field) => (topic[field] ?? null) === (input[field] ?? null));
+  }
+
+  async getAppearances(topicId: string) {
+    await this.findOneEntity(topicId);
+    const appearances = await this.appearances.find({
       where: { topicId }, relations: { meeting: true, section: true }, order: { meeting: { date: 'DESC' } },
     });
+    return appearances.map((appearance) => ({
+      id: appearance.id,
+      meetingId: appearance.meetingId,
+      topicId: appearance.topicId,
+      sectionId: appearance.sectionId,
+      position: appearance.position,
+      plannedDuration: appearance.plannedDuration,
+      status: appearance.status,
+      deferredAt: appearance.deferredAt,
+      meeting: appearance.meeting
+        ? {
+            id: appearance.meeting.id,
+            title: appearance.meeting.title,
+            date: appearance.meeting.date,
+            beginTime: appearance.meeting.beginTime,
+            status: appearance.meeting.status,
+          }
+        : null,
+      section: appearance.section
+        ? {
+            id: appearance.section.id,
+            name: appearance.section.name,
+            position: appearance.section.position,
+          }
+        : null,
+    }));
   }
 
   async getSkippedRecurrences(topicId: string): Promise<SkippedRecurrence[]> {
-    await this.findOne(topicId);
+    await this.findOneEntity(topicId);
     return this.topics.manager.find(SkippedRecurrence, {
       where: { topicId }, relations: { meeting: true }, order: { meeting: { date: 'DESC' } },
     });

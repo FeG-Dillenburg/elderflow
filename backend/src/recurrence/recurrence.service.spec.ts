@@ -45,7 +45,7 @@ describe('RecurrenceService reconciliation', () => {
     recurrenceFirstDueDate: '2026-01-01',
     recurrenceInterval: 1,
     recurrenceUnit: 'months',
-  } as Topic;
+  } as unknown as Topic;
 
   const manager = (
     meetings: Meeting[],
@@ -72,7 +72,7 @@ describe('RecurrenceService reconciliation', () => {
     return { value, saved };
   };
 
-  it('preserves the copied note when an untouched automatic appearance is reconciled', async () => {
+  it('does not copy legacy plaintext when an automatic appearance is reconciled', async () => {
     const meeting = { id: 'meeting', date: '2026-01-05', beginTime: '19:00', status: 'planned' } as Meeting;
     const appearance = {
       id: 'appearance',
@@ -81,14 +81,14 @@ describe('RecurrenceService reconciliation', () => {
       meeting,
       source: 'recurrence',
       noteEditedAt: null,
-      agendaNote: 'Original copied description',
+      agendaNote: null,
     } as MeetingTopic;
     const { value, saved } = manager([meeting], [appearance]);
 
     await service.reconcile(value as any);
 
     expect(saved).toContainEqual(expect.objectContaining({
-      agendaNote: 'Original copied description',
+      agendaNote: null,
       source: 'recurrence',
     }));
   });
@@ -128,7 +128,7 @@ describe('RecurrenceService reconciliation', () => {
       meetingId: eligible.id,
       topicId: topic.id,
       source: 'recurrence',
-      agendaNote: 'New template',
+      agendaNote: null,
     });
   });
 

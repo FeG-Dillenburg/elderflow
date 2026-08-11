@@ -1,20 +1,22 @@
-import { getRepositoryToken } from '@nestjs/typeorm';
-import { Test } from '@nestjs/testing';
-import { MeetingTopic } from '../meetings/meeting-topic.entity';
-import { SkippedRecurrence } from '../recurrence/skipped-recurrence.entity';
-import { Topic } from './topic.entity';
-import { TopicHistoryService } from './topic-history.service';
-import { TopicUpdate } from './topic-update.entity';
+import { getRepositoryToken } from "@nestjs/typeorm";
+import { Test } from "@nestjs/testing";
+import { MeetingTopic } from "../meetings/meeting-topic.entity";
+import { SkippedRecurrence } from "../recurrence/skipped-recurrence.entity";
+import { User } from "../users/user.entity";
+import { TopicUpdate } from "./topic-update.entity";
+import { Topic } from "./topic.entity";
+import { TopicHistoryService } from "./topic-history.service";
 
-describe('TopicHistoryService', () => {
+describe("TopicHistoryService encrypted read model", () => {
   const topics = { findOne: jest.fn() };
   const updates = { find: jest.fn() };
   const appearances = { find: jest.fn() };
   const skippedRecurrences = { find: jest.fn() };
+  const viewer = { role: "user" } as User;
   let service: TopicHistoryService;
 
   beforeEach(async () => {
-    jest.resetAllMocks();
+    jest.clearAllMocks();
     const module = await Test.createTestingModule({
       providers: [
         TopicHistoryService,
@@ -26,206 +28,122 @@ describe('TopicHistoryService', () => {
     }).compile();
     service = module.get(TopicHistoryService);
     topics.findOne.mockResolvedValue({
-      id: 'topic',
-      type: 'generic',
-      name: 'Live topic',
-      responsibleUser: { firstName: 'Live', lastName: 'Owner' },
+      id: "topic",
+      type: "generic",
+      nameEnvelope: Buffer.from([1]),
+      nameCommitRevision: "1",
+      membershipProcessStatusEnvelope: Buffer.from([2]),
+      membershipProcessStatusCommitRevision: "1",
+      godparentsEnvelope: Buffer.from([3]),
+      godparentsCommitRevision: "1",
+      responsibleUser: { firstName: "Live", lastName: "Owner" },
     });
     updates.find.mockResolvedValue([]);
     appearances.find.mockResolvedValue([]);
     skippedRecurrences.find.mockResolvedValue([]);
   });
 
-  it('returns mixed top-level history newest first with deterministic ties', async () => {
-    topics.findOne.mockResolvedValue({
-      id: 'topic',
-      type: 'recurring',
-      name: 'Live topic',
-      responsibleUser: null,
-    });
-    updates.find.mockResolvedValue([
-      { id: 'update-z', meetingId: null, date: new Date('2026-07-15T19:30:00'), text: 'Middle' },
-      { id: 'update-a', meetingId: null, date: new Date('2026-07-15T20:00:00'), text: 'Same time' },
-    ]);
-    appearances.find.mockResolvedValue([{
-      id: 'appearance',
-      meetingId: 'meeting',
-      meeting: { id: 'meeting', date: '2026-07-15', beginTime: '20:00:00', status: 'planned', title: 'Council' },
-      section: { id: 'section', name: 'Main' },
-      agendaNote: 'Context',
-    }]);
-    skippedRecurrences.find.mockResolvedValue([{
-      id: 'skip',
-      meetingId: 'early',
-      meeting: { id: 'early', date: '2026-07-15', beginTime: '18:00:00', status: 'planned', title: null },
-    }]);
-
-    await expect(service.getHistory('topic')).resolves.toMatchObject([
-      { id: 'meeting-appearance:appearance', kind: 'meeting_appearance' },
-      { id: 'standalone-update:update-a', kind: 'standalone_update' },
-      { id: 'standalone-update:update-z', kind: 'standalone_update' },
-      { id: 'skipped-recurrence:skip', kind: 'skipped_recurrence' },
-    ]);
-  });
-
-  it('groups Meeting Minutes chronologically after appearance context', async () => {
-    updates.find.mockResolvedValue([
-      { id: 'late', meetingId: 'meeting', date: new Date('2026-07-15T20:15:00Z'), text: 'Second', createdBy: null },
-      { id: 'early', meetingId: 'meeting', date: new Date('2026-07-15T20:05:00Z'), text: 'First', createdBy: { firstName: 'Ada', lastName: 'Lovelace' } },
-    ]);
-    appearances.find.mockResolvedValue([{
-      id: 'appearance',
-      meetingId: 'meeting',
-      deferredAt: new Date('2026-07-15T20:30:00Z'),
-      meeting: {
-        id: 'meeting',
-        date: '2026-07-15',
-        beginTime: '20:00:00',
-        status: 'in_progress',
-        title: 'Council',
-        minuteTaker: { firstName: 'Grace', lastName: 'Hopper' },
-      },
-      section: null,
-      agendaNote: 'Preparation context',
-    }]);
-
-    const [entry] = await service.getHistory('topic');
-
-    expect(appearances.find).toHaveBeenCalledWith(expect.objectContaining({
-      relations: { meeting: { minuteTaker: true }, section: true },
-    }));
-    expect(entry).toMatchObject({
-      kind: 'meeting_appearance',
-      deferredAt: '2026-07-15T20:30:00.000Z',
-      meeting: { minuteTakerDisplayName: 'Grace Hopper' },
-      preparationContext: 'Preparation context',
-      personNote: null,
-      topic: { name: 'Live topic', responsibleUserDisplayName: 'Live Owner' },
-      legacyMinutesEntries: [
-        { id: 'early', text: 'First', createdByDisplayName: 'Ada Lovelace' },
-      ],
-      meetingMinutes: { id: 'late', text: 'Second', createdByDisplayName: null },
-    });
-  });
-
-  it('uses preserved New membership values for completed Meetings', async () => {
-    topics.findOne.mockResolvedValue({
-      id: 'topic',
-      type: 'new_membership',
-      name: 'Live name',
-      membershipProcessStatus: 'Live status',
-      membershipStatusSignal: 'attention',
-      godparents: 'Live godparents',
-      responsibleUser: { firstName: 'Live', lastName: 'Owner' },
-    });
-    appearances.find.mockResolvedValue([{
-      id: 'appearance',
-      meetingId: 'meeting',
-      meeting: { id: 'meeting', date: '2026-07-15', beginTime: '20:00:00', status: 'completed', title: null },
-      topicNameSnapshot: 'Recorded name',
-      responsibleUserDisplayNameSnapshot: 'Recorded owner',
-      membershipProcessStatusSnapshot: 'Recorded status',
-      membershipStatusSignalSnapshot: 'nearly_finished',
-      godparentsSnapshot: 'Recorded godparents',
-    }]);
-
-    await expect(service.getHistory('topic')).resolves.toMatchObject([{
-      topic: {
-        name: 'Recorded name',
-        responsibleUserDisplayName: 'Recorded owner',
-        membershipProcessStatus: 'Recorded status',
-        membershipStatusSignal: 'nearly_finished',
-        godparents: 'Recorded godparents',
-      },
-    }]);
-  });
-
-  it('preserves empty completed snapshots after live values are added', async () => {
-    topics.findOne.mockResolvedValue({
-      id: 'topic',
-      type: 'new_membership',
-      name: 'Live name',
-      membershipProcessStatus: 'Added later',
-      membershipStatusSignal: 'attention',
-      godparents: 'Added later',
-      responsibleUser: { firstName: 'Later', lastName: 'Owner' },
-    });
-    appearances.find.mockResolvedValue([{
-      id: 'appearance',
-      meetingId: 'meeting',
-      meeting: { id: 'meeting', date: '2026-07-15', beginTime: '20:00:00', status: 'completed', title: null },
-      topicNameSnapshot: 'Recorded name',
-      responsibleUserDisplayNameSnapshot: null,
-      membershipProcessStatusSnapshot: null,
-      membershipStatusSignalSnapshot: 'new',
-      godparentsSnapshot: null,
-    }]);
-
-    await expect(service.getHistory('topic')).resolves.toMatchObject([{
-      topic: {
-        name: 'Recorded name',
-        responsibleUserDisplayName: null,
-        membershipProcessStatus: null,
-        membershipStatusSignal: 'new',
-        godparents: null,
-      },
-    }]);
-  });
-
-  it('keeps linked Minutes in a stable fallback group when the appearance is missing', async () => {
+  it("returns standalone Update ciphertext but never its plaintext or broad relations", async () => {
     updates.find.mockResolvedValue([{
-      id: 'minute',
-      meetingId: 'meeting',
-      date: new Date('2026-07-15T20:10:00Z'),
-      text: 'Preserved minutes',
-      meeting: { id: 'meeting', date: '2026-07-15', beginTime: '20:00:00', status: 'completed', title: 'Council' },
-      createdBy: null,
+      id: "update",
+      meetingId: null,
+      date: new Date("2026-07-15T20:00:00Z"),
+      textEnvelope: Buffer.from([1, 2, 3]),
+      textCommitRevision: "2",
+      createdBy: { firstName: "Ada", lastName: "Lovelace" },
     }]);
 
-    await expect(service.getHistory('topic')).resolves.toMatchObject([{
-      id: 'meeting-appearance:missing:meeting',
-      kind: 'meeting_appearance',
-      appearanceId: null,
-      preparationContext: null,
-      personNote: null,
-      legacyMinutesEntries: [],
-      meetingMinutes: { text: 'Preserved minutes' },
-    }]);
+    await expect(service.getHistory("topic", viewer)).resolves.toEqual([
+      expect.objectContaining({
+        kind: "standalone_update",
+        protected: { textEnvelope: "AQID", textCommitRevision: "2" },
+        createdByDisplayName: "Ada Lovelace",
+      }),
+    ]);
+    const serialized = JSON.stringify(await service.getHistory("topic", viewer));
+    expect(serialized).not.toContain('"text":');
+    expect(serialized).not.toContain('"meeting":null');
   });
 
-  it('exposes a Person appearance note without inventing paired preparation or Minutes semantics', async () => {
-    topics.findOne.mockResolvedValue({
-      id: 'person',
-      type: 'person',
-      name: 'Alex',
-      responsibleUser: null,
-    });
+  it("withholds Update ciphertext from Guests", async () => {
+    updates.find.mockResolvedValue([{
+      id: "update",
+      meetingId: null,
+      date: new Date("2026-07-15T20:00:00Z"),
+      textEnvelope: Buffer.from([1]),
+      textCommitRevision: "1",
+    }]);
+
+    await expect(service.getHistory("topic", { role: "guest" } as User)).resolves.toEqual([
+      expect.objectContaining({ protected: null }),
+    ]);
+  });
+
+  it("keeps Meeting structure navigable while document content fails closed", async () => {
     appearances.find.mockResolvedValue([{
-      id: 'appearance',
-      meetingId: 'meeting',
-      agendaNote: 'One combined note',
+      id: "appearance",
+      meetingId: "meeting",
+      deferredAt: null,
       meeting: {
-        id: 'meeting',
-        date: '2026-07-15',
-        beginTime: '20:00:00',
-        status: 'in_progress',
-        title: null,
+        id: "meeting",
+        date: "2026-07-15",
+        beginTime: "20:00:00",
+        status: "completed",
+        title: "Council",
+      },
+      section: { id: "section", name: "Main" },
+    }]);
+
+    await expect(service.getHistory("topic", viewer)).resolves.toEqual([
+      expect.objectContaining({
+        kind: "meeting_appearance",
+        meetingDocumentUnavailable: true,
+        meeting: expect.objectContaining({ id: "meeting", date: "2026-07-15" }),
+        section: { id: "section", name: "Main" },
+        topic: expect.objectContaining({ protectedUnavailable: true }),
+      }),
+    ]);
+  });
+
+  it("returns immutable encrypted Topic snapshots without Meeting-document plaintext", async () => {
+    appearances.find.mockResolvedValue([{
+      id: "appearance",
+      meetingId: "meeting",
+      topicNameSnapshotEnvelope: Buffer.from([11]),
+      topicNameSnapshotCommitRevision: "4",
+      membershipProcessStatusSnapshotEnvelope: Buffer.from([12]),
+      membershipProcessStatusSnapshotCommitRevision: "5",
+      godparentsSnapshotEnvelope: Buffer.from([13]),
+      godparentsSnapshotCommitRevision: "6",
+      meeting: {
+        id: "meeting",
+        date: "2026-07-15",
+        beginTime: "20:00:00",
+        status: "completed",
       },
     }]);
 
-    await expect(service.getHistory('person')).resolves.toMatchObject([{
-      preparationContext: null,
-      personNote: 'One combined note',
-      legacyMinutesEntries: [],
-      meetingMinutes: null,
-    }]);
+    const [entry] = await service.getHistory("topic", viewer);
+    expect(entry).toMatchObject({
+      topic: {
+        id: "topic",
+        protected: {
+          nameEnvelope: "Cw",
+          nameCommitRevision: "4",
+          membershipProcessStatusEnvelope: "DA",
+          godparentsEnvelope: "DQ",
+        },
+        protectedUnavailable: false,
+      },
+      meetingDocumentUnavailable: true,
+    });
+    expect(JSON.stringify(entry)).not.toContain("SnapshotEnvelope");
   });
 
-  it('returns an empty collection and preserves the stable missing-Topic error', async () => {
-    await expect(service.getHistory('topic')).resolves.toEqual([]);
+  it("preserves the stable missing-Topic error", async () => {
     topics.findOne.mockResolvedValue(null);
-    await expect(service.getHistory('missing')).rejects.toMatchObject({
-      response: expect.objectContaining({ code: 'TOPIC_NOT_FOUND' }),
+    await expect(service.getHistory("missing", viewer)).rejects.toMatchObject({
+      response: expect.objectContaining({ code: "TOPIC_NOT_FOUND" }),
     });
   });
 });

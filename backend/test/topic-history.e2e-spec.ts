@@ -33,6 +33,10 @@ describe('Topic history contract (e2e)', () => {
       ],
     }).compile();
     app = module.createNestApplication();
+    app.use((request_: any, _response: any, next: () => void) => {
+      request_.user = { id: 'viewer', role: 'user' };
+      next();
+    });
     await app.init();
   });
 
@@ -56,15 +60,18 @@ describe('Topic history contract (e2e)', () => {
     ['person', 'Person Topic'],
     ['new_membership', 'Membership Topic'],
     ['recurring', 'Recurring Topic'],
-  ])('serializes a grouped %s Topic history', async (type, name) => {
+  ])('serializes a grouped %s Topic history', async (type, _name) => {
     topics.findOne.mockResolvedValue({
       id: TOPIC_ID,
       type,
-      name,
+      nameEnvelope: Buffer.from([1]),
+      nameCommitRevision: '1',
+      membershipProcessStatusEnvelope: Buffer.from([2]),
+      membershipProcessStatusCommitRevision: '1',
+      godparentsEnvelope: Buffer.from([3]),
+      godparentsCommitRevision: '1',
       responsibleUser: null,
-      membershipProcessStatus: type === 'new_membership' ? 'Live process' : null,
       membershipStatusSignal: type === 'new_membership' ? 'attention' : null,
-      godparents: type === 'new_membership' ? 'Live godparents' : null,
     });
     appearances.find.mockResolvedValue([{
       id: '00000000-0000-4000-8000-000000000003',
@@ -78,11 +85,14 @@ describe('Topic history contract (e2e)', () => {
       },
       section: null,
       agendaNote: '<p>Appearance note</p>',
-      topicNameSnapshot: `Recorded ${name}`,
+      topicNameSnapshotEnvelope: Buffer.from([11]),
+      topicNameSnapshotCommitRevision: '4',
       responsibleUserDisplayNameSnapshot: 'Recorded owner',
-      membershipProcessStatusSnapshot: type === 'new_membership' ? 'Recorded process' : null,
+      membershipProcessStatusSnapshotEnvelope: Buffer.from([12]),
+      membershipProcessStatusSnapshotCommitRevision: '5',
       membershipStatusSignalSnapshot: type === 'new_membership' ? 'nearly_finished' : null,
-      godparentsSnapshot: type === 'new_membership' ? 'Recorded godparents' : null,
+      godparentsSnapshotEnvelope: Buffer.from([13]),
+      godparentsSnapshotCommitRevision: '6',
     }]);
 
     const response = await request(app.getHttpServer())
@@ -92,21 +102,26 @@ describe('Topic history contract (e2e)', () => {
     expect(response.body).toEqual([expect.objectContaining({
       kind: 'meeting_appearance',
       meeting: expect.objectContaining({ id: MEETING_ID, status: 'completed' }),
-      preparationContext: type === 'person' ? null : '<p>Appearance note</p>',
-      personNote: type === 'person' ? '<p>Appearance note</p>' : null,
-      topic: expect.objectContaining({ type, name: `Recorded ${name}` }),
+      meetingDocumentUnavailable: true,
+      topic: expect.objectContaining({
+        type,
+        protected: expect.objectContaining({
+          nameEnvelope: 'Cw',
+          membershipProcessStatusEnvelope: 'DA',
+          godparentsEnvelope: 'DQ',
+        }),
+        protectedUnavailable: false,
+      }),
       meetingMinutes: type === 'person'
         ? null
-        : expect.objectContaining({ text: '<p>Recorded minutes</p>' }),
+        : expect.objectContaining({ protectedUnavailable: true }),
       legacyMinutesEntries: type === 'person'
-        ? [expect.objectContaining({ text: '<p>Recorded minutes</p>' })]
+        ? [expect.objectContaining({ protectedUnavailable: true })]
         : [],
     })]);
     if (type === 'new_membership') {
       expect(response.body[0].topic).toMatchObject({
-        membershipProcessStatus: 'Recorded process',
         membershipStatusSignal: 'nearly_finished',
-        godparents: 'Recorded godparents',
       });
     }
   });
