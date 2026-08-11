@@ -10,6 +10,7 @@
 - Admin, leadership, and read-only viewer permissions are enforced by the backend. Authorization must never rely only on hidden frontend controls.
 - Do not introduce new business domains unless explicitly requested.
 - Run the relevant tests and builds before finishing work. Prefer running the full root test suite when practical.
+- Run GitHub authentication checks and remote GitHub operations with elevated permissions outside the sandbox. A sandboxed `gh auth status` may falsely report that the user's valid host credentials are unavailable; retry it outside the sandbox before asking the user to authenticate again.
 
 ## Internationalization
 
