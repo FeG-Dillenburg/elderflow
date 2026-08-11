@@ -2,6 +2,7 @@ import { flushPromises, mount } from "@vue/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { api, type AuthUser } from "../api/domain";
 import { auth } from "../auth/auth";
+import { protectedText } from "../e2ee/protected-text";
 import MeetingAgendaView from "./MeetingAgendaView.vue";
 import { savePersonMeetingNote } from "../topics/meetingTopicEdits";
 
@@ -25,7 +26,10 @@ const stubs = {
   DatePicker: { template: "<input />" },
   Tag: { template: "<span><slot />{{ value }}</span>", props: ["value"] },
   Message: { template: "<div><slot /></div>" },
-  RichTextEditor: { template: "<textarea />" },
+  RichTextEditor: {
+    props: ["modelValue", "readonly"],
+    template: "<textarea :readonly=\"readonly\" />",
+  },
   TopicTypeRenderer: {
     name: "TopicTypeRenderer",
     inheritAttrs: false,
@@ -75,6 +79,7 @@ describe("MeetingAgendaView", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     auth.completeInitialization(null);
+    protectedText.state.status = "locked";
     vi.spyOn(api, "meeting").mockResolvedValue(structuredClone(meeting));
     vi.spyOn(api, "sections").mockResolvedValue([
       { id: "section-1", name: "Main", position: 1, isDefault: true },
@@ -102,6 +107,7 @@ describe("MeetingAgendaView", () => {
   });
   afterEach(() => {
     vi.useRealTimers();
+    protectedText.state.status = "locked";
   });
   const view = async () => {
     const wrapper = mount(MeetingAgendaView, {
@@ -282,6 +288,35 @@ describe("MeetingAgendaView", () => {
     vm.editForm.date = null;
     await vm.saveMeeting();
     expect((api.updateMeeting as any).mock.calls).toHaveLength(1);
+  });
+
+  it("saves and restores Meeting notes whenever Protected text is unlocked", async () => {
+    const stored = {
+      ...structuredClone(meeting),
+      generalNotes: "",
+      openingInput: "",
+    };
+    protectedText.state.status = "unlocked";
+    vi.spyOn(api, "meeting").mockImplementation(async () => structuredClone(stored));
+    vi.spyOn(api, "updateMeeting").mockImplementation(async (_id, input) => {
+      Object.assign(stored, input);
+      return structuredClone(stored);
+    });
+    const wrapper = await view();
+    const vm: any = wrapper.vm;
+    vm.openEdit();
+    vm.editForm.generalNotes = "<p>General note</p>";
+    vm.editForm.openingInput = "<p>Opening note</p>";
+
+    await vm.saveMeeting();
+    vm.openEdit();
+
+    expect(api.updateMeeting).toHaveBeenCalledWith("meeting-1", expect.objectContaining({
+      generalNotes: "<p>General note</p>",
+      openingInput: "<p>Opening note</p>",
+    }));
+    expect(vm.editForm.generalNotes).toBe("<p>General note</p>");
+    expect(vm.editForm.openingInput).toBe("<p>Opening note</p>");
   });
 
   it("reconciles a saved Person note without reloading or overwriting other agenda state", async () => {

@@ -9,6 +9,7 @@ const props = withDefaults(
     height?: string;
     ariaLabel?: string;
     ariaDescription?: string;
+    readonly?: boolean;
   }>(),
   {
     height: "160px",
@@ -39,6 +40,7 @@ const onLoad = (event: { instance: { root: HTMLElement } }) => {
     v-model="model"
     :placeholder="resolvedPlaceholder"
     :editor-style="{ height: props.height }"
+    :readonly="props.readonly"
     @selection-change="onSelectionChange"
     @load="onLoad"
   >
