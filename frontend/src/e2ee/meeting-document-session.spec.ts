@@ -57,6 +57,52 @@ describe("MeetingDocumentSession", () => {
     expect((decoded[3] as unknown[])[6]).toBe(2);
   });
 
+  it("creates an update when initializing a new appearance fragment with empty text", async () => {
+    await sodium.ready;
+    const signing = sodium.crypto_sign_seed_keypair(new Uint8Array(32).fill(9), "uint8array");
+    const meetingId = "00000000-0000-4000-8000-000000000211";
+    const clientEpochId = "00000000-0000-4000-8000-000000000214";
+    session.unlock({
+      organizationId: "00000000-0000-4000-8000-000000000212",
+      ockId: "00000000-0000-4000-8000-000000000213",
+      clientEpochId,
+      noncePrefix: new Uint8Array(16).fill(5),
+      contentKey: new Uint8Array(32).fill(6),
+      signingPrivateKey: signing.privateKey,
+    });
+    const initial = await session.createInitial(meetingId);
+
+    const update = await session.createFragmentUpdate(
+      meetingId,
+      "appearance/00000000-0000-4000-8000-000000000215/preparation-context",
+      "",
+    );
+
+    await session.load(meetingId, {
+      documentId: initial.documentId,
+      activeSnapshotId: initial.snapshotId,
+      currentServerSequence: "1",
+      snapshot: {
+        id: initial.snapshotId,
+        clientEpochId,
+        signingPublicKey: bytesToBase64Url(signing.publicKey),
+        envelope: initial.snapshotEnvelope,
+      },
+      updates: [{
+        clientEpochId,
+        authorClock: "1",
+        signingPublicKey: bytesToBase64Url(signing.publicKey),
+        envelope: update,
+      }],
+    });
+
+    expect(session.hydrateFragments(meetingId, [{
+      id: "00000000-0000-4000-8000-000000000215",
+      person: false,
+    }]).appearances.get("00000000-0000-4000-8000-000000000215")?.preparationContext)
+      .toBe("");
+  });
+
   it("refuses document mutation while locked and discards unusable local state", async () => {
     await expect(session.createFragmentUpdate(
       "00000000-0000-4000-8000-000000000201",

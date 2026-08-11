@@ -37,11 +37,11 @@ export class ApiErrorFilter implements ExceptionFilter {
   catch(exception: unknown, host: ArgumentsHost): void {
     const http = host.switchToHttp();
     const response = http.getResponse();
+    const request = http.getRequest<RequestContext>();
+    const method = request.method ?? 'UNKNOWN';
+    const url = request.originalUrl ?? request.url ?? 'unknown route';
     const isHttpException = exception instanceof HttpException;
     if (!isHttpException) {
-      const request = http.getRequest<RequestContext>();
-      const method = request.method ?? 'UNKNOWN';
-      const url = request.originalUrl ?? request.url ?? 'unknown route';
       const stack = exception instanceof Error ? exception.stack : String(exception);
       this.logger.error(`Unhandled exception during ${method} ${url}`, stack);
     }
@@ -55,6 +55,11 @@ export class ApiErrorFilter implements ExceptionFilter {
       message: provided.message ?? message,
       ...(provided.params ? { params: provided.params } : {}),
     };
+    if (isHttpException && payload.code.startsWith('E2EE_')) {
+      this.logger.warn(
+        `Rejected ${method} ${url} with ${statusCode} ${payload.code}`,
+      );
+    }
     response.status(statusCode).json(payload);
   }
 }

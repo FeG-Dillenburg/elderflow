@@ -179,6 +179,7 @@ const withReload = async (action: () => Promise<unknown>) => {
   try {
     await action();
   } catch (cause) {
+    console.error("Meeting preparation operation failed", cause);
     error.value =
       cause instanceof Error
         ? cause.message

@@ -104,6 +104,15 @@ export function replaceMeetingFragment(
     if (text.length) text.delete(0, text.length);
     if (value) text.insert(0, value);
   }, origin);
+  if (!update) {
+    // An empty-to-empty replacement is a Yjs no-op. Preserve the empty value
+    // while emitting a tombstone update for atomic fragment initialization.
+    document.transact(() => {
+      const text = document.getText(fragment);
+      text.insert(0, "\0");
+      text.delete(0, 1);
+    }, origin);
+  }
   document.off("updateV2", capture);
   return update ?? new Uint8Array();
 }

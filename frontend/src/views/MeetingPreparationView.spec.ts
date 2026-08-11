@@ -253,9 +253,16 @@ describe("MeetingPreparationView", () => {
     vi.spyOn(api, "removeMeetingTopic").mockRejectedValueOnce(
       new Error("A preserved recurring appearance conflicts with this change"),
     );
+    const diagnostic = vi.spyOn(console, "error").mockImplementation(() => undefined);
     await (wrapper.vm as any).remove(item);
 
     expect(api.removeMeetingTopic).toHaveBeenCalledWith("meeting-1", item.id);
+    expect(diagnostic).toHaveBeenCalledWith(
+      "Meeting preparation operation failed",
+      expect.objectContaining({
+        message: "A preserved recurring appearance conflicts with this change",
+      }),
+    );
     expect((wrapper.vm as any).error).toBe(
       "A preserved recurring appearance conflicts with this change",
     );
