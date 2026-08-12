@@ -48,6 +48,18 @@ pnpm test:frontend
 pnpm build
 ```
 
+## Production deployment
+
+The repository root includes a `docker-compose.yaml` for a single Elderflow application container and its PostgreSQL database. The application serves the Vue interface and NestJS API from port `8080`; configure the surrounding reverse proxy or Coolify service to forward traffic to that port. TLS termination is intentionally not included.
+
+Before deploying, configure these environment variables in Coolify (or a Compose `.env` file):
+
+- `POSTGRES_PASSWORD` - a strong password for the bundled PostgreSQL database
+- `DATABASE_URL` - the matching database URL, for example `postgresql://elderflow:your-url-encoded-password@postgres:5432/elderflow`
+- `AUTH_SESSION_SECRET` - a unique secret of at least 32 characters
+
+`POSTGRES_DB` and `POSTGRES_USER` default to `elderflow` and may be overridden. Database data persists in the `elderflow-postgres-data` volume. The application runs migrations automatically when it starts.
+
 Backend and frontend build commands are also available as `pnpm build:backend` and `pnpm build:frontend`.
 
 ## Database and migrations

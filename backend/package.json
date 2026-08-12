@@ -25,6 +25,7 @@
     "class-transformer": "0.5.1",
     "class-validator": "0.14.2",
     "dotenv": "17.2.3",
+    "express": "5.1.0",
     "joi": "18.0.1",
     "libsodium-wrappers-sumo": "0.7.15",
     "pg": "8.16.3",
