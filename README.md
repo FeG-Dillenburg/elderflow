@@ -50,7 +50,7 @@ pnpm build
 
 ## Production deployment
 
-The repository root includes a `docker-compose.yaml` for a single Elderflow application container and its PostgreSQL database. The application serves the Vue interface and NestJS API from port `8080`; configure the surrounding reverse proxy or Coolify service to forward traffic to that port. TLS termination is intentionally not included.
+The repository root includes a `docker-compose.yaml` for a single Elderflow application container and its PostgreSQL database. The application serves the Vue interface and NestJS API on internal port `8080`; configure Coolify's reverse proxy to forward traffic to that port. The Compose file does not publish a host port, avoiding conflicts with other services. TLS termination is intentionally not included.
 
 Before deploying, configure these environment variables in Coolify (or a Compose `.env` file):
 

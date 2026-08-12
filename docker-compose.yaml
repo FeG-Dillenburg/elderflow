@@ -12,8 +12,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    ports:
-      - "8080:8080"
+    expose:
+      - "8080"
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8080/health').then((response) => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))"]
