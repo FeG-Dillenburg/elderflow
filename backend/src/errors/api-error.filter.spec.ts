@@ -86,4 +86,31 @@ describe('API error responses', () => {
 
     expect(log).not.toHaveBeenCalled();
   });
+
+  it('logs rejected E2EE requests without including request bodies', () => {
+    const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation();
+    const json = jest.fn();
+    const status = jest.fn(() => ({ json }));
+    const host = {
+      switchToHttp: () => ({
+        getResponse: () => ({ status }),
+        getRequest: () => ({
+          method: 'POST',
+          url: '/api/meetings/meeting/topics',
+          body: Buffer.from('protected-content'),
+        }),
+      }),
+    };
+
+    new ApiErrorFilter().catch(codedHttpException(
+      HttpStatus.BAD_REQUEST,
+      'E2EE_ENVELOPE_INVALID',
+      'Invalid encrypted Meeting document envelope',
+    ), host as any);
+
+    expect(warn).toHaveBeenCalledWith(
+      'Rejected POST /api/meetings/meeting/topics with 400 E2EE_ENVELOPE_INVALID',
+    );
+    expect(warn.mock.calls.flat().join(' ')).not.toContain('protected-content');
+  });
 });

@@ -3,8 +3,14 @@ import { User } from '../users/user.entity';
 import { accountResponse, topicLabelResponse } from '../topics/topic-response';
 import { Task } from './task.entity';
 
-export const taskMeetingReference = (meeting: NonNullable<Task['meeting']>) => ({
+export const taskMeetingReference = (meeting: NonNullable<Task['meeting']>, viewer: User) => ({
   id: meeting.id,
+  protected: isE2eeKeyOperator(viewer.role) && Buffer.isBuffer(meeting.titleEnvelope)
+    ? {
+        titleEnvelope: meeting.titleEnvelope.toString('base64url'),
+        titleCommitRevision: meeting.titleCommitRevision,
+      }
+    : null,
   date: meeting.date,
   beginTime: meeting.beginTime,
   status: meeting.status,
@@ -17,7 +23,7 @@ export function taskResponse(task: Task, viewer: User) {
     topicId: task.topicId,
     topic: task.topic ? topicLabelResponse(task.topic, viewer) : null,
     meetingId: task.meetingId,
-    meeting: task.meeting ? taskMeetingReference(task.meeting) : null,
+    meeting: task.meeting ? taskMeetingReference(task.meeting, viewer) : null,
     assignedToId: task.assignedToId,
     assignedTo: accountResponse(task.assignedTo),
     dueDate: task.dueDate,

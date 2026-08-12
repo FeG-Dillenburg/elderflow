@@ -6,8 +6,8 @@ import { UnlockSession, type LockReason } from './unlock-session';
 import { recoverySession } from './recovery-session';
 import { isE2eeKeyOperator } from './roles';
 import { bytesToBase64Url } from './protocol';
-import { setProtectedContentUnlocked } from './content-visibility';
 import { scalarSession } from './scalar-session';
+import { meetingDocumentSession } from './meeting-document-session';
 
 const state = reactive({
   status: 'locked' as 'locked' | 'unlocking' | 'unlocked',
@@ -92,8 +92,15 @@ export const protectedText = {
         contentKey: keys.contentKey,
         signingPrivateKey: signing.privateKey,
       });
+      meetingDocumentSession.unlock({
+        organizationId: keyState.organizationId,
+        ockId: keyState.ockId,
+        clientEpochId: newEpochId,
+        noncePrefix,
+        contentKey: keys.contentKey,
+        signingPrivateKey: signing.privateKey,
+      });
       state.status = 'unlocked';
-      setProtectedContentUnlocked(true);
       state.promptVisible = false;
       startAuthorizationPolling();
     } catch (error) {
@@ -117,10 +124,10 @@ export const protectedText = {
 
 function finishLock(): void {
   scalarSession.lock();
+  meetingDocumentSession.lock();
   if (authorizationPoll) clearInterval(authorizationPoll);
   authorizationPoll = null;
   state.status = 'locked';
-  setProtectedContentUnlocked(false);
   state.promptVisible = false;
   state.error = false;
   epochId = null;

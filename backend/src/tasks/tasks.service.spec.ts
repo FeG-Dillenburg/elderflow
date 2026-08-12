@@ -102,6 +102,7 @@ describe('TasksService', () => {
     });
     expect(result.meetings[0]).toEqual({
       id: 'meeting',
+      protected: null,
       date: '2026-07-20',
       beginTime: '19:30',
       status: 'planned',

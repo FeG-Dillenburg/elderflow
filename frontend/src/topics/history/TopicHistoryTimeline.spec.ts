@@ -50,9 +50,6 @@ describe('TopicHistoryTimeline', () => {
         },
         preparationContext: longNote,
         personNote: null,
-        legacyMinutesEntries: [
-          { id: 'first', effectiveAt: '2026-07-15T20:10:00Z', text: '<p>First minute</p>', createdByDisplayName: null },
-        ],
         meetingMinutes: { id: 'second', effectiveAt: '2026-07-15T20:20:00Z', text: '<p>Second minute</p>', createdByDisplayName: 'Ada Lovelace' },
       },
       {
@@ -69,8 +66,7 @@ describe('TopicHistoryTimeline', () => {
 
     expect(text.indexOf('Standalone progress')).toBeLessThan(text.indexOf('Council'));
     expect(text.indexOf('Council')).toBeLessThan(text.indexOf('Skipped recurrence'));
-    expect(text.indexOf('Long historical context')).toBeLessThan(text.indexOf('First minute'));
-    expect(text.indexOf('First minute')).toBeLessThan(text.indexOf('Second minute'));
+    expect(text.indexOf('Long historical context')).toBeLessThan(text.indexOf('Second minute'));
     expect(text).toContain('Minute taker: Ada Lovelace');
     const meetingMeta = wrapper.get('.meeting-meta');
     expect(meetingMeta.get('.meeting-section').text()).toBe('People');
@@ -113,7 +109,6 @@ describe('TopicHistoryTimeline', () => {
       preparationContext: null,
       personNote: null,
       meetingMinutes: null,
-      legacyMinutesEntries: [],
     }];
 
     const wrapper = mount(TopicHistoryTimeline, {
@@ -153,7 +148,6 @@ describe('TopicHistoryTimeline', () => {
       preparationContext: type === 'person' ? null : '<p>One appearance note</p>',
       personNote: type === 'person' ? '<p>One appearance note</p>' : null,
       meetingMinutes: null,
-      legacyMinutesEntries: [],
     }];
 
     const wrapper = mount(TopicHistoryTimeline, { props: { entries }, ...options });
@@ -187,18 +181,12 @@ describe('TopicHistoryTimeline', () => {
       preparationContext: null,
       personNote: '<p>One Person note</p>',
       meetingMinutes: null,
-      legacyMinutesEntries: [{
-        id: 'legacy',
-        effectiveAt: '2026-07-15T20:10:00Z',
-        text: '<p>Preserved legacy Minutes</p>',
-        createdByDisplayName: null,
-      }],
     }];
 
     const wrapper = mount(TopicHistoryTimeline, { props: { entries }, ...options });
 
     expect(wrapper.text()).toContain('One Person note');
-    expect(wrapper.text()).toContain('Preserved legacy Minutes');
+    expect(wrapper.text()).not.toContain('Preserved legacy Minutes');
     expect(wrapper.get('.meeting-content').classes()).toContain('person-note');
   });
 
@@ -222,7 +210,6 @@ describe('TopicHistoryTimeline', () => {
       preparationContext: null,
       personNote: null,
       meetingMinutes: null,
-      legacyMinutesEntries: [],
     }];
     const wrapper = mount(TopicHistoryTimeline, {
       props: {

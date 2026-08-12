@@ -63,7 +63,6 @@ export function topicUpdateResponse(update: TopicUpdate, viewer: User) {
   return {
     id: update.id,
     topicId: update.topicId,
-    meetingId: update.meetingId,
     date: update.date,
     type: update.type,
     createdBy: accountResponse(update.createdBy),

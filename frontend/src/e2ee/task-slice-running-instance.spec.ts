@@ -5,7 +5,6 @@ import sodium from 'libsodium-wrappers-sumo';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { api, type TaskInput } from '../api/domain';
 import vectors from '../../../docs/security/e2ee-v1-key-vectors.json';
-import { setProtectedContentUnlocked } from './content-visibility';
 import { translate } from '../i18n';
 import { base64UrlToBytes, bytesToBase64Url } from './protocol';
 import { SCALAR_AGGREGATES, TASK_SCALAR_FIELDS } from './scalar-registry';
@@ -41,7 +40,6 @@ evidence('Task E2EE running instance', () => {
     });
     token = login.token;
     userId = login.user.id;
-    setProtectedContentUnlocked(true);
 
     const signing = sodium.crypto_sign_seed_keypair(
       hexToBytes(vectors.signedNullScalar.signingSeedHex),
@@ -162,7 +160,6 @@ evidence('Task E2EE running instance', () => {
     expect(await itAdminResponse.text()).not.toContain(marker);
 
     scalarSession.lock();
-    setProtectedContentUnlocked(false);
     await expect(unprotectTask(encryptedTask)).resolves.toMatchObject({
       title: translate('e2ee.lockedPlaceholder'),
       status: 'done',

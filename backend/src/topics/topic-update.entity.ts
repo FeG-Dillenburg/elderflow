@@ -1,4 +1,3 @@
-import { Meeting } from '../meetings/meeting.entity';
 import { User } from '../users/user.entity';
 import { Column, CreateDateColumn, Entity, JoinColumn, ManyToOne, PrimaryGeneratedColumn } from 'typeorm';
 import { Topic } from './topic.entity';
@@ -15,13 +14,6 @@ export class TopicUpdate {
   @JoinColumn({ name: 'topic_id' })
   topic?: Topic;
 
-  @Column({ name: 'meeting_id', type: 'uuid', nullable: true })
-  meetingId: string | null;
-
-  @ManyToOne(() => Meeting, { nullable: true, onDelete: 'SET NULL' })
-  @JoinColumn({ name: 'meeting_id' })
-  meeting?: Meeting | null;
-
   @Column({ type: 'timestamptz', default: () => 'CURRENT_TIMESTAMP' })
   date: Date;
 
@@ -30,9 +22,6 @@ export class TopicUpdate {
 
   @Column({ name: 'text_commit_revision', type: 'bigint', nullable: true })
   textCommitRevision: string | null;
-
-  @Column({ name: 'meeting_text', type: 'text', nullable: true })
-  meetingText: string | null;
 
   @Column({ type: 'text', default: 'update' })
   type: string;

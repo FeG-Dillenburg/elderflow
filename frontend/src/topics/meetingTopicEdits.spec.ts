@@ -13,7 +13,6 @@ const item = (): MeetingTopic => ({
   topicId: "topic",
   sectionId: "section",
   position: 1,
-  agendaNote: "legacy",
   plannedDuration: null,
   status: "planned",
   preparationContext: { id: "appearance", text: "Context", version: 2 },

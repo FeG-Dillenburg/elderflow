@@ -34,7 +34,7 @@ import {
   type MeetingTopic,
   type User,
 } from "../api/domain";
-import { isProtectedTextDevelopmentWriteAllowed } from "../e2ee/content-visibility";
+import { protectedText } from "../e2ee/protected-text";
 import { useI18n } from "vue-i18n";
 import { dateInputFormat, formatDate, formatTime } from "../i18n";
 
@@ -43,6 +43,9 @@ const canManage = computed(
 );
 const isCompleted = computed(() => meeting.value?.status === "completed");
 const canEdit = computed(() => canManage.value && !isCompleted.value);
+const canEditProtected = computed(
+  () => canEdit.value && protectedText.state.status === "unlocked",
+);
 const canControlInProgressMeeting = computed(() => {
   const userId = auth.state.user?.id;
   return Boolean(
@@ -131,7 +134,7 @@ const recent = (item: MeetingTopic) => {
   const updates = [...(item.topic?.updates ?? [])];
 
   return updates
-    .filter((update) => !update.meetingId && timestamp(update.date) >= cutoff)
+    .filter((update) => timestamp(update.date) >= cutoff)
     .sort((left, right) => timestamp(right.date) - timestamp(left.date))
     .slice(0, 3)
     .sort((left, right) => timestamp(left.date) - timestamp(right.date));
@@ -233,7 +236,7 @@ const saveMeeting = async () => {
     status: editForm.status,
     meetingLeaderId: editForm.meetingLeaderId,
     minuteTakerId: editForm.minuteTakerId,
-    ...(isProtectedTextDevelopmentWriteAllowed() ? {
+    ...(canEditProtected.value ? {
       title: editForm.title.trim() || null,
       generalNotes: editForm.generalNotes || null,
       openingInput: editForm.openingInput || null,
@@ -263,6 +266,12 @@ onMounted(load);
   <section class="agenda-page">
     <Message v-if="error" severity="error">{{ error }}</Message>
     <template v-if="meeting">
+      <Message
+        v-if="meeting.collaboration && !meeting.collaboration.available"
+        severity="info"
+      >
+        {{ t("e2ee.collaborationUnavailable") }}
+      </Message>
       <header class="meeting-header">
         <div>
           <p class="eyebrow">{{ t("meetingAgenda.eyebrow") }}</p>
@@ -494,6 +503,7 @@ onMounted(load);
               </span>
               <InputText
                 v-model="editForm.title"
+                :disabled="!canEditProtected"
                 :placeholder="t('meetingAgenda.exampleTitle')"
               />
             </label>
@@ -590,11 +600,19 @@ onMounted(load);
           </div>
           <label>
             <span>{{ t("meetingAgenda.opening") }}</span>
-            <RichTextEditor v-model="editForm.openingInput" height="100px" />
+            <RichTextEditor
+              v-model="editForm.openingInput"
+              height="100px"
+              :readonly="!canEditProtected"
+            />
           </label>
           <label>
             <span>{{ t("meetingAgenda.generalNotes") }}</span>
-            <RichTextEditor v-model="editForm.generalNotes" height="100px" />
+            <RichTextEditor
+              v-model="editForm.generalNotes"
+              height="100px"
+              :readonly="!canEditProtected"
+            />
           </label>
         </section>
       </form>

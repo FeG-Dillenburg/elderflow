@@ -1,4 +1,6 @@
 import { INestApplication } from '@nestjs/common';
+import { Encoder } from 'cbor-x';
+import { raw } from 'express';
 import { Test } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import request from 'supertest';
@@ -18,12 +20,16 @@ import { TopicsService } from '../src/topics/topics.service';
 import { RecurrenceService } from '../src/recurrence/recurrence.service';
 import { TopicHistoryService } from '../src/topics/topic-history.service';
 import { E2eeScalarService } from '../src/e2ee/e2ee-scalar.service';
+import { MeetingDocumentService } from '../src/meetings/meeting-document.service';
+import { MeetingDocument } from '../src/meetings/meeting-document.entity';
+import { E2EE_MEDIA_TYPE, isE2eeMediaType } from '../src/e2ee/e2ee-protocol';
 
 const MEETING_ID = '00000000-0000-4000-8000-000000000001';
 const USER_ID = '00000000-0000-4000-8000-000000000002';
 const TOPIC_ID = '00000000-0000-4000-8000-000000000003';
 const SECTION_ID = '00000000-0000-4000-8000-000000000004';
 const APPEARANCE_ID = '00000000-0000-4000-8000-000000000005';
+const encoder = new Encoder({ mapsAsObjects: false, structuredClone: false, tagUint8Array: false, useRecords: false });
 
 describe('Meeting completion lifecycle (e2e)', () => {
   let app: INestApplication;
@@ -58,12 +64,28 @@ describe('Meeting completion lifecycle (e2e)', () => {
               responsibleUser: null,
             };
           }
+          if (entity === MeetingDocument) {
+            return {
+              id: '00000000-0000-4000-8000-000000000006',
+              meetingId: MEETING_ID,
+              currentServerSequence: '3',
+              completedServerSequence: null,
+            };
+          }
           return null;
         }),
         find: jest.fn(async (entity: any) => entity === MeetingTopic ? draft.appearances : []),
         findOneBy: jest.fn(),
+        findOneByOrFail: jest.fn(async (entity: any) => entity === MeetingDocument
+          ? {
+              id: '00000000-0000-4000-8000-000000000006',
+              meetingId: MEETING_ID,
+              currentServerSequence: '3',
+              completedServerSequence: null,
+            }
+          : undefined),
         create: jest.fn((_entity: any, value: unknown) => value),
-        save: jest.fn(async (_entity: any, value: unknown) => value),
+        save: jest.fn(async (entity: any, value?: unknown) => value ?? entity),
         delete: jest.fn(),
         getRepository: jest.fn((entity: any) => entity === Topic
           ? { findOne: jest.fn().mockResolvedValue({ id: TOPIC_ID }) }
@@ -101,6 +123,12 @@ describe('Meeting completion lifecycle (e2e)', () => {
           validateWrite: jest.fn(),
         } },
         { provide: RecurrenceService, useValue: { reconcile: jest.fn(), nextDueDate: jest.fn() } },
+        { provide: MeetingDocumentService, useValue: {
+          assertContentUser: jest.fn(),
+          appendUpdate: jest.fn(),
+          bootstrap: jest.fn(),
+          createInitial: jest.fn(),
+        } },
         { provide: DataSource, useValue: dataSource },
         { provide: getRepositoryToken(Meeting), useValue: repository },
         { provide: getRepositoryToken(MeetingUser), useValue: repository },
@@ -113,6 +141,7 @@ describe('Meeting completion lifecycle (e2e)', () => {
     }).compile();
     snapshots = module.get(MeetingSnapshotRegistry);
     app = module.createNestApplication({ logger: false });
+    app.use(raw({ type: isE2eeMediaType, limit: '17mb' }));
     app.use((request_: any, _response: any, next: () => void) => {
       request_.user = { id: USER_ID, role: 'user' };
       next();
@@ -186,23 +215,47 @@ describe('Meeting completion lifecycle (e2e)', () => {
     ['put', `/api/meetings/${MEETING_ID}`, {}],
     ['post', `/api/meetings/${MEETING_ID}/participants`, { userId: USER_ID, attendanceStatus: 'present' }],
     ['delete', `/api/meetings/${MEETING_ID}/participants/${USER_ID}`, undefined],
-    ['post', `/api/meetings/${MEETING_ID}/topics`, { topicId: TOPIC_ID, sectionId: SECTION_ID }],
+    ['post', `/api/meetings/${MEETING_ID}/topics`, Buffer.from(encoder.encode([
+      APPEARANCE_ID,
+      '00000000-0000-4000-8000-000000000007',
+      TOPIC_ID,
+      SECTION_ID,
+      Uint8Array.from([1]),
+      null,
+      false,
+      null,
+      false,
+      null,
+      false,
+      null,
+      false,
+    ]))],
     ['put', `/api/meetings/${MEETING_ID}/topics/order`, { items: [] }],
-    ['put', `/api/meetings/${MEETING_ID}/topics/${APPEARANCE_ID}`, { agendaNote: 'late' }],
-    ['delete', `/api/meetings/${MEETING_ID}/topics/${APPEARANCE_ID}`, undefined],
-    ['put', `/api/meetings/${MEETING_ID}/topics/${APPEARANCE_ID}/minutes`, {
-      text: 'late',
-      version: null,
+    ['put', `/api/meetings/${MEETING_ID}/topics/${APPEARANCE_ID}`, {
+      sectionId: SECTION_ID,
+      position: 1,
+      status: 'planned',
     }],
+    ['delete', `/api/meetings/${MEETING_ID}/topics/${APPEARANCE_ID}`, undefined],
   ])('rejects completed-Meeting mutation through %s %s', async (method, path, body) => {
     state.meeting.status = 'completed';
     const operation = request(app.getHttpServer())[method as 'put'](path);
-    if (body) operation.send(body);
+    if (Buffer.isBuffer(body)) operation.set('Content-Type', E2EE_MEDIA_TYPE).send(body);
+    else if (body) operation.send(body);
 
     await operation
       .expect(409)
       .expect(({ body: responseBody }) => {
         expect(responseBody.code).toBe('MEETING_COMPLETED_IMMUTABLE');
       });
+  });
+
+  it('rejects the legacy JSON/base64 Meeting document update body', async () => {
+    state.meeting.status = 'planned';
+    await request(app.getHttpServer())
+      .post(`/api/meetings/${MEETING_ID}/workspace/updates`)
+      .send({ envelope: 'AQID' })
+      .expect(400)
+      .expect(({ body }) => expect(body.code).toBe('E2EE_BINARY_BODY_INVALID'));
   });
 });

@@ -2,7 +2,7 @@ import { MembershipStatusSignal, TopicType } from './topic.entity';
 
 export interface TopicHistoryMeeting {
   id: string;
-  title: string | null;
+  protected: { titleEnvelope: string; titleCommitRevision: string } | null;
   date: string;
   beginTime: string;
   status: string;
@@ -25,13 +25,6 @@ export interface TopicHistoryTopicDisplay {
   protectedUnavailable: boolean;
 }
 
-export interface TopicHistoryMinutesEntry {
-  id: string;
-  effectiveAt: string;
-  createdByDisplayName: string | null;
-  protectedUnavailable: true;
-}
-
 export interface StandaloneUpdateHistoryEntry {
   id: string;
   kind: 'standalone_update';
@@ -50,9 +43,7 @@ export interface MeetingAppearanceHistoryEntry {
   meeting: TopicHistoryMeeting;
   section: { id: string; name: string } | null;
   topic: TopicHistoryTopicDisplay;
-  meetingDocumentUnavailable: true;
-  meetingMinutes: TopicHistoryMinutesEntry | null;
-  legacyMinutesEntries: TopicHistoryMinutesEntry[];
+  meetingDocument: { meetingId: string; appearanceId: string | null };
 }
 
 export interface SkippedRecurrenceHistoryEntry {

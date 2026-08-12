@@ -163,18 +163,22 @@ describe("MeetingPreparationView", () => {
     expect(api.addMeetingTopic).toHaveBeenLastCalledWith("meeting-1", {
       topicId: "topic-3",
       sectionId: "second",
+      topic,
     });
     vm.selectedSections["topic-3"] = "first";
     await vm.add(topic);
     expect(api.addMeetingTopic).toHaveBeenLastCalledWith("meeting-1", {
       topicId: "topic-3",
       sectionId: "first",
+      topic,
     });
     vm.selectedSections = {};
-    await vm.add({ id: "topic-4", defaultSectionId: null });
+    const firstSectionTopic = { id: "topic-4", defaultSectionId: null };
+    await vm.add(firstSectionTopic);
     expect(api.addMeetingTopic).toHaveBeenLastCalledWith("meeting-1", {
       topicId: "topic-4",
       sectionId: "first",
+      topic: firstSectionTopic,
     });
     vm.sections = [];
     const calls = (api.addMeetingTopic as any).mock.calls.length;
@@ -193,6 +197,7 @@ describe("MeetingPreparationView", () => {
       topicId: "topic-3",
       sectionId: "first",
       position: 1,
+      topic: expect.objectContaining({ id: "topic-3" }),
     });
     expect(target.items).toHaveLength(0);
     expect(vm.suggestions).toHaveLength(1);
@@ -229,6 +234,7 @@ describe("MeetingPreparationView", () => {
     expect(api.addMeetingTopic).toHaveBeenLastCalledWith("meeting-1", {
       topicId: "new-topic",
       sectionId: "first",
+      topic: expect.objectContaining({ id: "new-topic" }),
     });
     vm.sections = [];
     await vm.createAndAdd();
@@ -247,9 +253,16 @@ describe("MeetingPreparationView", () => {
     vi.spyOn(api, "removeMeetingTopic").mockRejectedValueOnce(
       new Error("A preserved recurring appearance conflicts with this change"),
     );
+    const diagnostic = vi.spyOn(console, "error").mockImplementation(() => undefined);
     await (wrapper.vm as any).remove(item);
 
     expect(api.removeMeetingTopic).toHaveBeenCalledWith("meeting-1", item.id);
+    expect(diagnostic).toHaveBeenCalledWith(
+      "Meeting preparation operation failed",
+      expect.objectContaining({
+        message: "A preserved recurring appearance conflicts with this change",
+      }),
+    );
     expect((wrapper.vm as any).error).toBe(
       "A preserved recurring appearance conflicts with this change",
     );
@@ -311,8 +324,8 @@ describe("MeetingPreparationView", () => {
       appearance.id,
       { text: "Saved context", version: 0 },
     );
-    expect(appearance.agendaNote).toBe("Saved context");
-    expect(result.agendaNote).toBe("Saved context");
+    expect(appearance.personNote?.text).toBe("Saved context");
+    expect(result.personNote?.text).toBe("Saved context");
     expect(api.meeting).toHaveBeenCalledTimes(1);
   });
 

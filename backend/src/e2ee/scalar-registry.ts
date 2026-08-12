@@ -2,6 +2,7 @@ export const SCALAR_AGGREGATES = {
   topic: 256,
   update: 257,
   task: 258,
+  meeting: 259,
 } as const;
 
 export const TOPIC_SCALAR_FIELDS = {
@@ -44,12 +45,22 @@ export const TASK_SCALAR_FIELDS = {
   },
 } as const;
 
+export const MEETING_SCALAR_FIELDS = {
+  title: {
+    fieldId: 1,
+    envelopeProperty: "titleEnvelope",
+    revisionProperty: "titleCommitRevision",
+  },
+} as const;
+
 export type ScalarAggregateType = (typeof SCALAR_AGGREGATES)[keyof typeof SCALAR_AGGREGATES];
 export type TopicScalarField = (typeof TOPIC_SCALAR_FIELDS)[keyof typeof TOPIC_SCALAR_FIELDS];
 export type TopicScalarFieldId = TopicScalarField["fieldId"];
 export type UpdateScalarFieldId = (typeof UPDATE_SCALAR_FIELDS)[keyof typeof UPDATE_SCALAR_FIELDS];
 export type TaskScalarField = (typeof TASK_SCALAR_FIELDS)[keyof typeof TASK_SCALAR_FIELDS];
 export type TaskScalarFieldId = TaskScalarField["fieldId"];
+export type MeetingScalarField = (typeof MEETING_SCALAR_FIELDS)[keyof typeof MEETING_SCALAR_FIELDS];
+export type MeetingScalarFieldId = MeetingScalarField["fieldId"];
 
 export type ScalarFieldContext =
   | {
@@ -66,4 +77,9 @@ export type ScalarFieldContext =
       aggregateType: typeof SCALAR_AGGREGATES.task;
       recordId: string;
       fieldId: TaskScalarFieldId;
+    }
+  | {
+      aggregateType: typeof SCALAR_AGGREGATES.meeting;
+      recordId: string;
+      fieldId: MeetingScalarFieldId;
     };

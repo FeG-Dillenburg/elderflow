@@ -34,4 +34,21 @@ describe("RichTextEditor", () => {
       "Minutes recorded during the Meeting.",
     );
   });
+
+  it("forwards the read-only state to the underlying editor", () => {
+    const wrapper = shallowMount(RichTextEditor, {
+      props: { readonly: true },
+      global: {
+        stubs: {
+          Editor: {
+            name: "Editor",
+            props: ["readonly"],
+            template: "<div />",
+          },
+        },
+      },
+    });
+
+    expect(wrapper.getComponent({ name: "Editor" }).props("readonly")).toBe(true);
+  });
 });

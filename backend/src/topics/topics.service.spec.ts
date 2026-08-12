@@ -30,7 +30,7 @@ describe("TopicsService encrypted contracts", () => {
     save: jest.fn(async (value) => value),
   };
   const appearances = { find: jest.fn(), exist: jest.fn() };
-  const recurrence = { reconcile: jest.fn(), nextDueDate: jest.fn() };
+  const recurrence = { validate: jest.fn(), nextDueDate: jest.fn() };
   const scalars = {
     assertContentUser: jest.fn(),
     validateWrite: jest.fn(async (_manager, _user, context) => ({
@@ -139,7 +139,10 @@ describe("TopicsService encrypted contracts", () => {
       section: { id: "section", name: "Main", position: 1 },
     }]);
 
-    const result = await service.getAppearances("00000000-0000-4000-8000-000000000010");
+    const result = await service.getAppearances(
+      "00000000-0000-4000-8000-000000000010",
+      { role: "admin" } as any,
+    );
     expect(result).toEqual([expect.objectContaining({ id: "appearance", meetingId: "meeting" })]);
     expect(JSON.stringify(result)).not.toContain("agendaNote");
     expect(JSON.stringify(result)).not.toContain("SnapshotEnvelope");
@@ -197,7 +200,6 @@ describe("TopicsService encrypted contracts", () => {
     updates.findOne.mockResolvedValue({
       id: "00000000-0000-4000-8000-000000000011",
       topicId: "00000000-0000-4000-8000-000000000010",
-      meetingId: null,
       type: "update",
       textEnvelope: Buffer.from([1]),
       textCommitRevision: "3",
@@ -217,20 +219,6 @@ describe("TopicsService encrypted contracts", () => {
       viewer,
     )).resolves.toMatchObject({ id: "00000000-0000-4000-8000-000000000011" });
     expect(updates.save).not.toHaveBeenCalled();
-  });
-
-  it("keeps Meeting minutes behind their appearance endpoint", async () => {
-    await expect(service.addUpdate(
-      "00000000-0000-4000-8000-000000000010",
-      {
-        id: "00000000-0000-4000-8000-000000000011",
-        textEnvelope: "ciphertext",
-        meetingId: "00000000-0000-4000-8000-000000000012",
-      },
-      viewer,
-    )).rejects.toMatchObject({
-      response: expect.objectContaining({ code: "MEETING_MINUTES_ENDPOINT_REQUIRED" }),
-    });
   });
 
   it("preserves the Topic type lock after its first Meeting appearance", async () => {

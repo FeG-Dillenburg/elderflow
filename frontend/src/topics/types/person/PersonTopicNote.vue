@@ -20,7 +20,7 @@ let labelObserver: ResizeObserver | undefined;
 
 const { localNote, state, error, saving, save, scheduleSave } =
   useMeetingTopicNoteAutosave({
-    source: () => props.item.agendaNote,
+    source: () => props.item.personNote?.text,
     save: (note) => props.save(note),
     saveFailedMessage: () => t("personTopic.noteSaveFailed"),
   });

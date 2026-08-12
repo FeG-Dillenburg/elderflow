@@ -30,7 +30,7 @@ const normalize = (html: string): string | null => {
 };
 
 const preparation = useMeetingTopicNoteAutosave({
-  source: () => props.item.preparationContext?.text ?? props.item.agendaNote,
+  source: () => props.item.preparationContext?.text,
   save: props.savePreparation,
   saveFailedMessage: () => t("meetingTexts.preparationSaveFailed"),
   normalize,
@@ -44,39 +44,11 @@ const minutes = useMeetingTopicNoteAutosave({
 
 watch(preparation.localNote, preparation.scheduleSave);
 watch(minutes.localNote, minutes.scheduleSave);
-const previousPreparation = computed(() =>
-  props.item.previousMeetingTexts?.preparationContext ?? null);
-const previousMinutes = computed(() =>
-  props.item.previousMeetingTexts?.meetingMinutes ?? null);
-const hasPreviousPreparation = computed(() =>
-  Boolean(plainText(previousPreparation.value)));
-const hasPreviousMinutes = computed(() =>
-  Boolean(plainText(previousMinutes.value)));
-const hasPreviousMeetingTexts = computed(() =>
-  hasPreviousPreparation.value || hasPreviousMinutes.value);
 const hasPreparation = computed(() => Boolean(plainText(preparation.localNote.value)));
 </script>
 
 <template>
   <div class="paired-meeting-texts">
-    <section
-      v-if="mode === 'preparation' && hasPreviousMeetingTexts"
-      class="previous-meeting-entries"
-      :aria-label="t('meetingTexts.previousMeetingEntries')"
-    >
-      <h4>{{ t("meetingTexts.previousMeetingEntries") }}</h4>
-      <div
-        v-if="hasPreviousPreparation"
-        class="previous-entry previous-preparation"
-        v-html="safe(previousPreparation)"
-      />
-      <div
-        v-if="hasPreviousMinutes"
-        class="previous-entry previous-minutes"
-        v-html="safe(previousMinutes)"
-      />
-    </section>
-
     <section
       v-if="mode === 'preparation' || hasPreparation"
       class="meeting-text preparation-context"

@@ -51,12 +51,8 @@ describe("PairedMeetingTexts", () => {
     expect(wrapper.get('[role="status"]').text()).toBe("Saved");
   });
 
-  it("shows entries from the latest Meeting before the current preparation editor", () => {
+  it("does not render the removed synthesized previous-Meeting projection", () => {
     const prepared = item();
-    prepared.previousMeetingTexts = {
-      preparationContext: "<p>Earlier preparation context</p>",
-      meetingMinutes: "<p>Earlier Meeting minutes</p>",
-    };
     const wrapper = mount(PairedMeetingTexts, {
       props: {
         item: prepared,
@@ -66,15 +62,8 @@ describe("PairedMeetingTexts", () => {
       },
       global: { stubs: { RichTextEditor } },
     });
-    const html = wrapper.html();
-
-    expect(wrapper.get(".previous-meeting-entries h4").text())
-      .toBe("Entries from the last meeting:");
-    expect(wrapper.findAll(".previous-entry")).toHaveLength(2);
-    expect(html.indexOf("Earlier preparation context"))
-      .toBeLessThan(html.indexOf("<textarea"));
-    expect(html.indexOf("Earlier Meeting minutes"))
-      .toBeLessThan(html.indexOf("<textarea"));
+    expect(wrapper.find(".previous-meeting-entries").exists()).toBe(false);
+    expect(wrapper.find("textarea").exists()).toBe(true);
   });
 
   it("shows preparation read-only above directly editable Minutes in an active Meeting", async () => {

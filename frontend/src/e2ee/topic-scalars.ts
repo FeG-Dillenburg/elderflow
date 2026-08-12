@@ -2,6 +2,8 @@ import type { Topic, TopicHistoryEntry, TopicInput, TopicUpdate } from "../api/d
 import { translate } from "../i18n";
 import { base64UrlToBytes, bytesToBase64Url } from "./protocol";
 import { scalarSession, type ScalarFieldContext } from "./scalar-session";
+import { meetingDocumentSession, type EncryptedWorkspace } from "./meeting-document-session";
+import { unprotectMeetingTitle } from "./meeting-scalars";
 import {
   SCALAR_AGGREGATES,
   TOPIC_SCALAR_FIELDS,
@@ -194,13 +196,13 @@ export async function unprotectTopicUpdate(
 export async function unprotectTopicHistory(
   entries: Array<Record<string, unknown>>,
   cryptor: ScalarCryptor = scalarSession,
+  workspaces: Map<string, EncryptedWorkspace> = new Map(),
 ): Promise<TopicHistoryEntry[]> {
   return Promise.all(entries.map(async (entry) => {
     if (entry.kind === "standalone_update") {
       const update = await unprotectTopicUpdate({
         id: entry.updateId as string,
         topicId: "",
-        meetingId: null,
         date: entry.effectiveAt as string,
         type: "update",
         createdBy: null,
@@ -212,6 +214,35 @@ export async function unprotectTopicHistory(
     if (entry.kind === "meeting_appearance") {
       const unavailable = translate("e2ee.unavailablePlaceholder");
       const topic = entry.topic as Record<string, unknown>;
+      const meeting = entry.meeting as Record<string, unknown>;
+      const meetingId = meeting.id as string;
+      const workspace = workspaces.get(meetingId);
+      let preparationContext = unavailable;
+      let personNote = unavailable;
+      let meetingMinutes: Record<string, unknown> | null = null;
+      const appearanceId = entry.appearanceId as string | null;
+      if (workspace && appearanceId) {
+        try {
+          const sessionId = `history:${meetingId}`;
+          await meetingDocumentSession.load(sessionId, workspace);
+          const values = meetingDocumentSession.hydrateFragments(sessionId, [{
+            id: appearanceId,
+            person: topic.type === "person",
+          }]).appearances.get(appearanceId)!;
+          preparationContext = values.preparationContext ?? unavailable;
+          personNote = values.personNote ?? unavailable;
+          meetingMinutes = values.meetingMinutes === null
+            ? null
+            : {
+                id: appearanceId,
+                effectiveAt: entry.effectiveAt,
+                text: values.meetingMinutes,
+                createdByDisplayName: meeting.minuteTakerDisplayName,
+              };
+        } catch {
+          // The unavailable values above are the fail-closed projection.
+        }
+      }
       const snapshot = await unprotectTopicSnapshot(
         topic.id as string,
         topic.protected as EncryptedTopicSnapshot | null,
@@ -219,6 +250,13 @@ export async function unprotectTopicHistory(
       );
       return {
         ...entry,
+        meeting: {
+          ...meeting,
+          title: await unprotectMeetingTitle(
+            meetingId,
+            meeting.protected as { titleEnvelope: string; titleCommitRevision: string } | null,
+          ),
+        },
         topic: {
           ...topic,
           name: snapshot.name,
@@ -227,14 +265,10 @@ export async function unprotectTopicHistory(
             : null,
           godparents: topic.type === "new_membership" ? snapshot.godparents : null,
         },
-        preparationContext: unavailable,
-        personNote: unavailable,
-        meetingMinutes: entry.meetingMinutes
-          ? { ...(entry.meetingMinutes as object), text: unavailable }
-          : null,
-        legacyMinutesEntries: ((entry.legacyMinutesEntries as object[] | undefined) ?? [])
-          .map((item) => ({ ...item, text: unavailable })),
-      } as TopicHistoryEntry;
+        preparationContext,
+        personNote,
+        meetingMinutes,
+      } as unknown as TopicHistoryEntry;
     }
     return entry as TopicHistoryEntry;
   }));

@@ -13,6 +13,7 @@ import {
   type TaskScalarFieldId,
 } from './scalar-registry';
 import { scalarSession, type ScalarFieldContext } from './scalar-session';
+import { type EncryptedMeetingTitle, unprotectMeetingTitle } from './meeting-scalars';
 
 export interface TaskScalarCryptor {
   isUnlocked(): boolean;
@@ -41,7 +42,7 @@ export type EncryptedTaskResponse = Omit<
 > & {
   protected: EncryptedTaskFields | null;
   topic: EncryptedTopicLabel | null;
-  meeting: Omit<TaskMeetingReference, 'title'> | null;
+  meeting: (Omit<TaskMeetingReference, 'title'> & EncryptedMeetingTitle) | null;
 };
 
 export type EncryptedTaskRequest = Omit<TaskInput, 'title' | 'description'> & {
@@ -136,7 +137,10 @@ export async function unprotectTask(
     description,
     topic: await unprotectTopicLabel(topic, cryptor),
     meeting: meeting
-      ? { ...meeting, title: translate('e2ee.unavailablePlaceholder') }
+      ? {
+          ...meeting,
+          title: await unprotectMeetingTitle(meeting.id, meeting.protected),
+        }
       : null,
   } as Task;
 }

@@ -4,7 +4,6 @@ import { User } from '../users/user.entity';
 import { DiscriminatedTopicDto, TopicDto, TopicPatchDto, TopicUpdateDto } from './dto/topic.dto';
 import { TopicsService } from './topics.service';
 import { Permission } from '../auth/permissions';
-import { SkippedRecurrence } from '../recurrence/skipped-recurrence.entity';
 import { TopicHistoryService } from './topic-history.service';
 import { TopicHistoryEntry } from './topic-history';
 
@@ -60,12 +59,30 @@ export class TopicsController {
   }
 
   @Get(':id/appearances')
-  appearances(@Param('id', ParseUUIDPipe) id: string) {
-    return this.service.getAppearances(id);
+  @Header('Cache-Control', 'no-store')
+  appearances(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query('beforeMeetingId', new ParseUUIDPipe({ optional: true })) beforeMeetingId: string | undefined,
+    @CurrentUser() user: User,
+  ) {
+    return this.service.getAppearances(id, user, beforeMeetingId);
+  }
+
+  @Get(':id/recurrence-reconciliation')
+  @Header('Cache-Control', 'no-store')
+  recurrenceReconciliation(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: User,
+  ) {
+    return this.service.recurrenceReconciliation(id, user);
   }
 
   @Get(':id/skipped-recurrences')
-  skippedRecurrences(@Param('id', ParseUUIDPipe) id: string): Promise<SkippedRecurrence[]> {
-    return this.service.getSkippedRecurrences(id);
+  @Header('Cache-Control', 'no-store')
+  skippedRecurrences(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: User,
+  ) {
+    return this.service.getSkippedRecurrences(id, user);
   }
 }

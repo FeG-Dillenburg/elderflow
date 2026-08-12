@@ -97,12 +97,33 @@ describe("TopicHistoryService encrypted read model", () => {
     await expect(service.getHistory("topic", viewer)).resolves.toEqual([
       expect.objectContaining({
         kind: "meeting_appearance",
-        meetingDocumentUnavailable: true,
+        meetingDocument: { meetingId: "meeting", appearanceId: "appearance" },
         meeting: expect.objectContaining({ id: "meeting", date: "2026-07-15" }),
         section: { id: "section", name: "Main" },
         topic: expect.objectContaining({ protectedUnavailable: true }),
       }),
     ]);
+  });
+
+  it("withholds Meeting title ciphertext from Guests", async () => {
+    appearances.find.mockResolvedValue([{
+      id: "appearance",
+      meetingId: "meeting",
+      meeting: {
+        id: "meeting",
+        date: "2026-07-15",
+        beginTime: "20:00:00",
+        status: "completed",
+        titleEnvelope: Buffer.from([9]),
+        titleCommitRevision: "2",
+      },
+    }]);
+
+    const [entry] = await service.getHistory("topic", { role: "guest" } as User);
+    expect(entry).toMatchObject({
+      kind: "meeting_appearance",
+      meeting: { protected: null },
+    });
   });
 
   it("returns immutable encrypted Topic snapshots without Meeting-document plaintext", async () => {
@@ -135,7 +156,7 @@ describe("TopicHistoryService encrypted read model", () => {
         },
         protectedUnavailable: false,
       },
-      meetingDocumentUnavailable: true,
+      meetingDocument: { meetingId: "meeting", appearanceId: "appearance" },
     });
     expect(JSON.stringify(entry)).not.toContain("SnapshotEnvelope");
   });

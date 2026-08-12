@@ -44,14 +44,7 @@ describe('Topic history contract (e2e)', () => {
 
   beforeEach(() => {
     jest.resetAllMocks();
-    updates.find.mockResolvedValue([{
-      id: '00000000-0000-4000-8000-000000000010',
-      topicId: TOPIC_ID,
-      meetingId: MEETING_ID,
-      date: new Date('2026-07-15T18:10:00Z'),
-      text: '<p>Recorded minutes</p>',
-      createdBy: null,
-    }]);
+    updates.find.mockResolvedValue([]);
     skippedRecurrences.find.mockResolvedValue([]);
   });
 
@@ -78,13 +71,13 @@ describe('Topic history contract (e2e)', () => {
       meetingId: MEETING_ID,
       meeting: {
         id: MEETING_ID,
-        title: 'Council',
+        titleEnvelope: Buffer.from([21]),
+        titleCommitRevision: '7',
         date: '2026-07-15',
         beginTime: '20:00:00',
         status: 'completed',
       },
       section: null,
-      agendaNote: '<p>Appearance note</p>',
       topicNameSnapshotEnvelope: Buffer.from([11]),
       topicNameSnapshotCommitRevision: '4',
       responsibleUserDisplayNameSnapshot: 'Recorded owner',
@@ -102,7 +95,10 @@ describe('Topic history contract (e2e)', () => {
     expect(response.body).toEqual([expect.objectContaining({
       kind: 'meeting_appearance',
       meeting: expect.objectContaining({ id: MEETING_ID, status: 'completed' }),
-      meetingDocumentUnavailable: true,
+      meetingDocument: {
+        meetingId: MEETING_ID,
+        appearanceId: '00000000-0000-4000-8000-000000000003',
+      },
       topic: expect.objectContaining({
         type,
         protected: expect.objectContaining({
@@ -112,12 +108,6 @@ describe('Topic history contract (e2e)', () => {
         }),
         protectedUnavailable: false,
       }),
-      meetingMinutes: type === 'person'
-        ? null
-        : expect.objectContaining({ protectedUnavailable: true }),
-      legacyMinutesEntries: type === 'person'
-        ? [expect.objectContaining({ protectedUnavailable: true })]
-        : [],
     })]);
     if (type === 'new_membership') {
       expect(response.body[0].topic).toMatchObject({

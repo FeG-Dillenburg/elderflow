@@ -5,23 +5,6 @@ import { Meeting } from './meeting.entity';
 
 export type AgendaAppearanceSource = 'manual' | 'recurrence';
 
-export interface VersionedMeetingText {
-  id: string | null;
-  text: string | null;
-  version: number;
-}
-
-export interface MeetingAppearanceTexts {
-  preparationContext: VersionedMeetingText | null;
-  personNote: VersionedMeetingText | null;
-  meetingMinutes: VersionedMeetingText | null;
-}
-
-export interface PreviousMeetingTexts {
-  preparationContext: string | null;
-  meetingMinutes: string | null;
-}
-
 @Entity({ name: 'meeting_topics' })
 @Unique(['meetingId', 'topicId'])
 export class MeetingTopic {
@@ -52,17 +35,8 @@ export class MeetingTopic {
   @Column({ type: 'integer' })
   position: number;
 
-  @Column({ name: 'agenda_note', type: 'text', nullable: true })
-  agendaNote: string | null;
-
   @Column({ type: 'text', default: 'manual' })
   source: AgendaAppearanceSource;
-
-  @Column({ name: 'note_edited_at', type: 'timestamptz', nullable: true })
-  noteEditedAt: Date | null;
-
-  @Column({ name: 'note_version', type: 'integer', default: 0 })
-  noteVersion: number;
 
   @Column({ name: 'planned_duration', type: 'integer', nullable: true })
   plannedDuration: number | null;
@@ -72,6 +46,9 @@ export class MeetingTopic {
 
   @Column({ name: 'deferred_at', type: 'timestamptz', nullable: true })
   deferredAt: Date | null;
+
+  @Column({ name: 'content_edited_at', type: 'timestamptz', nullable: true })
+  contentEditedAt: Date | null;
 
   @Column({ name: 'topic_name_snapshot_envelope', type: 'bytea', nullable: true })
   topicNameSnapshotEnvelope: Buffer | null;
@@ -97,11 +74,4 @@ export class MeetingTopic {
   @Column({ name: 'godparents_snapshot_commit_revision', type: 'bigint', nullable: true })
   godparentsSnapshotCommitRevision: string | null;
 
-  preparationContext?: VersionedMeetingText | null;
-
-  personNote?: VersionedMeetingText | null;
-
-  meetingMinutes?: VersionedMeetingText | null;
-
-  previousMeetingTexts?: PreviousMeetingTexts | null;
 }

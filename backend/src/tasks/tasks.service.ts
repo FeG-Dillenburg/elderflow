@@ -28,7 +28,14 @@ const taskDetailSelect: FindOptionsSelect<Task> = {
   topicId: true,
   topic: { id: true, nameEnvelope: true, nameCommitRevision: true },
   meetingId: true,
-  meeting: { id: true, date: true, beginTime: true, status: true },
+  meeting: {
+    id: true,
+    titleEnvelope: true,
+    titleCommitRevision: true,
+    date: true,
+    beginTime: true,
+    status: true,
+  },
   assignedToId: true,
   assignedTo: {
     id: true,
@@ -85,13 +92,20 @@ export class TasksService {
         order: { updatedAt: 'DESC' },
       }),
       this.tasks.manager.getRepository(Meeting).find({
-        select: { id: true, date: true, beginTime: true, status: true },
+        select: {
+          id: true,
+          titleEnvelope: true,
+          titleCommitRevision: true,
+          date: true,
+          beginTime: true,
+          status: true,
+        },
         order: { date: 'DESC' },
       }),
     ]);
     return {
       topics: topics.map((topic) => topicLabelResponse(topic, user)),
-      meetings: meetings.map(taskMeetingReference),
+      meetings: meetings.map((meeting) => taskMeetingReference(meeting, user)),
     };
   }
 

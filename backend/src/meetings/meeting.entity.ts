@@ -14,8 +14,11 @@ export class Meeting {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ type: 'text', nullable: true })
-  title: string | null;
+  @Column({ name: 'title_envelope', type: 'bytea' })
+  titleEnvelope: Buffer;
+
+  @Column({ name: 'title_commit_revision', type: 'bigint', default: 1 })
+  titleCommitRevision: string;
 
   @Column({ type: 'date' })
   date: string;
@@ -39,12 +42,6 @@ export class Meeting {
   @ManyToOne(() => User, { nullable: true, onDelete: 'SET NULL' })
   @JoinColumn({ name: 'minute_taker_id' })
   minuteTaker?: User | null;
-
-  @Column({ name: 'general_notes', type: 'text', nullable: true })
-  generalNotes: string | null;
-
-  @Column({ name: 'opening_input', type: 'text', nullable: true })
-  openingInput: string | null;
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;
