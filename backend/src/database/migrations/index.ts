@@ -13,6 +13,7 @@ import { E2eeKeyState1720000011000 } from './1720000011000-E2eeKeyState';
 import { EncryptedTopicScalars1720000012000 } from './1720000012000-EncryptedTopicScalars';
 import { EncryptedTaskScalars1720000013000 } from './1720000013000-EncryptedTaskScalars';
 import { EncryptedMeetingWorkspaces1720000014000 } from './1720000014000-EncryptedMeetingWorkspaces';
+import { MeetingCompletionTimestamp1720000015000 } from './1720000015000-MeetingCompletionTimestamp';
 
 export const migrations = [
   CreateUsers1720000000000,
@@ -30,4 +31,5 @@ export const migrations = [
   EncryptedTopicScalars1720000012000,
   EncryptedTaskScalars1720000013000,
   EncryptedMeetingWorkspaces1720000014000,
+  MeetingCompletionTimestamp1720000015000,
 ];

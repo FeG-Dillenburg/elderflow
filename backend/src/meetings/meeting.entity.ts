@@ -29,6 +29,9 @@ export class Meeting {
   @Column({ type: 'text', default: 'planned' })
   status: string;
 
+  @Column({ name: 'completed_at', type: 'timestamptz', nullable: true })
+  completedAt: Date | null;
+
   @Column({ name: 'meeting_leader_id', type: 'uuid', nullable: true })
   meetingLeaderId: string | null;
 

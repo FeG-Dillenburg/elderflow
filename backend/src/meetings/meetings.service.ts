@@ -96,6 +96,7 @@ export class MeetingsService {
       document.completedServerSequence = document.currentServerSequence;
       await manager.save(document);
       meeting.status = "completed";
+      meeting.completedAt = new Date();
       return meetingResponse(await manager.save(Meeting, meeting), user);
     });
   }

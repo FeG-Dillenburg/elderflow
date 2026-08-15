@@ -194,6 +194,7 @@ export class TopicHistoryService {
       date: meeting.date,
       beginTime: meeting.beginTime,
       status: meeting.status,
+      completedAt: meeting.completedAt?.toISOString() ?? null,
       minuteTakerDisplayName: this.userDisplayName(meeting.minuteTaker),
     };
   }

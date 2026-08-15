@@ -179,6 +179,7 @@ export interface Meeting {
   date: string;
   beginTime: string;
   status: string;
+  completedAt?: string | null;
   meetingLeaderId: string | null;
   meetingLeader?: User | null;
   minuteTakerId: string | null;
@@ -272,6 +273,7 @@ export interface TopicHistoryMeeting {
   date: string;
   beginTime: string;
   status: string;
+  completedAt?: string | null;
   minuteTakerDisplayName: string | null;
 }
 

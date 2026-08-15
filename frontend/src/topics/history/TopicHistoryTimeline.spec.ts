@@ -9,6 +9,7 @@ const meeting = {
   date: '2026-07-15',
   beginTime: '20:00:00',
   status: 'completed',
+  completedAt: '2026-07-15T22:14:00Z',
   minuteTakerDisplayName: 'Ada Lovelace',
 };
 
@@ -74,6 +75,9 @@ describe('TopicHistoryTimeline', () => {
       'Minute taker: Ada Lovelace',
     );
     expect(wrapper.get('.minutes-list').text()).not.toContain('Minute taker');
+    expect(wrapper.get('.meeting-meta time').attributes('datetime')).toBe('2026-07-15T20:00:00');
+    expect(wrapper.get('.minutes-list time').attributes('datetime')).toBe('2026-07-15T22:14:00Z');
+    expect(wrapper.get('.minutes-list time').text()).toContain('2026');
     expect(text).not.toContain('Preparation context');
     expect(wrapper.find('h3').exists()).toBe(false);
     expect(text).toContain('Recorded family');
@@ -194,7 +198,7 @@ describe('TopicHistoryTimeline', () => {
     const entries: TopicHistoryEntry[] = [{
       id: 'appearance',
       kind: 'meeting_appearance',
-      effectiveAt: '2026-07-15T20:00:00',
+      effectiveAt: '2026-07-15T22:14:00Z',
       appearanceId: 'appearance',
       deferredAt: null,
       meeting,

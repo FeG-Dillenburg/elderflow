@@ -194,9 +194,13 @@ describe('Meeting completion lifecycle (e2e)', () => {
     await request(app.getHttpServer())
       .post(`/api/meetings/${MEETING_ID}/complete`)
       .expect(201)
-      .expect(({ body }) => expect(body.status).toBe('completed'));
+      .expect(({ body }) => {
+        expect(body.status).toBe('completed');
+        expect(body.completedAt).toEqual(expect.any(String));
+      });
 
     expect(state.meeting.status).toBe('completed');
+    expect(state.meeting.completedAt).toBeInstanceOf(Date);
     expect(state.appearances[0]).toMatchObject({
       topicNameSnapshotEnvelope: Buffer.from([1]),
       responsibleUserDisplayNameSnapshot: 'Ada Lovelace',

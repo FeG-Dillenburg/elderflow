@@ -89,6 +89,7 @@ describe("TopicHistoryService encrypted read model", () => {
         date: "2026-07-15",
         beginTime: "20:00:00",
         status: "completed",
+        completedAt: new Date("2026-07-15T22:14:00Z"),
         title: "Council",
       },
       section: { id: "section", name: "Main" },
@@ -97,8 +98,13 @@ describe("TopicHistoryService encrypted read model", () => {
     await expect(service.getHistory("topic", viewer)).resolves.toEqual([
       expect.objectContaining({
         kind: "meeting_appearance",
+        effectiveAt: "2026-07-15T20:00:00",
         meetingDocument: { meetingId: "meeting", appearanceId: "appearance" },
-        meeting: expect.objectContaining({ id: "meeting", date: "2026-07-15" }),
+        meeting: expect.objectContaining({
+          id: "meeting",
+          date: "2026-07-15",
+          completedAt: "2026-07-15T22:14:00.000Z",
+        }),
         section: { id: "section", name: "Main" },
         topic: expect.objectContaining({ protectedUnavailable: true }),
       }),
