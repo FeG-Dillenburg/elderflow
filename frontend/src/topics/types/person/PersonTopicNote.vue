@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { MeetingTopic } from "../../../api/domain";
-import { watch } from "vue";
+import { nextTick, onBeforeUnmount, onMounted, ref, useSlots, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { useMeetingTopicNoteAutosave } from "../../useMeetingTopicNoteAutosave";
 import RichTextEditor from "../../../components/RichTextEditor.vue";
@@ -16,6 +16,10 @@ const props = defineProps<{
 }>();
 
 const { t } = useI18n();
+const slots = useSlots();
+const inlineLabel = ref<HTMLElement>();
+const inlineLabelIndent = ref("0px");
+let labelObserver: ResizeObserver | undefined;
 const { localNote, state, error, saving, save, scheduleSave } =
   useMeetingTopicNoteAutosave({
     source: () => props.item.personNote?.text,
@@ -30,6 +34,24 @@ const saveIfStandalone = () => {
   if (!meetingCollaboration.get(props.item.meetingId)) void save();
 };
 
+const measureInlineLabel = () => {
+  const width = inlineLabel.value?.getBoundingClientRect().width ?? 0;
+  inlineLabelIndent.value = `${Math.ceil(width) + 6}px`;
+};
+
+onMounted(async () => {
+  if (!slots.label) return;
+  await nextTick();
+  measureInlineLabel();
+  if (typeof ResizeObserver !== "undefined" && inlineLabel.value) {
+    labelObserver = new ResizeObserver(measureInlineLabel);
+    labelObserver.observe(inlineLabel.value);
+  }
+});
+
+onBeforeUnmount(() => {
+  labelObserver?.disconnect();
+});
 </script>
 
 <template>
@@ -42,12 +64,15 @@ const saveIfStandalone = () => {
   </span>
   <span v-else class="note-editor" :aria-busy="saving">
     <span class="note-input">
-      <span v-if="$slots.label" class="inline-label">
+      <span v-if="$slots.label" ref="inlineLabel" class="inline-label">
         <slot name="label" />
       </span>
       <RichTextEditor
         v-model="localNote"
-        height="44px"
+        height="22px"
+        :toolbar="false"
+        :compact="true"
+        :first-line-indent="inlineLabelIndent"
         :aria-label="label ?? t('personTopic.noteLabel')"
         :meeting-id="item.meetingId"
         :fragment="meetingFragmentId('personNote', item.id)"
@@ -84,13 +109,6 @@ const saveIfStandalone = () => {
   left: 0.75rem;
   font-weight: 800;
   pointer-events: auto;
-}
-
-textarea {
-  width: 100%;
-  min-height: 2.2rem;
-  resize: none;
-  text-indent: var(--inline-label-indent);
 }
 
 .save-feedback {

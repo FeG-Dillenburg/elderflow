@@ -11,7 +11,16 @@ const item = () => ({
 
 const RichTextEditor = {
   name: "RichTextEditor",
-  props: ["modelValue", "ariaLabel", "meetingId", "fragment"],
+  props: [
+    "modelValue",
+    "ariaLabel",
+    "meetingId",
+    "fragment",
+    "toolbar",
+    "compact",
+    "height",
+    "firstLineIndent",
+  ],
   emits: ["update:modelValue", "blur"],
   template: `<textarea
     :value="modelValue"
@@ -122,6 +131,10 @@ describe("PersonTopicNote", () => {
     expect(wrapper.getComponent({ name: "RichTextEditor" }).props()).toMatchObject({
       meetingId: "meeting",
       fragment: "appearance/appearance/person-note",
+      toolbar: false,
+      compact: true,
+      height: "22px",
+      firstLineIndent: "6px",
     });
   });
 });

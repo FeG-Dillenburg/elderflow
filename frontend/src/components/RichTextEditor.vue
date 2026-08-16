@@ -24,9 +24,18 @@ const props = withDefaults(defineProps<{
   ariaLabel?: string;
   ariaDescription?: string;
   readonly?: boolean;
+  toolbar?: boolean;
+  compact?: boolean;
+  firstLineIndent?: string;
   meetingId?: string;
   fragment?: StableMeetingFragment;
-}>(), { height: "160px", readonly: false });
+}>(), {
+  height: "160px",
+  readonly: false,
+  toolbar: true,
+  compact: false,
+  firstLineIndent: "0px",
+});
 const model = defineModel<string>({ default: "" });
 const emit = defineEmits<{ blur: [] }>();
 const { t } = useI18n();
@@ -155,8 +164,20 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="rich-text-editor" :class="{ readonly: props.readonly }">
-    <div v-if="!props.readonly" class="toolbar" role="toolbar" :aria-label="t('editor.toolbar')">
+  <div
+    class="rich-text-editor"
+    :class="{ readonly: props.readonly, compact: props.compact }"
+    :style="{
+      '--editor-height': props.height,
+      '--editor-first-line-indent': props.firstLineIndent,
+    }"
+  >
+    <div
+      v-if="!props.readonly && props.toolbar"
+      class="toolbar"
+      role="toolbar"
+      :aria-label="t('editor.toolbar')"
+    >
       <button
         type="button"
         :aria-label="t('editor.bold')"
@@ -244,7 +265,7 @@ onBeforeUnmount(() => {
         />
       </div>
     </div>
-    <EditorContent :editor="editor" :style="{ '--editor-height': props.height }" :data-placeholder="resolvedPlaceholder" />
+    <EditorContent :editor="editor" :data-placeholder="resolvedPlaceholder" />
   </div>
 </template>
 
@@ -309,6 +330,14 @@ onBeforeUnmount(() => {
   min-height: var(--editor-height);
   padding: 0.65rem 0.75rem;
   outline: 0;
+}
+
+.rich-text-editor :deep(.tiptap > p:first-child) {
+  text-indent: var(--editor-first-line-indent);
+}
+
+.rich-text-editor.compact :deep(.tiptap > p:first-child) {
+  margin-top: 0;
 }
 
 .rich-text-editor :deep(.tiptap:focus-visible) {

@@ -48,6 +48,23 @@ describe("RichTextEditor", () => {
     expect(wrapper.find('[contenteditable="false"]').exists()).toBe(true);
   });
 
+  it("supports a compact toolbar-free surface with first-line indentation", async () => {
+    const wrapper = mount(RichTextEditor, {
+      props: {
+        toolbar: false,
+        compact: true,
+        height: "22px",
+        firstLineIndent: "120px",
+      },
+    });
+    await editorMounted();
+
+    expect(wrapper.find('[role="toolbar"]').exists()).toBe(false);
+    expect(wrapper.get(".rich-text-editor").classes()).toContain("compact");
+    expect(wrapper.get(".rich-text-editor").attributes("style"))
+      .toContain("--editor-first-line-indent: 120px");
+  });
+
   it("shows live document collaborators with their initials and colors", async () => {
     const document = new Y.Doc();
     const awareness = new Awareness(document);
