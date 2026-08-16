@@ -337,8 +337,8 @@ onBeforeUnmount(() => {
 }
 
 .rich-text-editor.compact :deep(.tiptap) {
-  padding-top: 0.5rem;
-  padding-bottom: 0.5rem;
+  padding-top: calc(0.5rem - 1px);
+  padding-bottom: calc(0.5rem - 1px);
 }
 
 .rich-text-editor.compact :deep(.tiptap > p) {
