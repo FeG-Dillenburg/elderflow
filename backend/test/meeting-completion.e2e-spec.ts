@@ -22,6 +22,7 @@ import { TopicHistoryService } from '../src/topics/topic-history.service';
 import { E2eeScalarService } from '../src/e2ee/e2ee-scalar.service';
 import { MeetingDocumentService } from '../src/meetings/meeting-document.service';
 import { MeetingDocument } from '../src/meetings/meeting-document.entity';
+import { MeetingCollaborationTicketService } from '../src/meetings/meeting-collaboration-ticket.service';
 import { E2EE_MEDIA_TYPE, isE2eeMediaType } from '../src/e2ee/e2ee-protocol';
 
 const MEETING_ID = '00000000-0000-4000-8000-000000000001';
@@ -117,6 +118,7 @@ describe('Meeting completion lifecycle (e2e)', () => {
         MeetingSnapshotRegistry,
         MeetingsService,
         TopicsService,
+        { provide: MeetingCollaborationTicketService, useValue: { mint: jest.fn() } },
         { provide: TopicHistoryService, useValue: { getHistory: jest.fn() } },
         { provide: E2eeScalarService, useValue: {
           assertContentUser: jest.fn(),
