@@ -332,11 +332,12 @@ export class MeetingsService {
           id: replay.appearanceId,
           meetingId,
         });
-        const updateMatches = await this.documents.storedUpdateMatches(
-          manager,
-          replay.updateId,
-          input.initialUpdateEnvelope,
-        );
+        const updateMatches = replay.updateId === null
+          || await this.documents.storedUpdateMatches(
+            manager,
+            replay.updateId,
+            input.initialUpdateEnvelope,
+          );
         const structureMatches = appearance
           && replay.meetingId === meetingId
           && replay.appearanceId === input.id

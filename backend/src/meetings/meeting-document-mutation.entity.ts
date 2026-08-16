@@ -14,8 +14,8 @@ export class MeetingDocumentMutation {
   @Column({ name: "source_appearance_id", type: "uuid", nullable: true })
   sourceAppearanceId: string | null;
 
-  @Column({ name: "update_id", type: "uuid" })
-  updateId: string;
+  @Column({ name: "update_id", type: "uuid", nullable: true })
+  updateId: string | null;
 
   @Column({ name: "request_fingerprint", type: "bytea" })
   requestFingerprint: Buffer;
