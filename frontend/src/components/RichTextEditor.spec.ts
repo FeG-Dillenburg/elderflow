@@ -1,54 +1,39 @@
-import { shallowMount } from "@vue/test-utils";
-import { describe, expect, it, vi } from "vitest";
+import { mount } from "@vue/test-utils";
+import { nextTick } from "vue";
+import { describe, expect, it } from "vitest";
 import RichTextEditor from "./RichTextEditor.vue";
 
+const editorMounted = async () => {
+  await nextTick();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  await nextTick();
+};
+
 describe("RichTextEditor", () => {
-  it("emits blur when the editor selection leaves the field", async () => {
-    const wrapper = shallowMount(RichTextEditor);
-    const editor = wrapper.getComponent({ name: "Editor" });
-
-    await editor.vm.$emit("selection-change", {
-      range: null,
-      oldRange: { index: 0, length: 0 },
-    });
-
-    expect(wrapper.emitted("blur")).toHaveLength(1);
-  });
-
-  it("applies an accessible name and description to the editable root", async () => {
-    const setAttribute = vi.fn();
-    const wrapper = shallowMount(RichTextEditor, {
+  it("offers every approved rich-text command with accessible labels", async () => {
+    const wrapper = mount(RichTextEditor, {
       props: {
         ariaLabel: "Meeting minutes",
         ariaDescription: "Minutes recorded during the Meeting.",
       },
     });
+    await editorMounted();
 
-    await wrapper.getComponent({ name: "Editor" }).vm.$emit("load", {
-      instance: { root: { setAttribute } },
+    expect(wrapper.find('[contenteditable="true"]').attributes()).toMatchObject({
+      "aria-label": "Meeting minutes",
+      "aria-description": "Minutes recorded during the Meeting.",
     });
-
-    expect(setAttribute).toHaveBeenCalledWith("aria-label", "Meeting minutes");
-    expect(setAttribute).toHaveBeenCalledWith(
-      "aria-description",
-      "Minutes recorded during the Meeting.",
-    );
+    expect(wrapper.findAll("[aria-label]").map((control) => control.attributes("aria-label")))
+      .toEqual(expect.arrayContaining([
+        "Bold", "Italic", "Underline", "Text color", "Highlight color",
+        "Block quote", "Numbered list", "Bulleted list", "Insert link",
+      ]));
   });
 
-  it("forwards the read-only state to the underlying editor", () => {
-    const wrapper = shallowMount(RichTextEditor, {
-      props: { readonly: true },
-      global: {
-        stubs: {
-          Editor: {
-            name: "Editor",
-            props: ["readonly"],
-            template: "<div />",
-          },
-        },
-      },
-    });
+  it("renders read-only content without an editable surface", async () => {
+    const wrapper = mount(RichTextEditor, { props: { readonly: true } });
+    await editorMounted();
 
-    expect(wrapper.getComponent({ name: "Editor" }).props("readonly")).toBe(true);
+    expect(wrapper.find('[contenteditable="false"]').exists()).toBe(true);
   });
 });

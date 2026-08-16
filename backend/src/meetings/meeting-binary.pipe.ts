@@ -17,6 +17,14 @@ export class MeetingUpdateBinaryPipe implements PipeTransform<unknown, MeetingDo
   }
 }
 
+export class MeetingSnapshotBinaryPipe implements PipeTransform<unknown, MeetingDocumentUpdateDto> {
+  transform(value: unknown): MeetingDocumentUpdateDto {
+    if (!Buffer.isBuffer(value)) return invalid();
+    if (value.length === 0 || value.length > 16_800_000) return invalid();
+    return { envelope: value.toString("base64url") };
+  }
+}
+
 export class MeetingTopicBinaryPipe implements PipeTransform<unknown, MeetingTopicDto> {
   transform(value: unknown): MeetingTopicDto {
     if (!Buffer.isBuffer(value)) return invalid();

@@ -19,6 +19,9 @@ import { MeetingDocumentSnapshot } from './meeting-document-snapshot.entity';
 import { MeetingDocumentUpdate } from './meeting-document-update.entity';
 import { MeetingDocumentMutation } from './meeting-document-mutation.entity';
 import { MeetingDocumentService } from './meeting-document.service';
+import { MeetingCollaborationTicket } from './meeting-collaboration-ticket.entity';
+import { MeetingCollaborationTicketService } from './meeting-collaboration-ticket.service';
+import { MeetingCollaborationRelayService } from './meeting-collaboration-relay.service';
 
 @Module({
   imports: [
@@ -30,6 +33,7 @@ import { MeetingDocumentService } from './meeting-document.service';
       MeetingDocumentSnapshot,
       MeetingDocumentUpdate,
       MeetingDocumentMutation,
+      MeetingCollaborationTicket,
       Topic,
       TopicUpdate,
       Task,
@@ -45,6 +49,8 @@ import { MeetingDocumentService } from './meeting-document.service';
     MeetingDocumentService,
     NewMembershipSnapshotContributor,
     MeetingsService,
+    MeetingCollaborationTicketService,
+    MeetingCollaborationRelayService,
   ],
   exports: [MeetingSnapshotRegistry, MeetingsService],
 })

@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { nextTick, onBeforeUnmount, onMounted, ref, useSlots } from "vue";
-import Textarea from "primevue/textarea";
 import type { MeetingTopic } from "../../../api/domain";
+import { watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { useMeetingTopicNoteAutosave } from "../../useMeetingTopicNoteAutosave";
+import RichTextEditor from "../../../components/RichTextEditor.vue";
+import { meetingFragmentId } from "../../../e2ee/meeting-document-codec";
 
 const props = defineProps<{
   item: MeetingTopic;
@@ -13,36 +14,14 @@ const props = defineProps<{
 }>();
 
 const { t } = useI18n();
-const slots = useSlots();
-const inlineLabel = ref<HTMLElement>();
-const inlineLabelIndent = ref("0px");
-let labelObserver: ResizeObserver | undefined;
-
 const { localNote, state, error, saving, save, scheduleSave } =
   useMeetingTopicNoteAutosave({
     source: () => props.item.personNote?.text,
     save: (note) => props.save(note),
     saveFailedMessage: () => t("personTopic.noteSaveFailed"),
   });
+watch(localNote, scheduleSave);
 
-const measureInlineLabel = () => {
-  const width = inlineLabel.value?.getBoundingClientRect().width ?? 0;
-  inlineLabelIndent.value = `${Math.ceil(width) + 6}px`;
-};
-
-onMounted(async () => {
-  if (!slots.label) return;
-  await nextTick();
-  measureInlineLabel();
-  if (typeof ResizeObserver !== "undefined" && inlineLabel.value) {
-    labelObserver = new ResizeObserver(measureInlineLabel);
-    labelObserver.observe(inlineLabel.value);
-  }
-});
-
-onBeforeUnmount(() => {
-  labelObserver?.disconnect();
-});
 </script>
 
 <template>
@@ -54,16 +33,15 @@ onBeforeUnmount(() => {
   </span>
   <span v-else class="note-editor" :aria-busy="saving">
     <span class="note-input">
-      <span v-if="$slots.label" ref="inlineLabel" class="inline-label">
+      <span v-if="$slots.label" class="inline-label">
         <slot name="label" />
       </span>
-      <Textarea
+      <RichTextEditor
         v-model="localNote"
-        auto-resize
-        rows="1"
+        height="44px"
         :aria-label="label ?? t('personTopic.noteLabel')"
-        :style="{ '--inline-label-indent': inlineLabelIndent }"
-        @input="scheduleSave"
+        :meeting-id="item.meetingId"
+        :fragment="meetingFragmentId('personNote', item.id)"
         @blur="save"
       />
     </span>

@@ -10,6 +10,7 @@ import Message from "primevue/message";
 import Select from "primevue/select";
 import Tag from "primevue/tag";
 import RichTextEditor from "../components/RichTextEditor.vue";
+import MeetingCollaborationStatus from "../e2ee/MeetingCollaborationStatus.vue";
 import TopicTypeRenderer from "../topics/TopicTypeRenderer.vue";
 import {
   topicAgendaClass,
@@ -266,6 +267,10 @@ onMounted(load);
   <section class="agenda-page">
     <Message v-if="error" severity="error">{{ error }}</Message>
     <template v-if="meeting">
+      <MeetingCollaborationStatus
+        v-if="meeting.collaboration?.available && canEditProtected"
+        :meeting-id="id"
+      />
       <Message
         v-if="meeting.collaboration && !meeting.collaboration.available"
         severity="info"
@@ -604,6 +609,8 @@ onMounted(load);
               v-model="editForm.openingInput"
               height="100px"
               :readonly="!canEditProtected"
+              :meeting-id="id"
+              fragment="meeting/opening-input"
             />
           </label>
           <label>
@@ -612,6 +619,8 @@ onMounted(load);
               v-model="editForm.generalNotes"
               height="100px"
               :readonly="!canEditProtected"
+              :meeting-id="id"
+              fragment="meeting/general-notes"
             />
           </label>
         </section>

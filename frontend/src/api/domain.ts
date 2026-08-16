@@ -11,6 +11,7 @@ import {
   type EncryptedWorkspace,
 } from '../e2ee/meeting-document-session';
 import { meetingFragmentId } from '../e2ee/meeting-document-codec';
+import { meetingCollaboration, type CollaborationTicket } from '../e2ee/meeting-collaboration';
 import { scalarSession } from '../e2ee/scalar-session';
 import {
   protectStandaloneUpdate,
@@ -189,7 +190,7 @@ export interface Meeting {
   participants?: MeetingParticipant[];
   agenda?: MeetingTopic[];
   workspace?: EncryptedWorkspace | null;
-  collaboration?: { available: false };
+  collaboration?: { available: boolean };
 }
 
 export type MeetingInput = Omit<Meeting, 'id' | 'meetingLeader' | 'minuteTaker' | 'participants' | 'agenda'>;
@@ -782,6 +783,19 @@ export const api = {
         return { ...item, topic };
       }));
     }
+    if (meeting.workspace && meeting.status !== 'completed' && scalarSession.isUnlocked()) {
+      await meetingCollaboration.start(
+        id,
+        () => request<CollaborationTicket>(`/api/meetings/${id}/collaboration-ticket`, { method: 'POST' }),
+        (path) => {
+          const url = new URL(`${apiBaseUrl}${path}`, window.location.origin);
+          url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
+          return new WebSocket(url);
+        },
+        () => api.compactMeetingWorkspace(id),
+      );
+      meeting.collaboration = { available: true };
+    }
     return meeting;
   },
   createMeeting: async (input: MeetingInput) => {
@@ -861,10 +875,19 @@ export const api = {
       throw error;
     }
   },
-  completeMeeting: async (id: string) => {
-    const meeting = await unprotectMeeting(
-      await request<EncryptedMeetingResponse>(`/api/meetings/${id}/complete`, { method: 'POST' }),
+  compactMeetingWorkspace: async (id: string) => {
+    const snapshot = await meetingDocumentSession.createCompaction(id);
+    await requestWithBinaryBody(
+      `/api/meetings/${id}/workspace/compact`,
+      base64UrlToBytes(snapshot.snapshotEnvelope),
+      { 'X-ElderFlow-Snapshot-Id': snapshot.snapshotId },
     );
+    meetingDocumentSession.acceptCompaction(id, snapshot.snapshotId, snapshot.snapshotEnvelope);
+  },
+  completeMeeting: async (id: string) => {
+    const response = await request<EncryptedMeetingResponse>(`/api/meetings/${id}/complete`, { method: 'POST' });
+    meetingCollaboration.stop(id);
+    const meeting = await unprotectMeeting(response);
     await reconcileAllRecurringTopics();
     return meeting;
   },

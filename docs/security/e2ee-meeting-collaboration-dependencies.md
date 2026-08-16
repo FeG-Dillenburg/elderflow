@@ -1,0 +1,9 @@
+# Encrypted Meeting collaboration dependency review
+
+| Dependency | License and provenance | Purpose and rationale | Compatibility and maintenance | Runtime impact |
+| --- | --- | --- | --- | --- |
+| Tiptap open-source packages `@tiptap/{core,vue-3,starter-kit,extension-collaboration,extension-collaboration-caret,extension-color,extension-highlight,extension-link,extension-text-style,extension-underline}@3.30.1` and `@tiptap/y-tiptap@3.0.8` | MIT; official `ueberdosis/tiptap` packages | Provides Vue editors, the bounded rich-text schema, independent Yjs fragments, and collaborator carets. No Tiptap Cloud, Pro, hosted, or paid package is used. | Browser-only. Versions are exact and upgrades require multi-client convergence, completed-rendering, schema, accessibility, and bundle checks. | Replaces Quill on the shared editor surface and adds ProseMirror/Tiptap code to the frontend bundle. |
+| `y-protocols@1.0.7` | MIT; official Yjs protocol package | Supplies ephemeral awareness state and update encoding for encrypted presence/carets. | Browser-only and pinned; it shares the already reviewed `yjs@13.6.32` document runtime. Awareness bytes are encrypted before transport and never persisted. | Small relative to the editor stack. |
+| `ws@8.21.3` | MIT; official `websockets/ws` package | Attaches a stable same-origin WebSocket upgrade path to the existing Nest HTTP server and relays opaque frames. | Node-only, mature, and pinned. ElderFlow owns authentication, authorization, frame validation, sequencing, and persistence rather than using a document-aware server. | One in-memory socket-room index; PostgreSQL remains authoritative. `@types/ws@8.18.1` is development-only. |
+
+The collaboration relay never imports Yjs or Tiptap. Secsync, Hocuspocus, `y-websocket`, hosted collaboration, and proprietary Tiptap packages remain excluded.

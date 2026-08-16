@@ -249,7 +249,7 @@ export class MeetingsService {
       workspace: workspace
         ? { ...workspace, priorDocuments }
         : null,
-      collaboration: { available: false },
+      collaboration: { available: meeting.status !== "completed" },
     };
   }
 
@@ -278,6 +278,8 @@ export class MeetingsService {
       return {
         status: result.duplicate ? "duplicate" : "accepted",
         updateId: result.update.id,
+        clientEpochId: result.update.clientEpochId,
+        authorClock: result.update.authorClock,
         serverSequence: result.update.serverSequence,
       };
     });
@@ -288,6 +290,11 @@ export class MeetingsService {
       throw codedHttpException(HttpStatus.NOT_FOUND, "MEETING_NOT_FOUND", "Meeting not found");
     }
     return this.documents.bootstrap(this.meetings.manager, user, meetingId);
+  }
+
+  async compactWorkspace(meetingId: string, snapshotId: string, envelope: string, user: User) {
+    return this.dataSource.transaction((manager) =>
+      this.documents.compact(manager, user, meetingId, snapshotId, envelope));
   }
 
   async addParticipant(meetingId: string, input: MeetingParticipantDto): Promise<MeetingUser> {

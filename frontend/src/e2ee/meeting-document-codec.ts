@@ -1,6 +1,9 @@
 import { Decoder } from "cbor-x";
 import sodium from "libsodium-wrappers-sumo";
 import * as Y from "yjs";
+import { generateHTML } from "@tiptap/core";
+import { yXmlFragmentToProsemirrorJSON } from "@tiptap/y-tiptap";
+import { meetingRichTextExtensions } from "../components/meeting-rich-text-extensions";
 import {
   bytesToUuid,
   deterministicCbor,
@@ -51,6 +54,7 @@ export type CreateMeetingUpdateInput = MeetingUpdateContext & {
 export type ApplyMeetingUpdateInput = MeetingUpdateContext & {
   signingPublicKey: Uint8Array;
   envelope: Uint8Array;
+  origin?: unknown;
 };
 
 export type CreateMeetingSnapshotInput = Omit<MeetingUpdateContext, "activeSnapshotId" | "authorClock"> & {
@@ -85,6 +89,13 @@ export function meetingFragmentId(
 }
 
 export function readMeetingFragment(document: Y.Doc, fragment: StableMeetingFragment): string {
+  const collaborative = document.getXmlFragment(`tiptap:${fragment}`);
+  if (collaborative.length > 0) {
+    return generateHTML(
+      yXmlFragmentToProsemirrorJSON(collaborative),
+      meetingRichTextExtensions(true),
+    );
+  }
   return document.getText(fragment).toString();
 }
 
@@ -199,7 +210,7 @@ export async function applyEncryptedMeetingUpdate(
       const probe = new Y.Doc();
       Y.applyUpdateV2(probe, update);
       probe.destroy();
-      Y.applyUpdateV2(document, update);
+      Y.applyUpdateV2(document, update, input.origin);
     } finally {
       sodium.memzero(key);
     }

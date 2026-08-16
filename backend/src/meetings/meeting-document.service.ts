@@ -1,6 +1,6 @@
 import { HttpStatus, Injectable } from "@nestjs/common";
 import sodium from "libsodium-wrappers-sumo";
-import { EntityManager, In } from "typeorm";
+import { EntityManager, In, Not } from "typeorm";
 import { E2eeClientEpoch } from "../e2ee/e2ee-client-epoch.entity";
 import { E2eeKeyState } from "../e2ee/e2ee-key-state.entity";
 import { isE2eeKeyOperator } from "../e2ee/e2ee-role-policy";
@@ -145,6 +145,11 @@ export class MeetingDocumentService {
       where: { documentId: document.id, clientEpochId },
       order: { authorClock: "DESC" },
     });
+    const activeSnapshot = await manager.findOneByOrFail(MeetingDocumentSnapshot, {
+      id: document.activeSnapshotId,
+    });
+    const coveredClock = activeSnapshot.coveredAuthorClocks
+      .find(([epochId]) => epochId === clientEpochId)?.[1] ?? "0";
     if (existing) {
       if (!existing.envelopeFingerprint.equals(metadata.fingerprint)) {
         throw codedHttpException(
@@ -162,7 +167,7 @@ export class MeetingDocumentService {
       }
       return { update: existing, duplicate: true };
     }
-    if (BigInt(metadata.authorClock) !== BigInt(latest?.authorClock ?? "0") + 1n) {
+    if (BigInt(metadata.authorClock) !== BigInt(latest?.authorClock ?? coveredClock) + 1n) {
       throw codedHttpException(
         HttpStatus.CONFLICT,
         "E2EE_AUTHOR_CLOCK_GAP",
@@ -193,6 +198,81 @@ export class MeetingDocumentService {
     const stored = await manager.findOneBy(MeetingDocumentUpdate, { id: updateId });
     if (!stored) return false;
     return stored.envelope.equals(this.decodeEnvelope(encodedEnvelope, 1_050_000));
+  }
+
+  async compact(
+    manager: EntityManager,
+    user: User,
+    meetingId: string,
+    snapshotId: string,
+    encodedEnvelope: string,
+  ) {
+    this.assertContentUser(user);
+    const meeting = await manager.findOne(Meeting, {
+      where: { id: meetingId },
+      lock: { mode: "pessimistic_write" },
+    });
+    if (!meeting) throw codedHttpException(HttpStatus.NOT_FOUND, "MEETING_NOT_FOUND", "Meeting not found");
+    if (meeting.status === "completed") {
+      throw codedHttpException(HttpStatus.CONFLICT, "MEETING_COMPLETED_IMMUTABLE", "Completed Meeting content cannot be changed");
+    }
+    const document = await manager.findOne(MeetingDocument, {
+      where: { meetingId }, lock: { mode: "pessimistic_write" },
+    });
+    if (!document?.activeSnapshotId) {
+      throw codedHttpException(HttpStatus.CONFLICT, "MEETING_WORKSPACE_UNAVAILABLE", "Meeting workspace is unavailable");
+    }
+    const parent = await manager.findOneByOrFail(MeetingDocumentSnapshot, { id: document.activeSnapshotId });
+    const envelope = this.decodeEnvelope(encodedEnvelope, 16_800_000);
+    const clientEpochId = meetingSnapshotClientEpochId(envelope);
+    const { state, epoch } = await this.context(manager, user, clientEpochId);
+    await sodium.ready;
+    const metadata = validateMeetingSnapshotEnvelope(envelope, {
+      organizationId: state.organizationId,
+      documentId: document.id,
+      snapshotId,
+      ockId: state.ockId,
+      clientEpochId,
+      noncePrefix: epoch.noncePrefix,
+      signingPublicKey: epoch.signingPublicKey,
+    });
+    const expectedHash = Buffer.from(await sodium.crypto_hash_sha256(parent.envelope));
+    const updates = await manager.find(MeetingDocumentUpdate, { where: { documentId: document.id } });
+    const clocks = new Map<string, bigint>(parent.coveredAuthorClocks.map(
+      ([epochId, clock]) => [epochId, BigInt(clock)],
+    ));
+    for (const update of updates) {
+      const current = clocks.get(update.clientEpochId) ?? 0n;
+      if (BigInt(update.authorClock) > current) clocks.set(update.clientEpochId, BigInt(update.authorClock));
+    }
+    const expectedClocks = [...clocks].sort(([left], [right]) => left.localeCompare(right));
+    const suppliedClocks = metadata.coveredAuthorClocks.map(([id, clock]) => [id, BigInt(clock)] as const);
+    if (metadata.parentSnapshotId !== document.activeSnapshotId
+      || !expectedHash.equals(metadata.parentEnvelopeHash)
+      || BigInt(metadata.coveredServerSequence) !== BigInt(document.currentServerSequence)
+      || JSON.stringify(suppliedClocks.map(([id, clock]) => [id, String(clock)]))
+        !== JSON.stringify(expectedClocks.map(([id, clock]) => [id, String(clock)]))) {
+      throw codedHttpException(HttpStatus.CONFLICT, "E2EE_SNAPSHOT_PARENT_INVALID", "Meeting snapshot parent is stale");
+    }
+    await manager.save(MeetingDocumentSnapshot, manager.create(MeetingDocumentSnapshot, {
+      id: snapshotId,
+      documentId: document.id,
+      parentSnapshotId: document.activeSnapshotId,
+      parentEnvelopeHash: metadata.parentEnvelopeHash,
+      coveredServerSequence: String(metadata.coveredServerSequence),
+      coveredAuthorClocks: metadata.coveredAuthorClocks.map(([id, clock]) => [id, String(clock)]),
+      ockId: state.ockId,
+      meetingCodec: 2,
+      clientEpochId,
+      snapshotClock: String(metadata.snapshotClock),
+      envelope,
+      envelopeFingerprint: metadata.fingerprint,
+    }));
+    document.activeSnapshotId = snapshotId;
+    await manager.save(document);
+    await manager.delete(MeetingDocumentUpdate, { documentId: document.id });
+    await manager.delete(MeetingDocumentSnapshot, { documentId: document.id, id: Not(snapshotId) });
+    return { status: "compacted" as const, activeSnapshotId: snapshotId, currentServerSequence: document.currentServerSequence };
   }
 
   async bootstrap(
@@ -227,6 +307,7 @@ export class MeetingDocumentService {
       snapshot: {
         id: snapshot.id,
         clientEpochId: snapshot.clientEpochId,
+        snapshotClock: snapshot.snapshotClock,
         signingPublicKey: signingKeys.get(snapshot.clientEpochId),
         envelope: snapshot.envelope.toString("base64url"),
       },

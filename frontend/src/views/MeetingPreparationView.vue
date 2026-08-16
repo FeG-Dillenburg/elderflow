@@ -27,6 +27,7 @@ import {
 import { formatDate } from "../i18n";
 import { topicNameTranslationKey } from "../topics/topicTypes";
 import { assignableUsers } from "../auth/roles";
+import MeetingCollaborationStatus from "../e2ee/MeetingCollaborationStatus.vue";
 import {
   saveMeetingMinutes,
   saveMeetingPreparationContext,
@@ -307,6 +308,10 @@ onMounted(load);
   <section class="page">
     <Message v-if="error" severity="error">{{ error }}</Message>
     <template v-if="meeting">
+      <MeetingCollaborationStatus
+        v-if="meeting.collaboration?.available"
+        :meeting-id="id"
+      />
       <Message
         v-if="meeting.collaboration && !meeting.collaboration.available"
         severity="info"

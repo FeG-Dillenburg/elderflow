@@ -11,6 +11,7 @@ import {
   type StableMeetingFragment,
 } from "./meeting-document-codec";
 import { base64UrlToBytes, bytesToBase64Url } from "./protocol";
+import { decryptMeetingAwareness, encryptMeetingAwareness } from "./meeting-awareness-codec";
 
 interface DocumentSessionKeys {
   organizationId: string;
@@ -28,6 +29,7 @@ export interface EncryptedWorkspace {
   snapshot: {
     id: string;
     clientEpochId: string;
+    snapshotClock?: string;
     signingPublicKey: string;
     envelope: string;
   };
@@ -45,6 +47,11 @@ interface LoadedDocument {
   documentId: string;
   activeSnapshotId: string;
   authorClock: number;
+  awarenessClock: number;
+  snapshotClock: number;
+  currentServerSequence: number;
+  authorClocks: Map<string, number>;
+  activeSnapshotEnvelope: Uint8Array;
 }
 
 export class MeetingDocumentSession {
@@ -89,6 +96,11 @@ export class MeetingDocumentSession {
       documentId,
       activeSnapshotId: snapshotId,
       authorClock: 0,
+      awarenessClock: 0,
+      snapshotClock: 1,
+      currentServerSequence: 0,
+      authorClocks: new Map(),
+      activeSnapshotEnvelope: Uint8Array.from(envelope),
     });
     return { documentId, snapshotId, snapshotEnvelope: bytesToBase64Url(envelope) };
   }
@@ -127,6 +139,18 @@ export class MeetingDocumentSession {
       authorClock: Math.max(0, ...workspace.updates
         .filter((update) => update.clientEpochId === keys.clientEpochId)
         .map((update) => Number(update.authorClock))),
+      awarenessClock: 0,
+      snapshotClock: workspace.snapshot.clientEpochId === keys.clientEpochId
+        ? Number(workspace.snapshot.snapshotClock ?? 0)
+        : 0,
+      currentServerSequence: Number(workspace.currentServerSequence),
+      authorClocks: new Map(workspace.updates.map((update) => [
+        update.clientEpochId,
+        Math.max(...workspace.updates
+          .filter((candidate) => candidate.clientEpochId === update.clientEpochId)
+          .map((candidate) => Number(candidate.authorClock))),
+      ])),
+      activeSnapshotEnvelope: base64UrlToBytes(workspace.snapshot.envelope),
     });
     for (const prior of workspace.priorDocuments ?? []) {
       await this.load(`prior:${prior.documentId}`, prior);
@@ -163,9 +187,15 @@ export class MeetingDocumentSession {
     fragment: StableMeetingFragment,
     value: string,
   ): Promise<string> {
-    const keys = this.requiredKeys();
+    this.requiredKeys();
     const loaded = this.requiredDocument(meetingId);
     const update = replaceMeetingFragment(loaded.document, fragment, value);
+    return this.createDocumentUpdate(meetingId, update);
+  }
+
+  async createDocumentUpdate(meetingId: string, update: Uint8Array): Promise<string> {
+    const keys = this.requiredKeys();
+    const loaded = this.requiredDocument(meetingId);
     loaded.authorClock += 1;
     try {
       return bytesToBase64Url(await createEncryptedMeetingUpdate({
@@ -184,6 +214,105 @@ export class MeetingDocumentSession {
       loaded.authorClock -= 1;
       throw error;
     }
+  }
+
+  document(meetingId: string): Y.Doc {
+    return this.requiredDocument(meetingId).document;
+  }
+
+  async applyRemoteUpdate(meetingId: string, input: {
+    clientEpochId: string;
+    authorClock: string;
+    signingPublicKey: string;
+    envelope: string;
+    serverSequence?: string;
+  }, origin: unknown): Promise<void> {
+    const keys = this.requiredKeys();
+    const loaded = this.requiredDocument(meetingId);
+    await applyEncryptedMeetingUpdate(loaded.document, {
+      organizationId: keys.organizationId,
+      documentId: loaded.documentId,
+      activeSnapshotId: loaded.activeSnapshotId,
+      ockId: keys.ockId,
+      clientEpochId: input.clientEpochId,
+      authorClock: Number(input.authorClock),
+      contentKey: keys.contentKey,
+      signingPublicKey: base64UrlToBytes(input.signingPublicKey),
+      envelope: base64UrlToBytes(input.envelope),
+      origin,
+    });
+    loaded.authorClocks.set(input.clientEpochId, Number(input.authorClock));
+    if (input.serverSequence) loaded.currentServerSequence = Number(input.serverSequence);
+  }
+
+  acknowledge(meetingId: string, clientEpochId: string, authorClock: string, serverSequence: string): void {
+    const loaded = this.requiredDocument(meetingId);
+    loaded.authorClocks.set(clientEpochId, Number(authorClock));
+    loaded.currentServerSequence = Number(serverSequence);
+  }
+
+  async createCompaction(meetingId: string) {
+    const keys = this.requiredKeys();
+    const loaded = this.requiredDocument(meetingId);
+    const snapshotId = crypto.randomUUID();
+    loaded.snapshotClock += 1;
+    const parentEnvelopeHash = new Uint8Array(await crypto.subtle.digest(
+      "SHA-256",
+      Uint8Array.from(loaded.activeSnapshotEnvelope).buffer,
+    ));
+    const envelope = await createEncryptedMeetingSnapshot({
+      organizationId: keys.organizationId,
+      documentId: loaded.documentId,
+      snapshotId,
+      parentSnapshotId: loaded.activeSnapshotId,
+      parentEnvelopeHash,
+      coveredServerSequence: loaded.currentServerSequence,
+      coveredAuthorClocks: [...loaded.authorClocks],
+      ockId: keys.ockId,
+      clientEpochId: keys.clientEpochId,
+      snapshotClock: loaded.snapshotClock,
+      noncePrefix: keys.noncePrefix,
+      contentKey: keys.contentKey,
+      signingPrivateKey: keys.signingPrivateKey,
+      document: loaded.document,
+    });
+    return { snapshotId, snapshotEnvelope: bytesToBase64Url(envelope) };
+  }
+
+  acceptCompaction(meetingId: string, snapshotId: string, snapshotEnvelope: string): void {
+    const loaded = this.requiredDocument(meetingId);
+    loaded.activeSnapshotId = snapshotId;
+    loaded.activeSnapshotEnvelope = base64UrlToBytes(snapshotEnvelope);
+  }
+
+  async encryptAwareness(meetingId: string, plaintext: Uint8Array): Promise<string> {
+    const keys = this.requiredKeys();
+    const loaded = this.requiredDocument(meetingId);
+    loaded.awarenessClock += 1;
+    return bytesToBase64Url(await encryptMeetingAwareness({
+      ...keys,
+      documentId: loaded.documentId,
+      awarenessClock: loaded.awarenessClock,
+      plaintext,
+    }));
+  }
+
+  async decryptAwareness(meetingId: string, input: {
+    clientEpochId: string;
+    awarenessClock: string;
+    signingPublicKey: string;
+    envelope: string;
+  }): Promise<Uint8Array> {
+    const keys = this.requiredKeys();
+    const loaded = this.requiredDocument(meetingId);
+    return decryptMeetingAwareness({
+      ...keys,
+      documentId: loaded.documentId,
+      clientEpochId: input.clientEpochId,
+      awarenessClock: Number(input.awarenessClock),
+      signingPublicKey: base64UrlToBytes(input.signingPublicKey),
+      envelope: base64UrlToBytes(input.envelope),
+    });
   }
 
   readPriorFragment(documentId: string, fragment: StableMeetingFragment): string {

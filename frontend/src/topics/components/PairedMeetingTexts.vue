@@ -5,6 +5,7 @@ import { useI18n } from "vue-i18n";
 import type { MeetingTopic } from "../../api/domain";
 import { useMeetingTopicNoteAutosave } from "../useMeetingTopicNoteAutosave";
 import MeetingTextEditor from "./MeetingTextEditor.vue";
+import { meetingFragmentId } from "../../e2ee/meeting-document-codec";
 
 const props = withDefaults(defineProps<{
   item: MeetingTopic;
@@ -62,6 +63,8 @@ const hasPreparation = computed(() => Boolean(plainText(preparation.localNote.va
           :description="t('meetingTexts.preparationDescription')"
           :state="preparation.state.value"
           :error="preparation.error.value"
+          :meeting-id="item.meetingId"
+          :fragment="meetingFragmentId('preparationContext', item.id)"
           @save="preparation.save"
         />
       </template>
@@ -85,6 +88,8 @@ const hasPreparation = computed(() => Boolean(plainText(preparation.localNote.va
           :description="t('meetingTexts.minutesDescription')"
           :state="minutes.state.value"
           :error="minutes.error.value"
+          :meeting-id="item.meetingId"
+          :fragment="meetingFragmentId('meetingMinutes', item.id)"
           @save="minutes.save"
         />
       </template>
