@@ -24,6 +24,7 @@ export class EncryptedMeetingCollaborationProvider extends EventTarget {
   private stopped = false;
   private authenticated = false;
   private compacting = false;
+  private awarenessGeneration = 0;
 
   constructor(
     readonly meetingId: string,
@@ -113,15 +114,20 @@ export class EncryptedMeetingCollaborationProvider extends EventTarget {
       ...change.updated,
       ...change.removed,
     ]);
+    await this.sendAwareness(update, socket);
+  };
+
+  private async sendAwareness(update: Uint8Array, socket: WebSocket): Promise<void> {
+    const generation = ++this.awarenessGeneration;
     try {
       const envelope = await meetingDocumentSession.encryptAwareness(this.meetingId, update);
-      if (this.stopped || !this.authenticated || this.socket !== socket
-        || socket.readyState !== WebSocket.OPEN) return;
+      if (generation !== this.awarenessGeneration || this.stopped || !this.authenticated
+        || this.socket !== socket || socket.readyState !== WebSocket.OPEN) return;
       socket.send(JSON.stringify({ type: "awareness", envelope }));
     } finally {
       update.fill(0);
     }
-  };
+  }
 
   private async message(encoded: string): Promise<void> {
     const frame = JSON.parse(encoded) as Record<string, string>;
@@ -131,13 +137,11 @@ export class EncryptedMeetingCollaborationProvider extends EventTarget {
       this.setStatus(this.pending.length ? "pending" : "online");
       this.flush();
       const clients = [...this.awareness.getStates().keys()];
-      if (clients.length) {
-        const envelope = await meetingDocumentSession.encryptAwareness(
-          this.meetingId,
-          encodeAwarenessUpdate(this.awareness, clients),
-        );
-        this.socket?.send(JSON.stringify({ type: "awareness", envelope }));
-      }
+      const socket = this.socket;
+      if (clients.length && socket) await this.sendAwareness(
+        encodeAwarenessUpdate(this.awareness, clients),
+        socket,
+      );
       return;
     }
     if (frame.type === "acknowledged") {

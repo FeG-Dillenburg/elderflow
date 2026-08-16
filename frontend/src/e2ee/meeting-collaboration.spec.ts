@@ -442,6 +442,47 @@ describe("EncryptedMeetingCollaborationProvider", () => {
     document.destroy();
   });
 
+  it("does not send an older awareness envelope after a newer one", async () => {
+    const document = new Y.Doc();
+    const socket = new FakeSocket();
+    const encrypt = vi.spyOn(meetingDocumentSession, "encryptAwareness")
+      .mockResolvedValue("initial-awareness");
+    const provider = new EncryptedMeetingCollaborationProvider(
+      "meeting",
+      document,
+      async () => ({ ticket: "ticket", documentId: "document", websocketPath: "/socket" }),
+      () => socket as unknown as WebSocket,
+    );
+    await provider.connect();
+    socket.open();
+    socket.receive({ type: "authenticated" });
+    await settle();
+
+    const resolvers: Array<(envelope: string) => void> = [];
+    encrypt.mockImplementation(() => new Promise((resolve) => resolvers.push(resolve)));
+    provider.awareness.setLocalStateField("cursor", { anchor: 1 });
+    provider.awareness.setLocalStateField("cursor", { anchor: 2 });
+    await Promise.resolve();
+
+    expect(resolvers).toHaveLength(2);
+    resolvers[1]("newer-awareness");
+    await settle();
+    resolvers[0]("older-awareness");
+    await settle();
+
+    const awarenessFrames = socket.sent
+      .map((encoded) => JSON.parse(encoded) as { type: string; envelope?: string })
+      .filter((frame) => frame.type === "awareness")
+      .map((frame) => frame.envelope);
+    expect(awarenessFrames).toEqual([
+      "initial-awareness",
+      "newer-awareness",
+    ]);
+
+    provider.destroy();
+    document.destroy();
+  });
+
   it("reseals pending work after an author-clock gap instead of blocking later edits", async () => {
     const document = new Y.Doc();
     const socket = new FakeSocket();
