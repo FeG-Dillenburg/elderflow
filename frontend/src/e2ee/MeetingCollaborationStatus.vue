@@ -7,7 +7,9 @@ const props = defineProps<{ meetingId: string }>();
 const { t } = useI18n();
 const provider = meetingCollaboration.get(props.meetingId);
 const status = ref<CollaborationStatus>(provider?.status ?? "offline");
-const changed = (event: Event) => { status.value = (event as CustomEvent<CollaborationStatus>).detail; };
+const changed = (event: Event) => {
+  status.value = (event as CustomEvent<CollaborationStatus>).detail;
+};
 onMounted(() => provider?.addEventListener("status", changed));
 onBeforeUnmount(() => provider?.removeEventListener("status", changed));
 </script>
@@ -20,6 +22,18 @@ onBeforeUnmount(() => provider?.removeEventListener("status", changed));
 </template>
 
 <style scoped>
-.collaboration-status { display: flex; align-items: center; gap: 0.4rem; margin: 0 0 0.8rem; color: #526176; font-size: 0.85rem; }
-.collaboration-status.rejected, .collaboration-status.discarded { color: #9f261f; font-weight: 700; }
+.collaboration-status {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0 0 0.8rem;
+  color: #526176;
+  font-size: 0.85rem;
+}
+
+.collaboration-status.rejected,
+.collaboration-status.discarded {
+  color: #9f261f;
+  font-weight: 700;
+}
 </style>

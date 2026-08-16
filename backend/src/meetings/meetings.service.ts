@@ -35,6 +35,7 @@ import { MeetingUser } from "./meeting-user.entity";
 import { lockedMutableMeeting } from "./meeting-mutation-boundary";
 import { meetingResponse } from "./meeting-response";
 import { Meeting } from "./meeting.entity";
+import { meetingCollaborationEvents } from "./meeting-collaboration-events";
 
 @Injectable()
 export class MeetingsService {
@@ -54,7 +55,7 @@ export class MeetingsService {
   ) {}
 
   async complete(id: string, user: User) {
-    return this.dataSource.transaction(async (manager) => {
+    const response = await this.dataSource.transaction(async (manager) => {
       const meeting = await manager.findOne(Meeting, {
         where: { id },
         lock: { mode: "pessimistic_write" },
@@ -99,6 +100,10 @@ export class MeetingsService {
       meeting.completedAt = new Date();
       return meetingResponse(await manager.save(Meeting, meeting), user);
     });
+    meetingCollaborationEvents.emit("completed", {
+      meetingId: id,
+    });
+    return response;
   }
 
   async findAll(user: User) {
@@ -293,8 +298,10 @@ export class MeetingsService {
   }
 
   async compactWorkspace(meetingId: string, snapshotId: string, envelope: string, user: User) {
-    return this.dataSource.transaction((manager) =>
+    const result = await this.dataSource.transaction((manager) =>
       this.documents.compact(manager, user, meetingId, snapshotId, envelope));
+    meetingCollaborationEvents.emit("compacted", { meetingId });
+    return result;
   }
 
   async addParticipant(meetingId: string, input: MeetingParticipantDto): Promise<MeetingUser> {

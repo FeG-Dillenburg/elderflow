@@ -1,6 +1,9 @@
 import { Awareness, applyAwarenessUpdate, encodeAwarenessUpdate } from "y-protocols/awareness";
-import type * as Y from "yjs";
-import { meetingDocumentSession } from "./meeting-document-session";
+import * as Y from "yjs";
+import {
+  meetingDocumentSession,
+  type PendingEncryptedMeetingUpdate,
+} from "./meeting-document-session";
 
 export type CollaborationStatus = "connecting" | "online" | "offline" | "pending" | "rejected" | "discarded";
 export interface CollaborationTicket {
@@ -9,13 +12,13 @@ export interface CollaborationTicket {
   websocketPath: string;
 }
 
-const REMOTE_ORIGIN = Symbol("encrypted-meeting-collaboration");
+export const MEETING_COLLABORATION_ORIGIN = Symbol("encrypted-meeting-collaboration");
 
 export class EncryptedMeetingCollaborationProvider extends EventTarget {
   readonly awareness: Awareness;
   status: CollaborationStatus = "connecting";
   private socket: WebSocket | null = null;
-  private pending: string[] = [];
+  private pending: PendingEncryptedMeetingUpdate[] = [];
   private sent = new Set<string>();
   private encryption = Promise.resolve();
   private stopped = false;
@@ -28,6 +31,7 @@ export class EncryptedMeetingCollaborationProvider extends EventTarget {
     private readonly ticket: () => Promise<CollaborationTicket>,
     private readonly socketFactory: (path: string) => WebSocket,
     private readonly compact?: () => Promise<void>,
+    private readonly resync?: () => Promise<{ parentChanged: boolean }>,
   ) {
     super();
     this.awareness = new Awareness(document);
@@ -37,7 +41,16 @@ export class EncryptedMeetingCollaborationProvider extends EventTarget {
 
   async connect(): Promise<void> {
     this.setStatus("connecting");
-    const credentials = await this.ticket();
+    let credentials: CollaborationTicket;
+    try {
+      credentials = await this.ticket();
+    } catch (error) {
+      if (this.isTerminalAccessError(error)) {
+        this.reloadCanonical();
+        return;
+      }
+      throw error;
+    }
     if (this.stopped) return;
     const socket = this.socketFactory(credentials.websocketPath);
     this.socket = socket;
@@ -46,13 +59,20 @@ export class EncryptedMeetingCollaborationProvider extends EventTarget {
       ticket: credentials.ticket,
       documentId: credentials.documentId,
     })));
-    socket.addEventListener("message", (event) => void this.message(String(event.data)));
+    socket.addEventListener("message", (event) => {
+      void this.message(String(event.data)).catch((error: unknown) => {
+        if ((error as Error)?.message === "E2EE_MEETING_DOCUMENT_CONTEXT_INVALID") {
+          void this.synchronize().catch(() => this.setStatus("rejected"));
+        } else this.setStatus("rejected");
+      });
+    });
     socket.addEventListener("close", () => this.closed());
     socket.addEventListener("error", () => this.setStatus("offline"));
   }
 
   destroy(): void {
     this.stopped = true;
+    this.clearPending();
     this.document.off("updateV2", this.localUpdate);
     this.awareness.off("update", this.localAwareness);
     this.awareness.destroy();
@@ -61,21 +81,32 @@ export class EncryptedMeetingCollaborationProvider extends EventTarget {
   }
 
   private readonly localUpdate = (update: Uint8Array, origin: unknown): void => {
-    if (origin === REMOTE_ORIGIN || this.stopped) return;
+    if (origin === MEETING_COLLABORATION_ORIGIN || this.stopped) return;
     const copy = Uint8Array.from(update);
-    this.encryption = this.encryption.then(async () => {
-      const envelope = await meetingDocumentSession.createDocumentUpdate(this.meetingId, copy);
-      copy.fill(0);
-      this.pending.push(envelope);
-      this.flush();
-    }).catch(() => this.setStatus("rejected"));
+    void this.enqueue(async () => {
+      try {
+        const pending = await meetingDocumentSession.createPendingDocumentUpdate(this.meetingId, copy);
+        copy.fill(0);
+        if (this.stopped) {
+          return;
+        }
+        this.pending.push(pending);
+        this.flush();
+      } catch (error) {
+        copy.fill(0);
+        throw error;
+      }
+    }).catch(() => {
+      if (!this.stopped) this.setStatus("rejected");
+    });
   };
 
   private readonly localAwareness = async (
     change: { added: number[]; updated: number[]; removed: number[] },
     origin: unknown,
   ): Promise<void> => {
-    if (origin === REMOTE_ORIGIN || !this.authenticated || this.socket?.readyState !== WebSocket.OPEN) return;
+    if (origin === MEETING_COLLABORATION_ORIGIN
+      || !this.authenticated || this.socket?.readyState !== WebSocket.OPEN) return;
     const update = encodeAwarenessUpdate(this.awareness, [
       ...change.added,
       ...change.updated,
@@ -88,6 +119,7 @@ export class EncryptedMeetingCollaborationProvider extends EventTarget {
   private async message(encoded: string): Promise<void> {
     const frame = JSON.parse(encoded) as Record<string, string>;
     if (frame.type === "authenticated") {
+      await this.synchronize();
       this.authenticated = true;
       this.setStatus(this.pending.length ? "pending" : "online");
       this.flush();
@@ -102,7 +134,7 @@ export class EncryptedMeetingCollaborationProvider extends EventTarget {
       return;
     }
     if (frame.type === "acknowledged") {
-      const index = this.pending.indexOf(frame.envelope);
+      const index = this.pending.findIndex((pending) => pending.envelope === frame.envelope);
       if (index >= 0) this.pending.splice(index, 1);
       this.sent.delete(frame.envelope);
       meetingDocumentSession.acknowledge(
@@ -111,7 +143,7 @@ export class EncryptedMeetingCollaborationProvider extends EventTarget {
         frame.authorClock,
         frame.serverSequence,
       );
-      this.setStatus(this.pending.length ? "pending" : "online");
+      this.flush();
       if (!this.pending.length && Number(frame.serverSequence) % 100 === 0 && !this.compacting) {
         this.compacting = true;
         void this.compact?.().catch(() => this.setStatus("rejected")).finally(() => {
@@ -126,8 +158,14 @@ export class EncryptedMeetingCollaborationProvider extends EventTarget {
         authorClock: string;
         signingPublicKey: string;
         envelope: string;
+        serverSequence: string;
       };
-      await meetingDocumentSession.applyRemoteUpdate(this.meetingId, update, REMOTE_ORIGIN);
+      const result = await meetingDocumentSession.applyRemoteUpdate(
+        this.meetingId,
+        update,
+        MEETING_COLLABORATION_ORIGIN,
+      );
+      if (result === "gap") await this.synchronize();
       return;
     }
     if (frame.type === "awareness") {
@@ -139,17 +177,24 @@ export class EncryptedMeetingCollaborationProvider extends EventTarget {
           signingPublicKey: string;
           envelope: string;
         }),
-        REMOTE_ORIGIN,
+        MEETING_COLLABORATION_ORIGIN,
       );
       return;
     }
+    if (frame.type === "parent-changed") {
+      await this.synchronize();
+      return;
+    }
     if (frame.type === "rejected") {
-      if (frame.code === "MEETING_COMPLETED_IMMUTABLE") {
-        this.pending = [];
-        this.sent.clear();
-        meetingDocumentSession.discard(this.meetingId);
-        this.setStatus("discarded");
-        this.destroy();
+      if ([
+        "MEETING_COMPLETED_IMMUTABLE",
+        "E2EE_CLIENT_EPOCH_INVALID",
+        "E2EE_PROTECTED_CIPHERTEXT_FORBIDDEN",
+      ].includes(frame.code)) {
+        this.reloadCanonical();
+      } else if (["E2EE_SNAPSHOT_PARENT_INVALID", "E2EE_ENVELOPE_CONTEXT_INVALID"].includes(frame.code)) {
+        this.setStatus("connecting");
+        await this.synchronize();
       } else this.setStatus("rejected");
     }
   }
@@ -159,11 +204,10 @@ export class EncryptedMeetingCollaborationProvider extends EventTarget {
       this.setStatus(this.pending.length ? "pending" : "offline");
       return;
     }
-    for (const envelope of this.pending) {
-      if (!this.sent.has(envelope)) {
-        this.socket.send(JSON.stringify({ type: "update", envelope }));
-        this.sent.add(envelope);
-      }
+    const pending = this.pending.find((candidate) => !this.sent.has(candidate.envelope));
+    if (pending && this.sent.size === 0) {
+      this.socket.send(JSON.stringify({ type: "update", envelope: pending.envelope }));
+      this.sent.add(pending.envelope);
     }
     this.setStatus(this.pending.length ? "pending" : "online");
   }
@@ -178,16 +222,80 @@ export class EncryptedMeetingCollaborationProvider extends EventTarget {
   }
 
   private reconnect(): void {
-    window.setTimeout(() => void this.connect().catch(() => {
+    window.setTimeout(() => void this.connect().catch((error: unknown) => {
+      if (this.isTerminalAccessError(error)) {
+        this.reloadCanonical();
+        return;
+      }
       this.setStatus("offline");
       if (!this.stopped) this.reconnect();
     }), 1_000);
+  }
+
+  async synchronize(): Promise<void> {
+    await this.enqueue(async () => {
+      const { parentChanged } = await this.resync?.() ?? { parentChanged: false };
+      if (parentChanged && this.pending.length) await this.rebasePending();
+    });
+  }
+
+  private async rebasePending(): Promise<void> {
+    this.sent.clear();
+    for (let index = 0; index < this.pending.length; index += 1) {
+      if (this.stopped) return;
+      const pending = this.pending[index];
+      const plaintext = await meetingDocumentSession.decryptPendingDocumentUpdate(
+        this.meetingId,
+        pending,
+      );
+      try {
+        const rebased = await meetingDocumentSession.createPendingDocumentUpdate(
+          this.meetingId,
+          plaintext,
+        );
+        if (this.stopped) return;
+        this.pending[index] = rebased;
+      } finally {
+        plaintext.fill(0);
+      }
+    }
+    this.flush();
+  }
+
+  private isTerminalAccessError(error: unknown): boolean {
+    return [
+      "AUTH_SESSION_REVOKED",
+      "AUTH_USER_NOT_FOUND",
+      "MEETING_COMPLETED_IMMUTABLE",
+      "E2EE_CLIENT_EPOCH_INVALID",
+      "E2EE_PROTECTED_CIPHERTEXT_FORBIDDEN",
+    ].includes((error as { code?: string })?.code ?? "");
+  }
+
+  private reloadCanonical(): void {
+    this.clearPending();
+    meetingDocumentSession.discard(this.meetingId);
+    window.sessionStorage.setItem("elderflow:discarded-collaboration", this.meetingId);
+    this.setStatus("discarded");
+    this.destroy();
+    window.location.reload();
+  }
+
+  private clearPending(): void {
+    this.pending = [];
+    this.sent.clear();
   }
 
   private setStatus(status: CollaborationStatus): void {
     if (this.status === status) return;
     this.status = status;
     this.dispatchEvent(new CustomEvent("status", { detail: status }));
+  }
+
+  private enqueue<T>(operation: () => Promise<T>): Promise<T> {
+    const queued = this.encryption.then(operation);
+    this.encryption = queued.then(() => undefined, () => undefined);
+    return queued;
   }
 }
 
@@ -199,6 +307,7 @@ export const meetingCollaboration = {
     ticket: () => Promise<CollaborationTicket>,
     socketFactory: (path: string) => WebSocket,
     compact?: () => Promise<void>,
+    resync?: () => Promise<{ parentChanged: boolean }>,
   ) => {
     providers.get(meetingId)?.destroy();
     const provider = new EncryptedMeetingCollaborationProvider(
@@ -207,6 +316,7 @@ export const meetingCollaboration = {
       ticket,
       socketFactory,
       compact,
+      resync,
     );
     providers.set(meetingId, provider);
     await provider.connect();

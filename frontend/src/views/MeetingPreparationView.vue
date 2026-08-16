@@ -52,6 +52,7 @@ const statusLabel = (value?: string) => (value ? t(`labels.${value}`) : "");
 const id = route.params.id as string;
 const meeting = ref<Meeting | null>(null);
 const readOnly = computed(() => meeting.value?.status === "completed");
+const discardedAfterReload = ref(false);
 const sections = ref<AgendaSection[]>([]);
 const suggestions = ref<Topic[]>([]);
 const futureSuggestions = ref<Topic[]>([]);
@@ -301,11 +302,20 @@ const createAndAdd = async () => {
   newVisible.value = false;
 };
 
-onMounted(load);
+onMounted(() => {
+  if (window.sessionStorage.getItem("elderflow:discarded-collaboration") === id) {
+    discardedAfterReload.value = true;
+    window.sessionStorage.removeItem("elderflow:discarded-collaboration");
+  }
+  void load();
+});
 </script>
 
 <template>
   <section class="page">
+    <Message v-if="discardedAfterReload" severity="warn">
+      {{ t("e2ee.collaboration.discarded") }}
+    </Message>
     <Message v-if="error" severity="error">{{ error }}</Message>
     <template v-if="meeting">
       <MeetingCollaborationStatus

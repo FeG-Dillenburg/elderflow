@@ -308,6 +308,7 @@ export class MeetingDocumentService {
         id: snapshot.id,
         clientEpochId: snapshot.clientEpochId,
         snapshotClock: snapshot.snapshotClock,
+        coveredAuthorClocks: snapshot.coveredAuthorClocks,
         signingPublicKey: signingKeys.get(snapshot.clientEpochId),
         envelope: snapshot.envelope.toString("base64url"),
       },

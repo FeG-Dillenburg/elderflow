@@ -13,13 +13,21 @@ import { User } from "../users/user.entity";
 import { Meeting } from "./meeting.entity";
 import { MeetingCollaborationTicketService, type ConsumedCollaborationTicket } from "./meeting-collaboration-ticket.service";
 import { MeetingsService } from "./meetings.service";
+import {
+  meetingCollaborationEvents,
+  type MeetingCompactedEvent,
+  type MeetingCompletedEvent,
+} from "./meeting-collaboration-events";
 
-type Client = WebSocket & { collaboration?: ConsumedCollaborationTicket };
+type Client = WebSocket & {
+  collaboration?: ConsumedCollaborationTicket;
+  reauthorization?: ReturnType<typeof setInterval>;
+};
 
 @Injectable()
 export class MeetingCollaborationRelayService implements OnApplicationBootstrap, OnApplicationShutdown {
   private readonly logger = new Logger(MeetingCollaborationRelayService.name);
-  private readonly server = new WebSocketServer({ noServer: true, maxPayload: 1_100_000 });
+  private readonly server = new WebSocketServer({ noServer: true, maxPayload: 1_500_000 });
   private readonly rooms = new Map<string, Set<Client>>();
   private readonly awarenessClocks = new Map<string, number>();
   private httpServer?: HttpServer;
@@ -36,10 +44,14 @@ export class MeetingCollaborationRelayService implements OnApplicationBootstrap,
     this.httpServer = httpServer;
     httpServer.on("upgrade", this.upgrade);
     this.server.on("connection", (socket: Client) => this.connected(socket));
+    meetingCollaborationEvents.on("completed", this.meetingCompleted);
+    meetingCollaborationEvents.on("compacted", this.meetingCompacted);
   }
 
   onApplicationShutdown(): void {
     this.httpServer?.off("upgrade", this.upgrade);
+    meetingCollaborationEvents.off("completed", this.meetingCompleted);
+    meetingCollaborationEvents.off("compacted", this.meetingCompacted);
     for (const room of this.rooms.values()) for (const socket of room) socket.close(1012);
     this.server.close();
   }
@@ -67,6 +79,7 @@ export class MeetingCollaborationRelayService implements OnApplicationBootstrap,
         room.add(socket);
         this.rooms.set(frame.documentId, room);
         socket.send(JSON.stringify({ type: "authenticated", documentId: frame.documentId }));
+        socket.reauthorization = setInterval(() => void this.reauthorize(socket), 10_000);
         socket.on("message", (payload, isBinary) => void this.message(socket, payload, isBinary));
         socket.on("close", () => this.remove(socket));
       } catch (error) {
@@ -79,7 +92,7 @@ export class MeetingCollaborationRelayService implements OnApplicationBootstrap,
   private async message(socket: Client, data: RawData, binary: boolean): Promise<void> {
     try {
       const encoded = data.toString();
-      if (binary || Buffer.byteLength(encoded) > 1_100_000 || !socket.collaboration) {
+      if (binary || Buffer.byteLength(encoded) > 1_500_000 || !socket.collaboration) {
         throw new Error("E2EE_COLLABORATION_FRAME_INVALID");
       }
       const frame = JSON.parse(encoded) as Record<string, unknown>;
@@ -95,6 +108,7 @@ export class MeetingCollaborationRelayService implements OnApplicationBootstrap,
         return;
       }
       if (frame.type !== "update") throw new Error("E2EE_COLLABORATION_FRAME_INVALID");
+      await this.assertConnectionActive(socket.collaboration);
       const envelope = this.opaqueEnvelope(frame.envelope, 1_050_000);
       const result = await this.meetings.appendWorkspaceUpdate(
         socket.collaboration.meetingId,
@@ -133,12 +147,51 @@ export class MeetingCollaborationRelayService implements OnApplicationBootstrap,
   }
 
   private remove(socket: Client): void {
+    if (socket.reauthorization) clearInterval(socket.reauthorization);
     const documentId = socket.collaboration?.documentId;
     if (!documentId) return;
     const room = this.rooms.get(documentId);
     room?.delete(socket);
     if (room?.size === 0) this.rooms.delete(documentId);
   }
+
+  private async reauthorize(socket: Client): Promise<void> {
+    if (!socket.collaboration || socket.readyState !== WebSocket.OPEN) return;
+    try {
+      await this.assertConnectionActive(socket.collaboration);
+    } catch (error) {
+      const code = this.code(error);
+      socket.send(JSON.stringify({ type: "rejected", code }));
+      socket.close(4403, code);
+    }
+  }
+
+  private readonly meetingCompleted = (event: MeetingCompletedEvent): void => {
+    setTimeout(() => {
+      for (const room of this.rooms.values()) {
+        for (const socket of room) {
+          if (socket.collaboration?.meetingId !== event.meetingId
+            || socket.readyState !== WebSocket.OPEN) continue;
+          socket.send(JSON.stringify({
+            type: "rejected",
+            code: "MEETING_COMPLETED_IMMUTABLE",
+          }));
+          socket.close(4403, "MEETING_COMPLETED_IMMUTABLE");
+        }
+      }
+    }, 250);
+  };
+
+  private readonly meetingCompacted = (event: MeetingCompactedEvent): void => {
+    for (const room of this.rooms.values()) {
+      for (const socket of room) {
+        if (socket.collaboration?.meetingId === event.meetingId
+          && socket.readyState === WebSocket.OPEN) {
+          socket.send(JSON.stringify({ type: "parent-changed" }));
+        }
+      }
+    }
+  };
 
   private opaqueEnvelope(value: unknown, maximum: number): string {
     if (typeof value !== "string") throw new Error("E2EE_COLLABORATION_FRAME_INVALID");

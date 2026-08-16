@@ -73,6 +73,7 @@ export type ApplyMeetingSnapshotInput = Omit<MeetingUpdateContext, "activeSnapsh
   snapshotId: string;
   signingPublicKey: Uint8Array;
   envelope: Uint8Array;
+  origin?: unknown;
 };
 
 export function meetingFragmentId(
@@ -207,10 +208,17 @@ export async function applyEncryptedMeetingUpdate(
         key,
         "uint8array",
       );
-      const probe = new Y.Doc();
-      Y.applyUpdateV2(probe, update);
-      probe.destroy();
-      Y.applyUpdateV2(document, update, input.origin);
+      try {
+        const probe = new Y.Doc();
+        try {
+          Y.applyUpdateV2(probe, update);
+        } finally {
+          probe.destroy();
+        }
+        Y.applyUpdateV2(document, update, input.origin);
+      } finally {
+        sodium.memzero(update);
+      }
     } finally {
       sodium.memzero(key);
     }
@@ -219,6 +227,25 @@ export async function applyEncryptedMeetingUpdate(
       throw error;
     }
     throw new Error("E2EE_MEETING_DOCUMENT_INVALID", { cause: error });
+  }
+}
+
+export async function decryptEncryptedMeetingUpdate(
+  input: Omit<ApplyMeetingUpdateInput, "origin">,
+): Promise<Uint8Array> {
+  const document = new Y.Doc();
+  let plaintext: Uint8Array | null = null;
+  const capture = (update: Uint8Array): void => {
+    plaintext = Uint8Array.from(update);
+  };
+  document.on("updateV2", capture);
+  try {
+    await applyEncryptedMeetingUpdate(document, input);
+    if (!plaintext) invalid();
+    return plaintext;
+  } finally {
+    document.off("updateV2", capture);
+    document.destroy();
   }
 }
 
@@ -326,10 +353,17 @@ export async function applyEncryptedMeetingSnapshot(
         key,
         "uint8array",
       );
-      const probe = new Y.Doc();
-      Y.applyUpdateV2(probe, plaintext);
-      probe.destroy();
-      Y.applyUpdateV2(document, plaintext);
+      try {
+        const probe = new Y.Doc();
+        try {
+          Y.applyUpdateV2(probe, plaintext);
+        } finally {
+          probe.destroy();
+        }
+        Y.applyUpdateV2(document, plaintext, input.origin);
+      } finally {
+        sodium.memzero(plaintext);
+      }
     } finally {
       sodium.memzero(key);
     }

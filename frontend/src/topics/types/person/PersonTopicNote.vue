@@ -5,6 +5,8 @@ import { useI18n } from "vue-i18n";
 import { useMeetingTopicNoteAutosave } from "../../useMeetingTopicNoteAutosave";
 import RichTextEditor from "../../../components/RichTextEditor.vue";
 import { meetingFragmentId } from "../../../e2ee/meeting-document-codec";
+import { sanitizeRichText } from "../../../components/sanitize-rich-text";
+import { meetingCollaboration } from "../../../e2ee/meeting-collaboration";
 
 const props = defineProps<{
   item: MeetingTopic;
@@ -20,7 +22,13 @@ const { localNote, state, error, saving, save, scheduleSave } =
     save: (note) => props.save(note),
     saveFailedMessage: () => t("personTopic.noteSaveFailed"),
   });
-watch(localNote, scheduleSave);
+watch(localNote, () => {
+  if (!meetingCollaboration.get(props.item.meetingId)) scheduleSave();
+});
+const safe = sanitizeRichText;
+const saveIfStandalone = () => {
+  if (!meetingCollaboration.get(props.item.meetingId)) void save();
+};
 
 </script>
 
@@ -29,7 +37,8 @@ watch(localNote, scheduleSave);
     <span v-if="$slots.label" class="read-only-label">
       <slot name="label" />
     </span>
-    {{ localNote || t("personTopic.noNote") }}
+    <span v-if="localNote" v-html="safe(localNote)" />
+    <template v-else>{{ t("personTopic.noNote") }}</template>
   </span>
   <span v-else class="note-editor" :aria-busy="saving">
     <span class="note-input">
@@ -42,7 +51,7 @@ watch(localNote, scheduleSave);
         :aria-label="label ?? t('personTopic.noteLabel')"
         :meeting-id="item.meetingId"
         :fragment="meetingFragmentId('personNote', item.id)"
-        @blur="save"
+        @blur="saveIfStandalone"
       />
     </span>
     <span class="save-feedback" role="status" aria-live="polite">

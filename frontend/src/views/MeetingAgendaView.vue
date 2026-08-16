@@ -10,6 +10,7 @@ import Message from "primevue/message";
 import Select from "primevue/select";
 import Tag from "primevue/tag";
 import RichTextEditor from "../components/RichTextEditor.vue";
+import { sanitizeRichText } from "../components/sanitize-rich-text";
 import MeetingCollaborationStatus from "../e2ee/MeetingCollaborationStatus.vue";
 import TopicTypeRenderer from "../topics/TopicTypeRenderer.vue";
 import {
@@ -43,6 +44,7 @@ const canManage = computed(
   () => !auth.state.user || auth.canManage("meetings"),
 );
 const isCompleted = computed(() => meeting.value?.status === "completed");
+const discardedAfterReload = ref(false);
 const canEdit = computed(() => canManage.value && !isCompleted.value);
 const canEditProtected = computed(
   () => canEdit.value && protectedText.state.status === "unlocked",
@@ -201,8 +203,7 @@ const move = async (
   ]);
   await load();
 };
-const safe = (html: string | null | undefined) =>
-  DOMPurify.sanitize(html ?? "");
+const safe = sanitizeRichText;
 const hasRichText = (html: string | null | undefined) =>
   DOMPurify.sanitize(html ?? "", { ALLOWED_TAGS: [] })
     .replace(/&nbsp;|&#160;/gi, " ")
@@ -261,10 +262,19 @@ const finishMeeting = async () => {
     finishing.value = false;
   }
 };
-onMounted(load);
+onMounted(() => {
+  if (window.sessionStorage.getItem("elderflow:discarded-collaboration") === id) {
+    discardedAfterReload.value = true;
+    window.sessionStorage.removeItem("elderflow:discarded-collaboration");
+  }
+  void load();
+});
 </script>
 <template>
   <section class="agenda-page">
+    <Message v-if="discardedAfterReload" severity="warn">
+      {{ t("e2ee.collaboration.discarded") }}
+    </Message>
     <Message v-if="error" severity="error">{{ error }}</Message>
     <template v-if="meeting">
       <MeetingCollaborationStatus

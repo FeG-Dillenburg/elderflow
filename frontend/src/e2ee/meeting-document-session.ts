@@ -5,6 +5,7 @@ import {
   applyEncryptedMeetingUpdate,
   createEncryptedMeetingSnapshot,
   createEncryptedMeetingUpdate,
+  decryptEncryptedMeetingUpdate,
   meetingFragmentId,
   readMeetingFragment,
   replaceMeetingFragment,
@@ -30,6 +31,7 @@ export interface EncryptedWorkspace {
     id: string;
     clientEpochId: string;
     snapshotClock?: string;
+    coveredAuthorClocks?: Array<[string, string]>;
     signingPublicKey: string;
     envelope: string;
   };
@@ -52,6 +54,12 @@ interface LoadedDocument {
   currentServerSequence: number;
   authorClocks: Map<string, number>;
   activeSnapshotEnvelope: Uint8Array;
+}
+
+export interface PendingEncryptedMeetingUpdate {
+  envelope: string;
+  activeSnapshotId: string;
+  authorClock: number;
 }
 
 export class MeetingDocumentSession {
@@ -136,7 +144,7 @@ export class MeetingDocumentSession {
       document,
       documentId: workspace.documentId,
       activeSnapshotId: workspace.activeSnapshotId,
-      authorClock: Math.max(0, ...workspace.updates
+      authorClock: Math.max(this.coveredClock(workspace), ...workspace.updates
         .filter((update) => update.clientEpochId === keys.clientEpochId)
         .map((update) => Number(update.authorClock))),
       awarenessClock: 0,
@@ -144,17 +152,61 @@ export class MeetingDocumentSession {
         ? Number(workspace.snapshot.snapshotClock ?? 0)
         : 0,
       currentServerSequence: Number(workspace.currentServerSequence),
-      authorClocks: new Map(workspace.updates.map((update) => [
-        update.clientEpochId,
-        Math.max(...workspace.updates
-          .filter((candidate) => candidate.clientEpochId === update.clientEpochId)
-          .map((candidate) => Number(candidate.authorClock))),
-      ])),
+      authorClocks: this.workspaceAuthorClocks(workspace),
       activeSnapshotEnvelope: base64UrlToBytes(workspace.snapshot.envelope),
     });
     for (const prior of workspace.priorDocuments ?? []) {
       await this.load(`prior:${prior.documentId}`, prior);
     }
+  }
+
+  async merge(
+    meetingId: string,
+    workspace: EncryptedWorkspace,
+    origin: unknown,
+  ): Promise<{ parentChanged: boolean }> {
+    const keys = this.requiredKeys();
+    const loaded = this.requiredDocument(meetingId);
+    if (workspace.documentId !== loaded.documentId) {
+      throw new Error("MEETING_WORKSPACE_UNAVAILABLE");
+    }
+    const parentChanged = workspace.activeSnapshotId !== loaded.activeSnapshotId;
+    if (parentChanged) {
+      await applyEncryptedMeetingSnapshot(loaded.document, {
+        organizationId: keys.organizationId,
+        documentId: workspace.documentId,
+        snapshotId: workspace.snapshot.id,
+        ockId: keys.ockId,
+        clientEpochId: workspace.snapshot.clientEpochId,
+        contentKey: keys.contentKey,
+        signingPublicKey: base64UrlToBytes(workspace.snapshot.signingPublicKey),
+        envelope: base64UrlToBytes(workspace.snapshot.envelope),
+        origin,
+      });
+      loaded.activeSnapshotId = workspace.activeSnapshotId;
+      loaded.activeSnapshotEnvelope = base64UrlToBytes(workspace.snapshot.envelope);
+    }
+    for (const update of workspace.updates) {
+      await applyEncryptedMeetingUpdate(loaded.document, {
+        organizationId: keys.organizationId,
+        documentId: workspace.documentId,
+        activeSnapshotId: workspace.activeSnapshotId,
+        ockId: keys.ockId,
+        clientEpochId: update.clientEpochId,
+        authorClock: Number(update.authorClock),
+        contentKey: keys.contentKey,
+        signingPublicKey: base64UrlToBytes(update.signingPublicKey),
+        envelope: base64UrlToBytes(update.envelope),
+        origin,
+      });
+    }
+    loaded.currentServerSequence = Number(workspace.currentServerSequence);
+    loaded.authorClocks = this.workspaceAuthorClocks(workspace);
+    loaded.authorClock = Math.max(
+      this.coveredClock(workspace),
+      loaded.authorClocks.get(keys.clientEpochId) ?? 0,
+    );
+    return { parentChanged };
   }
 
   hydrateFragments(meetingId: string, appearanceIds: Array<{ id: string; person: boolean }>) {
@@ -194,26 +246,56 @@ export class MeetingDocumentSession {
   }
 
   async createDocumentUpdate(meetingId: string, update: Uint8Array): Promise<string> {
+    return (await this.createPendingDocumentUpdate(meetingId, update)).envelope;
+  }
+
+  async createPendingDocumentUpdate(
+    meetingId: string,
+    update: Uint8Array,
+  ): Promise<PendingEncryptedMeetingUpdate> {
     const keys = this.requiredKeys();
     const loaded = this.requiredDocument(meetingId);
     loaded.authorClock += 1;
     try {
-      return bytesToBase64Url(await createEncryptedMeetingUpdate({
-        organizationId: keys.organizationId,
-        documentId: loaded.documentId,
+      return {
+        envelope: bytesToBase64Url(await createEncryptedMeetingUpdate({
+          organizationId: keys.organizationId,
+          documentId: loaded.documentId,
+          activeSnapshotId: loaded.activeSnapshotId,
+          ockId: keys.ockId,
+          clientEpochId: keys.clientEpochId,
+          authorClock: loaded.authorClock,
+          noncePrefix: keys.noncePrefix,
+          contentKey: keys.contentKey,
+          signingPrivateKey: keys.signingPrivateKey,
+          update,
+        })),
         activeSnapshotId: loaded.activeSnapshotId,
-        ockId: keys.ockId,
-        clientEpochId: keys.clientEpochId,
         authorClock: loaded.authorClock,
-        noncePrefix: keys.noncePrefix,
-        contentKey: keys.contentKey,
-        signingPrivateKey: keys.signingPrivateKey,
-        update,
-      }));
+      };
     } catch (error) {
       loaded.authorClock -= 1;
       throw error;
     }
+  }
+
+  async decryptPendingDocumentUpdate(
+    meetingId: string,
+    pending: PendingEncryptedMeetingUpdate,
+  ): Promise<Uint8Array> {
+    const keys = this.requiredKeys();
+    const loaded = this.requiredDocument(meetingId);
+    return decryptEncryptedMeetingUpdate({
+        organizationId: keys.organizationId,
+        documentId: loaded.documentId,
+        activeSnapshotId: pending.activeSnapshotId,
+        ockId: keys.ockId,
+        clientEpochId: keys.clientEpochId,
+        authorClock: pending.authorClock,
+        contentKey: keys.contentKey,
+        signingPublicKey: sodium.crypto_sign_ed25519_sk_to_pk(keys.signingPrivateKey),
+        envelope: base64UrlToBytes(pending.envelope),
+      });
   }
 
   document(meetingId: string): Y.Doc {
@@ -226,9 +308,14 @@ export class MeetingDocumentSession {
     signingPublicKey: string;
     envelope: string;
     serverSequence?: string;
-  }, origin: unknown): Promise<void> {
+  }, origin: unknown): Promise<"applied" | "duplicate" | "gap"> {
     const keys = this.requiredKeys();
     const loaded = this.requiredDocument(meetingId);
+    if (input.serverSequence) {
+      const sequence = Number(input.serverSequence);
+      if (sequence <= loaded.currentServerSequence) return "duplicate";
+      if (sequence !== loaded.currentServerSequence + 1) return "gap";
+    }
     await applyEncryptedMeetingUpdate(loaded.document, {
       organizationId: keys.organizationId,
       documentId: loaded.documentId,
@@ -243,6 +330,7 @@ export class MeetingDocumentSession {
     });
     loaded.authorClocks.set(input.clientEpochId, Number(input.authorClock));
     if (input.serverSequence) loaded.currentServerSequence = Number(input.serverSequence);
+    return "applied";
   }
 
   acknowledge(meetingId: string, clientEpochId: string, authorClock: string, serverSequence: string): void {
@@ -251,7 +339,7 @@ export class MeetingDocumentSession {
     loaded.currentServerSequence = Number(serverSequence);
   }
 
-  async createCompaction(meetingId: string) {
+  async createCompaction(meetingId: string, fragments: StableMeetingFragment[]) {
     const keys = this.requiredKeys();
     const loaded = this.requiredDocument(meetingId);
     const snapshotId = crypto.randomUUID();
@@ -260,27 +348,49 @@ export class MeetingDocumentSession {
       "SHA-256",
       Uint8Array.from(loaded.activeSnapshotEnvelope).buffer,
     ));
-    const envelope = await createEncryptedMeetingSnapshot({
+    const document = this.compactionDocument(loaded.document, fragments);
+    try {
+      const envelope = await createEncryptedMeetingSnapshot({
+        organizationId: keys.organizationId,
+        documentId: loaded.documentId,
+        snapshotId,
+        parentSnapshotId: loaded.activeSnapshotId,
+        parentEnvelopeHash,
+        coveredServerSequence: loaded.currentServerSequence,
+        coveredAuthorClocks: [...loaded.authorClocks],
+        ockId: keys.ockId,
+        clientEpochId: keys.clientEpochId,
+        snapshotClock: loaded.snapshotClock,
+        noncePrefix: keys.noncePrefix,
+        contentKey: keys.contentKey,
+        signingPrivateKey: keys.signingPrivateKey,
+        document,
+      });
+      return { snapshotId, snapshotEnvelope: bytesToBase64Url(envelope) };
+    } finally {
+      document.destroy();
+    }
+  }
+
+  async acceptCompaction(
+    meetingId: string,
+    snapshotId: string,
+    snapshotEnvelope: string,
+    origin: unknown,
+  ): Promise<void> {
+    const keys = this.requiredKeys();
+    const loaded = this.requiredDocument(meetingId);
+    await applyEncryptedMeetingSnapshot(loaded.document, {
       organizationId: keys.organizationId,
       documentId: loaded.documentId,
       snapshotId,
-      parentSnapshotId: loaded.activeSnapshotId,
-      parentEnvelopeHash,
-      coveredServerSequence: loaded.currentServerSequence,
-      coveredAuthorClocks: [...loaded.authorClocks],
       ockId: keys.ockId,
       clientEpochId: keys.clientEpochId,
-      snapshotClock: loaded.snapshotClock,
-      noncePrefix: keys.noncePrefix,
       contentKey: keys.contentKey,
-      signingPrivateKey: keys.signingPrivateKey,
-      document: loaded.document,
+      signingPublicKey: sodium.crypto_sign_ed25519_sk_to_pk(keys.signingPrivateKey),
+      envelope: base64UrlToBytes(snapshotEnvelope),
+      origin,
     });
-    return { snapshotId, snapshotEnvelope: bytesToBase64Url(envelope) };
-  }
-
-  acceptCompaction(meetingId: string, snapshotId: string, snapshotEnvelope: string): void {
-    const loaded = this.requiredDocument(meetingId);
     loaded.activeSnapshotId = snapshotId;
     loaded.activeSnapshotEnvelope = base64UrlToBytes(snapshotEnvelope);
   }
@@ -344,6 +454,46 @@ export class MeetingDocumentSession {
     const loaded = this.documents.get(meetingId);
     if (!loaded) throw new Error("MEETING_WORKSPACE_UNAVAILABLE");
     return loaded;
+  }
+
+  private coveredClock(workspace: EncryptedWorkspace): number {
+    const keys = this.requiredKeys();
+    return Number(workspace.snapshot.coveredAuthorClocks
+      ?.find(([epochId]) => epochId === keys.clientEpochId)?.[1] ?? 0);
+  }
+
+  private workspaceAuthorClocks(workspace: EncryptedWorkspace): Map<string, number> {
+    const clocks = new Map((workspace.snapshot.coveredAuthorClocks ?? []).map(
+      ([epochId, clock]) => [epochId, Number(clock)],
+    ));
+    for (const update of workspace.updates) {
+      clocks.set(update.clientEpochId, Math.max(
+        clocks.get(update.clientEpochId) ?? 0,
+        Number(update.authorClock),
+      ));
+    }
+    return clocks;
+  }
+
+  private compactionDocument(
+    source: Y.Doc,
+    fragments: StableMeetingFragment[],
+  ): Y.Doc {
+    const compacted = new Y.Doc();
+    Y.applyUpdateV2(compacted, Y.encodeStateAsUpdateV2(source));
+    const retained = new Set<string>(fragments);
+    for (const name of compacted.share.keys()) {
+      const fragment = name.startsWith("tiptap:") ? name.slice(7) : name;
+      if (retained.has(fragment)) continue;
+      if (name.startsWith("tiptap:")) {
+        const shared = compacted.getXmlFragment(name);
+        if (shared.length) shared.delete(0, shared.length);
+      } else {
+        const shared = compacted.getText(name);
+        if (shared.length) shared.delete(0, shared.length);
+      }
+    }
+    return compacted;
   }
 }
 

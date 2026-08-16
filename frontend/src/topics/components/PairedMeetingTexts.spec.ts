@@ -177,7 +177,7 @@ describe("PairedMeetingTexts", () => {
     completed.meetingMinutes = {
       id: "minute",
       text: `<p>
-        <span style="background-color: white; color: #6c7b8f;">
+        <span style="background-color: white; color: #6c7b8f; font-size: 100px;">
           Final Minutes
         </span>
       </p>`,
@@ -196,6 +196,9 @@ describe("PairedMeetingTexts", () => {
     expect(wrapper.find("textarea").exists()).toBe(false);
     expect(wrapper.text()).toContain("Prepared context");
     expect(wrapper.text()).toContain("Final Minutes");
-    expect(wrapper.get(".minutes-field span").attributes("style")).toBeUndefined();
+    const style = wrapper.get(".minutes-field span").attributes("style");
+    expect(style).toContain("background-color: white");
+    expect(style).toContain("color:");
+    expect(style).not.toContain("font-size");
   });
 });
