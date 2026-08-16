@@ -328,8 +328,28 @@ onBeforeUnmount(() => {
 
 .rich-text-editor :deep(.tiptap) {
   min-height: var(--editor-height);
-  padding: 0.65rem 0.75rem;
+  padding: 7px 0.75rem;
   outline: 0;
+}
+
+.rich-text-editor :deep(.tiptap > p),
+.rich-text-editor :deep(.tiptap > ol),
+.rich-text-editor :deep(.tiptap > ul),
+.rich-text-editor :deep(.tiptap > blockquote) {
+  margin-block: 0.5rem;
+}
+
+.rich-text-editor :deep(.tiptap > :first-child) {
+  margin-top: 0;
+}
+
+.rich-text-editor :deep(.tiptap > :last-child) {
+  margin-bottom: 0;
+}
+
+.rich-text-editor :deep(.tiptap li > p),
+.rich-text-editor :deep(.tiptap blockquote > p) {
+  margin-block: 0.25rem;
 }
 
 .rich-text-editor :deep(.tiptap > p:first-child) {
@@ -337,8 +357,8 @@ onBeforeUnmount(() => {
 }
 
 .rich-text-editor.compact :deep(.tiptap) {
-  padding-top: calc(0.5rem - 1px);
-  padding-bottom: calc(0.5rem - 1px);
+  padding-top: 7px;
+  padding-bottom: 7px;
 }
 
 .rich-text-editor.compact :deep(.tiptap > p) {
