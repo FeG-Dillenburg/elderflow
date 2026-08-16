@@ -57,6 +57,41 @@ describe("MeetingDocumentSession", () => {
     expect((decoded[3] as unknown[])[6]).toBe(2);
   });
 
+  it("continues the awareness clock when the same workspace is reloaded", async () => {
+    await sodium.ready;
+    const signing = sodium.crypto_sign_seed_keypair(new Uint8Array(32).fill(3), "uint8array");
+    const meetingId = "00000000-0000-4000-8000-000000000205";
+    const clientEpochId = "00000000-0000-4000-8000-000000000206";
+    session.unlock({
+      organizationId: "00000000-0000-4000-8000-000000000207",
+      ockId: "00000000-0000-4000-8000-000000000208",
+      clientEpochId,
+      noncePrefix: new Uint8Array(16).fill(2),
+      contentKey: new Uint8Array(32).fill(4),
+      signingPrivateKey: signing.privateKey,
+    });
+    const initial = await session.createInitial(meetingId);
+    await session.encryptAwareness(meetingId, new Uint8Array([1]));
+
+    await session.load(meetingId, {
+      documentId: initial.documentId,
+      activeSnapshotId: initial.snapshotId,
+      currentServerSequence: "0",
+      snapshot: {
+        id: initial.snapshotId,
+        clientEpochId,
+        signingPublicKey: bytesToBase64Url(signing.publicKey),
+        envelope: initial.snapshotEnvelope,
+      },
+      updates: [],
+    });
+
+    const second = decoder.decode(base64UrlToBytes(
+      await session.encryptAwareness(meetingId, new Uint8Array([2])),
+    )) as unknown[];
+    expect((second[3] as unknown[])[5]).toBe(2);
+  });
+
   it("creates an update when initializing a new appearance fragment with empty text", async () => {
     await sodium.ready;
     const signing = sodium.crypto_sign_seed_keypair(new Uint8Array(32).fill(9), "uint8array");

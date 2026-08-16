@@ -139,7 +139,11 @@ export class MeetingDocumentSession {
         envelope: base64UrlToBytes(update.envelope),
       });
     }
-    this.documents.get(meetingId)?.document.destroy();
+    const existing = this.documents.get(meetingId);
+    const awarenessClock = existing?.documentId === workspace.documentId
+      ? existing.awarenessClock
+      : 0;
+    existing?.document.destroy();
     this.documents.set(meetingId, {
       document,
       documentId: workspace.documentId,
@@ -147,7 +151,7 @@ export class MeetingDocumentSession {
       authorClock: Math.max(this.coveredClock(workspace), ...workspace.updates
         .filter((update) => update.clientEpochId === keys.clientEpochId)
         .map((update) => Number(update.authorClock))),
-      awarenessClock: 0,
+      awarenessClock,
       snapshotClock: workspace.snapshot.clientEpochId === keys.clientEpochId
         ? Number(workspace.snapshot.snapshotClock ?? 0)
         : 0,
