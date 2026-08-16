@@ -104,18 +104,19 @@ export function replaceMeetingFragment(
   document: Y.Doc,
   fragment: StableMeetingFragment,
   value: string,
+  origin?: unknown,
 ): Uint8Array {
   let update: Uint8Array | null = null;
-  const origin = Symbol(fragment);
+  const transactionOrigin = origin ?? Symbol(fragment);
   const capture = (candidate: Uint8Array, candidateOrigin: unknown): void => {
-    if (candidateOrigin === origin) update = Uint8Array.from(candidate);
+    if (candidateOrigin === transactionOrigin) update = Uint8Array.from(candidate);
   };
   document.on("updateV2", capture);
   document.transact(() => {
     const text = document.getText(fragment);
     if (text.length) text.delete(0, text.length);
     if (value) text.insert(0, value);
-  }, origin);
+  }, transactionOrigin);
   if (!update) {
     // An empty-to-empty replacement is a Yjs no-op. Preserve the empty value
     // while emitting a tombstone update for atomic fragment initialization.
@@ -123,7 +124,7 @@ export function replaceMeetingFragment(
       const text = document.getText(fragment);
       text.insert(0, "\0");
       text.delete(0, 1);
-    }, origin);
+    }, transactionOrigin);
   }
   document.off("updateV2", capture);
   return update ?? new Uint8Array();

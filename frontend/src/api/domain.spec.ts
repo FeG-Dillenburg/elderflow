@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { api, formatUser, meetingLabel, request, toLocalDate } from "./domain";
 import { Decoder } from "cbor-x";
 import { meetingDocumentSession } from "../e2ee/meeting-document-session";
+import { MEETING_COLLABORATION_ORIGIN } from "../e2ee/meeting-collaboration";
 
 const response = (body: unknown, options: Partial<Response> = {}) =>
   ({
@@ -307,6 +308,7 @@ describe("domain API client", () => {
       "target-meeting",
       expect.stringMatching(/^appearance\/[^/]+\/preparation-context$/),
       "Prior context",
+      MEETING_COLLABORATION_ORIGIN,
     );
   });
   it("copies a Person note from the prior Meeting into the target Person fragment", async () => {
@@ -338,6 +340,7 @@ describe("domain API client", () => {
       "target-meeting",
       expect.stringMatching(/^appearance\/[^/]+\/person-note$/),
       "Prior Person note",
+      MEETING_COLLABORATION_ORIGIN,
     );
   });
   it("uses the explicit completion action without a mutable Meeting payload", async () => {

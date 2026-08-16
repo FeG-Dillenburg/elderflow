@@ -975,6 +975,7 @@ export const api = {
       meetingId,
       meetingFragmentId(person ? 'personNote' : 'preparationContext', appearanceId),
       initialText,
+      MEETING_COLLABORATION_ORIGIN,
     );
     const {
       topic: _topic,

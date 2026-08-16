@@ -1,7 +1,18 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { Decoder } from "cbor-x";
+import sodium from "libsodium-wrappers-sumo";
 import * as Y from "yjs";
-import { meetingDocumentSession } from "./meeting-document-session";
+import { api } from "../api/domain";
+import {
+  MeetingDocumentSession,
+  meetingDocumentSession,
+} from "./meeting-document-session";
+import {
+  meetingFragmentId,
+  replaceMeetingFragment,
+} from "./meeting-document-codec";
+import { base64UrlToBytes, bytesToBase64Url } from "./protocol";
 import {
   EncryptedMeetingCollaborationProvider,
   MEETING_COLLABORATION_ORIGIN,
@@ -38,7 +49,11 @@ const settle = async (): Promise<void> => {
 };
 
 describe("EncryptedMeetingCollaborationProvider", () => {
-  afterEach(() => vi.restoreAllMocks());
+  afterEach(() => {
+    meetingDocumentSession.lock();
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
 
   it("sends only one encrypted update at a time and advances after acknowledgement", async () => {
     const document = new Y.Doc();
@@ -294,6 +309,200 @@ describe("EncryptedMeetingCollaborationProvider", () => {
       .map((value) => JSON.parse(value) as { type: string; envelope?: string })
       .filter((frame) => frame.type === "update");
     expect(updateFrames).toEqual([{ type: "update", envelope: "rebased" }]);
+    provider.destroy();
+    document.destroy();
+  });
+
+  it("does not relay an atomic topic-initialization update a second time", async () => {
+    await sodium.ready;
+    const signing = sodium.crypto_sign_seed_keypair(new Uint8Array(32).fill(6), "uint8array");
+    const meetingId = "00000000-0000-4000-8000-000000000301";
+    const keys = {
+      organizationId: "00000000-0000-4000-8000-000000000302",
+      ockId: "00000000-0000-4000-8000-000000000303",
+      clientEpochId: "00000000-0000-4000-8000-000000000304",
+      noncePrefix: new Uint8Array(16).fill(7),
+      contentKey: new Uint8Array(32).fill(8),
+      signingPrivateKey: signing.privateKey,
+    };
+    meetingDocumentSession.unlock(keys);
+    const initial = await meetingDocumentSession.createInitial(meetingId);
+    const socket = new FakeSocket();
+    const provider = new EncryptedMeetingCollaborationProvider(
+      meetingId,
+      meetingDocumentSession.document(meetingId),
+      async () => ({ ticket: "ticket", documentId: "document", websocketPath: "/socket" }),
+      () => socket as unknown as WebSocket,
+    );
+    const fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      headers: new Headers(),
+      json: vi.fn().mockResolvedValue({ id: "appearance" }),
+    } as unknown as Response);
+    vi.stubGlobal("fetch", fetch);
+    await provider.connect();
+    socket.open();
+    socket.receive({ type: "authenticated" });
+    await settle();
+
+    await api.addMeetingTopic(meetingId, {
+      topicId: "00000000-0000-4000-8000-000000000305",
+      sectionId: "00000000-0000-4000-8000-000000000306",
+    });
+    await settle();
+
+    const relayedUpdates = socket.sent
+      .map((value) => JSON.parse(value) as { type: string; envelope?: string })
+      .filter((frame) => frame.type === "update");
+    expect(relayedUpdates).toEqual([]);
+
+    const mutation = new Decoder({ mapsAsObjects: false, useRecords: false })
+      .decode(fetch.mock.calls[0]?.[1]?.body as Uint8Array) as unknown[];
+    const appearanceId = mutation[0] as string;
+    replaceMeetingFragment(
+      meetingDocumentSession.document(meetingId),
+      meetingFragmentId("preparationContext", appearanceId),
+      "Saved context",
+    );
+    await (provider as unknown as { encryption: Promise<void> }).encryption;
+    const contextUpdate = socket.sent
+      .map((value) => JSON.parse(value) as { type: string; envelope?: string })
+      .find((frame) => frame.type === "update");
+    expect(contextUpdate?.envelope).toEqual(expect.any(String));
+    const decodedContext = new Decoder({ mapsAsObjects: false, useRecords: false })
+      .decode(base64UrlToBytes(contextUpdate!.envelope!)) as unknown[];
+    expect((decodedContext[3] as unknown[])[6]).toBe(2);
+    provider.destroy();
+
+    const restored = new MeetingDocumentSession();
+    restored.unlock(keys);
+    await restored.load(meetingId, {
+      documentId: initial.documentId,
+      activeSnapshotId: initial.snapshotId,
+      currentServerSequence: "2",
+      snapshot: {
+        id: initial.snapshotId,
+        clientEpochId: keys.clientEpochId,
+        signingPublicKey: bytesToBase64Url(signing.publicKey),
+        envelope: initial.snapshotEnvelope,
+      },
+      updates: [
+        {
+          clientEpochId: keys.clientEpochId,
+          authorClock: "1",
+          signingPublicKey: bytesToBase64Url(signing.publicKey),
+          envelope: bytesToBase64Url(mutation[4] as Uint8Array),
+        },
+        {
+          clientEpochId: keys.clientEpochId,
+          authorClock: "2",
+          signingPublicKey: bytesToBase64Url(signing.publicKey),
+          envelope: contextUpdate!.envelope!,
+        },
+      ],
+    });
+    expect(restored.hydrateFragments(meetingId, [{ id: appearanceId, person: false }])
+      .appearances.get(appearanceId)?.preparationContext).toBe("Saved context");
+    restored.lock();
+  });
+
+  it("does not send an awareness envelope after the provider is replaced", async () => {
+    const document = new Y.Doc();
+    const socket = new FakeSocket();
+    let finishEncryption!: (envelope: string) => void;
+    let markEncryptionStarted!: () => void;
+    const encryptionStarted = new Promise<void>((resolve) => {
+      markEncryptionStarted = resolve;
+    });
+    vi.spyOn(meetingDocumentSession, "encryptAwareness").mockImplementation(async () => {
+      markEncryptionStarted();
+      return new Promise<string>((resolve) => {
+        finishEncryption = resolve;
+      });
+    });
+    const provider = new EncryptedMeetingCollaborationProvider(
+      "meeting",
+      document,
+      async () => ({ ticket: "ticket", documentId: "document", websocketPath: "/socket" }),
+      () => socket as unknown as WebSocket,
+    );
+    await provider.connect();
+    socket.open();
+    socket.receive({ type: "authenticated" });
+    await settle();
+
+    provider.awareness.setLocalState({ name: "Editor" });
+    await encryptionStarted;
+    provider.destroy();
+    finishEncryption("stale-awareness-envelope");
+    await settle();
+
+    expect(socket.sent.some((encoded) => JSON.parse(encoded).type === "awareness")).toBe(false);
+    document.destroy();
+  });
+
+  it("reseals pending work after an author-clock gap instead of blocking later edits", async () => {
+    const document = new Y.Doc();
+    const socket = new FakeSocket();
+    const encrypt = vi.spyOn(meetingDocumentSession, "createPendingDocumentUpdate")
+      .mockResolvedValueOnce({ envelope: "gapped", activeSnapshotId: "snapshot", authorClock: 2 })
+      .mockResolvedValueOnce({ envelope: "recovered", activeSnapshotId: "snapshot", authorClock: 1 });
+    vi.spyOn(meetingDocumentSession, "decryptPendingDocumentUpdate")
+      .mockResolvedValue(new Uint8Array([1, 2, 3]));
+    vi.spyOn(meetingDocumentSession, "encryptAwareness").mockResolvedValue("awareness");
+    const resync = vi.fn().mockResolvedValue({ parentChanged: false });
+    const provider = new EncryptedMeetingCollaborationProvider(
+      "meeting",
+      document,
+      async () => ({ ticket: "ticket", documentId: "document", websocketPath: "/socket" }),
+      () => socket as unknown as WebSocket,
+      undefined,
+      resync,
+    );
+    await provider.connect();
+    socket.open();
+    socket.receive({ type: "authenticated" });
+    await settle();
+    document.getText("field").insert(0, "context");
+    await (provider as unknown as { encryption: Promise<void> }).encryption;
+
+    socket.receive({ type: "rejected", code: "E2EE_AUTHOR_CLOCK_GAP" });
+    await settle();
+
+    expect(resync).toHaveBeenCalledTimes(2);
+    expect(encrypt).toHaveBeenCalledTimes(2);
+    const updates = socket.sent
+      .map((encoded) => JSON.parse(encoded) as { type: string; envelope?: string })
+      .filter((frame) => frame.type === "update");
+    expect(updates).toEqual([
+      { type: "update", envelope: "gapped" },
+      { type: "update", envelope: "recovered" },
+    ]);
+    provider.destroy();
+    document.destroy();
+  });
+
+  it("does not reject document collaboration when only stale awareness is refused", async () => {
+    const document = new Y.Doc();
+    const socket = new FakeSocket();
+    vi.spyOn(meetingDocumentSession, "encryptAwareness").mockResolvedValue("awareness");
+    const provider = new EncryptedMeetingCollaborationProvider(
+      "meeting",
+      document,
+      async () => ({ ticket: "ticket", documentId: "document", websocketPath: "/socket" }),
+      () => socket as unknown as WebSocket,
+    );
+    await provider.connect();
+    socket.open();
+    socket.receive({ type: "authenticated" });
+    await settle();
+    expect(provider.status).toBe("online");
+
+    socket.receive({ type: "rejected", code: "E2EE_AWARENESS_REPLAY" });
+    await settle();
+
+    expect(provider.status).toBe("online");
     provider.destroy();
     document.destroy();
   });

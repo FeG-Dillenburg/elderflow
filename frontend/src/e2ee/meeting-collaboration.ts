@@ -107,13 +107,20 @@ export class EncryptedMeetingCollaborationProvider extends EventTarget {
   ): Promise<void> => {
     if (origin === MEETING_COLLABORATION_ORIGIN
       || !this.authenticated || this.socket?.readyState !== WebSocket.OPEN) return;
+    const socket = this.socket;
     const update = encodeAwarenessUpdate(this.awareness, [
       ...change.added,
       ...change.updated,
       ...change.removed,
     ]);
-    const envelope = await meetingDocumentSession.encryptAwareness(this.meetingId, update);
-    this.socket.send(JSON.stringify({ type: "awareness", envelope }));
+    try {
+      const envelope = await meetingDocumentSession.encryptAwareness(this.meetingId, update);
+      if (this.stopped || !this.authenticated || this.socket !== socket
+        || socket.readyState !== WebSocket.OPEN) return;
+      socket.send(JSON.stringify({ type: "awareness", envelope }));
+    } finally {
+      update.fill(0);
+    }
   };
 
   private async message(encoded: string): Promise<void> {
@@ -195,6 +202,11 @@ export class EncryptedMeetingCollaborationProvider extends EventTarget {
       } else if (["E2EE_SNAPSHOT_PARENT_INVALID", "E2EE_ENVELOPE_CONTEXT_INVALID"].includes(frame.code)) {
         this.setStatus("connecting");
         await this.synchronize();
+      } else if (frame.code === "E2EE_AUTHOR_CLOCK_GAP") {
+        this.setStatus("connecting");
+        await this.synchronize(true);
+      } else if (frame.code === "E2EE_AWARENESS_REPLAY") {
+        return;
       } else this.setStatus("rejected");
     }
   }
@@ -232,10 +244,10 @@ export class EncryptedMeetingCollaborationProvider extends EventTarget {
     }), 1_000);
   }
 
-  async synchronize(): Promise<void> {
+  async synchronize(rebasePending = false): Promise<void> {
     await this.enqueue(async () => {
       const { parentChanged } = await this.resync?.() ?? { parentChanged: false };
-      if (parentChanged && this.pending.length) await this.rebasePending();
+      if ((parentChanged || rebasePending) && this.pending.length) await this.rebasePending();
     });
   }
 

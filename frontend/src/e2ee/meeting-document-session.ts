@@ -242,10 +242,11 @@ export class MeetingDocumentSession {
     meetingId: string,
     fragment: StableMeetingFragment,
     value: string,
+    origin?: unknown,
   ): Promise<string> {
     this.requiredKeys();
     const loaded = this.requiredDocument(meetingId);
-    const update = replaceMeetingFragment(loaded.document, fragment, value);
+    const update = replaceMeetingFragment(loaded.document, fragment, value, origin);
     return this.createDocumentUpdate(meetingId, update);
   }
 
