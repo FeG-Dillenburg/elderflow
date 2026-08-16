@@ -119,6 +119,29 @@ describe("PairedMeetingTexts", () => {
     expect(saveMinutes).toHaveBeenCalledTimes(2);
   });
 
+  it("does not show an error or retry action while Protected text is locked", async () => {
+    const saveMinutes = vi.fn()
+      .mockRejectedValue(new Error("E2EE_PROTECTED_TEXT_LOCKED"));
+    const wrapper = mount(PairedMeetingTexts, {
+      props: {
+        item: item(),
+        mode: "active",
+        canWriteMinutes: true,
+        savePreparation: vi.fn(),
+        saveMinutes,
+      },
+      global: { stubs: { RichTextEditor } },
+    });
+
+    await wrapper.get("textarea").setValue("Unlock Protected text to view this content.");
+    await wrapper.get("textarea").trigger("blur");
+    await flushPromises();
+
+    expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+    expect(wrapper.find("button").exists()).toBe(false);
+    expect(wrapper.text()).not.toContain("E2EE_PROTECTED_TEXT_LOCKED");
+  });
+
   it("keeps newer Minutes input while an earlier autosave response is pending", async () => {
     let resolveFirstSave!: () => void;
     const firstSave = new Promise<void>((resolve) => {

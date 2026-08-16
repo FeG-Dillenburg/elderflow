@@ -1,5 +1,9 @@
 import { onBeforeUnmount, ref, type Ref, watch } from "vue";
 type SaveState = "idle" | "saving" | "saved" | "error";
+const PROTECTED_TEXT_LOCKED = "E2EE_PROTECTED_TEXT_LOCKED";
+
+const isExpectedLockedState = (cause: unknown): boolean =>
+  cause instanceof Error && cause.message === PROTECTED_TEXT_LOCKED;
 
 export const useMeetingTopicNoteAutosave = (options: {
   source: () => string | null | undefined;
@@ -42,6 +46,11 @@ export const useMeetingTopicNoteAutosave = (options: {
         persistedNote.value = note ?? "";
         state.value = "saved";
       } catch (cause) {
+        if (isExpectedLockedState(cause)) {
+          state.value = "idle";
+          queuedNote = undefined;
+          break;
+        }
         error.value = cause instanceof Error
           ? cause.message
           : options.saveFailedMessage();
