@@ -336,8 +336,13 @@ onBeforeUnmount(() => {
   text-indent: var(--editor-first-line-indent);
 }
 
-.rich-text-editor.compact :deep(.tiptap > p:first-child) {
-  margin-top: 0;
+.rich-text-editor.compact :deep(.tiptap) {
+  padding-top: 0.5rem;
+  padding-bottom: 0.5rem;
+}
+
+.rich-text-editor.compact :deep(.tiptap > p) {
+  margin: 0;
 }
 
 .rich-text-editor :deep(.tiptap:focus-visible) {
