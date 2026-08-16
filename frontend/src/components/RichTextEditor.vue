@@ -398,7 +398,7 @@ onBeforeUnmount(() => {
   left: -0.25rem;
   width: 0;
   height: 0;
-  border-top: 0.3rem solid var(--collaborator-color);
+  border-bottom: 0.3rem solid var(--collaborator-color);
   border-right: 0.2rem solid transparent;
   border-left: 0.2rem solid transparent;
 }
