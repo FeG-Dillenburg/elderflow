@@ -235,7 +235,7 @@ export async function unprotectTopicHistory(
             ? null
             : {
                 id: appearanceId,
-                effectiveAt: entry.effectiveAt,
+                effectiveAt: (meeting.completedAt as string | null) ?? entry.effectiveAt,
                 text: values.meetingMinutes,
                 createdByDisplayName: meeting.minuteTakerDisplayName,
               };

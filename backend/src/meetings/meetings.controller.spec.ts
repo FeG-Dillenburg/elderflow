@@ -10,7 +10,8 @@ describe("MeetingsController encrypted workspace boundary", () => {
     appendWorkspaceUpdate: jest.fn(),
     addTopic: jest.fn(),
   };
-  const controller = new MeetingsController(service as never);
+  const collaborationTickets = { mint: jest.fn() };
+  const controller = new MeetingsController(service as never, collaborationTickets as never);
   const user = { id: "user" } as never;
 
   beforeEach(() => jest.clearAllMocks());
@@ -56,5 +57,13 @@ describe("MeetingsController encrypted workspace boundary", () => {
       MeetingsController.prototype.workspace,
       MeetingsController,
     ])).toBe("meetings");
+  });
+
+  it("mints a short-lived live ticket through the authenticated Meeting boundary", async () => {
+    collaborationTickets.mint.mockResolvedValue({ ticket: "opaque" });
+
+    await controller.collaborationTicket("meeting", user);
+
+    expect(collaborationTickets.mint).toHaveBeenCalledWith("meeting", user);
   });
 });

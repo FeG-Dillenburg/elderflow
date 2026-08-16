@@ -19,6 +19,7 @@ export function meetingResponse(meeting: Meeting, viewer: User) {
     date: meeting.date,
     beginTime: meeting.beginTime,
     status: meeting.status,
+    completedAt: meeting.completedAt,
     meetingLeaderId: meeting.meetingLeaderId,
     meetingLeader: account(meeting.meetingLeader),
     minuteTakerId: meeting.minuteTakerId,

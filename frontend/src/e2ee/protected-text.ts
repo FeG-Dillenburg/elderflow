@@ -8,6 +8,7 @@ import { isE2eeKeyOperator } from './roles';
 import { bytesToBase64Url } from './protocol';
 import { scalarSession } from './scalar-session';
 import { meetingDocumentSession } from './meeting-document-session';
+import { meetingCollaboration } from './meeting-collaboration';
 
 const state = reactive({
   status: 'locked' as 'locked' | 'unlocking' | 'unlocked',
@@ -123,6 +124,7 @@ export const protectedText = {
 };
 
 function finishLock(): void {
+  meetingCollaboration.stopAll();
   scalarSession.lock();
   meetingDocumentSession.lock();
   if (authorizationPoll) clearInterval(authorizationPoll);

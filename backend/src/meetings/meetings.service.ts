@@ -35,6 +35,7 @@ import { MeetingUser } from "./meeting-user.entity";
 import { lockedMutableMeeting } from "./meeting-mutation-boundary";
 import { meetingResponse } from "./meeting-response";
 import { Meeting } from "./meeting.entity";
+import { meetingCollaborationEvents } from "./meeting-collaboration-events";
 
 @Injectable()
 export class MeetingsService {
@@ -54,7 +55,7 @@ export class MeetingsService {
   ) {}
 
   async complete(id: string, user: User) {
-    return this.dataSource.transaction(async (manager) => {
+    const response = await this.dataSource.transaction(async (manager) => {
       const meeting = await manager.findOne(Meeting, {
         where: { id },
         lock: { mode: "pessimistic_write" },
@@ -96,8 +97,13 @@ export class MeetingsService {
       document.completedServerSequence = document.currentServerSequence;
       await manager.save(document);
       meeting.status = "completed";
+      meeting.completedAt = new Date();
       return meetingResponse(await manager.save(Meeting, meeting), user);
     });
+    meetingCollaborationEvents.emit("completed", {
+      meetingId: id,
+    });
+    return response;
   }
 
   async findAll(user: User) {
@@ -248,7 +254,7 @@ export class MeetingsService {
       workspace: workspace
         ? { ...workspace, priorDocuments }
         : null,
-      collaboration: { available: false },
+      collaboration: { available: meeting.status !== "completed" },
     };
   }
 
@@ -277,6 +283,8 @@ export class MeetingsService {
       return {
         status: result.duplicate ? "duplicate" : "accepted",
         updateId: result.update.id,
+        clientEpochId: result.update.clientEpochId,
+        authorClock: result.update.authorClock,
         serverSequence: result.update.serverSequence,
       };
     });
@@ -287,6 +295,13 @@ export class MeetingsService {
       throw codedHttpException(HttpStatus.NOT_FOUND, "MEETING_NOT_FOUND", "Meeting not found");
     }
     return this.documents.bootstrap(this.meetings.manager, user, meetingId);
+  }
+
+  async compactWorkspace(meetingId: string, snapshotId: string, envelope: string, user: User) {
+    const result = await this.dataSource.transaction((manager) =>
+      this.documents.compact(manager, user, meetingId, snapshotId, envelope));
+    meetingCollaborationEvents.emit("compacted", { meetingId });
+    return result;
   }
 
   async addParticipant(meetingId: string, input: MeetingParticipantDto): Promise<MeetingUser> {
@@ -317,11 +332,12 @@ export class MeetingsService {
           id: replay.appearanceId,
           meetingId,
         });
-        const updateMatches = await this.documents.storedUpdateMatches(
-          manager,
-          replay.updateId,
-          input.initialUpdateEnvelope,
-        );
+        const updateMatches = replay.updateId === null
+          || await this.documents.storedUpdateMatches(
+            manager,
+            replay.updateId,
+            input.initialUpdateEnvelope,
+          );
         const structureMatches = appearance
           && replay.meetingId === meetingId
           && replay.appearanceId === input.id

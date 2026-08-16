@@ -31,7 +31,8 @@
     "pg": "8.16.3",
     "reflect-metadata": "0.2.2",
     "rxjs": "7.8.2",
-    "typeorm": "0.3.27"
+    "typeorm": "0.3.27",
+    "ws": "8.21.3"
   },
   "devDependencies": {
     "@nestjs/cli": "11.0.10",
@@ -42,6 +43,7 @@
     "@types/libsodium-wrappers-sumo": "0.7.8",
     "@types/node": "24.7.2",
     "@types/supertest": "6.0.3",
+    "@types/ws": "8.18.1",
     "jest": "30.2.0",
     "pg-mem": "^3.0.14",
     "source-map-support": "0.5.21",

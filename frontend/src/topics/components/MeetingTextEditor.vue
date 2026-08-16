@@ -1,13 +1,17 @@
 <script setup lang="ts">
 import { useI18n } from "vue-i18n";
 import RichTextEditor from "../../components/RichTextEditor.vue";
+import type { StableMeetingFragment } from "../../e2ee/meeting-document-codec";
+import { meetingCollaboration } from "../../e2ee/meeting-collaboration";
 
-defineProps<{
+const props = defineProps<{
   modelValue: string;
   label: string;
   description: string;
   state: "idle" | "saving" | "saved" | "error";
   error: string;
+  meetingId?: string;
+  fragment?: StableMeetingFragment;
 }>();
 
 const emit = defineEmits<{
@@ -15,6 +19,9 @@ const emit = defineEmits<{
   save: [];
 }>();
 const { t } = useI18n();
+const save = () => {
+  if (!props.meetingId || !meetingCollaboration.get(props.meetingId)) emit("save");
+};
 </script>
 
 <template>
@@ -23,9 +30,11 @@ const { t } = useI18n();
     :placeholder="label"
     :aria-label="label"
     :aria-description="description"
+    :meeting-id="meetingId"
+    :fragment="fragment"
     height="100px"
     @update:model-value="emit('update:modelValue', $event)"
-    @blur="emit('save')"
+    @blur="save"
   />
   <span
     v-if="state !== 'error'"

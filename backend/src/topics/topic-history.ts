@@ -6,6 +6,7 @@ export interface TopicHistoryMeeting {
   date: string;
   beginTime: string;
   status: string;
+  completedAt: string | null;
   minuteTakerDisplayName: string | null;
 }
 

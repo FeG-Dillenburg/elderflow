@@ -9,12 +9,23 @@ const item = () => ({
   personNote: { id: "appearance", text: "Initial note", version: 0 },
 }) as any;
 
-const Textarea = {
-  props: ["modelValue"],
-  emits: ["update:modelValue", "input", "blur"],
+const RichTextEditor = {
+  name: "RichTextEditor",
+  props: [
+    "modelValue",
+    "ariaLabel",
+    "meetingId",
+    "fragment",
+    "toolbar",
+    "compact",
+    "height",
+    "firstLineIndent",
+  ],
+  emits: ["update:modelValue", "blur"],
   template: `<textarea
     :value="modelValue"
-    @input="$emit('update:modelValue', $event.target.value); $emit('input', $event)"
+    :aria-label="ariaLabel"
+    @input="$emit('update:modelValue', $event.target.value)"
     @blur="$emit('blur')"
   />`,
 };
@@ -25,7 +36,7 @@ const mountNote = (
 ) => mount(PersonTopicNote, {
   props: props as any,
   slots,
-  global: { stubs: { Textarea } },
+  global: { stubs: { RichTextEditor } },
 });
 
 describe("PersonTopicNote", () => {
@@ -109,10 +120,7 @@ describe("PersonTopicNote", () => {
     expect(wrapper.text()).toContain("Initial note");
   });
 
-  it("indents only the first editable line around a measured Person label", async () => {
-    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue({
-      width: 96,
-    } as DOMRect);
+  it("binds the Person note to its isolated collaborative fragment", async () => {
     const wrapper = mountNote(
       { item: item(), readOnly: false, save: async () => item() },
       { label: '<a href="/topics/topic">Alex:</a>' },
@@ -120,8 +128,13 @@ describe("PersonTopicNote", () => {
     await flushPromises();
 
     expect(wrapper.get(".inline-label").text()).toBe("Alex:");
-    expect(wrapper.get("textarea").attributes("style")).toContain(
-      "--inline-label-indent: 102px",
-    );
+    expect(wrapper.getComponent({ name: "RichTextEditor" }).props()).toMatchObject({
+      meetingId: "meeting",
+      fragment: "appearance/appearance/person-note",
+      toolbar: false,
+      compact: true,
+      height: "22px",
+      firstLineIndent: "6px",
+    });
   });
 });

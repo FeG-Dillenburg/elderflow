@@ -28,12 +28,16 @@ import {
   UpdateMeetingTopicDto,
 } from "./dto/meeting.dto";
 import { MeetingsService } from "./meetings.service";
-import { MeetingCreateBinaryPipe, MeetingTopicBinaryPipe, MeetingUpdateBinaryPipe } from "./meeting-binary.pipe";
+import { MeetingCollaborationTicketService } from "./meeting-collaboration-ticket.service";
+import { MeetingCreateBinaryPipe, MeetingSnapshotBinaryPipe, MeetingTopicBinaryPipe, MeetingUpdateBinaryPipe } from "./meeting-binary.pipe";
 
 @Controller("api/meetings")
 @Permission("meetings")
 export class MeetingsController {
-  constructor(private readonly service: MeetingsService) {}
+  constructor(
+    private readonly service: MeetingsService,
+    private readonly collaborationTickets: MeetingCollaborationTicketService,
+  ) {}
 
   @Get()
   @Header("Cache-Control", "no-store")
@@ -93,6 +97,27 @@ export class MeetingsController {
     @Param("id", ParseUUIDPipe) id: string,
     @CurrentUser() user: User,
   ) { return this.service.workspace(id, user); }
+
+  @Post(":id/collaboration-ticket")
+  @Header("Cache-Control", "no-store")
+  collaborationTicket(
+    @Param("id", ParseUUIDPipe) id: string,
+    @CurrentUser() user: User,
+  ) { return this.collaborationTickets.mint(id, user); }
+
+  @Post(":id/workspace/compact")
+  @Header("Cache-Control", "no-store")
+  compactWorkspace(
+    @Param("id", ParseUUIDPipe) id: string,
+    @Headers("x-elderflow-snapshot-id") snapshotId: string,
+    @Body(new MeetingSnapshotBinaryPipe()) input: unknown,
+    @CurrentUser() user: User,
+  ) {
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(snapshotId ?? "")) {
+      throw new BadRequestException({ code: "E2EE_BINARY_BODY_INVALID", message: "Invalid snapshot identifier" });
+    }
+    return this.service.compactWorkspace(id, snapshotId, (input as MeetingDocumentUpdateDto).envelope, user);
+  }
 
   @Get(":id/suggestions")
   @Header("Cache-Control", "no-store")

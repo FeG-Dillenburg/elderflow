@@ -5,6 +5,9 @@ import { useI18n } from "vue-i18n";
 import type { MeetingTopic } from "../../api/domain";
 import { useMeetingTopicNoteAutosave } from "../useMeetingTopicNoteAutosave";
 import MeetingTextEditor from "./MeetingTextEditor.vue";
+import { meetingFragmentId } from "../../e2ee/meeting-document-codec";
+import { sanitizeRichText } from "../../components/sanitize-rich-text";
+import { meetingCollaboration } from "../../e2ee/meeting-collaboration";
 
 const props = withDefaults(defineProps<{
   item: MeetingTopic;
@@ -17,10 +20,7 @@ const props = withDefaults(defineProps<{
 });
 
 const { t } = useI18n();
-const safe = (html: string | null | undefined) => DOMPurify.sanitize(
-  html ?? "",
-  { FORBID_ATTR: ["style"] },
-);
+const safe = sanitizeRichText;
 const plainText = (html: string | null | undefined): string =>
   DOMPurify.sanitize(html ?? "", { ALLOWED_TAGS: [] })
     .replace(/&nbsp;|&#160;|\u00a0/gi, " ")
@@ -42,8 +42,12 @@ const minutes = useMeetingTopicNoteAutosave({
   normalize,
 });
 
-watch(preparation.localNote, preparation.scheduleSave);
-watch(minutes.localNote, minutes.scheduleSave);
+watch(preparation.localNote, () => {
+  if (!meetingCollaboration.get(props.item.meetingId)) preparation.scheduleSave();
+});
+watch(minutes.localNote, () => {
+  if (!meetingCollaboration.get(props.item.meetingId)) minutes.scheduleSave();
+});
 const hasPreparation = computed(() => Boolean(plainText(preparation.localNote.value)));
 </script>
 
@@ -62,6 +66,8 @@ const hasPreparation = computed(() => Boolean(plainText(preparation.localNote.va
           :description="t('meetingTexts.preparationDescription')"
           :state="preparation.state.value"
           :error="preparation.error.value"
+          :meeting-id="item.meetingId"
+          :fragment="meetingFragmentId('preparationContext', item.id)"
           @save="preparation.save"
         />
       </template>
@@ -85,6 +91,8 @@ const hasPreparation = computed(() => Boolean(plainText(preparation.localNote.va
           :description="t('meetingTexts.minutesDescription')"
           :state="minutes.state.value"
           :error="minutes.error.value"
+          :meeting-id="item.meetingId"
+          :fragment="meetingFragmentId('meetingMinutes', item.id)"
           @save="minutes.save"
         />
       </template>

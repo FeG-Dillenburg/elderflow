@@ -57,6 +57,41 @@ describe("MeetingDocumentSession", () => {
     expect((decoded[3] as unknown[])[6]).toBe(2);
   });
 
+  it("continues the awareness clock when the same workspace is reloaded", async () => {
+    await sodium.ready;
+    const signing = sodium.crypto_sign_seed_keypair(new Uint8Array(32).fill(3), "uint8array");
+    const meetingId = "00000000-0000-4000-8000-000000000205";
+    const clientEpochId = "00000000-0000-4000-8000-000000000206";
+    session.unlock({
+      organizationId: "00000000-0000-4000-8000-000000000207",
+      ockId: "00000000-0000-4000-8000-000000000208",
+      clientEpochId,
+      noncePrefix: new Uint8Array(16).fill(2),
+      contentKey: new Uint8Array(32).fill(4),
+      signingPrivateKey: signing.privateKey,
+    });
+    const initial = await session.createInitial(meetingId);
+    await session.encryptAwareness(meetingId, new Uint8Array([1]));
+
+    await session.load(meetingId, {
+      documentId: initial.documentId,
+      activeSnapshotId: initial.snapshotId,
+      currentServerSequence: "0",
+      snapshot: {
+        id: initial.snapshotId,
+        clientEpochId,
+        signingPublicKey: bytesToBase64Url(signing.publicKey),
+        envelope: initial.snapshotEnvelope,
+      },
+      updates: [],
+    });
+
+    const second = decoder.decode(base64UrlToBytes(
+      await session.encryptAwareness(meetingId, new Uint8Array([2])),
+    )) as unknown[];
+    expect((second[3] as unknown[])[5]).toBe(2);
+  });
+
   it("creates an update when initializing a new appearance fragment with empty text", async () => {
     await sodium.ready;
     const signing = sodium.crypto_sign_seed_keypair(new Uint8Array(32).fill(9), "uint8array");
@@ -150,6 +185,128 @@ describe("MeetingDocumentSession", () => {
       generalNotes: "<p>General note</p>",
       openingInput: "<p>Opening note</p>",
     });
+  });
+
+  it("merges updates missed during a transient disconnect", async () => {
+    await sodium.ready;
+    const localSigning = sodium.crypto_sign_seed_keypair(new Uint8Array(32).fill(1), "uint8array");
+    const remoteSigning = sodium.crypto_sign_seed_keypair(new Uint8Array(32).fill(2), "uint8array");
+    const remote = new MeetingDocumentSession();
+    const meetingId = "00000000-0000-4000-8000-000000000231";
+    const localEpochId = "00000000-0000-4000-8000-000000000232";
+    const remoteEpochId = "00000000-0000-4000-8000-000000000233";
+    const common = {
+      organizationId: "00000000-0000-4000-8000-000000000234",
+      ockId: "00000000-0000-4000-8000-000000000235",
+      contentKey: new Uint8Array(32).fill(3),
+    };
+    session.unlock({
+      ...common,
+      clientEpochId: localEpochId,
+      noncePrefix: new Uint8Array(16).fill(4),
+      signingPrivateKey: localSigning.privateKey,
+    });
+    const initial = await session.createInitial(meetingId);
+    const emptyWorkspace = {
+      documentId: initial.documentId,
+      activeSnapshotId: initial.snapshotId,
+      currentServerSequence: "0",
+      snapshot: {
+        id: initial.snapshotId,
+        clientEpochId: localEpochId,
+        coveredAuthorClocks: [] as Array<[string, string]>,
+        signingPublicKey: bytesToBase64Url(localSigning.publicKey),
+        envelope: initial.snapshotEnvelope,
+      },
+      updates: [],
+    };
+    remote.unlock({
+      ...common,
+      clientEpochId: remoteEpochId,
+      noncePrefix: new Uint8Array(16).fill(5),
+      signingPrivateKey: remoteSigning.privateKey,
+    });
+    await remote.load(meetingId, emptyWorkspace);
+    const remoteUpdate = await remote.createFragmentUpdate(
+      meetingId,
+      "meeting/general-notes",
+      "Remote edit",
+    );
+    await session.load(meetingId, emptyWorkspace);
+
+    const result = await session.merge(meetingId, {
+      ...emptyWorkspace,
+      currentServerSequence: "1",
+      updates: [{
+        clientEpochId: remoteEpochId,
+        authorClock: "1",
+        signingPublicKey: bytesToBase64Url(remoteSigning.publicKey),
+        envelope: remoteUpdate,
+      }],
+    }, "test-resync");
+
+    expect(result).toEqual({ parentChanged: false });
+    expect(session.hydrateFragments(meetingId, []).generalNotes).toBe("Remote edit");
+    remote.lock();
+  });
+
+  it("omits orphan fragments from a compacted snapshot", async () => {
+    await sodium.ready;
+    const signing = sodium.crypto_sign_seed_keypair(new Uint8Array(32).fill(8), "uint8array");
+    const restored = new MeetingDocumentSession();
+    const meetingId = "00000000-0000-4000-8000-000000000241";
+    const clientEpochId = "00000000-0000-4000-8000-000000000242";
+    const keys = {
+      organizationId: "00000000-0000-4000-8000-000000000243",
+      ockId: "00000000-0000-4000-8000-000000000244",
+      clientEpochId,
+      noncePrefix: new Uint8Array(16).fill(5),
+      contentKey: new Uint8Array(32).fill(6),
+      signingPrivateKey: signing.privateKey,
+    };
+    session.unlock(keys);
+    const initial = await session.createInitial(meetingId);
+    const retainedId = "00000000-0000-4000-8000-000000000245";
+    const orphanId = "00000000-0000-4000-8000-000000000246";
+    await session.createFragmentUpdate(
+      meetingId,
+      `appearance/${retainedId}/minutes`,
+      "Retained",
+    );
+    await session.createFragmentUpdate(
+      meetingId,
+      `appearance/${orphanId}/minutes`,
+      "Orphan",
+    );
+
+    const compacted = await session.createCompaction(meetingId, [
+      "meeting/general-notes",
+      "meeting/opening-input",
+      `appearance/${retainedId}/minutes`,
+    ]);
+    restored.unlock(keys);
+    await restored.load(meetingId, {
+      documentId: initial.documentId,
+      activeSnapshotId: compacted.snapshotId,
+      currentServerSequence: "0",
+      snapshot: {
+        id: compacted.snapshotId,
+        clientEpochId,
+        snapshotClock: "2",
+        coveredAuthorClocks: [],
+        signingPublicKey: bytesToBase64Url(signing.publicKey),
+        envelope: compacted.snapshotEnvelope,
+      },
+      updates: [],
+    });
+
+    const fragments = restored.hydrateFragments(meetingId, [
+      { id: retainedId, person: false },
+      { id: orphanId, person: false },
+    ]).appearances;
+    expect(fragments.get(retainedId)?.meetingMinutes).toBe("Retained");
+    expect(fragments.get(orphanId)?.meetingMinutes).toBe("");
+    restored.lock();
   });
 
   it("refuses document mutation while locked and discards unusable local state", async () => {

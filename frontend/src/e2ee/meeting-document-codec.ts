@@ -1,6 +1,9 @@
 import { Decoder } from "cbor-x";
 import sodium from "libsodium-wrappers-sumo";
 import * as Y from "yjs";
+import { generateHTML } from "@tiptap/core";
+import { yXmlFragmentToProsemirrorJSON } from "@tiptap/y-tiptap";
+import { meetingRichTextExtensions } from "../components/meeting-rich-text-extensions";
 import {
   bytesToUuid,
   deterministicCbor,
@@ -51,6 +54,7 @@ export type CreateMeetingUpdateInput = MeetingUpdateContext & {
 export type ApplyMeetingUpdateInput = MeetingUpdateContext & {
   signingPublicKey: Uint8Array;
   envelope: Uint8Array;
+  origin?: unknown;
 };
 
 export type CreateMeetingSnapshotInput = Omit<MeetingUpdateContext, "activeSnapshotId" | "authorClock"> & {
@@ -69,6 +73,7 @@ export type ApplyMeetingSnapshotInput = Omit<MeetingUpdateContext, "activeSnapsh
   snapshotId: string;
   signingPublicKey: Uint8Array;
   envelope: Uint8Array;
+  origin?: unknown;
 };
 
 export function meetingFragmentId(
@@ -85,6 +90,13 @@ export function meetingFragmentId(
 }
 
 export function readMeetingFragment(document: Y.Doc, fragment: StableMeetingFragment): string {
+  const collaborative = document.getXmlFragment(`tiptap:${fragment}`);
+  if (collaborative.length > 0) {
+    return generateHTML(
+      yXmlFragmentToProsemirrorJSON(collaborative),
+      meetingRichTextExtensions(true),
+    );
+  }
   return document.getText(fragment).toString();
 }
 
@@ -92,18 +104,19 @@ export function replaceMeetingFragment(
   document: Y.Doc,
   fragment: StableMeetingFragment,
   value: string,
+  origin?: unknown,
 ): Uint8Array {
   let update: Uint8Array | null = null;
-  const origin = Symbol(fragment);
+  const transactionOrigin = origin ?? Symbol(fragment);
   const capture = (candidate: Uint8Array, candidateOrigin: unknown): void => {
-    if (candidateOrigin === origin) update = Uint8Array.from(candidate);
+    if (candidateOrigin === transactionOrigin) update = Uint8Array.from(candidate);
   };
   document.on("updateV2", capture);
   document.transact(() => {
     const text = document.getText(fragment);
     if (text.length) text.delete(0, text.length);
     if (value) text.insert(0, value);
-  }, origin);
+  }, transactionOrigin);
   if (!update) {
     // An empty-to-empty replacement is a Yjs no-op. Preserve the empty value
     // while emitting a tombstone update for atomic fragment initialization.
@@ -111,7 +124,7 @@ export function replaceMeetingFragment(
       const text = document.getText(fragment);
       text.insert(0, "\0");
       text.delete(0, 1);
-    }, origin);
+    }, transactionOrigin);
   }
   document.off("updateV2", capture);
   return update ?? new Uint8Array();
@@ -196,10 +209,17 @@ export async function applyEncryptedMeetingUpdate(
         key,
         "uint8array",
       );
-      const probe = new Y.Doc();
-      Y.applyUpdateV2(probe, update);
-      probe.destroy();
-      Y.applyUpdateV2(document, update);
+      try {
+        const probe = new Y.Doc();
+        try {
+          Y.applyUpdateV2(probe, update);
+        } finally {
+          probe.destroy();
+        }
+        Y.applyUpdateV2(document, update, input.origin);
+      } finally {
+        sodium.memzero(update);
+      }
     } finally {
       sodium.memzero(key);
     }
@@ -208,6 +228,25 @@ export async function applyEncryptedMeetingUpdate(
       throw error;
     }
     throw new Error("E2EE_MEETING_DOCUMENT_INVALID", { cause: error });
+  }
+}
+
+export async function decryptEncryptedMeetingUpdate(
+  input: Omit<ApplyMeetingUpdateInput, "origin">,
+): Promise<Uint8Array> {
+  const document = new Y.Doc();
+  let plaintext: Uint8Array | null = null;
+  const capture = (update: Uint8Array): void => {
+    plaintext = Uint8Array.from(update);
+  };
+  document.on("updateV2", capture);
+  try {
+    await applyEncryptedMeetingUpdate(document, input);
+    if (!plaintext) invalid();
+    return plaintext;
+  } finally {
+    document.off("updateV2", capture);
+    document.destroy();
   }
 }
 
@@ -315,10 +354,17 @@ export async function applyEncryptedMeetingSnapshot(
         key,
         "uint8array",
       );
-      const probe = new Y.Doc();
-      Y.applyUpdateV2(probe, plaintext);
-      probe.destroy();
-      Y.applyUpdateV2(document, plaintext);
+      try {
+        const probe = new Y.Doc();
+        try {
+          Y.applyUpdateV2(probe, plaintext);
+        } finally {
+          probe.destroy();
+        }
+        Y.applyUpdateV2(document, plaintext, input.origin);
+      } finally {
+        sodium.memzero(plaintext);
+      }
     } finally {
       sodium.memzero(key);
     }

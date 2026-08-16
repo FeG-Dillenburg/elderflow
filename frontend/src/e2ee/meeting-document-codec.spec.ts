@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import * as Y from "yjs";
 import sodium from "libsodium-wrappers-sumo";
+import { getSchema } from "@tiptap/core";
+import { prosemirrorJSONToYXmlFragment } from "@tiptap/y-tiptap";
+import { meetingRichTextExtensions } from "../components/meeting-rich-text-extensions";
 import vectorJson from "../../../docs/security/fixtures/meeting-document-vectors.json?raw";
 import { bytesToBase64Url } from "./protocol";
 import {
@@ -31,6 +34,35 @@ const vectors = JSON.parse(vectorJson) as {
 };
 
 describe("Meeting document codec", () => {
+  it("renders every supported collaborative rich-text mark after reload", () => {
+    const document = new Y.Doc();
+    const fragment = document.getXmlFragment("tiptap:meeting/general-notes");
+    prosemirrorJSONToYXmlFragment(getSchema(meetingRichTextExtensions(true)), {
+      type: "doc",
+      content: [
+        { type: "paragraph", content: [{ type: "text", text: "Styled", marks: [
+          { type: "bold" }, { type: "italic" }, { type: "underline" },
+          { type: "textStyle", attrs: { color: "#ff0000" } },
+          { type: "highlight", attrs: { color: "#ffff00" } },
+        ] }] },
+        { type: "blockquote", content: [{ type: "paragraph", content: [{ type: "text", text: "Quote" }] }] },
+        { type: "orderedList", attrs: { start: 1, type: null }, content: [{ type: "listItem", content: [{ type: "paragraph", content: [{ type: "text", text: "One" }] }] }] },
+        { type: "bulletList", content: [{ type: "listItem", content: [{ type: "paragraph", content: [{ type: "text", text: "Bullet", marks: [{ type: "link", attrs: { href: "https://example.com", target: "_blank", rel: "noopener noreferrer nofollow", class: null } }] }] }] }] },
+      ],
+    }, fragment);
+
+    const html = readMeetingFragment(document, "meeting/general-notes");
+    expect(html).toContain("<strong>");
+    expect(html).toContain("<em>");
+    expect(html).toContain("<u>Styled</u>");
+    expect(html).toContain("color: rgb(255, 0, 0)");
+    expect(html).toContain("background-color: rgb(255, 255, 0)");
+    expect(html).toContain("<blockquote>");
+    expect(html).toContain("<ol>");
+    expect(html).toContain("<ul>");
+    expect(html).toContain('href="https://example.com"');
+  });
+
   it("uses stable semantic fragments and copy-forward creates an independent target", () => {
     const document = new Y.Doc();
     const source = meetingFragmentId("preparationContext", "appearance-source");

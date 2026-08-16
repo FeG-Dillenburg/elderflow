@@ -10,6 +10,7 @@ describe("MeetingsService encrypted transaction boundaries", () => {
     createInitial: jest.fn(),
     appendUpdate: jest.fn(),
     bootstrap: jest.fn(),
+    storedUpdateMatches: jest.fn(),
   };
   const scalars = { validateWrite: jest.fn() };
   const manager = {
@@ -95,5 +96,37 @@ describe("MeetingsService encrypted transaction boundaries", () => {
       id: "mutation",
       updateId: "update",
     }));
+  });
+
+  it("recognizes an exact mutation retry after compaction removed its covered update", async () => {
+    const input = {
+      id: "appearance",
+      mutationId: "mutation",
+      topicId: "topic",
+      sectionId: "section",
+      initialUpdateEnvelope: "opaque",
+    };
+    const fingerprint = (service as unknown as {
+      meetingTopicRequestFingerprint: (value: typeof input) => Buffer;
+    }).meetingTopicRequestFingerprint(input);
+    const appearance = { id: "appearance", meetingId: "meeting" };
+    manager.findOneBy.mockImplementation(async (entity) => {
+      if (entity === MeetingDocumentMutation) {
+        return {
+          id: "mutation",
+          meetingId: "meeting",
+          appearanceId: "appearance",
+          sourceAppearanceId: null,
+          updateId: null,
+          requestFingerprint: fingerprint,
+        };
+      }
+      if (entity === MeetingTopic) return appearance;
+      return null;
+    });
+
+    await expect(service.addTopic("meeting", input as never, user)).resolves.toBe(appearance);
+    expect(documents.storedUpdateMatches).not.toHaveBeenCalled();
+    expect(documents.appendUpdate).not.toHaveBeenCalled();
   });
 });

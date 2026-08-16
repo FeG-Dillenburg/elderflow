@@ -11,6 +11,11 @@ import {
   type EncryptedWorkspace,
 } from '../e2ee/meeting-document-session';
 import { meetingFragmentId } from '../e2ee/meeting-document-codec';
+import {
+  MEETING_COLLABORATION_ORIGIN,
+  meetingCollaboration,
+  type CollaborationTicket,
+} from '../e2ee/meeting-collaboration';
 import { scalarSession } from '../e2ee/scalar-session';
 import {
   protectStandaloneUpdate,
@@ -179,6 +184,7 @@ export interface Meeting {
   date: string;
   beginTime: string;
   status: string;
+  completedAt?: string | null;
   meetingLeaderId: string | null;
   meetingLeader?: User | null;
   minuteTakerId: string | null;
@@ -188,7 +194,7 @@ export interface Meeting {
   participants?: MeetingParticipant[];
   agenda?: MeetingTopic[];
   workspace?: EncryptedWorkspace | null;
-  collaboration?: { available: false };
+  collaboration?: { available: boolean };
 }
 
 export type MeetingInput = Omit<Meeting, 'id' | 'meetingLeader' | 'minuteTaker' | 'participants' | 'agenda'>;
@@ -272,6 +278,7 @@ export interface TopicHistoryMeeting {
   date: string;
   beginTime: string;
   status: string;
+  completedAt?: string | null;
   minuteTakerDisplayName: string | null;
 }
 
@@ -411,6 +418,15 @@ const apiBaseUrl = import.meta.env.VITE_API_BASE_URL
 const cborEncoder = new Encoder({ mapsAsObjects: false, structuredClone: false, tagUint8Array: false, useRecords: false });
 import { getSessionToken } from '../auth/session';
 
+class ApiRequestError extends Error {
+  readonly code: string | undefined;
+
+  constructor(payload: ApiErrorPayload | null) {
+    super(localizeApiError(payload, translate));
+    this.code = payload?.code;
+  }
+}
+
 export async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const token = getSessionToken();
   const response = await fetch(`${apiBaseUrl}${path}`, {
@@ -424,7 +440,7 @@ export async function request<T>(path: string, options?: RequestInit): Promise<T
   if (!response.ok) {
     const payload = (await response.json().catch(() => null)) as ApiErrorPayload | null;
     notifyAuthorizationLoss(payload);
-    throw new Error(localizeApiError(payload, translate));
+    throw new ApiRequestError(payload);
   }
   if (response.status === 204 || response.headers?.get('content-length') === '0') return undefined as T;
   return await response.json() as T;
@@ -438,7 +454,7 @@ async function requestBinary(path: string): Promise<string> {
   if (!response.ok) {
     const payload = (await response.json().catch(() => null)) as ApiErrorPayload | null;
     notifyAuthorizationLoss(payload);
-    throw new Error(localizeApiError(payload, translate));
+    throw new ApiRequestError(payload);
   }
   if (!response.headers.get('content-type')?.replaceAll(' ', '').startsWith(E2EE_MEDIA_TYPE)) {
     throw new Error('E2EE_BINARY_RESPONSE_INVALID');
@@ -456,7 +472,7 @@ async function requestWithBinaryBody<T>(path: string, body: Uint8Array, headers:
   if (!response.ok) {
     const payload = (await response.json().catch(() => null)) as ApiErrorPayload | null;
     notifyAuthorizationLoss(payload);
-    throw new Error(localizeApiError(payload, translate));
+    throw new ApiRequestError(payload);
   }
   return response.json() as Promise<T>;
 }
@@ -780,6 +796,35 @@ export const api = {
         return { ...item, topic };
       }));
     }
+    if (meeting.workspace && meeting.status !== 'completed' && scalarSession.isUnlocked()) {
+      await meetingCollaboration.start(
+        id,
+        () => request<CollaborationTicket>(`/api/meetings/${id}/collaboration-ticket`, { method: 'POST' }),
+        (path) => {
+          const url = new URL(`${apiBaseUrl}${path}`, window.location.origin);
+          url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
+          return new WebSocket(url);
+        },
+        () => api.compactMeetingWorkspace(id, [
+          'meeting/general-notes',
+          'meeting/opening-input',
+          ...(meeting.agenda ?? []).flatMap((item) => item.topic?.type === 'person'
+            ? [meetingFragmentId('personNote', item.id)]
+            : [
+                meetingFragmentId('preparationContext', item.id),
+                meetingFragmentId('meetingMinutes', item.id),
+              ]),
+        ]),
+        async () => {
+          const workspace = await request<EncryptedWorkspace | null>(
+            `/api/meetings/${id}/workspace`,
+          );
+          if (!workspace) throw new Error('MEETING_WORKSPACE_UNAVAILABLE');
+          return meetingDocumentSession.merge(id, workspace, MEETING_COLLABORATION_ORIGIN);
+        },
+      );
+      meeting.collaboration = { available: true };
+    }
     return meeting;
   },
   createMeeting: async (input: MeetingInput) => {
@@ -804,7 +849,7 @@ export const api = {
     if (title !== undefined) {
       body.protected = { titleEnvelope: await protectMeetingTitle(id, title) };
     }
-    if (generalNotes !== undefined) {
+    if (generalNotes !== undefined && !meetingCollaboration.get(id)) {
       await api.appendMeetingWorkspaceUpdate(
         id,
         await meetingDocumentSession.createFragmentUpdate(
@@ -814,7 +859,7 @@ export const api = {
         ),
       );
     }
-    if (openingInput !== undefined) {
+    if (openingInput !== undefined && !meetingCollaboration.get(id)) {
       await api.appendMeetingWorkspaceUpdate(
         id,
         await meetingDocumentSession.createFragmentUpdate(
@@ -859,10 +904,29 @@ export const api = {
       throw error;
     }
   },
+  compactMeetingWorkspace: async (id: string, fragments: import('../e2ee/meeting-document-codec').StableMeetingFragment[]) => {
+    const snapshot = await meetingDocumentSession.createCompaction(id, fragments);
+    try {
+      await requestWithBinaryBody(
+        `/api/meetings/${id}/workspace/compact`,
+        base64UrlToBytes(snapshot.snapshotEnvelope),
+        { 'X-ElderFlow-Snapshot-Id': snapshot.snapshotId },
+      );
+      await meetingDocumentSession.acceptCompaction(
+        id,
+        snapshot.snapshotId,
+        snapshot.snapshotEnvelope,
+        MEETING_COLLABORATION_ORIGIN,
+      );
+    } catch (error) {
+      await meetingCollaboration.get(id)?.synchronize();
+      throw error;
+    }
+  },
   completeMeeting: async (id: string) => {
-    const meeting = await unprotectMeeting(
-      await request<EncryptedMeetingResponse>(`/api/meetings/${id}/complete`, { method: 'POST' }),
-    );
+    const response = await request<EncryptedMeetingResponse>(`/api/meetings/${id}/complete`, { method: 'POST' });
+    meetingCollaboration.stop(id);
+    const meeting = await unprotectMeeting(response);
     await reconcileAllRecurringTopics();
     return meeting;
   },
@@ -911,6 +975,7 @@ export const api = {
       meetingId,
       meetingFragmentId(person ? 'personNote' : 'preparationContext', appearanceId),
       initialText,
+      MEETING_COLLABORATION_ORIGIN,
     );
     const {
       topic: _topic,

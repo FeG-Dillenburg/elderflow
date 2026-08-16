@@ -45,6 +45,60 @@ export interface MeetingSnapshotMetadata {
   fingerprint: Buffer;
 }
 
+export interface MeetingAwarenessMetadata {
+  clientEpochId: string;
+  awarenessClock: number;
+  ciphertextLength: number;
+}
+
+export function meetingAwarenessClientEpochId(encoded: Buffer): string {
+  try {
+    const envelope = decodeEnvelope(encoded);
+    const header = envelope[3] as unknown[];
+    if (envelope[1] !== 7 || header.length !== 7) invalid();
+    return bytesToUuid(bytes(header[4], 16));
+  } catch (error) {
+    if (error instanceof HttpException) throw error;
+    invalid();
+  }
+}
+
+export function validateMeetingAwarenessEnvelope(encoded: Buffer, expected: {
+  organizationId: string;
+  documentId: string;
+  ockId: string;
+  clientEpochId: string;
+  noncePrefix: Buffer;
+  signingPublicKey: Buffer;
+}): MeetingAwarenessMetadata {
+  try {
+    if (encoded.length > 5_000) invalid("E2EE_AWARENESS_TOO_LARGE");
+    const envelope = decodeEnvelope(encoded);
+    if (envelope[0] !== 1) invalid("E2EE_FORMAT_UNSUPPORTED");
+    if (envelope[1] !== 7 || envelope[2] !== 1 || !sameBytes(encode(envelope), encoded)) invalid();
+    const header = envelope[3] as unknown[];
+    if (header.length !== 7 || header[3] !== 1) invalid("E2EE_CODEC_UNSUPPORTED");
+    const clientEpochId = bytesToUuid(bytes(header[4], 16));
+    const awarenessClock = integer(header[5], 1, Number.MAX_SAFE_INTEGER);
+    const nonce = bytes(header[6], 24);
+    const ciphertext = bytes(envelope[4]);
+    const signature = bytes(envelope[5], 64);
+    if (bytesToUuid(bytes(header[0], 16)) !== expected.organizationId
+      || bytesToUuid(bytes(header[1], 16)) !== expected.documentId
+      || bytesToUuid(bytes(header[2], 16)) !== expected.ockId
+      || clientEpochId !== expected.clientEpochId
+      || !sameBytes(nonce.subarray(0, 16), expected.noncePrefix)) contextInvalid();
+    if (nonce.readBigUInt64BE(16) !== BigInt(awarenessClock)
+      || ciphertext.length < 17 || ciphertext.length > 4_112) invalid();
+    const signed = Buffer.concat([SIGNATURE_DOMAIN, encode([1, 7, 1, header, ciphertext])]);
+    if (!sodium.crypto_sign_verify_detached(signature, signed, expected.signingPublicKey)) invalid();
+    return { clientEpochId, awarenessClock, ciphertextLength: ciphertext.length };
+  } catch (error) {
+    if (error instanceof HttpException) throw error;
+    invalid();
+  }
+}
+
 export function meetingUpdateClientEpochId(encoded: Buffer): string {
   try {
     const envelope = decodeEnvelope(encoded);

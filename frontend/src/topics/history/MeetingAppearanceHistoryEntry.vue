@@ -28,6 +28,7 @@ const appearanceNote = computed(() => props.entry.topic.type === "person"
 const minutesEntries = computed(() => props.entry.meetingMinutes
   ? [props.entry.meetingMinutes]
   : []);
+const completionTimestamp = computed(() => props.entry.meeting.completedAt || props.entry.effectiveAt);
 </script>
 
 <template>
@@ -130,8 +131,8 @@ const minutesEntries = computed(() => props.entry.meetingMinutes
         <article v-for="minute in minutesEntries" :key="minute.id" class="minute">
           <div class="rich-content" v-html="sanitizeHistoryRichText(minute.text)" />
           <p>
-            <time :datetime="minute.effectiveAt">
-              {{ formatDate(minute.effectiveAt, { timeStyle: "short" }) }}
+            <time :datetime="completionTimestamp">
+              {{ formatDate(completionTimestamp, { dateStyle: "medium", timeStyle: "short" }) }}
             </time>
             <span>{{ minute.createdByDisplayName || t("topicHistory.unknownAuthor") }}</span>
           </p>
