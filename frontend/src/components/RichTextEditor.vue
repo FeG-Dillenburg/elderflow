@@ -5,10 +5,17 @@ import { generateJSON, getSchema } from "@tiptap/core";
 import { prosemirrorJSONToYXmlFragment } from "@tiptap/y-tiptap";
 import { EditorContent, useEditor } from "@tiptap/vue-3";
 import * as Y from "yjs";
-import { computed, onBeforeUnmount, watch } from "vue";
+import { computed, onBeforeUnmount, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
+import { auth } from "../auth/auth";
+import {
+  createCollaboratorPresentation,
+  isCollaboratorPresentation,
+  type CollaboratorPresentation,
+} from "../e2ee/collaborator-presentation";
 import { meetingCollaboration } from "../e2ee/meeting-collaboration";
 import type { StableMeetingFragment } from "../e2ee/meeting-document-codec";
+import CollaboratorAvatar from "./CollaboratorAvatar.vue";
 import { meetingRichTextExtensions } from "./meeting-rich-text-extensions";
 
 const props = withDefaults(defineProps<{
@@ -27,6 +34,45 @@ const resolvedPlaceholder = computed(() => props.placeholder ?? t("topicDetail.a
 const liveProvider = props.meetingId ? meetingCollaboration.get(props.meetingId) : undefined;
 const liveField = props.fragment ? `tiptap:${props.fragment}` : undefined;
 const extensions = meetingRichTextExtensions(Boolean(liveProvider));
+const localCollaborator = computed<CollaboratorPresentation>(() => {
+  const user = auth.state.user;
+  return createCollaboratorPresentation(user
+    ? {
+        id: user.id,
+        firstName: user.firstName,
+        lastName: user.lastName,
+      }
+    : {
+        id: liveProvider ? String(liveProvider.awareness.clientID) : "local",
+        firstName: t("e2ee.collaborator"),
+        lastName: "",
+      });
+});
+const liveCollaborators = ref<CollaboratorPresentation[]>([]);
+
+const refreshLiveCollaborators = () => {
+  const collaborators = new Map<string, CollaboratorPresentation>();
+  for (const state of liveProvider?.awareness.getStates().values() ?? []) {
+    if (isCollaboratorPresentation(state.user)) {
+      collaborators.set(state.user.id, state.user);
+    }
+  }
+  liveCollaborators.value = [...collaborators.values()]
+    .sort((left, right) => left.name.localeCompare(right.name));
+};
+
+const renderCollaborationCaret = (collaborator: Record<string, unknown>): HTMLElement => {
+  const caret = window.document.createElement("span");
+  const marker = window.document.createElement("span");
+  const color = typeof collaborator.color === "string" && /^#[0-9a-f]{6}$/i.test(collaborator.color)
+    ? collaborator.color
+    : "#315a9b";
+  caret.classList.add("collaboration-carets__caret");
+  caret.style.setProperty("--collaborator-color", color);
+  marker.classList.add("collaboration-carets__marker");
+  caret.append(marker);
+  return caret;
+};
 
 const deterministicClientId = (value: string): number => {
   let hash = 2_166_136_261;
@@ -60,7 +106,8 @@ const editor = useEditor({
       Collaboration.configure({ document: liveProvider.document, field: liveField }),
       CollaborationCaret.configure({
         provider: liveProvider,
-        user: { name: t("e2ee.collaborator"), color: "#476fae" },
+        user: localCollaborator.value,
+        render: renderCollaborationCaret,
       }),
     ] : []),
   ],
@@ -85,6 +132,14 @@ watch(model, (value) => {
 });
 watch(() => props.readonly, (value) => editor.value?.setEditable(!value));
 
+if (liveProvider) {
+  watch(localCollaborator, (collaborator) => {
+    liveProvider.awareness.setLocalStateField("user", collaborator);
+  });
+  liveProvider.awareness.on("change", refreshLiveCollaborators);
+  refreshLiveCollaborators();
+}
+
 const setLink = () => {
   const previous = editor.value?.getAttributes("link").href as string | undefined;
   const href = window.prompt(t("editor.linkPrompt"), previous ?? "https://");
@@ -93,7 +148,10 @@ const setLink = () => {
   else editor.value?.chain().focus().extendMarkRange("link").setLink({ href: href.trim() }).run();
 };
 
-onBeforeUnmount(() => editor.value?.destroy());
+onBeforeUnmount(() => {
+  liveProvider?.awareness.off("change", refreshLiveCollaborators);
+  editor.value?.destroy();
+});
 </script>
 
 <template>
@@ -173,6 +231,18 @@ onBeforeUnmount(() => editor.value?.destroy());
       >
         🔗
       </button>
+      <div
+        v-if="liveCollaborators.length"
+        class="live-collaborators"
+        role="list"
+        :aria-label="t('editor.liveCollaborators')"
+      >
+        <CollaboratorAvatar
+          v-for="collaborator in liveCollaborators"
+          :key="collaborator.id"
+          :collaborator="collaborator"
+        />
+      </div>
     </div>
     <EditorContent :editor="editor" :style="{ '--editor-height': props.height }" :data-placeholder="resolvedPlaceholder" />
   </div>
@@ -224,6 +294,17 @@ onBeforeUnmount(() => editor.value?.destroy());
   cursor: pointer;
 }
 
+.live-collaborators {
+  display: flex;
+  align-items: center;
+  margin-left: auto;
+  padding-left: 0.5rem;
+}
+
+.live-collaborators > * + * {
+  margin-left: -0.35rem;
+}
+
 .rich-text-editor :deep(.tiptap) {
   min-height: var(--editor-height);
   padding: 0.65rem 0.75rem;
@@ -244,6 +325,28 @@ onBeforeUnmount(() => editor.value?.destroy());
 .rich-text-editor :deep(a) {
   color: #285caa;
   text-decoration: underline;
+}
+
+.rich-text-editor :deep(.collaboration-carets__caret) {
+  display: inline-block;
+  position: relative;
+  width: 0;
+  height: 1.25em;
+  margin-left: -1px;
+  border-left: 2px solid var(--collaborator-color);
+  vertical-align: text-bottom;
+  pointer-events: none;
+}
+
+.rich-text-editor :deep(.collaboration-carets__marker) {
+  position: absolute;
+  bottom: -0.22rem;
+  left: -0.25rem;
+  width: 0;
+  height: 0;
+  border-top: 0.3rem solid var(--collaborator-color);
+  border-right: 0.2rem solid transparent;
+  border-left: 0.2rem solid transparent;
 }
 
 .readonly {

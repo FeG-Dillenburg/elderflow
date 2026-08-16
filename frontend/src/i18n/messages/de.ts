@@ -7,7 +7,7 @@ const de = {
   },
   brand: { name: 'Elderflow' },
   languages: { installationDefault: 'Installationsstandard verwenden', en: 'Englisch', de: 'Deutsch', label: 'Sprache' },
-  editor: { toolbar: 'Textformatierung', bold: 'Fett', italic: 'Kursiv', underline: 'Unterstrichen', textColor: 'Textfarbe', highlightColor: 'Hervorhebungsfarbe', blockquote: 'Blockzitat', orderedList: 'Nummerierte Liste', bulletList: 'Aufzählung', link: 'Link einfügen', linkPrompt: 'Linkadresse eingeben' },
+  editor: { toolbar: 'Textformatierung', bold: 'Fett', italic: 'Kursiv', underline: 'Unterstrichen', textColor: 'Textfarbe', highlightColor: 'Hervorhebungsfarbe', blockquote: 'Blockzitat', orderedList: 'Nummerierte Liste', bulletList: 'Aufzählung', link: 'Link einfügen', linkPrompt: 'Linkadresse eingeben', liveCollaborators: 'Live-Mitarbeitende', liveCollaborator: '{name} arbeitet live mit' },
   nav: { main: 'Hauptnavigation', dashboard: 'Übersicht', meetings: 'Sitzungen', topics: 'Themen', tasks: 'Offene Aufgaben', users: 'Benutzer', sections: 'Tagesordnungsabschnitte', signOut: 'Abmelden' },
   roles: { superadmin: 'Superadministrator', 'it-admin': 'IT-Administrator', admin: 'Administrator', user: 'Benutzer', guest: 'Gast' },
   setup: {

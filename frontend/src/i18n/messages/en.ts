@@ -7,7 +7,7 @@ export default {
   },
   brand: { name: 'Elderflow' },
   languages: { installationDefault: 'Use installation default', en: 'English', de: 'German', label: 'Language' },
-  editor: { toolbar: 'Text formatting', bold: 'Bold', italic: 'Italic', underline: 'Underline', textColor: 'Text color', highlightColor: 'Highlight color', blockquote: 'Block quote', orderedList: 'Numbered list', bulletList: 'Bulleted list', link: 'Insert link', linkPrompt: 'Enter the link address' },
+  editor: { toolbar: 'Text formatting', bold: 'Bold', italic: 'Italic', underline: 'Underline', textColor: 'Text color', highlightColor: 'Highlight color', blockquote: 'Block quote', orderedList: 'Numbered list', bulletList: 'Bulleted list', link: 'Insert link', linkPrompt: 'Enter the link address', liveCollaborators: 'Live collaborators', liveCollaborator: '{name} is collaborating live' },
   nav: { main: 'Main navigation', dashboard: 'Dashboard', meetings: 'Meetings', topics: 'Topics', tasks: 'Open tasks', users: 'Users', sections: 'Agenda sections', signOut: 'Sign out' },
   roles: { superadmin: 'Superadmin', 'it-admin': 'IT admin', admin: 'Admin', user: 'User', guest: 'Guest' },
   setup: {
