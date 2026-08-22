@@ -130,6 +130,23 @@ describe('RecoveryView', () => {
     expect(wrapper.get('header').text()).toContain(explanation);
   });
 
+  it.each([
+    'lost-recovery-secret',
+    'routine-recovery-secret',
+    'disclosed-passphrase',
+    'disclosed-recovery-secret',
+    'disclosed-encryption-key',
+  ])('explains the paper-copy requirement for %s', async (situation) => {
+    const wrapper = mount(RecoveryView, { global: { stubs } });
+    await flushPromises();
+
+    await wrapper.get(`[data-situation="${situation}"]`).trigger('click');
+
+    expect(wrapper.get('header').text()).toContain(
+      'verify and safely store two separate paper copies',
+    );
+  });
+
   it('opens a routine passphrase-change workflow with situation-specific inputs', async () => {
     const wrapper = mount(RecoveryView, { global: { stubs } });
     await flushPromises();
