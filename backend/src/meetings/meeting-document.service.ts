@@ -1,7 +1,7 @@
 import { HttpStatus, Injectable } from "@nestjs/common";
 import sodium from "libsodium-wrappers-sumo";
 import { EntityManager, In, Not } from "typeorm";
-import { E2eeClientEpoch } from "../e2ee/e2ee-client-epoch.entity";
+import { E2eeClientEpoch, isClientEpochWritable } from "../e2ee/e2ee-client-epoch.entity";
 import { E2eeKeyState } from "../e2ee/e2ee-key-state.entity";
 import { isE2eeKeyOperator } from "../e2ee/e2ee-role-policy";
 import {
@@ -341,7 +341,7 @@ export class MeetingDocumentService {
         "Protected text is not configured",
       );
     }
-    if (!epoch || epoch.revokedAt || epoch.userId !== user.id
+    if (!epoch || !isClientEpochWritable(epoch) || epoch.userId !== user.id
       || epoch.organizationId !== state.organizationId) {
       throw codedHttpException(
         HttpStatus.CONFLICT,

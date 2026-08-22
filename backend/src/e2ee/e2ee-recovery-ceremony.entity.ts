@@ -1,4 +1,5 @@
 import { Column, CreateDateColumn, Entity, PrimaryGeneratedColumn } from 'typeorm';
+import type { KeyCeremonyReasonCode } from './key-ceremony-payload';
 
 export type RecoveryCeremonyState = 'pending_second_operator' | 'ready_to_activate' | 'activated' | 'aborted';
 export type KeyCeremonyOperation =
@@ -17,7 +18,7 @@ export class E2eeRecoveryCeremony {
   operation: KeyCeremonyOperation;
 
   @Column({ name: 'reason_code', type: 'text', default: 'passphrase_lost' })
-  reasonCode: string;
+  reasonCode: KeyCeremonyReasonCode;
 
   @Column({ name: 'initiator_id', type: 'uuid' })
   initiatorId: string;

@@ -16,9 +16,20 @@ export type KeyCeremonyOperation =
   | 'rotate_root_key'
   | 'rotate_root_and_content_key';
 
+export type KeyCeremonyReasonCode =
+  | 'passphrase_lost'
+  | 'team_member_left'
+  | 'routine_access_change'
+  | 'recovery_secret_lost'
+  | 'routine_custody_change'
+  | 'planned_root_rotation'
+  | 'passphrase_disclosed'
+  | 'recovery_secret_disclosed'
+  | 'encryption_key_disclosed';
+
 export interface KeyCeremonyPayload {
   operation: KeyCeremonyOperation;
-  reasonCode: string;
+  reasonCode: KeyCeremonyReasonCode;
   expectedGeneration: number;
   orkId: string;
   ockId: string;
@@ -63,7 +74,7 @@ export function decodeKeyCeremonyPayload(encoded: Uint8Array): KeyCeremonyPayloa
       'rotate_root_key',
       'rotate_root_and_content_key',
     ].includes(operation as string)) invalid();
-    if (typeof value[2] !== 'string' || !Number.isInteger(value[3])
+    if (!isReasonCode(value[2]) || !Number.isInteger(value[3])
       || typeof value[4] !== 'string' || typeof value[5] !== 'string'
       || !Number.isInteger(value[6]) || (value[10] !== 0 && value[10] !== 2)) invalid();
     const candidate: KeyCeremonyPayload = {
@@ -85,6 +96,20 @@ export function decodeKeyCeremonyPayload(encoded: Uint8Array): KeyCeremonyPayloa
   } catch {
     return invalid();
   }
+}
+
+function isReasonCode(value: unknown): value is KeyCeremonyReasonCode {
+  return typeof value === 'string' && [
+    'passphrase_lost',
+    'team_member_left',
+    'routine_access_change',
+    'recovery_secret_lost',
+    'routine_custody_change',
+    'planned_root_rotation',
+    'passphrase_disclosed',
+    'recovery_secret_disclosed',
+    'encryption_key_disclosed',
+  ].includes(value);
 }
 
 function decodeHistoricalWrappers(value: unknown): Pick<KeyCeremonyPayload, 'historicalContentKeyWrappers'> {

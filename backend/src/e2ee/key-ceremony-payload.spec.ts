@@ -4,7 +4,7 @@ import { decodeKeyCeremonyPayload, encodeKeyCeremonyPayload } from './key-ceremo
 describe('key ceremony candidate payload', () => {
   const candidate = {
     operation: 'replace_recovery_secret' as const,
-    reasonCode: 'recovery_secret_lost',
+    reasonCode: 'recovery_secret_lost' as const,
     expectedGeneration: 7,
     orkId: '00000000-0000-4000-8000-000000000003',
     ockId: '00000000-0000-4000-8000-000000000004',

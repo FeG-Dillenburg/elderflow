@@ -163,6 +163,7 @@ export class E2eeService {
       noncePrefix: this.decodeExact(input.noncePrefix, 16, 'E2EE_CLIENT_EPOCH_INVALID'),
       signingPublicKey: this.decodeExact(input.signingPublicKey, 32, 'E2EE_CLIENT_EPOCH_INVALID'),
       revokedAt: null,
+      writeGraceUntil: null,
     });
     try {
       await this.dataSource.getRepository(E2eeClientEpoch).save(epoch);
@@ -261,7 +262,7 @@ export class E2eeService {
       if (!state || state.generation !== candidate.expectedGeneration) {
         throw codedHttpException(HttpStatus.CONFLICT, 'E2EE_KEY_STATE_STALE', 'Key state has changed');
       }
-      this.validateCandidateState(candidate, state);
+      await this.validateCandidateState(manager, candidate, state);
       const candidateFingerprint = createHash('sha256').update(encodedCandidate).digest();
       const ceremony = manager.create(E2eeRecoveryCeremony, {
         operation: candidate.operation,
@@ -365,7 +366,7 @@ export class E2eeService {
       state.ockId = ceremony.candidateOckId ?? state.ockId;
       state.ockEpoch = ceremony.candidateOckEpoch ?? state.ockEpoch;
       if ((ceremony.custodyCopiesAcknowledged ?? 0) === 2) {
-        state.custodyAcknowledgedBy = user.id;
+        state.custodyAcknowledgedBy = ceremony.initiatorId;
         state.custodyAcknowledgedAt = this.clock.now();
       }
       state.generation += 1;
@@ -405,7 +406,20 @@ export class E2eeService {
         );
       }
       await manager.query('UPDATE "users" SET "session_version" = "session_version" + 1');
-      await manager.query('UPDATE "e2ee_client_epochs" SET "revoked_at" = $1 WHERE "revoked_at" IS NULL', [now]);
+      const routineWriteGrace = [
+        'team_member_left',
+        'routine_access_change',
+        'routine_custody_change',
+        'planned_root_rotation',
+      ].includes(ceremony.reasonCode);
+      const writeGraceUntil = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+      await manager.query(
+        `UPDATE "e2ee_client_epochs"
+         SET "revoked_at" = $1,
+             "write_grace_until" = CASE WHEN $2 THEN $3 ELSE NULL END
+         WHERE "revoked_at" IS NULL`,
+        [now, routineWriteGrace, writeGraceUntil],
+      );
       ceremony.state = 'activated';
       ceremony.activatedGeneration = state.generation;
       await manager.save(E2eeRecoveryCeremony, ceremony);
@@ -532,7 +546,11 @@ export class E2eeService {
     return decoded;
   }
 
-  private validateCandidateState(candidate: KeyCeremonyPayload, state: E2eeKeyState): void {
+  private async validateCandidateState(
+    manager: EntityManager,
+    candidate: KeyCeremonyPayload,
+    state: E2eeKeyState,
+  ): Promise<void> {
     if (!(KEY_OPERATION_REASONS[candidate.operation] as readonly string[]).includes(candidate.reasonCode)) {
       throw codedHttpException(HttpStatus.BAD_REQUEST, 'E2EE_CANDIDATE_INVALID', 'Candidate reason is not approved for this operation');
     }
@@ -580,6 +598,31 @@ export class E2eeService {
         || previous.wrappedKeyId !== historical.ockId
         || historical.ockId === candidate.ockId) {
         throw codedHttpException(HttpStatus.BAD_REQUEST, 'E2EE_ENVELOPE_CONTEXT_INVALID', 'Historical Content Key wrapper does not match');
+      }
+    }
+    if (candidate.orkId !== state.orkId) {
+      const retained = (await manager.find(E2eeContentKeyWrapper, {
+        where: { organizationId: state.organizationId, orkId: state.orkId },
+      })) ?? [];
+      const requiredHistorical = new Map(
+        retained
+          .filter((entry) => entry.ockId !== candidate.ockId)
+          .map((entry) => [entry.ockId, entry.ockEpoch]),
+      );
+      if (state.ockId !== candidate.ockId) {
+        requiredHistorical.set(state.ockId, state.ockEpoch);
+      }
+      const suppliedHistorical = new Map(
+        (candidate.historicalContentKeyWrappers ?? [])
+          .map((entry) => [entry.ockId, entry.ockEpoch]),
+      );
+      if (requiredHistorical.size !== suppliedHistorical.size
+        || [...requiredHistorical].some(([ockId, ockEpoch]) => suppliedHistorical.get(ockId) !== ockEpoch)) {
+        throw codedHttpException(
+          HttpStatus.BAD_REQUEST,
+          'E2EE_HISTORICAL_WRAPPERS_REQUIRED',
+          'Every retained historical Content Key must be rewrapped by the candidate Root Key',
+        );
       }
     }
   }

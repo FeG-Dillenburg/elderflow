@@ -21,13 +21,15 @@ Sign in as two distinct eligible Key operators in separate browser profiles and 
 
 - lost shared passphrase;
 - routine passphrase change after a team change;
+- routine passphrase change after another access-policy change;
 - lost Recovery Secret;
+- routine Recovery Secret custody change;
 - planned Organization Root Key rotation;
 - suspected shared-passphrase disclosure;
 - suspected Recovery Secret disclosure; and
 - suspected encryption-key disclosure.
 
-Complete each entry point in turn. The initiating and approving browsers must independently unlock and verify the same canonical binary candidate. Recovery Secret replacement and compromise response display a new secret only until two paper-copy custody acknowledgements are made. Activation requires both participating sessions to remain present, increments the authoritative generation atomically, revokes every application session and browser client epoch, and returns both operators to sign-in.
+Complete each entry point in turn. The initiating and approving browsers must independently unlock and verify the same canonical binary candidate. Recovery Secret replacement and compromise response display a new secret only until the initiating operator re-enters the secret independently from each of two paper copies. The approving operator must also enter the proposed secret to verify the candidate independently. Activation requires both participating sessions to remain present, increments the authoritative generation atomically, revokes every application session and browser client epoch, and returns both operators to sign-in. Custody acknowledgement is attributed to the initiating operator who verified both copies.
 
 ## Routine versus compromise behavior
 
@@ -35,6 +37,7 @@ Complete each entry point in turn. The initiating and approving browsers must in
 - Recovery Secret replacement changes only the Recovery slot and records two custody acknowledgements.
 - Root rotation creates new unlock slots and rewraps every readable Content Key without changing content ciphertext.
 - Any suspected disclosure creates new Root and Content Keys. The old Content Key is immediately non-writable, but is rewrapped under the new Root Key for historical reads.
+- Eligible routine transitions mark the former browser epoch revoked but permit exact pending encrypted writes from that epoch for seven days. Existing retry controls retain failed input. After the grace deadline, or for any compromise transition, the server rejects the old epoch and the user must unlock and reseal the retained input under a new epoch.
 
 Before and after every operation, hash all encrypted scalar columns, Meeting-document updates/snapshots, and Completed Meeting projections. Routine operations and Root rotation must leave all content ciphertext byte-identical. Compromise response must also leave existing ciphertext byte-identical; only later writes use the new Content Key.
 

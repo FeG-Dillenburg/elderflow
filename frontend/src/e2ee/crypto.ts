@@ -6,6 +6,7 @@ import {
   encodeKeyCeremonyPayload,
   type KeyCeremonyOperation,
   type KeyCeremonyPayload,
+  type KeyCeremonyReasonCode,
 } from './key-ceremony-payload';
 
 export const E2EE_FORMAT = 1;
@@ -240,7 +241,7 @@ export interface GeneratedKeyCeremonyCandidate {
 
 export interface KeyCeremonyCandidateInput {
   operation: KeyCeremonyOperation;
-  reasonCode: string;
+  reasonCode: KeyCeremonyReasonCode;
   state: RecoveryKeyState;
   currentPassphrase?: string;
   currentRecoveryText?: string;

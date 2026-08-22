@@ -22,4 +22,11 @@ export class E2eeClientEpoch {
 
   @Column({ name: 'revoked_at', type: 'timestamptz', nullable: true })
   revokedAt: Date | null;
+
+  @Column({ name: 'write_grace_until', type: 'timestamptz', nullable: true })
+  writeGraceUntil: Date | null;
+}
+
+export function isClientEpochWritable(epoch: E2eeClientEpoch, now = new Date()): boolean {
+  return !epoch.revokedAt || Boolean(epoch.writeGraceUntil && epoch.writeGraceUntil >= now);
 }

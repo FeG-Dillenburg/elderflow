@@ -9,6 +9,8 @@ describe('KeyRotationCeremonies1720000018000', () => {
 
     const migration = statements.join('\n');
     expect(migration).toContain('ALTER TABLE "e2ee_recovery_ceremonies"');
+    expect(migration).toContain('ALTER TABLE "e2ee_client_epochs"');
+    expect(migration).toContain('"write_grace_until"');
     expect(migration).toContain('"operation"');
     expect(migration).toContain('"candidate_recovery_slot"');
     expect(migration).toContain('"candidate_content_key_wrapper"');

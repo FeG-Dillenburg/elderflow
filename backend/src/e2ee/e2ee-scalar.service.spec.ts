@@ -110,4 +110,31 @@ describe("E2eeScalarService", () => {
     await expect(service.validateWrite(manager as any, user, context, encoded, null))
       .rejects.toMatchObject({ response: expect.objectContaining({ code: "E2EE_CLIENT_EPOCH_INVALID" }) });
   });
+
+  it("accepts a routine-transition pending write only during its seven-day epoch grace", async () => {
+    manager.findOne.mockImplementation(async (entity) => entity === E2eeKeyState
+      ? state
+      : entity === E2eeClientEpoch
+        ? {
+            ...epoch,
+            revokedAt: new Date(Date.now() - 1_000),
+            writeGraceUntil: new Date(Date.now() + 60_000),
+          }
+        : null);
+
+    await expect(service.validateWrite(manager as any, user, context, encoded, "4"))
+      .resolves.toEqual({ envelope, commitRevision: "5", duplicate: false });
+
+    manager.findOne.mockImplementation(async (entity) => entity === E2eeKeyState
+      ? state
+      : entity === E2eeClientEpoch
+        ? {
+            ...epoch,
+            revokedAt: new Date(Date.now() - 120_000),
+            writeGraceUntil: new Date(Date.now() - 60_000),
+          }
+        : null);
+    await expect(service.validateWrite(manager as any, user, context, encoded, "4"))
+      .rejects.toMatchObject({ response: expect.objectContaining({ code: "E2EE_CLIENT_EPOCH_INVALID" }) });
+  });
 });

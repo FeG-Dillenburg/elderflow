@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, reactive, ref } from "vue";
+import { computed, nextTick, onBeforeUnmount, reactive, ref } from "vue";
 import { useRouter } from "vue-router";
 import Button from "primevue/button";
 import InputText from "primevue/inputtext";
@@ -17,6 +17,10 @@ import {
   type RecoveryCandidate,
 } from "../e2ee/crypto";
 import { recoverySession } from "../e2ee/recovery-session";
+import type {
+  KeyCeremonyOperation,
+  KeyCeremonyReasonCode,
+} from "../e2ee/key-ceremony-payload";
 import {
   isSharedPassphraseValid,
   SHARED_PASSPHRASE_MIN_LENGTH,
@@ -36,6 +40,7 @@ const approved = ref(false);
 type KeySituation =
   | "lost-passphrase"
   | "routine-passphrase"
+  | "routine-access-change"
   | "lost-recovery-secret"
   | "routine-recovery-secret"
   | "root-rotation"
@@ -43,8 +48,9 @@ type KeySituation =
   | "disclosed-recovery-secret"
   | "disclosed-encryption-key";
 const selectedSituation = ref<KeySituation | null>(null);
+const pageHeading = ref<HTMLElement | null>(null);
 const preparedCandidate = ref<GeneratedKeyCeremonyCandidate | null>(null);
-const custody = reactive({ first: false, second: false });
+const custody = reactive({ firstCopy: "", secondCopy: "" });
 const genericStartForm = reactive({
   currentPassphrase: "",
   currentRecoveryText: "",
@@ -58,22 +64,89 @@ const genericApproveForm = reactive({
   newPassphrase: "",
   candidateRecoveryText: "",
 });
-const operationConfig = computed(() => {
+interface OperationConfig {
+  operation: KeyCeremonyOperation;
+  reasonCode: KeyCeremonyReasonCode;
+  currentPassphrase: boolean;
+  currentRecovery: boolean;
+  newPassphrase: boolean;
+  newRecovery: boolean;
+}
+
+const operationConfig = computed<OperationConfig | null>(() => {
   switch (selectedSituation.value) {
     case "routine-passphrase":
-      return { operation: "change_passphrase" as const, reasonCode: "team_member_left", currentPassphrase: true, currentRecovery: false, newPassphrase: true, newRecovery: false };
+      return {
+        operation: "change_passphrase",
+        reasonCode: "team_member_left",
+        currentPassphrase: true,
+        currentRecovery: false,
+        newPassphrase: true,
+        newRecovery: false,
+      };
+    case "routine-access-change":
+      return {
+        operation: "change_passphrase",
+        reasonCode: "routine_access_change",
+        currentPassphrase: true,
+        currentRecovery: false,
+        newPassphrase: true,
+        newRecovery: false,
+      };
     case "lost-recovery-secret":
-      return { operation: "replace_recovery_secret" as const, reasonCode: "recovery_secret_lost", currentPassphrase: true, currentRecovery: false, newPassphrase: false, newRecovery: true };
+      return {
+        operation: "replace_recovery_secret",
+        reasonCode: "recovery_secret_lost",
+        currentPassphrase: true,
+        currentRecovery: false,
+        newPassphrase: false,
+        newRecovery: true,
+      };
     case "routine-recovery-secret":
-      return { operation: "replace_recovery_secret" as const, reasonCode: "routine_custody_change", currentPassphrase: true, currentRecovery: false, newPassphrase: false, newRecovery: true };
+      return {
+        operation: "replace_recovery_secret",
+        reasonCode: "routine_custody_change",
+        currentPassphrase: true,
+        currentRecovery: false,
+        newPassphrase: false,
+        newRecovery: true,
+      };
     case "root-rotation":
-      return { operation: "rotate_root_key" as const, reasonCode: "planned_root_rotation", currentPassphrase: true, currentRecovery: true, newPassphrase: false, newRecovery: false };
+      return {
+        operation: "rotate_root_key",
+        reasonCode: "planned_root_rotation",
+        currentPassphrase: true,
+        currentRecovery: true,
+        newPassphrase: false,
+        newRecovery: false,
+      };
     case "disclosed-passphrase":
-      return { operation: "rotate_root_and_content_key" as const, reasonCode: "passphrase_disclosed", currentPassphrase: false, currentRecovery: true, newPassphrase: true, newRecovery: true };
+      return {
+        operation: "rotate_root_and_content_key",
+        reasonCode: "passphrase_disclosed",
+        currentPassphrase: false,
+        currentRecovery: true,
+        newPassphrase: true,
+        newRecovery: true,
+      };
     case "disclosed-recovery-secret":
-      return { operation: "rotate_root_and_content_key" as const, reasonCode: "recovery_secret_disclosed", currentPassphrase: true, currentRecovery: false, newPassphrase: true, newRecovery: true };
+      return {
+        operation: "rotate_root_and_content_key",
+        reasonCode: "recovery_secret_disclosed",
+        currentPassphrase: true,
+        currentRecovery: false,
+        newPassphrase: true,
+        newRecovery: true,
+      };
     case "disclosed-encryption-key":
-      return { operation: "rotate_root_and_content_key" as const, reasonCode: "encryption_key_disclosed", currentPassphrase: true, currentRecovery: false, newPassphrase: true, newRecovery: true };
+      return {
+        operation: "rotate_root_and_content_key",
+        reasonCode: "encryption_key_disclosed",
+        currentPassphrase: true,
+        currentRecovery: false,
+        newPassphrase: true,
+        newRecovery: true,
+      };
     default:
       return null;
   }
@@ -236,7 +309,10 @@ async function startPreparedCeremony(): Promise<void> {
   const candidate = preparedCandidate.value;
   const config = operationConfig.value;
   if (!candidate || !config) return;
-  if (config.newRecovery && (!custody.first || !custody.second)) {
+  if (config.newRecovery && (
+    custody.firstCopy.trim() !== candidate.recoveryText
+    || custody.secondCopy.trim() !== candidate.recoveryText
+  )) {
     errorMessage.value = t("e2ee.custodyCopiesRequired");
     return;
   }
@@ -253,8 +329,8 @@ async function startPreparedCeremony(): Promise<void> {
     };
     clearSecrets(genericStartForm);
     preparedCandidate.value = null;
-    custody.first = false;
-    custody.second = false;
+    custody.firstCopy = "";
+    custody.secondCopy = "";
   } catch (error) {
     errorMessage.value = recoveryFailureMessage(error);
   } finally {
@@ -331,6 +407,23 @@ function printRecoverySecret(): void {
   window.print();
 }
 
+async function selectSituation(situation: KeySituation): Promise<void> {
+  selectedSituation.value = situation;
+  await nextTick();
+  pageHeading.value?.focus();
+}
+
+async function chooseDifferentSituation(): Promise<void> {
+  selectedSituation.value = null;
+  errorMessage.value = "";
+  approved.value = false;
+  preparedCandidate.value = null;
+  clearSecrets(genericStartForm);
+  clearSecrets(genericApproveForm);
+  await nextTick();
+  pageHeading.value?.focus();
+}
+
 onBeforeUnmount(() => {
   kdfAbort?.abort();
   kdfAbort = null;
@@ -366,7 +459,12 @@ function recoveryFailureMessage(error: unknown): string {
   <section class="recovery-page">
     <header>
       <p class="eyebrow">{{ t("e2ee.keyManagement") }}</p>
-      <h1>{{ selectedSituation ? t(`e2ee.keyOperationTitles.${selectedSituation}`) : t("e2ee.keySituationTitle") }}</h1>
+      <h1
+        ref="pageHeading"
+        tabindex="-1"
+      >
+        {{ selectedSituation ? t(`e2ee.keyOperationTitles.${selectedSituation}`) : t("e2ee.keySituationTitle") }}
+      </h1>
       <p>{{ t("e2ee.recoveryDescription") }}</p>
     </header>
 
@@ -379,6 +477,7 @@ function recoveryFailureMessage(error: unknown): string {
         v-for="situation in ([
           'lost-passphrase',
           'routine-passphrase',
+          'routine-access-change',
           'lost-recovery-secret',
           'routine-recovery-secret',
           'root-rotation',
@@ -390,14 +489,30 @@ function recoveryFailureMessage(error: unknown): string {
         type="button"
         class="situation-card"
         :data-situation="situation"
-        @click="selectedSituation = situation"
+        @click="selectSituation(situation)"
       >
         {{ t(`e2ee.keySituations.${situation}`) }}
         <i class="pi pi-arrow-right" aria-hidden="true" />
       </button>
     </nav>
 
-    <Message v-if="errorMessage" severity="error" :closable="false" aria-live="polite">
+    <Button
+      v-if="selectedSituation && !activeCeremonyId && !started"
+      class="back-action"
+      type="button"
+      severity="secondary"
+      text
+      icon="pi pi-arrow-left"
+      :label="t('e2ee.chooseDifferentSituation')"
+      @click="chooseDifferentSituation"
+    />
+
+    <Message
+      v-if="errorMessage"
+      severity="error"
+      :closable="false"
+      aria-live="polite"
+    >
       {{ errorMessage }}
     </Message>
 
@@ -452,8 +567,16 @@ function recoveryFailureMessage(error: unknown): string {
             :minlength="SHARED_PASSPHRASE_MIN_LENGTH"
           />
         </label>
-        <Button type="submit" :label="t('e2ee.startRecovery')" :loading="busy" />
-        <Message v-if="started" severity="info" :closable="false">
+        <Button
+          type="submit"
+          :label="t('e2ee.startRecovery')"
+          :loading="busy"
+        />
+        <Message
+          v-if="started"
+          severity="info"
+          :closable="false"
+        >
           {{ t("e2ee.shareCeremony", { id: started.id, fingerprint: started.fingerprint }) }}
         </Message>
       </form>
@@ -462,7 +585,11 @@ function recoveryFailureMessage(error: unknown): string {
         <h2>{{ t("e2ee.approveRecovery") }}</h2>
         <label>
           <span>{{ t("e2ee.ceremonyId") }}</span>
-          <InputText v-model="approveForm.ceremonyId" autocomplete="off" required />
+          <InputText
+            v-model="approveForm.ceremonyId"
+            autocomplete="off"
+            required
+          />
         </label>
         <label>
           <span>{{ t("e2ee.recoverySecret") }}</span>
@@ -502,7 +629,11 @@ function recoveryFailureMessage(error: unknown): string {
             {{ approvePassphraseError }}
           </small>
         </label>
-        <Button type="submit" :label="t('e2ee.verifyAndApprove')" :loading="busy" />
+        <Button
+          type="submit"
+          :label="t('e2ee.verifyAndApprove')"
+          :loading="busy"
+        />
         <Button
           v-if="approved"
           type="button"
@@ -515,37 +646,89 @@ function recoveryFailureMessage(error: unknown): string {
     </div>
 
     <div v-else-if="operationConfig" class="recovery-columns">
-      <form class="recovery-card" @submit.prevent="preparedCandidate ? startPreparedCeremony() : prepareKeyCeremony()">
+      <form
+        class="recovery-card"
+        @submit.prevent="preparedCandidate ? startPreparedCeremony() : prepareKeyCeremony()"
+      >
         <h2>{{ t("e2ee.startCeremony") }}</h2>
         <label v-if="operationConfig.currentPassphrase">
           <span>{{ t("e2ee.currentSharedPassphrase") }}</span>
-          <Password v-model="genericStartForm.currentPassphrase" :feedback="false" autocomplete="current-password" required />
+          <Password
+            v-model="genericStartForm.currentPassphrase"
+            :feedback="false"
+            autocomplete="current-password"
+            required
+          />
         </label>
         <label v-if="operationConfig.currentRecovery">
           <span>{{ t("e2ee.currentRecoverySecret") }}</span>
-          <InputText v-model="genericStartForm.currentRecoveryText" autocomplete="off" required />
+          <InputText
+            v-model="genericStartForm.currentRecoveryText"
+            autocomplete="off"
+            required
+          />
         </label>
         <label v-if="operationConfig.newPassphrase">
           <span>{{ t("e2ee.newSharedPassphrase") }}</span>
-          <Password v-model="genericStartForm.newPassphrase" :feedback="false" autocomplete="new-password" required :minlength="SHARED_PASSPHRASE_MIN_LENGTH" />
+          <Password
+            v-model="genericStartForm.newPassphrase"
+            :feedback="false"
+            autocomplete="new-password"
+            required
+            :minlength="SHARED_PASSPHRASE_MIN_LENGTH"
+          />
         </label>
         <label v-if="operationConfig.newPassphrase">
           <span>{{ t("e2ee.confirmSharedPassphrase") }}</span>
-          <Password v-model="genericStartForm.confirmation" :feedback="false" autocomplete="new-password" required :minlength="SHARED_PASSPHRASE_MIN_LENGTH" />
+          <Password
+            v-model="genericStartForm.confirmation"
+            :feedback="false"
+            autocomplete="new-password"
+            required
+            :minlength="SHARED_PASSPHRASE_MIN_LENGTH"
+          />
         </label>
         <template v-if="preparedCandidate?.recoveryText">
-          <Message severity="warn" :closable="false">{{ t("e2ee.recoveryWarning") }}</Message>
+          <Message
+            severity="warn"
+            :closable="false"
+          >
+            {{ t("e2ee.recoveryWarning") }}
+          </Message>
           <code class="recovery-secret">{{ preparedCandidate.recoveryText }}</code>
-          <Button type="button" icon="pi pi-print" :label="t('e2ee.printRecoverySecret')" @click="printRecoverySecret" />
-          <label class="custody-check"><input v-model="custody.first" type="checkbox" /> {{ t("e2ee.custodyCopyOne") }}</label>
-          <label class="custody-check"><input v-model="custody.second" type="checkbox" /> {{ t("e2ee.custodyCopyTwo") }}</label>
+          <Button
+            type="button"
+            icon="pi pi-print"
+            :label="t('e2ee.printRecoverySecret')"
+            @click="printRecoverySecret"
+          />
+          <label>
+            <span>{{ t("e2ee.custodyCopyOne") }}</span>
+            <InputText
+              v-model="custody.firstCopy"
+              autocomplete="off"
+              required
+            />
+          </label>
+          <label>
+            <span>{{ t("e2ee.custodyCopyTwo") }}</span>
+            <InputText
+              v-model="custody.secondCopy"
+              autocomplete="off"
+              required
+            />
+          </label>
         </template>
         <Button
           type="submit"
           :label="preparedCandidate ? t('e2ee.startCeremony') : t('e2ee.prepareCandidate')"
           :loading="busy"
         />
-        <Message v-if="started" severity="info" :closable="false">
+        <Message
+          v-if="started"
+          severity="info"
+          :closable="false"
+        >
           {{ t("e2ee.shareCeremony", { id: started.id, fingerprint: started.fingerprint }) }}
         </Message>
       </form>
@@ -554,25 +737,52 @@ function recoveryFailureMessage(error: unknown): string {
         <h2>{{ t("e2ee.approveRecovery") }}</h2>
         <label>
           <span>{{ t("e2ee.ceremonyId") }}</span>
-          <InputText v-model="genericApproveForm.ceremonyId" autocomplete="off" required />
+          <InputText
+            v-model="genericApproveForm.ceremonyId"
+            autocomplete="off"
+            required
+          />
         </label>
         <label v-if="operationConfig.currentPassphrase">
           <span>{{ t("e2ee.currentSharedPassphrase") }}</span>
-          <Password v-model="genericApproveForm.currentPassphrase" :feedback="false" autocomplete="current-password" required />
+          <Password
+            v-model="genericApproveForm.currentPassphrase"
+            :feedback="false"
+            autocomplete="current-password"
+            required
+          />
         </label>
         <label v-if="operationConfig.currentRecovery">
           <span>{{ t("e2ee.currentRecoverySecret") }}</span>
-          <InputText v-model="genericApproveForm.currentRecoveryText" autocomplete="off" required />
+          <InputText
+            v-model="genericApproveForm.currentRecoveryText"
+            autocomplete="off"
+            required
+          />
         </label>
         <label v-if="operationConfig.newPassphrase">
           <span>{{ t("e2ee.candidateSharedPassphrase") }}</span>
-          <Password v-model="genericApproveForm.newPassphrase" :feedback="false" autocomplete="new-password" required :minlength="SHARED_PASSPHRASE_MIN_LENGTH" />
+          <Password
+            v-model="genericApproveForm.newPassphrase"
+            :feedback="false"
+            autocomplete="new-password"
+            required
+            :minlength="SHARED_PASSPHRASE_MIN_LENGTH"
+          />
         </label>
         <label v-if="operationConfig.newRecovery">
           <span>{{ t("e2ee.candidateRecoverySecret") }}</span>
-          <InputText v-model="genericApproveForm.candidateRecoveryText" autocomplete="off" required />
+          <InputText
+            v-model="genericApproveForm.candidateRecoveryText"
+            autocomplete="off"
+            required
+          />
         </label>
-        <Button type="submit" :label="t('e2ee.verifyAndApprove')" :loading="busy" />
+        <Button
+          type="submit"
+          :label="t('e2ee.verifyAndApprove')"
+          :loading="busy"
+        />
         <Button
           v-if="approved"
           type="button"
@@ -613,6 +823,10 @@ h2 {
 .situation-list {
   display: grid;
   gap: 0.75rem;
+}
+
+.back-action {
+  justify-self: start;
 }
 
 .situation-card {

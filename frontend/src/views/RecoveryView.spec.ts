@@ -11,6 +11,7 @@ const recovery = vi.hoisted(() => ({
   verifyCandidate: vi.fn(),
   sessionSet: vi.fn(),
   createKeyCandidate: vi.fn(),
+  startKey: vi.fn(),
 }));
 
 vi.mock('vue-router', () => ({
@@ -23,7 +24,7 @@ vi.mock('../api/domain', () => ({
     startE2eeRecovery: recovery.start,
     e2eeRecoveryCeremony: recovery.ceremony,
     approveE2eeRecovery: recovery.approve,
-    startE2eeKeyCeremony: vi.fn(),
+    startE2eeKeyCeremony: recovery.startKey,
     e2eeKeyCeremony: vi.fn(),
     approveE2eeKeyCeremony: vi.fn(),
     activateE2eeKeyCeremony: vi.fn(),
@@ -81,6 +82,7 @@ describe('RecoveryView', () => {
     expect(wrapper.text()).toContain('What happened, and what do you want to do?');
     expect(wrapper.text()).toContain('We lost our shared passphrase and want to reset it.');
     expect(wrapper.text()).toContain('Someone left the team and we want to change the shared passphrase.');
+    expect(wrapper.text()).toContain('Team access changed and we want to change the shared passphrase.');
     expect(wrapper.text()).toContain('Our Recovery Secret was lost and we want to replace it.');
     expect(wrapper.text()).toContain('Recovery Secret custody changed and we want to issue a new one.');
     expect(wrapper.text()).toContain('We want to rotate the Organization Root Key.');
@@ -105,6 +107,49 @@ describe('RecoveryView', () => {
     expect(wrapper.text()).toContain('Current shared passphrase');
     expect(wrapper.text()).toContain('New shared passphrase');
     expect(wrapper.text()).not.toContain('Recovery Secret may have been disclosed');
+  });
+
+  it('exposes a distinct routine access-change workflow', async () => {
+    const wrapper = mount(RecoveryView, { global: { stubs } });
+
+    await wrapper.get('[data-situation="routine-access-change"]').trigger('click');
+
+    expect(wrapper.text()).toContain('Change the shared passphrase after an access change');
+    expect(wrapper.text()).toContain('Current shared passphrase');
+    expect(wrapper.text()).toContain('New shared passphrase');
+  });
+
+  it('requires both paper copies to independently reproduce a new Recovery Secret', async () => {
+    recovery.startKey.mockResolvedValue({
+      id: 'key-ceremony-id',
+      candidateFingerprint: 'fingerprint',
+      expiresAt: '2026-08-10T20:00:00.000Z',
+    });
+    const wrapper = mount(RecoveryView, { global: { stubs } });
+    const vm = wrapper.vm as unknown as {
+      selectedSituation: string;
+      preparedCandidate: {
+        encodedCandidate: string;
+        recoveryText: string;
+      };
+      custody: { firstCopy: string; secondCopy: string };
+      startPreparedCeremony: () => Promise<void>;
+    };
+    vm.selectedSituation = 'routine-recovery-secret';
+    vm.preparedCandidate = {
+      encodedCandidate: 'candidate',
+      recoveryText: canonicalSecret,
+    };
+    vm.custody.firstCopy = canonicalSecret;
+    vm.custody.secondCopy = `${canonicalSecret.slice(0, -1)}A`;
+
+    await vm.startPreparedCeremony();
+    expect(recovery.startKey).not.toHaveBeenCalled();
+    expect(wrapper.text()).toContain('Both independently checked paper copies must exactly match');
+
+    vm.custody.secondCopy = canonicalSecret;
+    await vm.startPreparedCeremony();
+    expect(recovery.startKey).toHaveBeenCalledWith('candidate');
   });
 
   it('normalizes clipboard whitespace before validating a Recovery Secret', async () => {

@@ -17,9 +17,32 @@ const operations: readonly KeyCeremonyOperation[] = [
   'rotate_root_and_content_key',
 ];
 
+export type KeyCeremonyReasonCode =
+  | 'passphrase_lost'
+  | 'team_member_left'
+  | 'routine_access_change'
+  | 'recovery_secret_lost'
+  | 'routine_custody_change'
+  | 'planned_root_rotation'
+  | 'passphrase_disclosed'
+  | 'recovery_secret_disclosed'
+  | 'encryption_key_disclosed';
+
+const reasonCodes: readonly KeyCeremonyReasonCode[] = [
+  'passphrase_lost',
+  'team_member_left',
+  'routine_access_change',
+  'recovery_secret_lost',
+  'routine_custody_change',
+  'planned_root_rotation',
+  'passphrase_disclosed',
+  'recovery_secret_disclosed',
+  'encryption_key_disclosed',
+];
+
 export interface KeyCeremonyPayload {
   operation: KeyCeremonyOperation;
-  reasonCode: string;
+  reasonCode: KeyCeremonyReasonCode;
   expectedGeneration: number;
   orkId: string;
   ockId: string;
@@ -61,7 +84,7 @@ export function decodeKeyCeremonyPayload(encoded: Uint8Array): KeyCeremonyPayloa
     const ockEpoch = value[6];
     const custodyCopiesAcknowledged = value[10];
     if (typeof operation !== 'string' || !operations.includes(operation as KeyCeremonyOperation)) invalid();
-    if (typeof reasonCode !== 'string' || !/^[a-z0-9_]{1,64}$/.test(reasonCode)) invalid();
+    if (typeof reasonCode !== 'string' || !reasonCodes.includes(reasonCode as KeyCeremonyReasonCode)) invalid();
     if (!Number.isInteger(expectedGeneration) || (expectedGeneration as number) < 1) invalid();
     if (!isUuid(orkId) || !isUuid(ockId)) invalid();
     if (!Number.isInteger(ockEpoch) || (ockEpoch as number) < 1) invalid();
@@ -71,7 +94,7 @@ export function decodeKeyCeremonyPayload(encoded: Uint8Array): KeyCeremonyPayloa
     const contentKeyWrapper = bytes(value[9]);
     const candidate: KeyCeremonyPayload = {
       operation: operation as KeyCeremonyOperation,
-      reasonCode,
+      reasonCode: reasonCode as KeyCeremonyReasonCode,
       expectedGeneration: expectedGeneration as number,
       orkId,
       ockId,

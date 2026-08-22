@@ -5,6 +5,10 @@ export class KeyRotationCeremonies1720000018000 implements MigrationInterface {
 
   async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`
+      ALTER TABLE "e2ee_client_epochs"
+        ADD COLUMN "write_grace_until" timestamptz
+    `);
+    await queryRunner.query(`
       ALTER TABLE "e2ee_recovery_ceremonies"
         ADD COLUMN "operation" text NOT NULL DEFAULT 'lost_passphrase',
         ADD COLUMN "reason_code" text NOT NULL DEFAULT 'passphrase_lost',
@@ -73,6 +77,7 @@ export class KeyRotationCeremonies1720000018000 implements MigrationInterface {
   }
 
   async down(queryRunner: QueryRunner): Promise<void> {
+    await queryRunner.query('ALTER TABLE "e2ee_client_epochs" DROP COLUMN "write_grace_until"');
     await queryRunner.query('ALTER TABLE "e2ee_audit_events" DROP COLUMN "ock_id", DROP COLUMN "ork_id", DROP COLUMN "reason_code", DROP COLUMN "operation"');
     await queryRunner.query('DROP TABLE "e2ee_content_key_wrappers"');
     await queryRunner.query(`

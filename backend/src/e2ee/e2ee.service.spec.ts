@@ -1,5 +1,6 @@
 import { ConflictException, ForbiddenException } from '@nestjs/common';
 import { E2eeService } from './e2ee.service';
+import * as envelopeValidator from './envelope-validator';
 
 describe('E2eeService', () => {
   const candidateFingerprint = Buffer.alloc(32, 7);
@@ -22,6 +23,10 @@ describe('E2eeService', () => {
     jest.clearAllMocks();
     manager.findOne.mockReset();
     manager.find.mockReset();
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
   });
 
   it('returns only versioned wrappers and content-free metadata to an eligible Content user', async () => {
@@ -116,6 +121,8 @@ describe('E2eeService', () => {
     manager.findOne
       .mockResolvedValueOnce({
         id: 'ceremony-1',
+        operation: 'change_passphrase',
+        reasonCode: 'team_member_left',
         state: 'ready_to_activate',
         initiatorId: 'operator-1',
         initiatorSessionVersion: 2,
@@ -142,7 +149,10 @@ describe('E2eeService', () => {
     )).resolves.toEqual({ activated: true, generation: 4 });
 
     expect(manager.query).toHaveBeenCalledWith(expect.stringContaining('UPDATE "users" SET "session_version"'));
-    expect(manager.query).toHaveBeenCalledWith(expect.stringContaining('UPDATE "e2ee_client_epochs"'), [clock.now()]);
+    expect(manager.query).toHaveBeenCalledWith(
+      expect.stringContaining('UPDATE "e2ee_client_epochs"'),
+      [clock.now(), true, new Date('2026-08-16T10:00:00.000Z')],
+    );
     expect(manager.save).toHaveBeenCalledWith(expect.any(Function), expect.objectContaining({
       generation: 4,
       sharedPassphraseSlot: Buffer.from('new-shared'),
@@ -154,7 +164,7 @@ describe('E2eeService', () => {
       .mockResolvedValueOnce({
         id: 'ceremony-rotation',
         operation: 'rotate_root_and_content_key',
-        reasonCode: 'suspected_disclosure',
+        reasonCode: 'encryption_key_disclosed',
         state: 'ready_to_activate',
         initiatorId: 'operator-1',
         initiatorSessionVersion: 2,
@@ -206,6 +216,53 @@ describe('E2eeService', () => {
       expect.stringContaining('e2ee_content_key_wrappers'),
       expect.arrayContaining(['00000000-0000-4000-8000-000000000102']),
     );
+    expect(manager.query).toHaveBeenCalledWith(
+      expect.stringContaining('UPDATE "e2ee_client_epochs"'),
+      [clock.now(), false, new Date('2026-08-16T10:00:00.000Z')],
+    );
+  });
+
+  it('rejects a Root rotation that omits an authoritative historical Content Key wrapper', async () => {
+    const organizationId = '00000000-0000-4000-8000-000000000001';
+    const oldRootId = '00000000-0000-4000-8000-000000000003';
+    const newRootId = '00000000-0000-4000-8000-000000000103';
+    const currentContentId = '00000000-0000-4000-8000-000000000004';
+    const historicalContentId = '00000000-0000-4000-8000-000000000005';
+    jest.spyOn(envelopeValidator, 'validateKeyEnvelope').mockImplementation((_encoded, kind) => ({
+      organizationId,
+      primaryKeyId: kind === 3 ? newRootId : organizationId,
+      wrappedKeyId: kind === 3 ? currentContentId : newRootId,
+    }));
+    manager.find.mockResolvedValue([
+      { ockId: currentContentId, ockEpoch: 2 },
+      { ockId: historicalContentId, ockEpoch: 1 },
+    ]);
+    const state = {
+      organizationId,
+      orkId: oldRootId,
+      ockId: currentContentId,
+      ockEpoch: 2,
+      sharedPassphraseSlot: Buffer.from('old-shared'),
+      recoverySlot: Buffer.from('old-recovery'),
+      contentKeyWrapper: Buffer.from('old-content'),
+    };
+    const candidate = {
+      operation: 'rotate_root_key',
+      reasonCode: 'planned_root_rotation',
+      expectedGeneration: 3,
+      orkId: newRootId,
+      ockId: currentContentId,
+      ockEpoch: 2,
+      sharedPassphraseSlot: Buffer.from('new-shared'),
+      recoverySlot: Buffer.from('new-recovery'),
+      contentKeyWrapper: Buffer.from('new-content'),
+      custodyCopiesAcknowledged: 0,
+    };
+
+    await expect((service as any).validateCandidateState(manager, candidate, state))
+      .rejects.toMatchObject({
+        response: expect.objectContaining({ code: 'E2EE_HISTORICAL_WRAPPERS_REQUIRED' }),
+      });
   });
 
   it('allows immediate activation when the initiator was present shortly before approval', async () => {
