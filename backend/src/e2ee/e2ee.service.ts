@@ -416,7 +416,7 @@ export class E2eeService {
       await manager.query(
         `UPDATE "e2ee_client_epochs"
          SET "revoked_at" = $1,
-             "write_grace_until" = CASE WHEN $2 THEN $3 ELSE NULL END
+             "write_grace_until" = CASE WHEN $2 THEN $3::timestamptz ELSE NULL END
          WHERE "revoked_at" IS NULL`,
         [now, routineWriteGrace, writeGraceUntil],
       );
