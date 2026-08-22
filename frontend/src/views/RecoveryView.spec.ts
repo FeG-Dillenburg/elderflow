@@ -175,6 +175,8 @@ describe('RecoveryView', () => {
     );
     expect(recovery.start).toHaveBeenCalledWith({ expectedGeneration: 1, ...candidate });
     expect(wrapper.text()).toContain('ceremony-id');
+    expect(wrapper.text()).toContain('Give the second Key operator ceremony ID ceremony-id.');
+    expect(wrapper.text()).not.toContain('fingerprint');
   });
 
   it('identifies and highlights a Recovery Secret that cannot decrypt the current key state', async () => {

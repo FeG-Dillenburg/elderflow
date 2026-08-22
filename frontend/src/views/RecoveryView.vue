@@ -35,7 +35,7 @@ const approveRecoverySecretError = ref("");
 const startPassphraseError = ref("");
 const approvePassphraseError = ref("");
 const activeCeremonyId = ref<string | null>(null);
-const started = ref<{ id: string; fingerprint: string; expiresAt: string } | null>(null);
+const started = ref<{ id: string; expiresAt: string } | null>(null);
 const approved = ref(false);
 type KeySituation =
   | "lost-passphrase"
@@ -188,7 +188,6 @@ async function startRecovery(): Promise<void> {
     recoverySession.set(ceremony.id);
     started.value = {
       id: ceremony.id,
-      fingerprint: candidate.candidateFingerprint,
       expiresAt: ceremony.expiresAt,
     };
     clearSecrets(startForm);
@@ -324,7 +323,6 @@ async function startPreparedCeremony(): Promise<void> {
     recoverySession.set(ceremony.id);
     started.value = {
       id: ceremony.id,
-      fingerprint: ceremony.candidateFingerprint,
       expiresAt: ceremony.expiresAt,
     };
     clearSecrets(genericStartForm);
@@ -577,7 +575,7 @@ function recoveryFailureMessage(error: unknown): string {
           severity="info"
           :closable="false"
         >
-          {{ t("e2ee.shareCeremony", { id: started.id, fingerprint: started.fingerprint }) }}
+          {{ t("e2ee.shareCeremony", { id: started.id }) }}
         </Message>
       </form>
 
@@ -729,7 +727,7 @@ function recoveryFailureMessage(error: unknown): string {
           severity="info"
           :closable="false"
         >
-          {{ t("e2ee.shareCeremony", { id: started.id, fingerprint: started.fingerprint }) }}
+          {{ t("e2ee.shareCeremony", { id: started.id }) }}
         </Message>
       </form>
 
