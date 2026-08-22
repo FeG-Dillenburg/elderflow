@@ -803,9 +803,11 @@ function recoveryFailureMessage(error: unknown): string {
 }
 
 .eyebrow {
-  margin: 0;
-  color: #64748b;
-  font-weight: 700;
+  margin: 0 0 0.3rem;
+  color: #607dae;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
 }
 
