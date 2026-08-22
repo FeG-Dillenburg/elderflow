@@ -14,6 +14,8 @@ describe('E2eeController binary responses', () => {
       keyWrapper: jest.fn().mockResolvedValue(wrapper),
       recoverySlot: jest.fn().mockResolvedValue(wrapper),
       recoveryCandidate: jest.fn().mockResolvedValue(wrapper),
+      contentKeyWrapperSet: jest.fn().mockResolvedValue(wrapper),
+      keyCeremonyCandidate: jest.fn().mockResolvedValue(wrapper),
     };
     const module = await Test.createTestingModule({
       controllers: [E2eeController],
@@ -30,8 +32,10 @@ describe('E2eeController binary responses', () => {
   it.each([
     '/api/e2ee/key-state/shared-passphrase-slot',
     '/api/e2ee/key-state/content-key-wrapper',
+    '/api/e2ee/key-state/content-key-wrappers',
     '/api/e2ee/recovery-slot',
     '/api/e2ee/recovery-ceremonies/ceremony-id/candidate-shared-passphrase-slot',
+    '/api/e2ee/key-ceremonies/ceremony-id/candidate',
   ])('returns raw canonical bytes from %s', async (path) => {
     const response = await request(app.getHttpServer())
       .get(path)

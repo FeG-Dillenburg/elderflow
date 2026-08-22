@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { api, formatUser, meetingLabel, request, toLocalDate } from "./domain";
-import { Decoder } from "cbor-x";
+import { Decoder, Encoder } from "cbor-x";
 import { meetingDocumentSession } from "../e2ee/meeting-document-session";
 import { MEETING_COLLABORATION_ORIGIN } from "../e2ee/meeting-collaboration";
 
@@ -46,13 +46,20 @@ describe("domain API client", () => {
     const fetch = vi.fn()
       .mockResolvedValueOnce(response(metadata))
       .mockResolvedValueOnce(binaryResponse(Uint8Array.from([1, 2, 3])))
-      .mockResolvedValueOnce(binaryResponse(Uint8Array.from([4, 5, 6])));
+      .mockResolvedValueOnce(binaryResponse(Uint8Array.from([4, 5, 6])))
+      .mockResolvedValueOnce(binaryResponse(Uint8Array.from(new Encoder({
+        mapsAsObjects: false,
+        structuredClone: false,
+        tagUint8Array: false,
+        useRecords: false,
+      }).encode([1, [["ock", 1, Uint8Array.from([4, 5, 6])]]]))));
     vi.stubGlobal("fetch", fetch);
 
     await expect(api.e2eeKeyState()).resolves.toMatchObject({
       ...metadata,
       sharedPassphraseSlot: "AQID",
       contentKeyWrapper: "BAUG",
+      contentKeyWrappers: [{ ockId: "ock", ockEpoch: 1, wrapper: "BAUG" }],
     });
     expect(fetch.mock.calls.slice(1).every((call) => call[1].headers.Accept === "application/vnd.elderflow.e2ee+cbor;v=1")).toBe(true);
   });

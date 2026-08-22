@@ -2,12 +2,14 @@ import { describe, expect, it } from 'vitest';
 import {
   createRecoveryWrapper,
   createRecoveryCandidate,
+  createKeyCeremonyCandidate,
   decodeRecoverySecret,
   derivePassphraseKeyInCurrentContext,
   encodeRecoverySecret,
   hkdfSha256,
   uuidToBytes,
   verifyRecoveryCandidate,
+  verifyKeyCeremonyCandidate,
 } from './crypto';
 
 const hex = (value: string): Uint8Array => Uint8Array.from(Buffer.from(value, 'hex'));
@@ -76,5 +78,42 @@ describe('Protected-text cryptographic boundary', () => {
 
     await expect(verifyRecoveryCandidate(recoveryText, 'new shared passphrase', state, candidate, undefined, derivePassphraseKeyInCurrentContext)).resolves.toBe(true);
     await expect(verifyRecoveryCandidate(recoveryText, 'wrong candidate passphrase', state, candidate, undefined, derivePassphraseKeyInCurrentContext)).resolves.toBe(false);
+  }, 30_000);
+
+  it('lets two browsers independently verify a routine passphrase-change candidate', async () => {
+    const state = {
+      envelopeFormat: 1 as const,
+      cryptoSuite: 1 as const,
+      passphraseKdf: { version: 1 as const, operationsLimit: 3 as const, memoryLimit: 67_108_864 as const, outputLength: 32 as const },
+      organizationId: '00000000-0000-4000-8000-000000000001',
+      generation: 4,
+      orkId: '00000000-0000-4000-8000-000000000003',
+      ockId: '00000000-0000-4000-8000-000000000004',
+      ockEpoch: 1,
+      sharedPassphraseSlot: Buffer.from('860101018850000000000000400080000000000000015000000000000040008000000000000006500000000000004000800000000000000301031a0400000050000102030405060708090a0b0c0d0e0f5818606162636465666768696a6b6c6d6e6f70717273747576775830d1f48079ebc620215397fdd53526777a993b247f458a22099246178d7a58d2fbe511bb089825c759f6b3bb4aa00db40ff6', 'hex').toString('base64url'),
+      recoverySlot: Buffer.from('8601020185500000000000004000800000000000000150000000000000400080000000000000025000000000000040008000000000000003015818404142434445464748494a4b4c4d4e4f505152535455565758309e4a3fae295f66af9c81f2c90efa988a5c218fd4aa56aa21a49da288ac7a98e08cf8e552b54d9e67c869ee305d3f00b5f6', 'hex').toString('base64url'),
+      contentKeyWrapper: Buffer.from('8601030185500000000000004000800000000000000150000000000000400080000000000000035000000000000040008000000000000004015818808182838485868788898a8b8c8d8e8f90919293949596975830f3d4df98842427b70a7863bfd9faaeac3515b6a4b4d14c662fee2f1bb20bd25f1ed8fee0f098ff94b0bd86698dc0d27af6', 'hex').toString('base64url'),
+    };
+    const candidate = await createKeyCeremonyCandidate({
+      operation: 'change_passphrase',
+      reasonCode: 'team_member_left',
+      state,
+      currentPassphrase: 'correct horse battery staple',
+      newPassphrase: 'the replacement shared passphrase',
+    }, undefined, derivePassphraseKeyInCurrentContext);
+
+    await expect(verifyKeyCeremonyCandidate(
+      candidate.encodedCandidate,
+      candidate.candidateFingerprint,
+      state,
+      {
+        currentPassphrase: 'correct horse battery staple',
+        candidatePassphrase: 'the replacement shared passphrase',
+      },
+      undefined,
+      derivePassphraseKeyInCurrentContext,
+    )).resolves.toBe(true);
+    expect(candidate.payload.recoverySlot).toBe(state.recoverySlot);
+    expect(candidate.payload.contentKeyWrapper).toBe(state.contentKeyWrapper);
   }, 30_000);
 });

@@ -10,6 +10,7 @@ const recovery = vi.hoisted(() => ({
   createCandidate: vi.fn(),
   verifyCandidate: vi.fn(),
   sessionSet: vi.fn(),
+  createKeyCandidate: vi.fn(),
 }));
 
 vi.mock('vue-router', () => ({
@@ -22,12 +23,18 @@ vi.mock('../api/domain', () => ({
     startE2eeRecovery: recovery.start,
     e2eeRecoveryCeremony: recovery.ceremony,
     approveE2eeRecovery: recovery.approve,
+    startE2eeKeyCeremony: vi.fn(),
+    e2eeKeyCeremony: vi.fn(),
+    approveE2eeKeyCeremony: vi.fn(),
+    activateE2eeKeyCeremony: vi.fn(),
   },
 }));
 
 vi.mock('../e2ee/crypto', () => ({
   createRecoveryCandidate: recovery.createCandidate,
   verifyRecoveryCandidate: recovery.verifyCandidate,
+  createKeyCeremonyCandidate: recovery.createKeyCandidate,
+  verifyKeyCeremonyCandidate: vi.fn(),
 }));
 
 vi.mock('../e2ee/recovery-session', () => ({
@@ -66,6 +73,38 @@ describe('RecoveryView', () => {
       state: 'pending_second_operator',
       expiresAt: '2026-08-10T20:00:00.000Z',
     });
+  });
+
+  it('starts with situation-based entry points and opens only the selected ceremony', async () => {
+    const wrapper = mount(RecoveryView, { global: { stubs } });
+
+    expect(wrapper.text()).toContain('What happened, and what do you want to do?');
+    expect(wrapper.text()).toContain('We lost our shared passphrase and want to reset it.');
+    expect(wrapper.text()).toContain('Someone left the team and we want to change the shared passphrase.');
+    expect(wrapper.text()).toContain('Our Recovery Secret was lost and we want to replace it.');
+    expect(wrapper.text()).toContain('Recovery Secret custody changed and we want to issue a new one.');
+    expect(wrapper.text()).toContain('We want to rotate the Organization Root Key.');
+    expect(wrapper.text()).toContain('Our shared passphrase may have been disclosed.');
+    expect(wrapper.text()).toContain('Our Recovery Secret may have been disclosed.');
+    expect(wrapper.text()).toContain('An encryption key may have been disclosed.');
+    expect(wrapper.find('.recovery-columns').exists()).toBe(false);
+
+    const lostPassphrase = wrapper.find('[data-situation="lost-passphrase"]');
+    await lostPassphrase.trigger('click');
+
+    expect(wrapper.find('.recovery-columns').exists()).toBe(true);
+    expect(wrapper.text()).toContain('Recover shared passphrase');
+  });
+
+  it('opens a routine passphrase-change workflow with situation-specific inputs', async () => {
+    const wrapper = mount(RecoveryView, { global: { stubs } });
+
+    await wrapper.get('[data-situation="routine-passphrase"]').trigger('click');
+
+    expect(wrapper.text()).toContain('Change the shared passphrase');
+    expect(wrapper.text()).toContain('Current shared passphrase');
+    expect(wrapper.text()).toContain('New shared passphrase');
+    expect(wrapper.text()).not.toContain('Recovery Secret may have been disclosed');
   });
 
   it('normalizes clipboard whitespace before validating a Recovery Secret', async () => {

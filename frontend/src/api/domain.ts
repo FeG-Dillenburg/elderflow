@@ -3,8 +3,9 @@ import { localizeApiError, type ApiErrorPayload } from '../i18n/api-errors';
 import { formatDate, translate } from '../i18n';
 import type { TopicType } from '../topics/topicTypes';
 import type { InitialKeyState, PublicKeyState, RecoveryKeyState } from '../e2ee/crypto';
-import { Encoder } from 'cbor-x';
+import { Decoder, Encoder } from 'cbor-x';
 import { base64UrlToBytes, bytesToBase64Url, E2EE_MEDIA_TYPE } from '../e2ee/protocol';
+import { decodeKeyCeremonyPayload, type KeyCeremonyPayload } from '../e2ee/key-ceremony-payload';
 import { protectMeetingTitle, unprotectMeetingTitle, type EncryptedMeetingTitle } from '../e2ee/meeting-scalars';
 import {
   meetingDocumentSession,
@@ -416,6 +417,21 @@ export interface DashboardData {
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL
   ?? (import.meta.env.PROD ? '' : 'http://localhost:3000');
 const cborEncoder = new Encoder({ mapsAsObjects: false, structuredClone: false, tagUint8Array: false, useRecords: false });
+const cborDecoder = new Decoder({ mapsAsObjects: false, useRecords: false });
+
+function decodeContentKeyWrappers(encoded: Uint8Array): Array<{ ockId: string; ockEpoch: number; wrapper: string }> {
+  const value = cborDecoder.decode(encoded) as unknown;
+  if (!Array.isArray(value) || value.length !== 2 || value[0] !== 1 || !Array.isArray(value[1])) {
+    throw new Error('E2EE_BINARY_RESPONSE_INVALID');
+  }
+  return value[1].map((entry: unknown) => {
+    if (!Array.isArray(entry) || entry.length !== 3 || typeof entry[0] !== 'string'
+      || !Number.isInteger(entry[1]) || !(entry[2] instanceof Uint8Array)) {
+      throw new Error('E2EE_BINARY_RESPONSE_INVALID');
+    }
+    return { ockId: entry[0], ockEpoch: entry[1], wrapper: bytesToBase64Url(entry[2]) };
+  });
+}
 import { getSessionToken } from '../auth/session';
 
 class ApiRequestError extends Error {
@@ -447,6 +463,10 @@ export async function request<T>(path: string, options?: RequestInit): Promise<T
 }
 
 async function requestBinary(path: string): Promise<string> {
+  return bytesToBase64Url(await requestBinaryBytes(path));
+}
+
+async function requestBinaryBytes(path: string): Promise<Uint8Array> {
   const token = getSessionToken();
   const response = await fetch(`${apiBaseUrl}${path}`, {
     headers: { Accept: E2EE_MEDIA_TYPE, ...(token ? { Authorization: `Bearer ${token}` } : {}) },
@@ -459,7 +479,7 @@ async function requestBinary(path: string): Promise<string> {
   if (!response.headers.get('content-type')?.replaceAll(' ', '').startsWith(E2EE_MEDIA_TYPE)) {
     throw new Error('E2EE_BINARY_RESPONSE_INVALID');
   }
-  return bytesToBase64Url(new Uint8Array(await response.arrayBuffer()));
+  return new Uint8Array(await response.arrayBuffer());
 }
 
 async function requestWithBinaryBody<T>(path: string, body: Uint8Array, headers: Record<string, string> = {}): Promise<T> {
@@ -653,21 +673,34 @@ export const api = {
   updateProfile: (input: { email: string; firstName: string; lastName: string; language: SupportedLanguage | null; password?: string }) => request<AuthUser>('/api/auth/profile', { method: 'PATCH', body: JSON.stringify(input) }),
   e2eeKeyMetadata: () => request<Omit<PublicKeyState, 'sharedPassphraseSlot' | 'contentKeyWrapper'>>('/api/e2ee/key-state'),
   e2eeKeyState: async () => {
-    const [metadata, sharedPassphraseSlot, contentKeyWrapper] = await Promise.all([
+    const [metadata, sharedPassphraseSlot, contentKeyWrapper, contentKeyWrapperSet] = await Promise.all([
       api.e2eeKeyMetadata(),
       requestBinary('/api/e2ee/key-state/shared-passphrase-slot'),
       requestBinary('/api/e2ee/key-state/content-key-wrapper'),
+      requestBinaryBytes('/api/e2ee/key-state/content-key-wrappers'),
     ]);
-    return { ...metadata, sharedPassphraseSlot, contentKeyWrapper };
+    return {
+      ...metadata,
+      sharedPassphraseSlot,
+      contentKeyWrapper,
+      contentKeyWrappers: decodeContentKeyWrappers(contentKeyWrapperSet),
+    };
   },
   e2eeRecoveryMetadata: async () => {
-    const [metadata, sharedPassphraseSlot, contentKeyWrapper, recoverySlot] = await Promise.all([
+    const [metadata, sharedPassphraseSlot, contentKeyWrapper, recoverySlot, contentKeyWrapperSet] = await Promise.all([
       request<Omit<RecoveryKeyState, 'sharedPassphraseSlot' | 'contentKeyWrapper' | 'recoverySlot'>>('/api/e2ee/recovery-metadata'),
       requestBinary('/api/e2ee/key-state/shared-passphrase-slot'),
       requestBinary('/api/e2ee/key-state/content-key-wrapper'),
       requestBinary('/api/e2ee/recovery-slot'),
+      requestBinaryBytes('/api/e2ee/key-state/content-key-wrappers'),
     ]);
-    return { ...metadata, sharedPassphraseSlot, contentKeyWrapper, recoverySlot };
+    return {
+      ...metadata,
+      sharedPassphraseSlot,
+      contentKeyWrapper,
+      recoverySlot,
+      contentKeyWrappers: decodeContentKeyWrappers(contentKeyWrapperSet),
+    };
   },
   registerE2eeClientEpoch: (input: { id: string; noncePrefix: string; signingPublicKey: string }) => request<{ registered: true }>('/api/e2ee/client-epochs', { method: 'POST', body: JSON.stringify(input) }),
   revokeE2eeClientEpoch: (id: string) => request<void>(`/api/e2ee/client-epochs/${id}/revoke`, { method: 'POST' }),
@@ -690,6 +723,43 @@ export const api = {
   activateE2eeRecovery: (id: string) => request<{ activated: true; generation: number }>(`/api/e2ee/recovery-ceremonies/${id}/activate`, { method: 'POST' }),
   confirmE2eeRecoveryPresence: (id: string) => request<{ confirmed: true }>(`/api/e2ee/recovery-ceremonies/${id}/confirm-presence`, { method: 'POST' }),
   abortE2eeRecovery: (id: string) => request<void>(`/api/e2ee/recovery-ceremonies/${id}/abort`, { method: 'POST' }),
+  startE2eeKeyCeremony: (encodedCandidate: string) => requestWithBinaryBody<{
+    id: string;
+    state: string;
+    candidateFingerprint: string;
+    expiresAt: string;
+  }>('/api/e2ee/key-ceremonies', base64UrlToBytes(encodedCandidate)),
+  e2eeKeyCeremony: async (id: string): Promise<{
+    id: string;
+    state: string;
+    candidateFingerprint: string;
+    expiresAt: string;
+    operation: string;
+    reasonCode: string;
+    encodedCandidate: string;
+    candidate: KeyCeremonyPayload;
+  }> => {
+    const [metadata, encoded] = await Promise.all([
+      request<{
+        id: string;
+        state: string;
+        candidateFingerprint: string;
+        expiresAt: string;
+        operation: string;
+        reasonCode: string;
+      }>(`/api/e2ee/key-ceremonies/${id}`),
+      requestBinaryBytes(`/api/e2ee/key-ceremonies/${id}/candidate`),
+    ]);
+    return {
+      ...metadata,
+      encodedCandidate: bytesToBase64Url(encoded),
+      candidate: decodeKeyCeremonyPayload(encoded),
+    };
+  },
+  approveE2eeKeyCeremony: (id: string, candidateFingerprint: string) => request<{ id: string; state: string; expiresAt: string }>(`/api/e2ee/key-ceremonies/${id}/approve`, { method: 'POST', body: JSON.stringify({ candidateFingerprint }) }),
+  activateE2eeKeyCeremony: (id: string) => request<{ activated: true; generation: number }>(`/api/e2ee/key-ceremonies/${id}/activate`, { method: 'POST' }),
+  confirmE2eeKeyCeremonyPresence: (id: string) => request<{ confirmed: true }>(`/api/e2ee/key-ceremonies/${id}/confirm-presence`, { method: 'POST' }),
+  abortE2eeKeyCeremony: (id: string) => request<void>(`/api/e2ee/key-ceremonies/${id}/abort`, { method: 'POST' }),
   users: () => request<User[]>('/api/users'),
   userDirectory: () => request<User[]>('/api/user-directory'),
   dashboard: async () => {

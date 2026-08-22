@@ -20,6 +20,7 @@ interface DocumentSessionKeys {
   clientEpochId: string;
   noncePrefix: Uint8Array;
   contentKey: Uint8Array;
+  historicalContentKeys?: Map<string, Uint8Array>;
   signingPrivateKey: Uint8Array;
 }
 
@@ -29,6 +30,7 @@ export interface EncryptedWorkspace {
   currentServerSequence: string;
   snapshot: {
     id: string;
+    ockId?: string;
     clientEpochId: string;
     snapshotClock?: string;
     coveredAuthorClocks?: Array<[string, string]>;
@@ -36,6 +38,7 @@ export interface EncryptedWorkspace {
     envelope: string;
   };
   updates: Array<{
+    ockId?: string;
     clientEpochId: string;
     authorClock: string;
     signingPublicKey: string;
@@ -72,6 +75,10 @@ export class MeetingDocumentSession {
       ...keys,
       noncePrefix: Uint8Array.from(keys.noncePrefix),
       contentKey: Uint8Array.from(keys.contentKey),
+      historicalContentKeys: new Map(
+        [...(keys.historicalContentKeys ?? new Map()).entries()]
+          .map(([ockId, key]) => [ockId, Uint8Array.from(key)]),
+      ),
       signingPrivateKey: Uint8Array.from(keys.signingPrivateKey),
     };
   }
@@ -115,26 +122,29 @@ export class MeetingDocumentSession {
 
   async load(meetingId: string, workspace: EncryptedWorkspace): Promise<void> {
     const keys = this.requiredKeys();
+    const snapshotOckId = workspace.snapshot.ockId ?? keys.ockId;
+    const snapshotContentKey = this.contentKeyFor(snapshotOckId);
     const document = new Y.Doc();
     await applyEncryptedMeetingSnapshot(document, {
       organizationId: keys.organizationId,
       documentId: workspace.documentId,
       snapshotId: workspace.snapshot.id,
-      ockId: keys.ockId,
+      ockId: snapshotOckId,
       clientEpochId: workspace.snapshot.clientEpochId,
-      contentKey: keys.contentKey,
+      contentKey: snapshotContentKey,
       signingPublicKey: base64UrlToBytes(workspace.snapshot.signingPublicKey),
       envelope: base64UrlToBytes(workspace.snapshot.envelope),
     });
     for (const update of workspace.updates) {
+      const updateOckId = update.ockId ?? keys.ockId;
       await applyEncryptedMeetingUpdate(document, {
         organizationId: keys.organizationId,
         documentId: workspace.documentId,
         activeSnapshotId: workspace.activeSnapshotId,
-        ockId: keys.ockId,
+        ockId: updateOckId,
         clientEpochId: update.clientEpochId,
         authorClock: Number(update.authorClock),
-        contentKey: keys.contentKey,
+        contentKey: this.contentKeyFor(updateOckId),
         signingPublicKey: base64UrlToBytes(update.signingPublicKey),
         envelope: base64UrlToBytes(update.envelope),
       });
@@ -176,13 +186,14 @@ export class MeetingDocumentSession {
     }
     const parentChanged = workspace.activeSnapshotId !== loaded.activeSnapshotId;
     if (parentChanged) {
+      const snapshotOckId = workspace.snapshot.ockId ?? keys.ockId;
       await applyEncryptedMeetingSnapshot(loaded.document, {
         organizationId: keys.organizationId,
         documentId: workspace.documentId,
         snapshotId: workspace.snapshot.id,
-        ockId: keys.ockId,
+        ockId: snapshotOckId,
         clientEpochId: workspace.snapshot.clientEpochId,
-        contentKey: keys.contentKey,
+        contentKey: this.contentKeyFor(snapshotOckId),
         signingPublicKey: base64UrlToBytes(workspace.snapshot.signingPublicKey),
         envelope: base64UrlToBytes(workspace.snapshot.envelope),
         origin,
@@ -191,14 +202,15 @@ export class MeetingDocumentSession {
       loaded.activeSnapshotEnvelope = base64UrlToBytes(workspace.snapshot.envelope);
     }
     for (const update of workspace.updates) {
+      const updateOckId = update.ockId ?? keys.ockId;
       await applyEncryptedMeetingUpdate(loaded.document, {
         organizationId: keys.organizationId,
         documentId: workspace.documentId,
         activeSnapshotId: workspace.activeSnapshotId,
-        ockId: keys.ockId,
+        ockId: updateOckId,
         clientEpochId: update.clientEpochId,
         authorClock: Number(update.authorClock),
-        contentKey: keys.contentKey,
+        contentKey: this.contentKeyFor(updateOckId),
         signingPublicKey: base64UrlToBytes(update.signingPublicKey),
         envelope: base64UrlToBytes(update.envelope),
         origin,
@@ -440,6 +452,7 @@ export class MeetingDocumentSession {
     if (this.keys) {
       sodium.memzero(this.keys.noncePrefix);
       sodium.memzero(this.keys.contentKey);
+      this.keys.historicalContentKeys?.forEach((key) => sodium.memzero(key));
       sodium.memzero(this.keys.signingPrivateKey);
     }
     this.keys = null;
@@ -453,6 +466,14 @@ export class MeetingDocumentSession {
   private requiredKeys(): DocumentSessionKeys {
     if (!this.keys) throw new Error("E2EE_PROTECTED_TEXT_LOCKED");
     return this.keys;
+  }
+
+  private contentKeyFor(ockId: string): Uint8Array {
+    const keys = this.requiredKeys();
+    if (ockId === keys.ockId) return keys.contentKey;
+    const historical = keys.historicalContentKeys?.get(ockId);
+    if (!historical) throw new Error("E2EE_KEY_NOT_READABLE");
+    return historical;
   }
 
   private requiredDocument(meetingId: string): LoadedDocument {

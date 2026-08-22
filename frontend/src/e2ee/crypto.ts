@@ -1,6 +1,12 @@
 import { Decoder, Encoder } from 'cbor-x';
 import sodium from 'libsodium-wrappers-sumo';
 import { base64UrlToBytes, bytesToBase64Url, PASSPHRASE_KDF } from './protocol';
+import {
+  decodeKeyCeremonyPayload,
+  encodeKeyCeremonyPayload,
+  type KeyCeremonyOperation,
+  type KeyCeremonyPayload,
+} from './key-ceremony-payload';
 
 export const E2EE_FORMAT = 1;
 export const E2EE_SUITE = 1;
@@ -212,6 +218,7 @@ export interface PublicKeyState {
   ockEpoch: number;
   sharedPassphraseSlot: string;
   contentKeyWrapper: string;
+  contentKeyWrappers?: Array<{ ockId: string; ockEpoch: number; wrapper: string }>;
   passphraseKdf: typeof PASSPHRASE_KDF;
 }
 
@@ -222,6 +229,22 @@ export interface RecoveryKeyState extends PublicKeyState {
 export interface RecoveryCandidate {
   candidateSharedPassphraseSlot: string;
   candidateFingerprint: string;
+}
+
+export interface GeneratedKeyCeremonyCandidate {
+  payload: KeyCeremonyPayload;
+  encodedCandidate: string;
+  candidateFingerprint: string;
+  recoveryText?: string;
+}
+
+export interface KeyCeremonyCandidateInput {
+  operation: KeyCeremonyOperation;
+  reasonCode: string;
+  state: RecoveryKeyState;
+  currentPassphrase?: string;
+  currentRecoveryText?: string;
+  newPassphrase?: string;
 }
 
 export type PassphraseKeyDeriver = (passphrase: string, salt: Uint8Array, signal?: AbortSignal) => Promise<Uint8Array>;
@@ -294,7 +317,12 @@ export async function unlockWithPassphrase(
   passphrase: string,
   state: PublicKeyState,
   signal?: AbortSignal,
-): Promise<{ organizationRootKey: Uint8Array; contentKey: Uint8Array }> {
+  derive: PassphraseKeyDeriver = derivePassphraseKey,
+): Promise<{
+  organizationRootKey: Uint8Array;
+  contentKey: Uint8Array;
+  historicalContentKeys: Map<string, Uint8Array>;
+}> {
   await sodium.ready;
   try {
     assertSupportedState(state);
@@ -302,7 +330,7 @@ export async function unlockWithPassphrase(
     const sharedHeader = shared[3] as unknown[];
     const salt = bytes(sharedHeader[6], 16);
     const nonce = bytes(sharedHeader[7], 24);
-    const passphraseKey = await derivePassphraseKey(passphrase, salt, signal);
+    const passphraseKey = await derive(passphrase, salt, signal);
     const wrappingKey = await hkdfSha256(
       passphraseKey,
       uuidToBytes(state.organizationId),
@@ -322,14 +350,232 @@ export async function unlockWithPassphrase(
     );
     const contentKey = decryptWrapper(ENVELOPE_KIND.contentKeyWrapper, contentHeader, bytes(content[4]), contentNonce, contentWrappingKey);
     sodium.memzero(contentWrappingKey);
-    return { organizationRootKey, contentKey };
+    const historicalContentKeys = new Map<string, Uint8Array>();
+    for (const retained of state.contentKeyWrappers ?? []) {
+      if (retained.ockId === state.ockId) continue;
+      historicalContentKeys.set(retained.ockId, await unlockContentKey(organizationRootKey, {
+        organizationId: state.organizationId,
+        orkId: state.orkId,
+        ockId: retained.ockId,
+        contentKeyWrapper: retained.wrapper,
+      }));
+    }
+    return { organizationRootKey, contentKey, historicalContentKeys };
   } catch (error) {
     if (error instanceof DOMException && error.name === 'AbortError') throw error;
     throw new Error('E2EE_UNLOCK_FAILED');
   }
 }
 
-async function unlockOrganizationRootKeyWithRecovery(
+export async function createKeyCeremonyCandidate(
+  input: KeyCeremonyCandidateInput,
+  signal?: AbortSignal,
+  derive: PassphraseKeyDeriver = derivePassphraseKey,
+): Promise<GeneratedKeyCeremonyCandidate> {
+  await sodium.ready;
+  const currentKeys = input.currentPassphrase
+    ? await unlockWithPassphrase(input.currentPassphrase, input.state, signal, derive)
+    : await unlockWithRecovery(input.currentRecoveryText ?? '', input.state);
+  const rotatesRoot = input.operation === 'rotate_root_key'
+    || input.operation === 'rotate_root_and_content_key';
+  const rotatesContent = input.operation === 'rotate_root_and_content_key';
+  const replacesRecovery = input.operation === 'replace_recovery_secret' || rotatesContent;
+  const candidateRootKey = rotatesRoot
+    ? crypto.getRandomValues(new Uint8Array(32))
+    : Uint8Array.from(currentKeys.organizationRootKey);
+  const candidateContentKey = rotatesContent
+    ? crypto.getRandomValues(new Uint8Array(32))
+    : Uint8Array.from(currentKeys.contentKey);
+  const candidateOrkId = rotatesRoot ? crypto.randomUUID() : input.state.orkId;
+  const candidateOckId = rotatesContent ? crypto.randomUUID() : input.state.ockId;
+  const candidateOckEpoch = rotatesContent ? input.state.ockEpoch + 1 : input.state.ockEpoch;
+  let newRecoverySecret: Uint8Array | null = null;
+  let suppliedRecoverySecret: Uint8Array | null = null;
+  try {
+    const passphrase = input.operation === 'replace_recovery_secret'
+      ? null
+      : input.newPassphrase ?? input.currentPassphrase;
+    const sharedPassphraseSlot = passphrase
+      ? bytesToBase64Url(await createSharedPassphraseEnvelope(
+        passphrase,
+        input.state.organizationId,
+        candidateOrkId,
+        candidateRootKey,
+        signal,
+        derive,
+      ))
+      : input.state.sharedPassphraseSlot;
+
+    let recoverySlot = input.state.recoverySlot;
+    let recoveryText: string | undefined;
+    if (replacesRecovery) {
+      newRecoverySecret = crypto.getRandomValues(new Uint8Array(32));
+      const recovery = await createRecoveryWrapper({
+        organizationId: input.state.organizationId,
+        slotId: crypto.randomUUID(),
+        orkId: candidateOrkId,
+        recoverySecret: newRecoverySecret,
+        organizationRootKey: candidateRootKey,
+        nonce: crypto.getRandomValues(new Uint8Array(24)),
+      });
+      recoverySlot = bytesToBase64Url(recovery.envelope);
+      recoveryText = recovery.recoveryText;
+      sodium.memzero(recovery.derivedKey);
+    } else if (input.operation === 'rotate_root_key') {
+      suppliedRecoverySecret = decodeRecoverySecret(input.currentRecoveryText ?? '');
+      const recovery = await createRecoveryWrapper({
+        organizationId: input.state.organizationId,
+        slotId: crypto.randomUUID(),
+        orkId: candidateOrkId,
+        recoverySecret: suppliedRecoverySecret,
+        organizationRootKey: candidateRootKey,
+        nonce: crypto.getRandomValues(new Uint8Array(24)),
+      });
+      recoverySlot = bytesToBase64Url(recovery.envelope);
+      sodium.memzero(recovery.derivedKey);
+    }
+
+    const contentKeyWrapper = rotatesRoot
+      ? bytesToBase64Url(await createContentKeyEnvelope(
+        input.state.organizationId,
+        candidateOrkId,
+        candidateOckId,
+        candidateOckEpoch,
+        candidateRootKey,
+        candidateContentKey,
+      ))
+      : input.state.contentKeyWrapper;
+    const readableKeys = [
+      { ockId: input.state.ockId, ockEpoch: input.state.ockEpoch, contentKey: currentKeys.contentKey },
+      ...(input.state.contentKeyWrappers ?? [])
+        .filter((entry) => entry.ockId !== input.state.ockId)
+        .map((entry) => ({
+          ockId: entry.ockId,
+          ockEpoch: entry.ockEpoch,
+          contentKey: currentKeys.historicalContentKeys.get(entry.ockId),
+        })),
+    ];
+    const historicalContentKeyWrappers = rotatesRoot
+      ? await Promise.all(readableKeys
+        .filter((entry) => entry.ockId !== candidateOckId)
+        .map(async (entry) => {
+          if (!entry.contentKey) throw new Error('E2EE_KEY_NOT_READABLE');
+          return {
+            ockId: entry.ockId,
+            ockEpoch: entry.ockEpoch,
+            wrapper: bytesToBase64Url(await createContentKeyEnvelope(
+              input.state.organizationId,
+              candidateOrkId,
+              entry.ockId,
+              entry.ockEpoch,
+              candidateRootKey,
+              entry.contentKey,
+            )),
+          };
+        }))
+      : [];
+    const payload: KeyCeremonyPayload = {
+      operation: input.operation,
+      reasonCode: input.reasonCode,
+      expectedGeneration: input.state.generation,
+      orkId: candidateOrkId,
+      ockId: candidateOckId,
+      ockEpoch: candidateOckEpoch,
+      sharedPassphraseSlot,
+      recoverySlot,
+      contentKeyWrapper,
+      custodyCopiesAcknowledged: replacesRecovery ? 2 : 0,
+      ...(historicalContentKeyWrappers.length ? { historicalContentKeyWrappers } : {}),
+    };
+    const encoded = encodeKeyCeremonyPayload(payload);
+    const fingerprint = new Uint8Array(await crypto.subtle.digest('SHA-256', toArrayBuffer(encoded)));
+    return {
+      payload,
+      encodedCandidate: bytesToBase64Url(encoded),
+      candidateFingerprint: bytesToBase64Url(fingerprint),
+      ...(recoveryText ? { recoveryText } : {}),
+    };
+  } finally {
+    sodium.memzero(currentKeys.organizationRootKey);
+    sodium.memzero(currentKeys.contentKey);
+    currentKeys.historicalContentKeys.forEach((key) => sodium.memzero(key));
+    sodium.memzero(candidateRootKey);
+    sodium.memzero(candidateContentKey);
+    if (newRecoverySecret) sodium.memzero(newRecoverySecret);
+    if (suppliedRecoverySecret) sodium.memzero(suppliedRecoverySecret);
+  }
+}
+
+export async function verifyKeyCeremonyCandidate(
+  encodedCandidate: string,
+  expectedFingerprint: string,
+  state: RecoveryKeyState,
+  secrets: {
+    currentPassphrase?: string;
+    currentRecoveryText?: string;
+    candidatePassphrase?: string;
+    candidateRecoveryText?: string;
+  },
+  signal?: AbortSignal,
+  derive: PassphraseKeyDeriver = derivePassphraseKey,
+): Promise<boolean> {
+  await sodium.ready;
+  const encoded = base64UrlToBytes(encodedCandidate);
+  const payload = decodeKeyCeremonyPayload(encoded);
+  if (payload.expectedGeneration !== state.generation) return false;
+  const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', toArrayBuffer(encoded)));
+  if (bytesToBase64Url(digest) !== expectedFingerprint) return false;
+  const candidateState: RecoveryKeyState = {
+    ...state,
+    orkId: payload.orkId,
+    ockId: payload.ockId,
+    ockEpoch: payload.ockEpoch,
+    sharedPassphraseSlot: payload.sharedPassphraseSlot,
+    recoverySlot: payload.recoverySlot,
+    contentKeyWrapper: payload.contentKeyWrapper,
+    contentKeyWrappers: [
+      { ockId: payload.ockId, ockEpoch: payload.ockEpoch, wrapper: payload.contentKeyWrapper },
+      ...(payload.historicalContentKeyWrappers ?? []),
+    ],
+  };
+  let currentKeys: { organizationRootKey: Uint8Array; contentKey: Uint8Array; historicalContentKeys: Map<string, Uint8Array> } | null = null;
+  let candidateKeys: { organizationRootKey: Uint8Array; contentKey: Uint8Array; historicalContentKeys: Map<string, Uint8Array> } | null = null;
+  let recoveryRoot: Uint8Array | null = null;
+  try {
+    currentKeys = secrets.currentPassphrase
+      ? await unlockWithPassphrase(secrets.currentPassphrase, state, signal, derive)
+      : await unlockWithRecovery(secrets.currentRecoveryText ?? '', state);
+    const candidatePassphrase = secrets.candidatePassphrase ?? secrets.currentPassphrase;
+    if (!candidatePassphrase) return false;
+    candidateKeys = await unlockWithPassphrase(candidatePassphrase, candidateState, signal, derive);
+    if (secrets.candidateRecoveryText) {
+      recoveryRoot = await unlockOrganizationRootKeyWithRecovery(secrets.candidateRecoveryText, candidateState);
+      if (!constantTimeEqual(candidateKeys.organizationRootKey, recoveryRoot)) return false;
+    }
+    if (payload.operation !== 'rotate_root_and_content_key'
+      && !constantTimeEqual(currentKeys.contentKey, candidateKeys.contentKey)) return false;
+    if (payload.operation === 'rotate_root_and_content_key') {
+      const retainedCurrentKey = candidateKeys.historicalContentKeys.get(state.ockId);
+      if (!retainedCurrentKey || !constantTimeEqual(currentKeys.contentKey, retainedCurrentKey)) return false;
+    }
+    if (!['rotate_root_key', 'rotate_root_and_content_key'].includes(payload.operation)
+      && !constantTimeEqual(currentKeys.organizationRootKey, candidateKeys.organizationRootKey)) return false;
+    return true;
+  } catch {
+    return false;
+  } finally {
+    for (const keys of [currentKeys, candidateKeys]) {
+      if (keys) {
+        sodium.memzero(keys.organizationRootKey);
+        sodium.memzero(keys.contentKey);
+        keys.historicalContentKeys.forEach((key) => sodium.memzero(key));
+      }
+    }
+    if (recoveryRoot) sodium.memzero(recoveryRoot);
+  }
+}
+
+export async function unlockOrganizationRootKeyWithRecovery(
   recoveryText: string,
   state: RecoveryKeyState,
 ): Promise<Uint8Array> {
@@ -349,6 +595,20 @@ async function unlockOrganizationRootKeyWithRecovery(
     return organizationRootKey;
   } catch {
     throw new Error('E2EE_RECOVERY_FAILED');
+  }
+}
+
+async function unlockWithRecovery(
+  recoveryText: string,
+  state: RecoveryKeyState,
+): Promise<{ organizationRootKey: Uint8Array; contentKey: Uint8Array; historicalContentKeys: Map<string, Uint8Array> }> {
+  const organizationRootKey = await unlockOrganizationRootKeyWithRecovery(recoveryText, state);
+  try {
+    const contentKey = await unlockContentKey(organizationRootKey, state);
+    return { organizationRootKey, contentKey, historicalContentKeys: new Map() };
+  } catch (error) {
+    sodium.memzero(organizationRootKey);
+    throw error;
   }
 }
 
@@ -374,6 +634,54 @@ async function createSharedPassphraseEnvelope(
   const ciphertext = encryptWrapper(ENVELOPE_KIND.sharedPassphraseSlot, header, organizationRootKey, nonce, wrappingKey);
   sodium.memzero(wrappingKey);
   return deterministicCbor([E2EE_FORMAT, ENVELOPE_KIND.sharedPassphraseSlot, E2EE_SUITE, header, ciphertext, null]);
+}
+
+async function createContentKeyEnvelope(
+  organizationId: string,
+  orkId: string,
+  ockId: string,
+  ockEpoch: number,
+  organizationRootKey: Uint8Array,
+  contentKey: Uint8Array,
+): Promise<Uint8Array> {
+  const organizationIdBytes = uuidToBytes(organizationId);
+  const nonce = crypto.getRandomValues(new Uint8Array(24));
+  const header = [organizationIdBytes, uuidToBytes(orkId), uuidToBytes(ockId), ockEpoch, nonce];
+  const wrappingKey = await hkdfSha256(
+    organizationRootKey,
+    organizationIdBytes,
+    deterministicCbor(['ElderFlow key v1', KEY_DERIVATION_PURPOSE.contentKeyWrapper, ORGANIZATION_AGGREGATE_ID, uuidToBytes(ockId)]),
+  );
+  try {
+    const ciphertext = encryptWrapper(ENVELOPE_KIND.contentKeyWrapper, header, contentKey, nonce, wrappingKey);
+    return deterministicCbor([E2EE_FORMAT, ENVELOPE_KIND.contentKeyWrapper, E2EE_SUITE, header, ciphertext, null]);
+  } finally {
+    sodium.memzero(wrappingKey);
+  }
+}
+
+async function unlockContentKey(
+  organizationRootKey: Uint8Array,
+  state: Pick<PublicKeyState, 'organizationId' | 'orkId' | 'ockId' | 'contentKeyWrapper'>,
+): Promise<Uint8Array> {
+  const content = decodeCanonicalEnvelope(state.contentKeyWrapper, ENVELOPE_KIND.contentKeyWrapper);
+  const contentHeader = content[3] as unknown[];
+  const contentWrappingKey = await hkdfSha256(
+    organizationRootKey,
+    uuidToBytes(state.organizationId),
+    deterministicCbor(['ElderFlow key v1', KEY_DERIVATION_PURPOSE.contentKeyWrapper, ORGANIZATION_AGGREGATE_ID, uuidToBytes(state.ockId)]),
+  );
+  try {
+    return decryptWrapper(
+      ENVELOPE_KIND.contentKeyWrapper,
+      contentHeader,
+      bytes(content[4]),
+      bytes(contentHeader[4], 24),
+      contentWrappingKey,
+    );
+  } finally {
+    sodium.memzero(contentWrappingKey);
+  }
 }
 
 export function derivePassphraseKey(passphrase: string, salt: Uint8Array, signal?: AbortSignal): Promise<Uint8Array> {

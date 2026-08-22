@@ -306,6 +306,7 @@ export class MeetingDocumentService {
       currentServerSequence: document.currentServerSequence,
       snapshot: {
         id: snapshot.id,
+        ockId: snapshot.ockId,
         clientEpochId: snapshot.clientEpochId,
         snapshotClock: snapshot.snapshotClock,
         coveredAuthorClocks: snapshot.coveredAuthorClocks,
@@ -314,6 +315,7 @@ export class MeetingDocumentService {
       },
       updates: updates.map((update) => ({
         id: update.id,
+        ockId: update.ockId,
         clientEpochId: update.clientEpochId,
         signingPublicKey: signingKeys.get(update.clientEpochId),
         authorClock: update.authorClock,

@@ -149,6 +149,65 @@ describe('E2eeService', () => {
     }));
   });
 
+  it('atomically activates a compromise candidate with new Root and Content Keys', async () => {
+    manager.findOne
+      .mockResolvedValueOnce({
+        id: 'ceremony-rotation',
+        operation: 'rotate_root_and_content_key',
+        reasonCode: 'suspected_disclosure',
+        state: 'ready_to_activate',
+        initiatorId: 'operator-1',
+        initiatorSessionVersion: 2,
+        initiatorSessionId: 'initiator-session',
+        approverId: 'operator-2',
+        approverSessionVersion: 4,
+        approverSessionId: 'approver-session',
+        initiatorConfirmedAt: new Date('2026-08-09T09:59:50.000Z'),
+        approverConfirmedAt: new Date('2026-08-09T09:59:55.000Z'),
+        expectedGeneration: 3,
+        expiresAt: new Date('2026-08-09T10:30:00.000Z'),
+        candidateOrkId: '00000000-0000-4000-8000-000000000101',
+        candidateOckId: '00000000-0000-4000-8000-000000000102',
+        candidateOckEpoch: 2,
+        candidateSharedPassphraseSlot: Buffer.from('new-shared'),
+        candidateRecoverySlot: Buffer.from('new-recovery'),
+        candidateContentKeyWrapper: Buffer.from('new-content'),
+        custodyCopiesAcknowledged: 2,
+      })
+      .mockResolvedValueOnce({
+        id: 1,
+        organizationId: '00000000-0000-4000-8000-000000000001',
+        generation: 3,
+        orkId: '00000000-0000-4000-8000-000000000003',
+        ockId: '00000000-0000-4000-8000-000000000004',
+        ockEpoch: 1,
+      });
+    manager.find.mockResolvedValue([
+      { id: 'operator-1', role: 'user', sessionVersion: 2 },
+      { id: 'operator-2', role: 'admin', sessionVersion: 4 },
+    ]);
+
+    await service.activateRecovery(
+      { id: 'operator-2', role: 'admin', sessionVersion: 4 } as any,
+      'approver-session',
+      'ceremony-rotation',
+    );
+
+    expect(manager.save).toHaveBeenCalledWith(expect.any(Function), expect.objectContaining({
+      generation: 4,
+      orkId: '00000000-0000-4000-8000-000000000101',
+      ockId: '00000000-0000-4000-8000-000000000102',
+      ockEpoch: 2,
+      sharedPassphraseSlot: Buffer.from('new-shared'),
+      recoverySlot: Buffer.from('new-recovery'),
+      contentKeyWrapper: Buffer.from('new-content'),
+    }));
+    expect(manager.query).toHaveBeenCalledWith(
+      expect.stringContaining('e2ee_content_key_wrappers'),
+      expect.arrayContaining(['00000000-0000-4000-8000-000000000102']),
+    );
+  });
+
   it('allows immediate activation when the initiator was present shortly before approval', async () => {
     const ceremony = {
       id: 'ceremony-1',
