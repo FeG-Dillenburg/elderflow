@@ -39,6 +39,7 @@ const started = ref<{ id: string; expiresAt: string } | null>(null);
 const approved = ref(false);
 type ActiveCeremony = Awaited<ReturnType<typeof api.e2eeActiveKeyCeremony>>;
 const activeCeremony = ref<ActiveCeremony>(null);
+const activeCeremonyResolved = ref(false);
 type KeySituation =
   | "lost-passphrase"
   | "routine-passphrase"
@@ -75,83 +76,79 @@ interface OperationConfig {
   newRecovery: boolean;
 }
 
+type ConfiguredKeySituation = Exclude<KeySituation, "lost-passphrase">;
+
+const operationConfigs: Record<ConfiguredKeySituation, OperationConfig> = {
+  "routine-passphrase": {
+    operation: "change_passphrase",
+    reasonCode: "team_member_left",
+    currentPassphrase: true,
+    currentRecovery: false,
+    newPassphrase: true,
+    newRecovery: false,
+  },
+  "routine-access-change": {
+    operation: "change_passphrase",
+    reasonCode: "routine_access_change",
+    currentPassphrase: true,
+    currentRecovery: false,
+    newPassphrase: true,
+    newRecovery: false,
+  },
+  "lost-recovery-secret": {
+    operation: "replace_recovery_secret",
+    reasonCode: "recovery_secret_lost",
+    currentPassphrase: true,
+    currentRecovery: false,
+    newPassphrase: false,
+    newRecovery: true,
+  },
+  "routine-recovery-secret": {
+    operation: "replace_recovery_secret",
+    reasonCode: "routine_custody_change",
+    currentPassphrase: true,
+    currentRecovery: false,
+    newPassphrase: false,
+    newRecovery: true,
+  },
+  "root-rotation": {
+    operation: "rotate_root_key",
+    reasonCode: "planned_root_rotation",
+    currentPassphrase: true,
+    currentRecovery: true,
+    newPassphrase: false,
+    newRecovery: false,
+  },
+  "disclosed-passphrase": {
+    operation: "rotate_root_and_content_key",
+    reasonCode: "passphrase_disclosed",
+    currentPassphrase: false,
+    currentRecovery: true,
+    newPassphrase: true,
+    newRecovery: true,
+  },
+  "disclosed-recovery-secret": {
+    operation: "rotate_root_and_content_key",
+    reasonCode: "recovery_secret_disclosed",
+    currentPassphrase: true,
+    currentRecovery: false,
+    newPassphrase: true,
+    newRecovery: true,
+  },
+  "disclosed-encryption-key": {
+    operation: "rotate_root_and_content_key",
+    reasonCode: "encryption_key_disclosed",
+    currentPassphrase: true,
+    currentRecovery: false,
+    newPassphrase: true,
+    newRecovery: true,
+  },
+};
+
 const operationConfig = computed<OperationConfig | null>(() => {
-  switch (selectedSituation.value) {
-    case "routine-passphrase":
-      return {
-        operation: "change_passphrase",
-        reasonCode: "team_member_left",
-        currentPassphrase: true,
-        currentRecovery: false,
-        newPassphrase: true,
-        newRecovery: false,
-      };
-    case "routine-access-change":
-      return {
-        operation: "change_passphrase",
-        reasonCode: "routine_access_change",
-        currentPassphrase: true,
-        currentRecovery: false,
-        newPassphrase: true,
-        newRecovery: false,
-      };
-    case "lost-recovery-secret":
-      return {
-        operation: "replace_recovery_secret",
-        reasonCode: "recovery_secret_lost",
-        currentPassphrase: true,
-        currentRecovery: false,
-        newPassphrase: false,
-        newRecovery: true,
-      };
-    case "routine-recovery-secret":
-      return {
-        operation: "replace_recovery_secret",
-        reasonCode: "routine_custody_change",
-        currentPassphrase: true,
-        currentRecovery: false,
-        newPassphrase: false,
-        newRecovery: true,
-      };
-    case "root-rotation":
-      return {
-        operation: "rotate_root_key",
-        reasonCode: "planned_root_rotation",
-        currentPassphrase: true,
-        currentRecovery: true,
-        newPassphrase: false,
-        newRecovery: false,
-      };
-    case "disclosed-passphrase":
-      return {
-        operation: "rotate_root_and_content_key",
-        reasonCode: "passphrase_disclosed",
-        currentPassphrase: false,
-        currentRecovery: true,
-        newPassphrase: true,
-        newRecovery: true,
-      };
-    case "disclosed-recovery-secret":
-      return {
-        operation: "rotate_root_and_content_key",
-        reasonCode: "recovery_secret_disclosed",
-        currentPassphrase: true,
-        currentRecovery: false,
-        newPassphrase: true,
-        newRecovery: true,
-      };
-    case "disclosed-encryption-key":
-      return {
-        operation: "rotate_root_and_content_key",
-        reasonCode: "encryption_key_disclosed",
-        currentPassphrase: true,
-        currentRecovery: false,
-        newPassphrase: true,
-        newRecovery: true,
-      };
-    default:
-      return null;
-  }
+  const situation = selectedSituation.value;
+  if (!situation || situation === "lost-passphrase") return null;
+  return operationConfigs[situation];
 });
 const showInitiatorPanel = computed(() => (
   !activeCeremony.value || activeCeremony.value.participantRole === "initiator"
@@ -159,10 +156,20 @@ const showInitiatorPanel = computed(() => (
 const showApproverPanel = computed(() => (
   Boolean(activeCeremony.value)
   && activeCeremony.value?.participantRole !== "initiator"
+  && (
+    activeCeremony.value?.state === "pending_second_operator"
+    || activeCeremony.value?.participantRole === "approver"
+  )
+));
+const showCeremonyAlreadyAssigned = computed(() => (
+  activeCeremony.value?.state === "ready_to_activate"
+  && activeCeremony.value.participantRole === null
 ));
 const startForm = reactive({ recoverySecret: "", passphrase: "", confirmation: "" });
 const approveForm = reactive({ ceremonyId: "", recoverySecret: "", passphrase: "" });
 let kdfAbort: AbortController | null = null;
+let activeCeremonyPoll: ReturnType<typeof setInterval> | null = null;
+let activeCeremonyRequestPending = false;
 
 async function startRecovery(): Promise<void> {
   selectedSituation.value ??= "lost-passphrase";
@@ -431,10 +438,18 @@ async function chooseDifferentSituation(): Promise<void> {
   pageHeading.value?.focus();
 }
 
-onMounted(async () => {
+async function refreshActiveCeremony(): Promise<void> {
+  if (activeCeremonyRequestPending || busy.value) return;
+  activeCeremonyRequestPending = true;
   try {
     const ceremony = await api.e2eeActiveKeyCeremony();
-    if (!ceremony) return;
+    if (!ceremony) {
+      if (activeCeremony.value && !activeCeremonyId.value) {
+        selectedSituation.value = null;
+      }
+      activeCeremony.value = null;
+      return;
+    }
     const situation = situationForReason(ceremony.reasonCode);
     if (!situation) return;
     activeCeremony.value = ceremony;
@@ -454,11 +469,25 @@ onMounted(async () => {
       approved.value = ceremony.state === "ready_to_activate";
     }
   } catch (error) {
-    errorMessage.value = recoveryFailureMessage(error);
+    if (!activeCeremonyResolved.value) {
+      errorMessage.value = recoveryFailureMessage(error);
+    }
+  } finally {
+    activeCeremonyResolved.value = true;
+    activeCeremonyRequestPending = false;
   }
+}
+
+onMounted(async () => {
+  await refreshActiveCeremony();
+  activeCeremonyPoll = setInterval(() => {
+    void refreshActiveCeremony();
+  }, 5_000);
 });
 
 onBeforeUnmount(() => {
+  if (activeCeremonyPoll) clearInterval(activeCeremonyPoll);
+  activeCeremonyPoll = null;
   kdfAbort?.abort();
   kdfAbort = null;
   if (activeCeremonyId.value) {
@@ -489,18 +518,12 @@ function recoveryFailureMessage(error: unknown): string {
 }
 
 function situationForReason(reasonCode: KeyCeremonyReasonCode): KeySituation | null {
-  const situations: Record<KeyCeremonyReasonCode, KeySituation> = {
-    passphrase_lost: "lost-passphrase",
-    team_member_left: "routine-passphrase",
-    routine_access_change: "routine-access-change",
-    recovery_secret_lost: "lost-recovery-secret",
-    routine_custody_change: "routine-recovery-secret",
-    planned_root_rotation: "root-rotation",
-    passphrase_disclosed: "disclosed-passphrase",
-    recovery_secret_disclosed: "disclosed-recovery-secret",
-    encryption_key_disclosed: "disclosed-encryption-key",
-  };
-  return situations[reasonCode] ?? null;
+  if (reasonCode === "passphrase_lost") return "lost-passphrase";
+  const entry = (Object.entries(operationConfigs) as Array<[
+    ConfiguredKeySituation,
+    OperationConfig,
+  ]>).find(([, config]) => config.reasonCode === reasonCode);
+  return entry?.[0] ?? null;
 }
 </script>
 
@@ -518,7 +541,7 @@ function situationForReason(reasonCode: KeyCeremonyReasonCode): KeySituation | n
     </header>
 
     <nav
-      v-if="!selectedSituation && !activeCeremony"
+      v-if="activeCeremonyResolved && !selectedSituation && !activeCeremony"
       class="situation-list"
       :aria-label="t('e2ee.keySituationAria')"
     >
@@ -546,7 +569,7 @@ function situationForReason(reasonCode: KeyCeremonyReasonCode): KeySituation | n
     </nav>
 
     <Button
-      v-if="selectedSituation && !activeCeremony && !activeCeremonyId && !started"
+      v-if="activeCeremonyResolved && selectedSituation && !activeCeremony && !activeCeremonyId && !started"
       class="back-action"
       type="button"
       severity="secondary"
@@ -565,7 +588,19 @@ function situationForReason(reasonCode: KeyCeremonyReasonCode): KeySituation | n
       {{ errorMessage }}
     </Message>
 
-    <div v-if="selectedSituation === 'lost-passphrase'" class="recovery-columns">
+    <Message
+      v-if="activeCeremonyResolved && showCeremonyAlreadyAssigned"
+      severity="info"
+      :closable="false"
+      aria-live="polite"
+    >
+      {{ t("e2ee.ceremonyAlreadyAssigned") }}
+    </Message>
+
+    <div
+      v-if="activeCeremonyResolved && selectedSituation === 'lost-passphrase'"
+      class="recovery-columns"
+    >
       <form
         v-if="showInitiatorPanel"
         class="recovery-card"
@@ -702,7 +737,10 @@ function situationForReason(reasonCode: KeyCeremonyReasonCode): KeySituation | n
       </form>
     </div>
 
-    <div v-else-if="operationConfig" class="recovery-columns">
+    <div
+      v-else-if="activeCeremonyResolved && operationConfig"
+      class="recovery-columns"
+    >
       <form
         v-if="showInitiatorPanel"
         class="recovery-card"
