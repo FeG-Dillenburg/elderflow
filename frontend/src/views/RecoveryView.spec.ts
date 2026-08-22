@@ -12,6 +12,7 @@ const recovery = vi.hoisted(() => ({
   sessionSet: vi.fn(),
   createKeyCandidate: vi.fn(),
   startKey: vi.fn(),
+  active: vi.fn(),
 }));
 
 vi.mock('vue-router', () => ({
@@ -25,6 +26,7 @@ vi.mock('../api/domain', () => ({
     e2eeRecoveryCeremony: recovery.ceremony,
     approveE2eeRecovery: recovery.approve,
     startE2eeKeyCeremony: recovery.startKey,
+    e2eeActiveKeyCeremony: recovery.active,
     e2eeKeyCeremony: vi.fn(),
     approveE2eeKeyCeremony: vi.fn(),
     activateE2eeKeyCeremony: vi.fn(),
@@ -64,6 +66,7 @@ describe('RecoveryView', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     recovery.metadata.mockResolvedValue(metadata);
+    recovery.active.mockResolvedValue(null);
     recovery.createCandidate.mockImplementation((secret: string) => (
       secret === canonicalSecret
         ? Promise.resolve(candidate)
@@ -95,7 +98,9 @@ describe('RecoveryView', () => {
     await lostPassphrase.trigger('click');
 
     expect(wrapper.find('.recovery-columns').exists()).toBe(true);
+    expect(wrapper.findAll('.recovery-card')).toHaveLength(1);
     expect(wrapper.text()).toContain('Recover shared passphrase');
+    expect(wrapper.text()).not.toContain('Second-operator approval');
   });
 
   it('opens a routine passphrase-change workflow with situation-specific inputs', async () => {
@@ -117,6 +122,29 @@ describe('RecoveryView', () => {
     expect(wrapper.text()).toContain('Change the shared passphrase after an access change');
     expect(wrapper.text()).toContain('Current shared passphrase');
     expect(wrapper.text()).toContain('New shared passphrase');
+  });
+
+  it('shows only the matching approval panel when another operator has an active ceremony', async () => {
+    recovery.active.mockResolvedValue({
+      id: 'active-ceremony-id',
+      operation: 'change_passphrase',
+      reasonCode: 'team_member_left',
+      state: 'pending_second_operator',
+      expiresAt: '2026-08-10T20:00:00.000Z',
+      participantRole: null,
+    });
+    const wrapper = mount(RecoveryView, { global: { stubs } });
+
+    await flushPromises();
+
+    expect(wrapper.findAll('.recovery-card')).toHaveLength(1);
+    expect(wrapper.text()).toContain('Second-operator approval');
+    expect(wrapper.text()).toContain('Proposed new shared passphrase');
+    expect(wrapper.text()).not.toContain('Prepare candidate');
+    const vm = wrapper.vm as unknown as {
+      genericApproveForm: { ceremonyId: string };
+    };
+    expect(vm.genericApproveForm.ceremonyId).toBe('active-ceremony-id');
   });
 
   it('requires both paper copies to independently reproduce a new Recovery Secret', async () => {
@@ -222,7 +250,16 @@ describe('RecoveryView', () => {
   });
 
   it('rejects a short shared passphrase before approving a recovery ceremony', async () => {
+    recovery.active.mockResolvedValue({
+      id: 'ceremony-id',
+      operation: 'lost_passphrase',
+      reasonCode: 'passphrase_lost',
+      state: 'pending_second_operator',
+      expiresAt: '2026-08-10T20:00:00.000Z',
+      participantRole: null,
+    });
     const wrapper = mount(RecoveryView, { global: { stubs } });
+    await flushPromises();
     const vm = wrapper.vm as unknown as {
       approveForm: { ceremonyId: string; recoverySecret: string; passphrase: string };
       approveRecovery: () => Promise<void>;

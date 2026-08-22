@@ -723,6 +723,14 @@ export const api = {
   activateE2eeRecovery: (id: string) => request<{ activated: true; generation: number }>(`/api/e2ee/recovery-ceremonies/${id}/activate`, { method: 'POST' }),
   confirmE2eeRecoveryPresence: (id: string) => request<{ confirmed: true }>(`/api/e2ee/recovery-ceremonies/${id}/confirm-presence`, { method: 'POST' }),
   abortE2eeRecovery: (id: string) => request<void>(`/api/e2ee/recovery-ceremonies/${id}/abort`, { method: 'POST' }),
+  e2eeActiveKeyCeremony: () => request<{
+    id: string;
+    operation: KeyCeremonyPayload['operation'];
+    reasonCode: KeyCeremonyPayload['reasonCode'];
+    state: 'pending_second_operator' | 'ready_to_activate';
+    expiresAt: string;
+    participantRole: 'initiator' | 'approver' | null;
+  } | null>('/api/e2ee/key-ceremonies/active'),
   startE2eeKeyCeremony: (encodedCandidate: string) => requestWithBinaryBody<{
     id: string;
     state: string;

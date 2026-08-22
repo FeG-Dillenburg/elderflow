@@ -96,6 +96,29 @@ export class E2eeService {
     };
   }
 
+  async activeCeremony(user: User, sessionId: string) {
+    this.assertKeyOperator(user);
+    const ceremony = await this.dataSource.getRepository(E2eeRecoveryCeremony).findOne({
+      where: { state: In(['pending_second_operator', 'ready_to_activate']) },
+      order: { createdAt: 'DESC' },
+    });
+    if (!ceremony || ceremony.expiresAt <= this.clock.now()) return null;
+    const participantRole = ceremony.initiatorId === user.id
+      && ceremony.initiatorSessionId === sessionId
+      ? 'initiator'
+      : ceremony.approverId === user.id && ceremony.approverSessionId === sessionId
+        ? 'approver'
+        : null;
+    return {
+      id: ceremony.id,
+      operation: ceremony.operation,
+      reasonCode: ceremony.reasonCode,
+      state: ceremony.state,
+      expiresAt: ceremony.expiresAt.toISOString(),
+      participantRole,
+    };
+  }
+
   async recoverySlot(user: User): Promise<Buffer> {
     this.assertKeyOperator(user);
     return (await this.requiredKeyState()).recoverySlot;

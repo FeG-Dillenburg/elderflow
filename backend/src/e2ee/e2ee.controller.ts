@@ -103,6 +103,16 @@ export class E2eeController {
     );
   }
 
+  @Get('key-ceremonies/active')
+  @CeremonyAllowed()
+  @Header('Cache-Control', 'no-store')
+  activeKeyCeremony(
+    @CurrentUser() user: User,
+    @CurrentSessionId() sessionId: string,
+  ) {
+    return this.service.activeCeremony(user, sessionId);
+  }
+
   @Post('recovery-ceremonies/:id/approve')
   @CeremonyAllowed()
   approveRecovery(@CurrentUser() user: User, @CurrentSessionId() sessionId: string, @Param('id') id: string, @Body() input: ApproveRecoveryDto) {

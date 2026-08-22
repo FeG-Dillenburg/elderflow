@@ -55,6 +55,39 @@ describe('E2eeService', () => {
     });
   });
 
+  it('returns the active ceremony and the current session participant role', async () => {
+    dataSource.getRepository.mockReturnValue({
+      findOne: jest.fn().mockResolvedValue({
+        id: 'ceremony-1',
+        operation: 'change_passphrase',
+        reasonCode: 'team_member_left',
+        state: 'pending_second_operator',
+        initiatorId: 'operator-1',
+        initiatorSessionId: 'initiator-session',
+        approverId: null,
+        approverSessionId: null,
+        expiresAt: new Date('2026-08-09T10:30:00.000Z'),
+      }),
+    });
+
+    await expect(service.activeCeremony(
+      { id: 'operator-2', role: 'admin' } as any,
+      'second-session',
+    )).resolves.toEqual({
+      id: 'ceremony-1',
+      operation: 'change_passphrase',
+      reasonCode: 'team_member_left',
+      state: 'pending_second_operator',
+      expiresAt: '2026-08-09T10:30:00.000Z',
+      participantRole: null,
+    });
+
+    await expect(service.activeCeremony(
+      { id: 'operator-1', role: 'user' } as any,
+      'initiator-session',
+    )).resolves.toMatchObject({ participantRole: 'initiator' });
+  });
+
   it.each(['it-admin', 'guest'])('denies key state and recovery to the %s role', async (role) => {
     const user = { id: `${role}-id`, role } as any;
 

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, reactive, ref } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from "vue";
 import { useRouter } from "vue-router";
 import Button from "primevue/button";
 import InputText from "primevue/inputtext";
@@ -37,6 +37,8 @@ const approvePassphraseError = ref("");
 const activeCeremonyId = ref<string | null>(null);
 const started = ref<{ id: string; expiresAt: string } | null>(null);
 const approved = ref(false);
+type ActiveCeremony = Awaited<ReturnType<typeof api.e2eeActiveKeyCeremony>>;
+const activeCeremony = ref<ActiveCeremony>(null);
 type KeySituation =
   | "lost-passphrase"
   | "routine-passphrase"
@@ -151,6 +153,13 @@ const operationConfig = computed<OperationConfig | null>(() => {
       return null;
   }
 });
+const showInitiatorPanel = computed(() => (
+  !activeCeremony.value || activeCeremony.value.participantRole === "initiator"
+));
+const showApproverPanel = computed(() => (
+  Boolean(activeCeremony.value)
+  && activeCeremony.value?.participantRole !== "initiator"
+));
 const startForm = reactive({ recoverySecret: "", passphrase: "", confirmation: "" });
 const approveForm = reactive({ ceremonyId: "", recoverySecret: "", passphrase: "" });
 let kdfAbort: AbortController | null = null;
@@ -422,6 +431,33 @@ async function chooseDifferentSituation(): Promise<void> {
   pageHeading.value?.focus();
 }
 
+onMounted(async () => {
+  try {
+    const ceremony = await api.e2eeActiveKeyCeremony();
+    if (!ceremony) return;
+    const situation = situationForReason(ceremony.reasonCode);
+    if (!situation) return;
+    activeCeremony.value = ceremony;
+    selectedSituation.value = situation;
+    if (ceremony.operation === "lost_passphrase") {
+      approveForm.ceremonyId = ceremony.id;
+    } else {
+      genericApproveForm.ceremonyId = ceremony.id;
+    }
+    if (ceremony.participantRole) {
+      activeCeremonyId.value = ceremony.id;
+      recoverySession.set(ceremony.id);
+    }
+    if (ceremony.participantRole === "initiator") {
+      started.value = { id: ceremony.id, expiresAt: ceremony.expiresAt };
+    } else if (ceremony.participantRole === "approver") {
+      approved.value = ceremony.state === "ready_to_activate";
+    }
+  } catch (error) {
+    errorMessage.value = recoveryFailureMessage(error);
+  }
+});
+
 onBeforeUnmount(() => {
   kdfAbort?.abort();
   kdfAbort = null;
@@ -451,6 +487,21 @@ function recoveryFailureMessage(error: unknown): string {
   }
   return t("e2ee.recoveryFailed");
 }
+
+function situationForReason(reasonCode: KeyCeremonyReasonCode): KeySituation | null {
+  const situations: Record<KeyCeremonyReasonCode, KeySituation> = {
+    passphrase_lost: "lost-passphrase",
+    team_member_left: "routine-passphrase",
+    routine_access_change: "routine-access-change",
+    recovery_secret_lost: "lost-recovery-secret",
+    routine_custody_change: "routine-recovery-secret",
+    planned_root_rotation: "root-rotation",
+    passphrase_disclosed: "disclosed-passphrase",
+    recovery_secret_disclosed: "disclosed-recovery-secret",
+    encryption_key_disclosed: "disclosed-encryption-key",
+  };
+  return situations[reasonCode] ?? null;
+}
 </script>
 
 <template>
@@ -467,7 +518,7 @@ function recoveryFailureMessage(error: unknown): string {
     </header>
 
     <nav
-      v-if="!selectedSituation"
+      v-if="!selectedSituation && !activeCeremony"
       class="situation-list"
       :aria-label="t('e2ee.keySituationAria')"
     >
@@ -495,7 +546,7 @@ function recoveryFailureMessage(error: unknown): string {
     </nav>
 
     <Button
-      v-if="selectedSituation && !activeCeremonyId && !started"
+      v-if="selectedSituation && !activeCeremony && !activeCeremonyId && !started"
       class="back-action"
       type="button"
       severity="secondary"
@@ -515,7 +566,11 @@ function recoveryFailureMessage(error: unknown): string {
     </Message>
 
     <div v-if="selectedSituation === 'lost-passphrase'" class="recovery-columns">
-      <form class="recovery-card" @submit.prevent="startRecovery">
+      <form
+        v-if="showInitiatorPanel"
+        class="recovery-card"
+        @submit.prevent="startRecovery"
+      >
         <h2>{{ t("e2ee.startRecovery") }}</h2>
         <label>
           <span>{{ t("e2ee.recoverySecret") }}</span>
@@ -579,7 +634,11 @@ function recoveryFailureMessage(error: unknown): string {
         </Message>
       </form>
 
-      <form class="recovery-card" @submit.prevent="approveRecovery">
+      <form
+        v-if="showApproverPanel"
+        class="recovery-card"
+        @submit.prevent="approveRecovery"
+      >
         <h2>{{ t("e2ee.approveRecovery") }}</h2>
         <label>
           <span>{{ t("e2ee.ceremonyId") }}</span>
@@ -645,6 +704,7 @@ function recoveryFailureMessage(error: unknown): string {
 
     <div v-else-if="operationConfig" class="recovery-columns">
       <form
+        v-if="showInitiatorPanel"
         class="recovery-card"
         @submit.prevent="preparedCandidate ? startPreparedCeremony() : prepareKeyCeremony()"
       >
@@ -731,7 +791,11 @@ function recoveryFailureMessage(error: unknown): string {
         </Message>
       </form>
 
-      <form class="recovery-card" @submit.prevent="approveKeyCeremony">
+      <form
+        v-if="showApproverPanel"
+        class="recovery-card"
+        @submit.prevent="approveKeyCeremony"
+      >
         <h2>{{ t("e2ee.approveRecovery") }}</h2>
         <label>
           <span>{{ t("e2ee.ceremonyId") }}</span>
@@ -816,8 +880,9 @@ h2 {
 
 .recovery-columns {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr);
   gap: 1rem;
+  max-width: 48rem;
 }
 
 .situation-list {
