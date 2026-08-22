@@ -545,7 +545,11 @@ function situationForReason(reasonCode: KeyCeremonyReasonCode): KeySituation | n
       >
         {{ selectedSituation ? t(`e2ee.keyOperationTitles.${selectedSituation}`) : t("e2ee.keySituationTitle") }}
       </h1>
-      <p>{{ t("e2ee.recoveryDescription") }}</p>
+      <p>
+        {{ selectedSituation
+          ? t(`e2ee.keyOperationDescriptions.${selectedSituation}`)
+          : t("e2ee.keySituationDescription") }}
+      </p>
     </header>
 
     <nav
@@ -901,6 +905,13 @@ function situationForReason(reasonCode: KeyCeremonyReasonCode): KeySituation | n
         />
       </form>
     </div>
+
+    <p
+      v-if="activeCeremonyResolved && selectedSituation"
+      class="ceremony-requirements"
+    >
+      {{ t("e2ee.recoveryDescription") }}
+    </p>
   </section>
 </template>
 
@@ -929,6 +940,13 @@ h2 {
   grid-template-columns: minmax(0, 1fr);
   gap: 1rem;
   max-width: 48rem;
+}
+
+.ceremony-requirements {
+  max-width: 48rem;
+  margin: 0;
+  color: #5e6d83;
+  font-size: 0.9rem;
 }
 
 .situation-list {

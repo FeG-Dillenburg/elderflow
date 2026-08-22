@@ -103,6 +103,31 @@ describe('RecoveryView', () => {
     expect(wrapper.findAll('.recovery-card')).toHaveLength(1);
     expect(wrapper.text()).toContain('Recover shared passphrase');
     expect(wrapper.text()).not.toContain('Second-operator approval');
+    expect(wrapper.get('header').text()).toContain('This uses your Recovery Secret');
+    expect(wrapper.get('header').text()).not.toContain('Two distinct Key operators');
+    expect(wrapper.get('.ceremony-requirements').text()).toContain('Two distinct Key operators');
+    expect(wrapper.html().indexOf('recovery-card')).toBeLessThan(
+      wrapper.html().indexOf('ceremony-requirements'),
+    );
+  });
+
+  it.each([
+    ['lost-passphrase', 'uses your Recovery Secret to create a new shared passphrase'],
+    ['routine-passphrase', 'replaces the shared passphrase after someone leaves'],
+    ['routine-access-change', 'replaces the shared passphrase after team access changes'],
+    ['lost-recovery-secret', 'creates a new Recovery Secret and invalidates the lost one'],
+    ['routine-recovery-secret', 'replaces the Recovery Secret because responsibility for its paper copies changed'],
+    ['root-rotation', 'renews the organization’s internal protection'],
+    ['disclosed-passphrase', 'replaces the disclosed passphrase, Recovery Secret, and encryption keys'],
+    ['disclosed-recovery-secret', 'replaces the disclosed Recovery Secret, shared passphrase, and encryption keys'],
+    ['disclosed-encryption-key', 'New changes use new keys'],
+  ])('explains the consequences of the %s situation', async (situation, explanation) => {
+    const wrapper = mount(RecoveryView, { global: { stubs } });
+    await flushPromises();
+
+    await wrapper.get(`[data-situation="${situation}"]`).trigger('click');
+
+    expect(wrapper.get('header').text()).toContain(explanation);
   });
 
   it('opens a routine passphrase-change workflow with situation-specific inputs', async () => {
