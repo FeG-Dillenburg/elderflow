@@ -170,6 +170,7 @@ const approveForm = reactive({ ceremonyId: "", recoverySecret: "", passphrase: "
 let kdfAbort: AbortController | null = null;
 let activeCeremonyPoll: ReturnType<typeof setInterval> | null = null;
 let activeCeremonyRequestPending = false;
+let viewUnmounted = false;
 
 async function startRecovery(): Promise<void> {
   selectedSituation.value ??= "lost-passphrase";
@@ -443,8 +444,13 @@ async function refreshActiveCeremony(): Promise<void> {
   activeCeremonyRequestPending = true;
   try {
     const ceremony = await api.e2eeActiveKeyCeremony();
+    if (viewUnmounted) return;
     if (!ceremony) {
-      if (activeCeremony.value && !activeCeremonyId.value) {
+      if (activeCeremony.value) {
+        recoverySession.clear();
+        activeCeremonyId.value = null;
+        started.value = null;
+        approved.value = false;
         selectedSituation.value = null;
       }
       activeCeremony.value = null;
@@ -469,7 +475,7 @@ async function refreshActiveCeremony(): Promise<void> {
       approved.value = ceremony.state === "ready_to_activate";
     }
   } catch (error) {
-    if (!activeCeremonyResolved.value) {
+    if (!viewUnmounted && !activeCeremonyResolved.value) {
       errorMessage.value = recoveryFailureMessage(error);
     }
   } finally {
@@ -480,12 +486,14 @@ async function refreshActiveCeremony(): Promise<void> {
 
 onMounted(async () => {
   await refreshActiveCeremony();
+  if (viewUnmounted) return;
   activeCeremonyPoll = setInterval(() => {
     void refreshActiveCeremony();
   }, 5_000);
 });
 
 onBeforeUnmount(() => {
+  viewUnmounted = true;
   if (activeCeremonyPoll) clearInterval(activeCeremonyPoll);
   activeCeremonyPoll = null;
   kdfAbort?.abort();

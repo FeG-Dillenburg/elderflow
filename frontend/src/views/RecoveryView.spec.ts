@@ -10,6 +10,7 @@ const recovery = vi.hoisted(() => ({
   createCandidate: vi.fn(),
   verifyCandidate: vi.fn(),
   sessionSet: vi.fn(),
+  sessionClear: vi.fn(),
   createKeyCandidate: vi.fn(),
   startKey: vi.fn(),
   active: vi.fn(),
@@ -43,7 +44,7 @@ vi.mock('../e2ee/crypto', () => ({
 vi.mock('../e2ee/recovery-session', () => ({
   recoverySession: {
     set: recovery.sessionSet,
-    clear: vi.fn(),
+    clear: recovery.sessionClear,
     abort: vi.fn(),
   },
 }));
@@ -165,6 +166,34 @@ describe('RecoveryView', () => {
     expect(wrapper.find('.situation-list').exists()).toBe(true);
   });
 
+  it('does not resume a ceremony when the active lookup finishes after unmount', async () => {
+    let resolveActive!: (value: {
+      id: string;
+      operation: 'change_passphrase';
+      reasonCode: 'team_member_left';
+      state: 'pending_second_operator';
+      expiresAt: string;
+      participantRole: 'initiator';
+    }) => void;
+    recovery.active.mockReturnValue(new Promise((resolve) => {
+      resolveActive = resolve;
+    }));
+    const wrapper = mount(RecoveryView, { global: { stubs } });
+
+    wrapper.unmount();
+    resolveActive({
+      id: 'late-ceremony-id',
+      operation: 'change_passphrase',
+      reasonCode: 'team_member_left',
+      state: 'pending_second_operator',
+      expiresAt: '2026-08-10T20:00:00.000Z',
+      participantRole: 'initiator',
+    });
+    await flushPromises();
+
+    expect(recovery.sessionSet).not.toHaveBeenCalled();
+  });
+
   it('refreshes an already-open page when another operator starts a ceremony', async () => {
     recovery.active
       .mockResolvedValueOnce(null)
@@ -188,6 +217,33 @@ describe('RecoveryView', () => {
 
     expect(wrapper.find('.situation-list').exists()).toBe(false);
     expect(wrapper.text()).toContain('Second-operator approval');
+  });
+
+  it('clears participant state when the active ceremony disappears', async () => {
+    recovery.active
+      .mockResolvedValueOnce({
+        id: 'expiring-ceremony-id',
+        operation: 'change_passphrase',
+        reasonCode: 'team_member_left',
+        state: 'pending_second_operator',
+        expiresAt: '2026-08-10T20:00:00.000Z',
+        participantRole: 'initiator',
+      })
+      .mockResolvedValueOnce(null);
+    const wrapper = mount(RecoveryView, { global: { stubs } });
+    await flushPromises();
+    const vm = wrapper.vm as unknown as {
+      refreshActiveCeremony: () => Promise<void>;
+      activeCeremonyId: string | null;
+      selectedSituation: string | null;
+    };
+
+    await vm.refreshActiveCeremony();
+
+    expect(recovery.sessionClear).toHaveBeenCalled();
+    expect(vm.activeCeremonyId).toBeNull();
+    expect(vm.selectedSituation).toBeNull();
+    expect(wrapper.find('.situation-list').exists()).toBe(true);
   });
 
   it('does not offer approval to a third operator after approval is complete', async () => {
