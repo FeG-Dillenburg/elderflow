@@ -3,7 +3,7 @@ import sodium from "libsodium-wrappers-sumo";
 import { EntityManager } from "typeorm";
 import { codedHttpException } from "../errors/coded-http.exception";
 import { User } from "../users/user.entity";
-import { E2eeClientEpoch } from "./e2ee-client-epoch.entity";
+import { E2eeClientEpoch, isClientEpochWritable } from "./e2ee-client-epoch.entity";
 import { E2eeKeyState } from "./e2ee-key-state.entity";
 import { isE2eeKeyOperator } from "./e2ee-role-policy";
 import { E2eeScalarWrite } from "./e2ee-scalar-write.entity";
@@ -52,7 +52,7 @@ export class E2eeScalarService {
         "Protected text is not configured",
       );
     }
-    if (!epoch || epoch.revokedAt || epoch.userId !== user.id) {
+    if (!epoch || !isClientEpochWritable(epoch) || epoch.userId !== user.id) {
       throw codedHttpException(
         HttpStatus.CONFLICT,
         "E2EE_CLIENT_EPOCH_INVALID",

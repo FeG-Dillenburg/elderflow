@@ -8,9 +8,10 @@ import { E2eeRecoveryCeremony } from './e2ee-recovery-ceremony.entity';
 import { E2EE_CLOCK, E2eeService } from './e2ee.service';
 import { E2eeScalarService } from './e2ee-scalar.service';
 import { E2eeScalarWrite } from './e2ee-scalar-write.entity';
+import { E2eeContentKeyWrapper } from './e2ee-content-key-wrapper.entity';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([E2eeKeyState, E2eeClientEpoch, E2eeRecoveryCeremony, E2eeAuditEvent, E2eeScalarWrite])],
+  imports: [TypeOrmModule.forFeature([E2eeKeyState, E2eeClientEpoch, E2eeRecoveryCeremony, E2eeAuditEvent, E2eeScalarWrite, E2eeContentKeyWrapper])],
   controllers: [E2eeController],
   providers: [
     E2eeService,

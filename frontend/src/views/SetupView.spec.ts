@@ -28,6 +28,7 @@ const stubs = {
   Button: { props: ['label'], template: '<button>{{ label }}</button>' },
   InputText: { props: ['modelValue', 'invalid'], template: '<input :aria-invalid="invalid ? \'true\' : \'false\'" />' },
   Password: { props: ['modelValue', 'invalid'], template: '<input :aria-invalid="invalid ? \'true\' : \'false\'" />' },
+  Checkbox: { props: ['modelValue', 'binary', 'inputId'], template: '<input :id="inputId" type="checkbox" :checked="modelValue" />' },
   Message: { template: '<div><slot /></div>' },
 };
 
@@ -117,6 +118,8 @@ describe('SetupView', () => {
     );
     expect(vm.stage).toBe('recovery');
     expect(wrapper.text()).toContain(generatedKeyState.recoveryText);
+    expect(wrapper.findAll('input[type="checkbox"]')).toHaveLength(2);
+    expect(wrapper.find('.recovery-secret-print-sheet').exists()).toBe(true);
     vm.firstCopyAcknowledged = true;
     vm.secondCopyAcknowledged = true;
     await vm.createUser();

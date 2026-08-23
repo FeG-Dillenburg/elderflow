@@ -10,6 +10,7 @@ interface ScalarSessionKeys {
   clientEpochId: string;
   noncePrefix: Uint8Array;
   contentKey: Uint8Array;
+  historicalContentKeys?: Map<string, Uint8Array>;
   signingPrivateKey: Uint8Array;
 }
 
@@ -23,6 +24,10 @@ export class ScalarSession {
       ...keys,
       noncePrefix: Uint8Array.from(keys.noncePrefix),
       contentKey: Uint8Array.from(keys.contentKey),
+      historicalContentKeys: new Map(
+        [...(keys.historicalContentKeys ?? new Map()).entries()]
+          .map(([ockId, key]) => [ockId, Uint8Array.from(key)]),
+      ),
       signingPrivateKey: Uint8Array.from(keys.signingPrivateKey),
     };
   }
@@ -56,19 +61,31 @@ export class ScalarSession {
 
   async decrypt(context: ScalarFieldContext, envelope: Uint8Array): Promise<string | null> {
     const keys = this.requiredKeys();
-    return decryptScalar({
-      ...context,
-      organizationId: keys.organizationId,
-      ockId: keys.ockId,
-      envelope,
-      contentKey: keys.contentKey,
-    });
+    let failure: unknown;
+    for (const [ockId, contentKey] of [
+      [keys.ockId, keys.contentKey] as const,
+      ...[...(keys.historicalContentKeys ?? new Map()).entries()],
+    ]) {
+      try {
+        return await decryptScalar({
+          ...context,
+          organizationId: keys.organizationId,
+          ockId,
+          envelope,
+          contentKey,
+        });
+      } catch (error) {
+        failure = error;
+      }
+    }
+    throw failure;
   }
 
   lock(): void {
     if (this.keys) {
       sodium.memzero(this.keys.noncePrefix);
       sodium.memzero(this.keys.contentKey);
+      this.keys.historicalContentKeys?.forEach((key) => sodium.memzero(key));
       sodium.memzero(this.keys.signingPrivateKey);
     }
     this.keys = null;

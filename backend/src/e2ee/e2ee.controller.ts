@@ -7,6 +7,7 @@ import { AllowRevokedSession } from '../auth/allow-revoked-session.decorator';
 import { E2EE_MEDIA_TYPE } from './e2ee-protocol';
 import { CurrentSessionId } from '../auth/current-session-id.decorator';
 import { CeremonyAllowed } from '../auth/ceremony-allowed.decorator';
+import { decodeKeyCeremonyPayload } from './key-ceremony-payload';
 
 @Controller('api/e2ee')
 export class E2eeController {
@@ -31,6 +32,13 @@ export class E2eeController {
   @Header('Cache-Control', 'no-store')
   async keyStateContentWrapper(@CurrentUser() user: User): Promise<StreamableFile> {
     return this.binaryResponse(await this.service.keyWrapper(user, 'content-key-wrapper'));
+  }
+
+  @Get('key-state/content-key-wrappers')
+  @CeremonyAllowed()
+  @Header('Cache-Control', 'no-store')
+  async keyStateContentWrappers(@CurrentUser() user: User): Promise<StreamableFile> {
+    return this.binaryResponse(await this.service.contentKeyWrapperSet(user));
   }
 
   @Get('recovery-metadata')
@@ -77,6 +85,34 @@ export class E2eeController {
     });
   }
 
+  @Post('key-ceremonies')
+  @CeremonyAllowed()
+  startKeyCeremony(
+    @CurrentUser() user: User,
+    @CurrentSessionId() sessionId: string,
+    @Body() candidatePayload: Buffer,
+  ) {
+    if (!Buffer.isBuffer(candidatePayload)) {
+      throw new BadRequestException({ code: 'E2EE_BINARY_BODY_INVALID', message: 'A binary E2EE body is required' });
+    }
+    return this.service.startKeyCeremony(
+      user,
+      sessionId,
+      decodeKeyCeremonyPayload(candidatePayload),
+      candidatePayload,
+    );
+  }
+
+  @Get('key-ceremonies/active')
+  @CeremonyAllowed()
+  @Header('Cache-Control', 'no-store')
+  activeKeyCeremony(
+    @CurrentUser() user: User,
+    @CurrentSessionId() sessionId: string,
+  ) {
+    return this.service.activeCeremony(user, sessionId);
+  }
+
   @Post('recovery-ceremonies/:id/approve')
   @CeremonyAllowed()
   approveRecovery(@CurrentUser() user: User, @CurrentSessionId() sessionId: string, @Param('id') id: string, @Body() input: ApproveRecoveryDto) {
@@ -99,6 +135,46 @@ export class E2eeController {
   ): Promise<StreamableFile> {
     return this.service.recoveryCandidate(user, id)
       .then((buffer) => this.binaryResponse(buffer));
+  }
+
+  @Get('key-ceremonies/:id/candidate')
+  @CeremonyAllowed()
+  @Header('Cache-Control', 'no-store')
+  keyCeremonyCandidate(@CurrentUser() user: User, @Param('id') id: string): Promise<StreamableFile> {
+    return this.service.keyCeremonyCandidate(user, id).then((buffer) => this.binaryResponse(buffer));
+  }
+
+  @Get('key-ceremonies/:id')
+  @CeremonyAllowed()
+  @Header('Cache-Control', 'no-store')
+  keyCeremony(@CurrentUser() user: User, @Param('id') id: string) {
+    return this.service.recoveryCeremony(user, id);
+  }
+
+  @Post('key-ceremonies/:id/approve')
+  @CeremonyAllowed()
+  approveKeyCeremony(@CurrentUser() user: User, @CurrentSessionId() sessionId: string, @Param('id') id: string, @Body() input: ApproveRecoveryDto) {
+    return this.service.approveRecovery(user, sessionId, id, input);
+  }
+
+  @Post('key-ceremonies/:id/activate')
+  @CeremonyAllowed()
+  @AllowRevokedSession()
+  activateKeyCeremony(@CurrentUser() user: User, @CurrentSessionId() sessionId: string, @Param('id') id: string) {
+    return this.service.activateRecovery(user, sessionId, id);
+  }
+
+  @Post('key-ceremonies/:id/confirm-presence')
+  @CeremonyAllowed()
+  confirmKeyCeremonyPresence(@CurrentUser() user: User, @CurrentSessionId() sessionId: string, @Param('id') id: string) {
+    return this.service.confirmRecoveryPresence(user, sessionId, id);
+  }
+
+  @Post('key-ceremonies/:id/abort')
+  @CeremonyAllowed()
+  @HttpCode(204)
+  abortKeyCeremony(@CurrentUser() user: User, @CurrentSessionId() sessionId: string, @Param('id') id: string): Promise<void> {
+    return this.service.abortRecovery(user, sessionId, id);
   }
 
   @Post('recovery-ceremonies/:id/activate')

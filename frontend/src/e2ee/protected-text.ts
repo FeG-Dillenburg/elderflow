@@ -81,16 +81,23 @@ export const protectedText = {
         sodium.memzero(noncePrefix);
         sodium.memzero(keys.organizationRootKey);
         sodium.memzero(keys.contentKey);
+        keys.historicalContentKeys.forEach((key) => sodium.memzero(key));
         throw error;
       }
       epochId = newEpochId;
-      session.unlock({ ...keys, signingPrivateKey: signing.privateKey, noncePrefix });
+      session.unlock({
+        ...keys,
+        historicalContentKeys: [...keys.historicalContentKeys.values()],
+        signingPrivateKey: signing.privateKey,
+        noncePrefix,
+      });
       scalarSession.unlock({
         organizationId: keyState.organizationId,
         ockId: keyState.ockId,
         clientEpochId: newEpochId,
         noncePrefix,
         contentKey: keys.contentKey,
+        historicalContentKeys: keys.historicalContentKeys,
         signingPrivateKey: signing.privateKey,
       });
       meetingDocumentSession.unlock({
@@ -99,6 +106,7 @@ export const protectedText = {
         clientEpochId: newEpochId,
         noncePrefix,
         contentKey: keys.contentKey,
+        historicalContentKeys: keys.historicalContentKeys,
         signingPrivateKey: signing.privateKey,
       });
       state.status = 'unlocked';

@@ -16,6 +16,7 @@ import { EncryptedMeetingWorkspaces1720000014000 } from './1720000014000-Encrypt
 import { MeetingCompletionTimestamp1720000015000 } from './1720000015000-MeetingCompletionTimestamp';
 import { MeetingCollaboration1720000016000 } from './1720000016000-MeetingCollaboration';
 import { MeetingMutationCompaction1720000017000 } from './1720000017000-MeetingMutationCompaction';
+import { KeyRotationCeremonies1720000018000 } from './1720000018000-KeyRotationCeremonies';
 
 export const migrations = [
   CreateUsers1720000000000,
@@ -36,4 +37,5 @@ export const migrations = [
   MeetingCompletionTimestamp1720000015000,
   MeetingCollaboration1720000016000,
   MeetingMutationCompaction1720000017000,
+  KeyRotationCeremonies1720000018000,
 ];

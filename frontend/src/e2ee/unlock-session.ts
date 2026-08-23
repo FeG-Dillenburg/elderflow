@@ -5,6 +5,7 @@ export type LockReason = 'explicit' | 'inactivity' | 'absolute' | 'logout' | 'id
 interface UnlockKeys {
   organizationRootKey: Uint8Array;
   contentKey: Uint8Array;
+  historicalContentKeys?: Uint8Array[];
   signingPrivateKey?: Uint8Array;
   noncePrefix?: Uint8Array;
 }
@@ -64,6 +65,7 @@ export class UnlockSession {
     if (this.keys) {
       sodium.memzero(this.keys.organizationRootKey);
       sodium.memzero(this.keys.contentKey);
+      this.keys.historicalContentKeys?.forEach((key) => sodium.memzero(key));
       if (this.keys.signingPrivateKey) sodium.memzero(this.keys.signingPrivateKey);
       if (this.keys.noncePrefix) sodium.memzero(this.keys.noncePrefix);
       this.keys = null;
