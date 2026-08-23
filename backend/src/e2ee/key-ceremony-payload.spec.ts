@@ -32,4 +32,18 @@ describe('key ceremony candidate payload', () => {
     corrupted[0] = 0xff;
     expect(() => decodeKeyCeremonyPayload(corrupted)).toThrow('Invalid key ceremony candidate');
   });
+
+  it('rejects non-binary input before inspecting attacker-controlled properties', () => {
+    let lengthWasRead = false;
+    const arrayInput = new Proxy([], {
+      get(target, property, receiver) {
+        if (property === 'length') lengthWasRead = true;
+        return Reflect.get(target, property, receiver);
+      },
+    });
+
+    expect(() => decodeKeyCeremonyPayload(arrayInput))
+      .toThrow('Invalid key ceremony candidate');
+    expect(lengthWasRead).toBe(false);
+  });
 });

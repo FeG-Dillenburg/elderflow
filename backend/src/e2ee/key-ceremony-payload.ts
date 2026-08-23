@@ -71,8 +71,9 @@ export function encodeKeyCeremonyPayload(candidate: KeyCeremonyPayload): Buffer 
   ]));
 }
 
-export function decodeKeyCeremonyPayload(encoded: Uint8Array): KeyCeremonyPayload {
+export function decodeKeyCeremonyPayload(encoded: unknown): KeyCeremonyPayload {
   try {
+    if (!(encoded instanceof Uint8Array)) invalid();
     if (encoded.length < 32 || encoded.length > 16_384) invalid();
     const value = decoder.decode(encoded) as unknown;
     if (!Array.isArray(value) || value.length !== 12 || value[0] !== 1) invalid();
