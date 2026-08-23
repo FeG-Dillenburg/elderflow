@@ -50,6 +50,37 @@ type KeySituation =
   | "disclosed-passphrase"
   | "disclosed-recovery-secret"
   | "disclosed-encryption-key";
+interface SituationGroup {
+  id: "common" | "disclosure" | "other";
+  titleKey?: "disclosure" | "other";
+  situations: KeySituation[];
+}
+const situationGroups: SituationGroup[] = [
+  {
+    id: "common",
+    situations: [
+      "lost-passphrase",
+      "routine-passphrase",
+      "routine-access-change",
+      "lost-recovery-secret",
+      "routine-recovery-secret",
+    ],
+  },
+  {
+    id: "disclosure",
+    titleKey: "disclosure",
+    situations: [
+      "disclosed-passphrase",
+      "disclosed-recovery-secret",
+      "disclosed-encryption-key",
+    ],
+  },
+  {
+    id: "other",
+    titleKey: "other",
+    situations: ["root-rotation"],
+  },
+];
 const selectedSituation = ref<KeySituation | null>(null);
 const pageHeading = ref<HTMLElement | null>(null);
 const preparedCandidate = ref<GeneratedKeyCeremonyCandidate | null>(null);
@@ -557,27 +588,25 @@ function situationForReason(reasonCode: KeyCeremonyReasonCode): KeySituation | n
       class="situation-list"
       :aria-label="t('e2ee.keySituationAria')"
     >
-      <button
-        v-for="situation in ([
-          'lost-passphrase',
-          'routine-passphrase',
-          'routine-access-change',
-          'lost-recovery-secret',
-          'routine-recovery-secret',
-          'root-rotation',
-          'disclosed-passphrase',
-          'disclosed-recovery-secret',
-          'disclosed-encryption-key',
-        ] as KeySituation[])"
-        :key="situation"
-        type="button"
-        class="situation-card"
-        :data-situation="situation"
-        @click="selectSituation(situation)"
-      >
-        {{ t(`e2ee.keySituations.${situation}`) }}
-        <i class="pi pi-arrow-right" aria-hidden="true" />
-      </button>
+      <template v-for="group in situationGroups" :key="group.id">
+        <h2
+          v-if="group.titleKey"
+          class="situation-group-title"
+        >
+          {{ t(`e2ee.keySituationGroups.${group.titleKey}`) }}
+        </h2>
+        <button
+          v-for="situation in group.situations"
+          :key="situation"
+          type="button"
+          class="situation-card"
+          :data-situation="situation"
+          @click="selectSituation(situation)"
+        >
+          {{ t(`e2ee.keySituations.${situation}`) }}
+          <i class="pi pi-arrow-right" aria-hidden="true" />
+        </button>
+      </template>
     </nav>
 
     <Button
@@ -954,6 +983,15 @@ h2 {
 .situation-list {
   display: grid;
   gap: 0.75rem;
+}
+
+.situation-group-title {
+  margin: 0.75rem 0 0;
+  color: #607dae;
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .back-action {

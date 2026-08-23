@@ -94,6 +94,20 @@ describe('RecoveryView', () => {
     expect(wrapper.text()).toContain('Our shared passphrase may have been disclosed.');
     expect(wrapper.text()).toContain('Our Recovery Secret may have been disclosed.');
     expect(wrapper.text()).toContain('An encryption key may have been disclosed.');
+    expect(wrapper.text()).toContain('Possibly disclosed');
+    expect(wrapper.text()).toContain('Other options');
+    const situationCards = wrapper.findAll('.situation-card');
+    expect(situationCards.at(-1)?.attributes('data-situation')).toBe('root-rotation');
+    const chooserText = wrapper.get('.situation-list').text();
+    expect(chooserText.indexOf('Possibly disclosed')).toBeLessThan(
+      chooserText.indexOf('Our shared passphrase may have been disclosed.'),
+    );
+    expect(chooserText.indexOf('Other options')).toBeLessThan(
+      chooserText.indexOf('We want to rotate the Organization Root Key.'),
+    );
+    expect(chooserText.indexOf('An encryption key may have been disclosed.')).toBeLessThan(
+      chooserText.indexOf('Other options'),
+    );
     expect(wrapper.find('.recovery-columns').exists()).toBe(false);
 
     const lostPassphrase = wrapper.find('[data-situation="lost-passphrase"]');
