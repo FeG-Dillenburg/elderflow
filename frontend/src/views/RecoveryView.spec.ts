@@ -58,7 +58,7 @@ const candidate = {
 
 const stubs = {
   Button: { props: ['label'], template: '<button>{{ label }}</button>' },
-  InputText: { props: ['modelValue', 'invalid'], template: '<input :aria-invalid="invalid ? \'true\' : \'false\'" />' },
+  InputText: { props: ['modelValue', 'invalid', 'readonly'], template: '<input :aria-invalid="invalid ? \'true\' : \'false\'" :readonly="readonly" />' },
   Password: { props: ['modelValue', 'invalid'], template: '<input :aria-invalid="invalid ? \'true\' : \'false\'" />' },
   Message: { template: '<div><slot /></div>' },
 };
@@ -187,6 +187,7 @@ describe('RecoveryView', () => {
     expect(wrapper.text()).toContain('Second-operator approval');
     expect(wrapper.text()).toContain('Proposed new shared passphrase');
     expect(wrapper.text()).not.toContain('Prepare candidate');
+    expect(wrapper.find('input[readonly]').exists()).toBe(true);
     const vm = wrapper.vm as unknown as {
       genericApproveForm: { ceremonyId: string };
     };
@@ -418,6 +419,7 @@ describe('RecoveryView', () => {
     });
     const wrapper = mount(RecoveryView, { global: { stubs } });
     await flushPromises();
+    expect(wrapper.find('input[readonly]').exists()).toBe(true);
     const vm = wrapper.vm as unknown as {
       approveForm: { ceremonyId: string; recoverySecret: string; passphrase: string };
       approveRecovery: () => Promise<void>;

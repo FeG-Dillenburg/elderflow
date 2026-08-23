@@ -692,6 +692,7 @@ function situationForReason(reasonCode: KeyCeremonyReasonCode): KeySituation | n
           <InputText
             v-model="approveForm.ceremonyId"
             autocomplete="off"
+            readonly
             required
           />
         </label>
@@ -852,6 +853,7 @@ function situationForReason(reasonCode: KeyCeremonyReasonCode): KeySituation | n
           <InputText
             v-model="genericApproveForm.ceremonyId"
             autocomplete="off"
+            readonly
             required
           />
         </label>
