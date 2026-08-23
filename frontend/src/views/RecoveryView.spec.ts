@@ -60,6 +60,7 @@ const stubs = {
   Button: { props: ['label'], template: '<button>{{ label }}</button>' },
   InputText: { props: ['modelValue', 'invalid', 'readonly'], template: '<input :aria-invalid="invalid ? \'true\' : \'false\'" :readonly="readonly" />' },
   Password: { props: ['modelValue', 'invalid'], template: '<input :aria-invalid="invalid ? \'true\' : \'false\'" />' },
+  Checkbox: { props: ['modelValue', 'binary', 'inputId'], template: '<input :id="inputId" type="checkbox" :checked="modelValue" />' },
   Message: { template: '<div><slot /></div>' },
 };
 
@@ -158,6 +159,70 @@ describe('RecoveryView', () => {
 
     expect(wrapper.get('header').text()).toContain(
       'verify and safely store two separate paper copies',
+    );
+  });
+
+  it.each([
+    {
+      situation: 'disclosed-passphrase',
+      guidance: 'Because the shared passphrase may be compromised, use the Recovery Secret to authorize this rotation.',
+      currentCredential: 'Current Recovery Secret',
+      currentPassphrase: undefined,
+      currentRecoveryText: canonicalSecret,
+    },
+    {
+      situation: 'disclosed-recovery-secret',
+      guidance: 'Because the Recovery Secret may be compromised, use the current shared passphrase to authorize this rotation.',
+      currentCredential: 'Current shared passphrase',
+      currentPassphrase: 'trusted current passphrase',
+      currentRecoveryText: undefined,
+    },
+  ])('uses the uncompromised credential for $situation', async ({
+    situation,
+    guidance,
+    currentCredential,
+    currentPassphrase,
+    currentRecoveryText,
+  }) => {
+    recovery.createKeyCandidate.mockResolvedValue({
+      encodedCandidate: 'candidate',
+      recoveryText: canonicalSecret,
+    });
+    const wrapper = mount(RecoveryView, { global: { stubs } });
+    await flushPromises();
+    await wrapper.get(`[data-situation="${situation}"]`).trigger('click');
+    const vm = wrapper.vm as unknown as {
+      genericStartForm: {
+        currentPassphrase: string;
+        currentRecoveryText: string;
+        newPassphrase: string;
+        confirmation: string;
+      };
+      prepareKeyCeremony: () => Promise<void>;
+    };
+    Object.assign(vm.genericStartForm, {
+      currentPassphrase: currentPassphrase ?? '',
+      currentRecoveryText: currentRecoveryText ?? '',
+      newPassphrase: 'replacement shared passphrase',
+      confirmation: 'replacement shared passphrase',
+    });
+
+    expect(wrapper.get('header').text()).toContain(guidance);
+    expect(wrapper.text()).toContain(currentCredential);
+    expect(wrapper.text()).toContain('New shared passphrase');
+
+    await vm.prepareKeyCeremony();
+
+    expect(recovery.createKeyCandidate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        reasonCode: situation === 'disclosed-passphrase'
+          ? 'passphrase_disclosed'
+          : 'recovery_secret_disclosed',
+        newPassphrase: 'replacement shared passphrase',
+        ...(currentPassphrase ? { currentPassphrase } : {}),
+        ...(currentRecoveryText ? { currentRecoveryText } : {}),
+      }),
+      expect.any(AbortSignal),
     );
   });
 
@@ -319,20 +384,21 @@ describe('RecoveryView', () => {
     expect(wrapper.text()).toContain('This ceremony already has two operators');
   });
 
-  it('requires both paper copies to independently reproduce a new Recovery Secret', async () => {
+  it('requires custody acknowledgement for both paper copies of a new Recovery Secret', async () => {
     recovery.startKey.mockResolvedValue({
       id: 'key-ceremony-id',
       candidateFingerprint: 'fingerprint',
       expiresAt: '2026-08-10T20:00:00.000Z',
     });
     const wrapper = mount(RecoveryView, { global: { stubs } });
+    await flushPromises();
     const vm = wrapper.vm as unknown as {
       selectedSituation: string;
       preparedCandidate: {
         encodedCandidate: string;
         recoveryText: string;
       };
-      custody: { firstCopy: string; secondCopy: string };
+      custody: { firstCopyAcknowledged: boolean; secondCopyAcknowledged: boolean };
       startPreparedCeremony: () => Promise<void>;
     };
     vm.selectedSituation = 'routine-recovery-secret';
@@ -340,16 +406,54 @@ describe('RecoveryView', () => {
       encodedCandidate: 'candidate',
       recoveryText: canonicalSecret,
     };
-    vm.custody.firstCopy = canonicalSecret;
-    vm.custody.secondCopy = `${canonicalSecret.slice(0, -1)}A`;
+    await wrapper.vm.$nextTick();
+    expect(wrapper.findAll('input[type="checkbox"]')).toHaveLength(2);
+    expect(wrapper.find('.recovery-secret-print-sheet').exists()).toBe(true);
+    vm.custody.firstCopyAcknowledged = true;
 
     await vm.startPreparedCeremony();
     expect(recovery.startKey).not.toHaveBeenCalled();
-    expect(wrapper.text()).toContain('Both independently checked paper copies must exactly match');
+    expect(wrapper.text()).toContain('Both separately stored paper copies must be acknowledged');
 
-    vm.custody.secondCopy = canonicalSecret;
+    vm.custody.secondCopyAcknowledged = true;
     await vm.startPreparedCeremony();
     expect(recovery.startKey).toHaveBeenCalledWith('candidate');
+  });
+
+  it('requires fresh custody acknowledgements after abandoning a generated Recovery Secret', async () => {
+    const wrapper = mount(RecoveryView, { global: { stubs } });
+    await flushPromises();
+    const vm = wrapper.vm as unknown as {
+      selectedSituation: string | null;
+      preparedCandidate: {
+        encodedCandidate: string;
+        recoveryText: string;
+      } | null;
+      custody: { firstCopyAcknowledged: boolean; secondCopyAcknowledged: boolean };
+      chooseDifferentSituation: () => Promise<void>;
+      startPreparedCeremony: () => Promise<void>;
+    };
+    vm.selectedSituation = 'routine-recovery-secret';
+    vm.preparedCandidate = {
+      encodedCandidate: 'first-candidate',
+      recoveryText: canonicalSecret,
+    };
+    vm.custody.firstCopyAcknowledged = true;
+    vm.custody.secondCopyAcknowledged = true;
+
+    await vm.chooseDifferentSituation();
+    vm.selectedSituation = 'lost-recovery-secret';
+    vm.preparedCandidate = {
+      encodedCandidate: 'replacement-candidate',
+      recoveryText: `${canonicalSecret.slice(0, -1)}A`,
+    };
+    await vm.startPreparedCeremony();
+
+    expect(recovery.startKey).not.toHaveBeenCalled();
+    expect(vm.custody).toEqual({
+      firstCopyAcknowledged: false,
+      secondCopyAcknowledged: false,
+    });
   });
 
   it('normalizes clipboard whitespace before validating a Recovery Secret', async () => {

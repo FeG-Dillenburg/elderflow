@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import Button from "primevue/button";
+import Checkbox from "primevue/checkbox";
 import InputText from "primevue/inputtext";
 import Message from "primevue/message";
 import Password from "primevue/password";
@@ -14,6 +15,7 @@ import {
 import { setLanguage } from "../i18n";
 import { installation } from "../installation";
 import { createInitialKeyState, type GeneratedInitialKeyState } from "../e2ee/crypto";
+import RecoverySecretPrintSheet from "../e2ee/RecoverySecretPrintSheet.vue";
 import {
   isSharedPassphraseValid,
   SHARED_PASSPHRASE_MIN_LENGTH,
@@ -208,9 +210,6 @@ async function createUser(): Promise<void> {
   }
 }
 
-function printRecovery(): void {
-  window.print();
-}
 </script>
 
 <template>
@@ -441,21 +440,23 @@ function printRecovery(): void {
           @submit.prevent="createUser"
         >
           <p class="recovery-warning">{{ t("e2ee.recoveryWarning") }}</p>
-          <code class="recovery-secret" aria-live="polite">
-            {{ generatedKeyState.recoveryText }}
-          </code>
-          <Button
-            type="button"
-            severity="secondary"
-            :label="t('e2ee.printRecoverySecret')"
-            @click="printRecovery"
+          <RecoverySecretPrintSheet
+            :recovery-secret="generatedKeyState.recoveryText"
           />
-          <label class="acknowledgement">
-            <input v-model="firstCopyAcknowledged" type="checkbox" />
+          <label class="acknowledgement" for="setup-first-copy-acknowledgement">
+            <Checkbox
+              v-model="firstCopyAcknowledged"
+              input-id="setup-first-copy-acknowledgement"
+              binary
+            />
             <span>{{ t("e2ee.firstCopyAcknowledgement") }}</span>
           </label>
-          <label class="acknowledgement">
-            <input v-model="secondCopyAcknowledged" type="checkbox" />
+          <label class="acknowledgement" for="setup-second-copy-acknowledgement">
+            <Checkbox
+              v-model="secondCopyAcknowledged"
+              input-id="setup-second-copy-acknowledgement"
+              binary
+            />
             <span>{{ t("e2ee.secondCopyAcknowledgement") }}</span>
           </label>
           <Button
@@ -517,14 +518,6 @@ h1 {
   font-weight: 700;
 }
 
-.recovery-secret {
-  overflow-wrap: anywhere;
-  padding: 1rem;
-  border: 1px dashed #64748b;
-  border-radius: 0.5rem;
-  background: #f8fafc;
-}
-
 .acknowledgement {
   grid-template-columns: auto 1fr;
   align-items: start;
@@ -533,13 +526,6 @@ h1 {
 .field-error {
   color: #b91c1c;
   font-size: 0.85rem;
-}
-
-@media print {
-  .setup-card > :not(.recovery-form),
-  .recovery-form > :not(.recovery-secret) {
-    display: none;
-  }
 }
 
 .language-field {

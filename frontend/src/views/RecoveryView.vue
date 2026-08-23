@@ -2,6 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from "vue";
 import { useRouter } from "vue-router";
 import Button from "primevue/button";
+import Checkbox from "primevue/checkbox";
 import InputText from "primevue/inputtext";
 import Message from "primevue/message";
 import Password from "primevue/password";
@@ -17,6 +18,7 @@ import {
   type RecoveryCandidate,
 } from "../e2ee/crypto";
 import { recoverySession } from "../e2ee/recovery-session";
+import RecoverySecretPrintSheet from "../e2ee/RecoverySecretPrintSheet.vue";
 import type {
   KeyCeremonyOperation,
   KeyCeremonyReasonCode,
@@ -84,7 +86,16 @@ const situationGroups: SituationGroup[] = [
 const selectedSituation = ref<KeySituation | null>(null);
 const pageHeading = ref<HTMLElement | null>(null);
 const preparedCandidate = ref<GeneratedKeyCeremonyCandidate | null>(null);
-const custody = reactive({ firstCopy: "", secondCopy: "" });
+const custody = reactive({
+  firstCopyAcknowledged: false,
+  secondCopyAcknowledged: false,
+});
+
+function resetCustodyAcknowledgements(): void {
+  custody.firstCopyAcknowledged = false;
+  custody.secondCopyAcknowledged = false;
+}
+
 const genericStartForm = reactive({
   currentPassphrase: "",
   currentRecoveryText: "",
@@ -336,7 +347,7 @@ async function prepareKeyCeremony(): Promise<void> {
   kdfAbort = new AbortController();
   try {
     const metadata = await api.e2eeRecoveryMetadata();
-    preparedCandidate.value = await createKeyCeremonyCandidate({
+    const candidate = await createKeyCeremonyCandidate({
       operation: config.operation,
       reasonCode: config.reasonCode,
       state: metadata,
@@ -344,6 +355,8 @@ async function prepareKeyCeremony(): Promise<void> {
       ...(config.currentRecovery ? { currentRecoveryText: genericStartForm.currentRecoveryText.trim() } : {}),
       ...(config.newPassphrase ? { newPassphrase: genericStartForm.newPassphrase } : {}),
     }, kdfAbort.signal);
+    preparedCandidate.value = candidate;
+    resetCustodyAcknowledgements();
   } catch (error) {
     errorMessage.value = recoveryFailureMessage(error);
   } finally {
@@ -357,8 +370,8 @@ async function startPreparedCeremony(): Promise<void> {
   const config = operationConfig.value;
   if (!candidate || !config) return;
   if (config.newRecovery && (
-    custody.firstCopy.trim() !== candidate.recoveryText
-    || custody.secondCopy.trim() !== candidate.recoveryText
+    !custody.firstCopyAcknowledged
+    || !custody.secondCopyAcknowledged
   )) {
     errorMessage.value = t("e2ee.custodyCopiesRequired");
     return;
@@ -375,8 +388,7 @@ async function startPreparedCeremony(): Promise<void> {
     };
     clearSecrets(genericStartForm);
     preparedCandidate.value = null;
-    custody.firstCopy = "";
-    custody.secondCopy = "";
+    resetCustodyAcknowledgements();
   } catch (error) {
     errorMessage.value = recoveryFailureMessage(error);
   } finally {
@@ -449,10 +461,6 @@ async function activateKeyCeremony(): Promise<void> {
   }
 }
 
-function printRecoverySecret(): void {
-  window.print();
-}
-
 async function selectSituation(situation: KeySituation): Promise<void> {
   selectedSituation.value = situation;
   await nextTick();
@@ -464,6 +472,7 @@ async function chooseDifferentSituation(): Promise<void> {
   errorMessage.value = "";
   approved.value = false;
   preparedCandidate.value = null;
+  resetCustodyAcknowledgements();
   clearSecrets(genericStartForm);
   clearSecrets(genericApproveForm);
   await nextTick();
@@ -833,34 +842,41 @@ function situationForReason(reasonCode: KeyCeremonyReasonCode): KeySituation | n
           >
             {{ t("e2ee.recoveryWarning") }}
           </Message>
-          <code class="recovery-secret">{{ preparedCandidate.recoveryText }}</code>
-          <Button
-            type="button"
-            icon="pi pi-print"
-            :label="t('e2ee.printRecoverySecret')"
-            @click="printRecoverySecret"
+          <RecoverySecretPrintSheet
+            :recovery-secret="preparedCandidate.recoveryText"
           />
-          <label>
-            <span>{{ t("e2ee.custodyCopyOne") }}</span>
-            <InputText
-              v-model="custody.firstCopy"
-              autocomplete="off"
-              required
+          <label
+            class="acknowledgement"
+            for="recovery-first-copy-acknowledgement"
+          >
+            <Checkbox
+              v-model="custody.firstCopyAcknowledged"
+              input-id="recovery-first-copy-acknowledgement"
+              binary
             />
+            <span>{{ t("e2ee.firstCopyAcknowledgement") }}</span>
           </label>
-          <label>
-            <span>{{ t("e2ee.custodyCopyTwo") }}</span>
-            <InputText
-              v-model="custody.secondCopy"
-              autocomplete="off"
-              required
+          <label
+            class="acknowledgement"
+            for="recovery-second-copy-acknowledgement"
+          >
+            <Checkbox
+              v-model="custody.secondCopyAcknowledged"
+              input-id="recovery-second-copy-acknowledgement"
+              binary
             />
+            <span>{{ t("e2ee.secondCopyAcknowledgement") }}</span>
           </label>
         </template>
         <Button
           type="submit"
           :label="preparedCandidate ? t('e2ee.startCeremony') : t('e2ee.prepareCandidate')"
           :loading="busy"
+          :disabled="Boolean(
+            preparedCandidate
+            && operationConfig.newRecovery
+            && (!custody.firstCopyAcknowledged || !custody.secondCopyAcknowledged)
+          )"
         />
         <Message
           v-if="started"
@@ -1035,6 +1051,11 @@ h2 {
   border: 1px solid #e2e8f0;
   border-radius: 0.75rem;
   background: #fff;
+}
+
+.recovery-card .acknowledgement {
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
 }
 
 :deep(.p-password),
