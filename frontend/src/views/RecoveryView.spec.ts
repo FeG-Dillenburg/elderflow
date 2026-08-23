@@ -14,6 +14,9 @@ const recovery = vi.hoisted(() => ({
   createKeyCandidate: vi.fn(),
   startKey: vi.fn(),
   active: vi.fn(),
+  keyCeremony: vi.fn(),
+  approveKey: vi.fn(),
+  verifyKeyCandidate: vi.fn(),
 }));
 
 vi.mock('vue-router', () => ({
@@ -28,8 +31,8 @@ vi.mock('../api/domain', () => ({
     approveE2eeRecovery: recovery.approve,
     startE2eeKeyCeremony: recovery.startKey,
     e2eeActiveKeyCeremony: recovery.active,
-    e2eeKeyCeremony: vi.fn(),
-    approveE2eeKeyCeremony: vi.fn(),
+    e2eeKeyCeremony: recovery.keyCeremony,
+    approveE2eeKeyCeremony: recovery.approveKey,
     activateE2eeKeyCeremony: vi.fn(),
   },
 }));
@@ -38,7 +41,7 @@ vi.mock('../e2ee/crypto', () => ({
   createRecoveryCandidate: recovery.createCandidate,
   verifyRecoveryCandidate: recovery.verifyCandidate,
   createKeyCeremonyCandidate: recovery.createKeyCandidate,
-  verifyKeyCeremonyCandidate: vi.fn(),
+  verifyKeyCeremonyCandidate: recovery.verifyKeyCandidate,
 }));
 
 vi.mock('../e2ee/recovery-session', () => ({
@@ -382,6 +385,83 @@ describe('RecoveryView', () => {
 
     expect(wrapper.find('.recovery-card').exists()).toBe(false);
     expect(wrapper.text()).toContain('This ceremony already has two operators');
+  });
+
+  it('replaces the lost-passphrase approval fields with a ready-to-activate state', async () => {
+    recovery.active.mockResolvedValue({
+      id: 'recovery-ceremony-id',
+      operation: 'lost_passphrase',
+      reasonCode: 'passphrase_lost',
+      state: 'pending_second_operator',
+      expiresAt: '2026-08-10T20:00:00.000Z',
+      participantRole: null,
+    });
+    recovery.ceremony.mockResolvedValue({
+      id: 'recovery-ceremony-id',
+      candidateFingerprint: 'fingerprint',
+      candidateSharedPassphraseSlot: 'candidate-slot',
+    });
+    recovery.verifyCandidate.mockResolvedValue(true);
+    recovery.approve.mockResolvedValue(undefined);
+    const wrapper = mount(RecoveryView, { global: { stubs } });
+    await flushPromises();
+    const vm = wrapper.vm as unknown as {
+      approveForm: { ceremonyId: string; recoverySecret: string; passphrase: string };
+      approveRecovery: () => Promise<void>;
+    };
+    Object.assign(vm.approveForm, {
+      recoverySecret: canonicalSecret,
+      passphrase: 'replacement shared passphrase',
+    });
+
+    await vm.approveRecovery();
+    await wrapper.vm.$nextTick();
+
+    expect(wrapper.find('.approval-fields').exists()).toBe(false);
+    expect(wrapper.text()).not.toContain('Verify and approve');
+    expect(wrapper.text()).toContain('Everything was validated successfully');
+    expect(wrapper.text()).toContain('Activate and revoke sessions');
+  });
+
+  it('replaces generalized ceremony approval fields with a ready-to-activate state', async () => {
+    recovery.active.mockResolvedValue({
+      id: 'key-ceremony-id',
+      operation: 'change_passphrase',
+      reasonCode: 'team_member_left',
+      state: 'pending_second_operator',
+      expiresAt: '2026-08-10T20:00:00.000Z',
+      participantRole: null,
+    });
+    recovery.keyCeremony.mockResolvedValue({
+      id: 'key-ceremony-id',
+      operation: 'change_passphrase',
+      encodedCandidate: 'candidate',
+      candidateFingerprint: 'fingerprint',
+    });
+    recovery.verifyKeyCandidate.mockResolvedValue(true);
+    recovery.approveKey.mockResolvedValue(undefined);
+    const wrapper = mount(RecoveryView, { global: { stubs } });
+    await flushPromises();
+    const vm = wrapper.vm as unknown as {
+      genericApproveForm: {
+        ceremonyId: string;
+        currentPassphrase: string;
+        newPassphrase: string;
+      };
+      approveKeyCeremony: () => Promise<void>;
+    };
+    Object.assign(vm.genericApproveForm, {
+      currentPassphrase: 'current shared passphrase',
+      newPassphrase: 'replacement shared passphrase',
+    });
+
+    await vm.approveKeyCeremony();
+    await wrapper.vm.$nextTick();
+
+    expect(wrapper.find('.approval-fields').exists()).toBe(false);
+    expect(wrapper.text()).not.toContain('Verify and approve');
+    expect(wrapper.text()).toContain('Everything was validated successfully');
+    expect(wrapper.text()).toContain('Activate and revoke sessions');
   });
 
   it('requires custody acknowledgement for both paper copies of a new Recovery Secret', async () => {

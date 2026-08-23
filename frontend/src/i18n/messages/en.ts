@@ -44,7 +44,7 @@ export default {
     },
     recoveryTitle: 'Recover shared passphrase', recoveryDescription: 'Two distinct Key operators must verify the same candidate within 30 minutes.',
     recoveryAction: 'Recovery', chooseDifferentSituation: 'Choose a different situation', recoverySecret: 'Recovery Secret', currentRecoverySecret: 'Current Recovery Secret', candidateRecoverySecret: 'Proposed new Recovery Secret', currentSharedPassphrase: 'Current shared passphrase', candidateSharedPassphrase: 'Proposed new shared passphrase', newSharedPassphrase: 'New shared passphrase', startRecovery: 'Start recovery', startCeremony: 'Start ceremony', prepareCandidate: 'Prepare candidate', custodyCopiesRequired: 'Both separately stored paper copies must be acknowledged before the ceremony can start.',
-    approveRecovery: 'Second-operator approval', ceremonyId: 'Ceremony ID', verifyAndApprove: 'Verify and approve', activateRecovery: 'Activate and revoke sessions',
+    approveRecovery: 'Second-operator approval', ceremonyId: 'Ceremony ID', verifyAndApprove: 'Verify and approve', approvalReady: 'Everything was validated successfully. The change is ready to activate. Activating it will apply the new key state and sign everyone out.', activateRecovery: 'Activate and revoke sessions',
     shareCeremony: 'Give the second Key operator ceremony ID {id}.', ceremonyAlreadyAssigned: 'This ceremony already has two operators. One of them must complete or abort it.', recoveryFailed: 'Recovery failed safely. The current key state is unchanged.', recoverySecretInvalid: 'This Recovery Secret is invalid or does not match the current key state.', recoveryCandidateMismatch: 'The Recovery Secret or new shared passphrase does not match the recovery candidate.',
   },
   profile: {

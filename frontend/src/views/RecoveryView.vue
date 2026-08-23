@@ -725,58 +725,70 @@ function situationForReason(reasonCode: KeyCeremonyReasonCode): KeySituation | n
         @submit.prevent="approveRecovery"
       >
         <h2>{{ t("e2ee.approveRecovery") }}</h2>
-        <label>
-          <span>{{ t("e2ee.ceremonyId") }}</span>
-          <InputText
-            v-model="approveForm.ceremonyId"
-            autocomplete="off"
-            readonly
-            required
+        <div
+          v-if="!approved"
+          class="approval-fields"
+        >
+          <label>
+            <span>{{ t("e2ee.ceremonyId") }}</span>
+            <InputText
+              v-model="approveForm.ceremonyId"
+              autocomplete="off"
+              readonly
+              required
+            />
+          </label>
+          <label>
+            <span>{{ t("e2ee.recoverySecret") }}</span>
+            <InputText
+              v-model="approveForm.recoverySecret"
+              autocomplete="off"
+              required
+              :invalid="Boolean(approveRecoverySecretError)"
+              :aria-describedby="approveRecoverySecretError ? 'approve-recovery-secret-error' : undefined"
+              @update:model-value="approveRecoverySecretError = ''"
+            />
+            <small
+              v-if="approveRecoverySecretError"
+              id="approve-recovery-secret-error"
+              class="field-error"
+            >
+              {{ approveRecoverySecretError }}
+            </small>
+          </label>
+          <label>
+            <span>{{ t("e2ee.newSharedPassphrase") }}</span>
+            <Password
+              v-model="approveForm.passphrase"
+              :feedback="false"
+              autocomplete="new-password"
+              required
+              :minlength="SHARED_PASSPHRASE_MIN_LENGTH"
+              :invalid="Boolean(approvePassphraseError)"
+              :aria-describedby="approvePassphraseError ? 'approve-passphrase-error' : undefined"
+              @update:model-value="approvePassphraseError = ''"
+            />
+            <small
+              v-if="approvePassphraseError"
+              id="approve-passphrase-error"
+              class="field-error"
+            >
+              {{ approvePassphraseError }}
+            </small>
+          </label>
+          <Button
+            type="submit"
+            :label="t('e2ee.verifyAndApprove')"
+            :loading="busy"
           />
-        </label>
-        <label>
-          <span>{{ t("e2ee.recoverySecret") }}</span>
-          <InputText
-            v-model="approveForm.recoverySecret"
-            autocomplete="off"
-            required
-            :invalid="Boolean(approveRecoverySecretError)"
-            :aria-describedby="approveRecoverySecretError ? 'approve-recovery-secret-error' : undefined"
-            @update:model-value="approveRecoverySecretError = ''"
-          />
-          <small
-            v-if="approveRecoverySecretError"
-            id="approve-recovery-secret-error"
-            class="field-error"
-          >
-            {{ approveRecoverySecretError }}
-          </small>
-        </label>
-        <label>
-          <span>{{ t("e2ee.newSharedPassphrase") }}</span>
-          <Password
-            v-model="approveForm.passphrase"
-            :feedback="false"
-            autocomplete="new-password"
-            required
-            :minlength="SHARED_PASSPHRASE_MIN_LENGTH"
-            :invalid="Boolean(approvePassphraseError)"
-            :aria-describedby="approvePassphraseError ? 'approve-passphrase-error' : undefined"
-            @update:model-value="approvePassphraseError = ''"
-          />
-          <small
-            v-if="approvePassphraseError"
-            id="approve-passphrase-error"
-            class="field-error"
-          >
-            {{ approvePassphraseError }}
-          </small>
-        </label>
-        <Button
-          type="submit"
-          :label="t('e2ee.verifyAndApprove')"
-          :loading="busy"
-        />
+        </div>
+        <Message
+          v-else
+          severity="success"
+          :closable="false"
+        >
+          {{ t("e2ee.approvalReady") }}
+        </Message>
         <Button
           v-if="approved"
           type="button"
@@ -893,55 +905,67 @@ function situationForReason(reasonCode: KeyCeremonyReasonCode): KeySituation | n
         @submit.prevent="approveKeyCeremony"
       >
         <h2>{{ t("e2ee.approveRecovery") }}</h2>
-        <label>
-          <span>{{ t("e2ee.ceremonyId") }}</span>
-          <InputText
-            v-model="genericApproveForm.ceremonyId"
-            autocomplete="off"
-            readonly
-            required
+        <div
+          v-if="!approved"
+          class="approval-fields"
+        >
+          <label>
+            <span>{{ t("e2ee.ceremonyId") }}</span>
+            <InputText
+              v-model="genericApproveForm.ceremonyId"
+              autocomplete="off"
+              readonly
+              required
+            />
+          </label>
+          <label v-if="operationConfig.currentPassphrase">
+            <span>{{ t("e2ee.currentSharedPassphrase") }}</span>
+            <Password
+              v-model="genericApproveForm.currentPassphrase"
+              :feedback="false"
+              autocomplete="current-password"
+              required
+            />
+          </label>
+          <label v-if="operationConfig.currentRecovery">
+            <span>{{ t("e2ee.currentRecoverySecret") }}</span>
+            <InputText
+              v-model="genericApproveForm.currentRecoveryText"
+              autocomplete="off"
+              required
+            />
+          </label>
+          <label v-if="operationConfig.newPassphrase">
+            <span>{{ t("e2ee.candidateSharedPassphrase") }}</span>
+            <Password
+              v-model="genericApproveForm.newPassphrase"
+              :feedback="false"
+              autocomplete="new-password"
+              required
+              :minlength="SHARED_PASSPHRASE_MIN_LENGTH"
+            />
+          </label>
+          <label v-if="operationConfig.newRecovery">
+            <span>{{ t("e2ee.candidateRecoverySecret") }}</span>
+            <InputText
+              v-model="genericApproveForm.candidateRecoveryText"
+              autocomplete="off"
+              required
+            />
+          </label>
+          <Button
+            type="submit"
+            :label="t('e2ee.verifyAndApprove')"
+            :loading="busy"
           />
-        </label>
-        <label v-if="operationConfig.currentPassphrase">
-          <span>{{ t("e2ee.currentSharedPassphrase") }}</span>
-          <Password
-            v-model="genericApproveForm.currentPassphrase"
-            :feedback="false"
-            autocomplete="current-password"
-            required
-          />
-        </label>
-        <label v-if="operationConfig.currentRecovery">
-          <span>{{ t("e2ee.currentRecoverySecret") }}</span>
-          <InputText
-            v-model="genericApproveForm.currentRecoveryText"
-            autocomplete="off"
-            required
-          />
-        </label>
-        <label v-if="operationConfig.newPassphrase">
-          <span>{{ t("e2ee.candidateSharedPassphrase") }}</span>
-          <Password
-            v-model="genericApproveForm.newPassphrase"
-            :feedback="false"
-            autocomplete="new-password"
-            required
-            :minlength="SHARED_PASSPHRASE_MIN_LENGTH"
-          />
-        </label>
-        <label v-if="operationConfig.newRecovery">
-          <span>{{ t("e2ee.candidateRecoverySecret") }}</span>
-          <InputText
-            v-model="genericApproveForm.candidateRecoveryText"
-            autocomplete="off"
-            required
-          />
-        </label>
-        <Button
-          type="submit"
-          :label="t('e2ee.verifyAndApprove')"
-          :loading="busy"
-        />
+        </div>
+        <Message
+          v-else
+          severity="success"
+          :closable="false"
+        >
+          {{ t("e2ee.approvalReady") }}
+        </Message>
         <Button
           v-if="approved"
           type="button"
@@ -1051,6 +1075,11 @@ h2 {
   border: 1px solid #e2e8f0;
   border-radius: 0.75rem;
   background: #fff;
+}
+
+.approval-fields {
+  display: grid;
+  gap: 1rem;
 }
 
 .recovery-card .acknowledgement {
