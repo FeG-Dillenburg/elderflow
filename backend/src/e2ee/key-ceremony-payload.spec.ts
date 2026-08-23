@@ -44,6 +44,8 @@ describe('key ceremony candidate payload', () => {
 
     expect(() => decodeKeyCeremonyPayload(arrayInput))
       .toThrow('Invalid key ceremony candidate');
+    expect(() => decodeKeyCeremonyPayload('attacker-controlled string'))
+      .toThrow('Invalid key ceremony candidate');
     expect(lengthWasRead).toBe(false);
   });
 });
