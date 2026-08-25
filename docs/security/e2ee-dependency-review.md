@@ -1,0 +1,24 @@
+# E2EE runtime dependency review
+
+Reviewed revision: `62f719fc321e4da87aefac5bd69487311747a66e` (2026-08-25). The [lockfile](../../pnpm-lock.yaml) is authoritative. This table consolidates the introducing-ticket records for [keys](./e2ee-key-dependencies.md), [Meeting documents](./e2ee-meeting-document-dependencies.md), and [Meeting collaboration](./e2ee-meeting-collaboration-dependencies.md). Versions are exact in the workspace manifests; upgrades require the vector, relevant browser/server behavior, build, and PostgreSQL gates.
+
+| Dependency | Version | License / provenance | Purpose and selection rationale | Runtime / maintenance posture | Bundle or runtime impact |
+| --- | --- | --- | --- | --- | --- |
+| @tiptap/core | 3.30.1 | MIT; official `ueberdosis/tiptap` npm package | Open-source editor core; avoids hosted or proprietary collaboration | Browser; exact pin, exercise schema and convergence on upgrade | Part of the editor chunks measured by the frontend build |
+| @tiptap/extension-collaboration | 3.30.1 | MIT; official Tiptap package | Binds Tiptap to the ElderFlow-owned encrypted Yjs document | Browser; exact pin, rerun multi-client and reload checks | Editor-only code; no backend runtime |
+| @tiptap/extension-collaboration-caret | 3.30.1 | MIT; official Tiptap package | Open-source collaborator caret integration over encrypted awareness | Browser; exact pin, rerun awareness/accessibility checks | Editor-only code; no persisted awareness |
+| @tiptap/extension-color | 3.30.1 | MIT; official Tiptap package | Preserves the approved bounded rich-text color schema | Browser; exact pin, rerun schema/render checks | Included only on rich-text surfaces |
+| @tiptap/extension-highlight | 3.30.1 | MIT; official Tiptap package | Preserves approved highlight markup | Browser; exact pin, rerun schema/render checks | Included only on rich-text surfaces |
+| @tiptap/extension-link | 3.30.1 | MIT; official Tiptap package | Preserves links within the sanitized rich-text schema | Browser; exact pin, rerun sanitization/link checks | Included only on rich-text surfaces |
+| @tiptap/extension-text-style | 3.30.1 | MIT; official Tiptap package | Shared text-style substrate for color formatting | Browser; exact pin, rerun schema checks | Included only on rich-text surfaces |
+| @tiptap/extension-underline | 3.30.1 | MIT; official Tiptap package | Preserves approved underline markup | Browser; exact pin, rerun schema/render checks | Included only on rich-text surfaces |
+| @tiptap/starter-kit | 3.30.1 | MIT; official Tiptap package | Supplies the bounded open-source base schema and editor commands | Browser; exact pin, review any default-schema change | Dominant editor feature set; loaded with rich-text UI |
+| @tiptap/vue-3 | 3.30.1 | MIT; official Tiptap package | Vue integration for independently mounted Meeting fragments | Browser; exact pin, rerun view and focus tests | Vue adapter only |
+| @tiptap/y-tiptap | 3.0.8 | MIT; official Tiptap package | Converts Tiptap/ProseMirror changes to Yjs updates | Browser; exact pin, rerun convergence and byte fixtures | Small adapter atop Tiptap/Yjs |
+| cbor-x | 1.6.0 | MIT; official `kriszyp/cbor-x` npm package | Deterministic array-only CBOR with canonical re-encode rejection; avoids a bespoke security parser | Browser and server; exact pin, all vectors on upgrade | Small; no required native build |
+| libsodium-wrappers-sumo | 0.7.15 | ISC; official `jedisct1/libsodium.js` package, with `libsodium-sumo@0.7.15` override | XChaCha20-Poly1305, Argon2id, Ed25519, randomness, and memory clearing; sumo is required for `crypto_pwhash` | Browser Worker/main thread and Node reference harness; exact wrapper/transitive pin due the documented 0.7.16 packaging fault | About 1.075 MB minified Worker dependency chunk; main crypto use is shared |
+| ws | 8.21.3 | MIT; official `websockets/ws` npm package | Opaque same-origin WebSocket relay; ElderFlow owns tickets, authorization, validation, sequencing, and persistence | Server; mature exact pin, rerun relay and authorization suites | One in-memory room index; PostgreSQL remains authoritative |
+| y-protocols | 1.0.7 | MIT; official Yjs protocol package | Encodes ephemeral awareness before ElderFlow encrypts it | Browser; exact pin, shares the reviewed Yjs runtime | Small awareness layer; no persistence |
+| yjs | 13.6.32 | MIT; official `yjs/yjs` npm package | Versioned CRDT updates/snapshots and stable named fragments; avoids a bespoke text CRDT | Browser only; protocol-compatibility pin, replay shared document fixtures on upgrade | One volatile `Y.Doc` per loaded Meeting; destroyed on relock |
+
+Development-only type declarations are not runtime dependencies. Secsync is a design/vector source only. Hocuspocus, `y-websocket`, hosted collaboration services, Tiptap Cloud/Pro, and paid-only packages are intentionally absent.
