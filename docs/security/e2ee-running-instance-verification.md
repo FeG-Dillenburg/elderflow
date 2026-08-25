@@ -183,7 +183,7 @@ docker exec elderflow-e2ee54-postgres psql -U elderflow -d elderflow -x -c \
    FROM e2ee_audit_events ORDER BY created_at;'
 ```
 
-The phase requires independent initiator and approver sessions, verifies the candidate independently, activates generation 2, proves the old session is rejected, unlocks the rotated authoritative state in a fresh session, rereads the historical scalar/document markers, and compares the Completed workspace byte-for-byte. The compact SQL result must show the expected generation/key identifiers, revoked old epochs, and only content-free audit facts.
+The phase requires independent initiator and approver sessions, verifies the candidate independently, activates generation 2, proves the pre-existing, initiator, and approver sessions are all rejected, unlocks the rotated authoritative state in a fresh session, rereads the historical scalar/document markers, and compares the Completed workspace byte-for-byte. The compact SQL result must show the expected generation/key identifiers, revoked old epochs, and only content-free audit facts.
 
 There is no automatic key rollback. Before activation, failure leaves current state untouched. After activation, correction is a new ceremony. Application rollback after real encrypted data exists is only to a release compatible with the same encrypted formats and backups; plaintext columns/writes are never restored.
 

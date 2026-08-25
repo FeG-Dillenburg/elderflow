@@ -91,7 +91,7 @@ evidence("E2EE release running instance", () => {
         `/api/meetings/${meetingId}/workspace`,
         token,
       );
-      await runRootRotationCeremony(completedWorkspace);
+      await runRootRotationCeremony(completedWorkspace, token);
       return;
     }
 
@@ -369,6 +369,7 @@ async function createBoundaryUser(
 
 async function runRootRotationCeremony(
   completedWorkspace: string,
+  preExistingToken: string,
 ): Promise<void> {
   const initiator = await api.login({
     email: "evidence@example.com",
@@ -415,11 +416,13 @@ async function runRootRotationCeremony(
     generation: initialState.generation + 1,
   });
 
-  const revokedSession = await fetch(`${evidenceApiUrl}/api/auth/me`, {
-    headers: authorization(initiatorToken),
-  });
-  expect([401, 403]).toContain(revokedSession.status);
-  expect(await revokedSession.text()).not.toContain(marker);
+  for (const revokedToken of [preExistingToken, initiatorToken, approver.token]) {
+    const revokedSession = await fetch(`${evidenceApiUrl}/api/auth/me`, {
+      headers: authorization(revokedToken),
+    });
+    expect([401, 403]).toContain(revokedSession.status);
+    expect(await revokedSession.text()).not.toContain(marker);
+  }
 
   const freshLogin = await api.login({
     email: "evidence@example.com",

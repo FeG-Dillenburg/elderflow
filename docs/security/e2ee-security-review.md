@@ -140,7 +140,7 @@ Recorded automated gate on 2026-08-25 against a tmpfs-backed PostgreSQL 16 conta
 - backend restart against the unchanged database followed by sign-in/unlock recovered the exact scalar and all collaborative markers;
 - locked, Guest, IT-admin, and invalid-session paths returned no plaintext or prohibited workspace;
 - completion succeeded, a post-completion encrypted write returned `MEETING_COMPLETED_IMMUTABLE`, and the canonical Completed workspace remained byte-identical;
-- a two-operator planned Root-key rotation advanced the authoritative generation, revoked the old session and four old client epochs, restored historical scalar/document reads in a fresh epoch, preserved Completed workspace bytes, and wrote only content-free audit facts;
+- a two-operator planned Root-key rotation advanced the authoritative generation, rejected all three pre-existing participant sessions, revoked four old client epochs, restored historical scalar/document reads in a fresh epoch, preserved Completed workspace bytes, and wrote only content-free audit facts;
 - routine output and jsdom Web Storage had zero marker matches. Cache Storage and IndexedDB were inspected in physical Chrome; jsdom does not expose those stores and the automated test does not substitute a source scan.
 - the full root suite passed (backend 54 suites / 189 tests; frontend 56 files / 307 tests, with the three opt-in running-instance tests skipped normally), the real-PostgreSQL E2E gate passed (9 suites / 26 tests), and both production builds completed.
 
