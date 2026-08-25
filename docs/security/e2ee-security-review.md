@@ -132,17 +132,19 @@ The standalone [running-instance verification guide](./e2ee-running-instance-ver
 
 Recorded automated gate on 2026-08-25 against a tmpfs-backed PostgreSQL 16 container and the real NestJS REST/WebSocket server:
 
-- create phase passed with two independent client epochs/document sessions editing multiple fragments;
-- an encrypted pending edit survived disconnect, reconnected, and converged;
+- create phase passed with two independent cryptographic client contexts editing multiple fragments;
+- an encrypted pending edit survived disconnect, reconnected, and both contexts converged from the canonical workspace;
 - raw protected HTTP responses used `no-store` and contained zero `EF54_` plaintext matches;
-- sent WebSocket authentication/update frames contained zero marker matches;
+- incoming and outgoing WebSocket authentication/update frames contained zero marker matches;
 - PostgreSQL dump scans before and after completion returned zero marker matches;
 - backend restart against the unchanged database followed by sign-in/unlock recovered the exact scalar and all collaborative markers;
-- completion succeeded and a post-completion encrypted write returned `MEETING_COMPLETED_IMMUTABLE`;
-- routine output recorded only content-free stable outcomes; Web Storage was marker-free, while Cache Storage and IndexedDB were source-audited because the jsdom runner does not expose those physical-browser stores.
+- locked, Guest, IT-admin, and invalid-session paths returned no plaintext or prohibited workspace;
+- completion succeeded, a post-completion encrypted write returned `MEETING_COMPLETED_IMMUTABLE`, and the canonical Completed workspace remained byte-identical;
+- a two-operator planned Root-key rotation advanced the authoritative generation, revoked the old session and four old client epochs, restored historical scalar/document reads in a fresh epoch, preserved Completed workspace bytes, and wrote only content-free audit facts;
+- routine output and jsdom Web Storage had zero marker matches. Cache Storage and IndexedDB were inspected in physical Chrome; jsdom does not expose those stores and the automated test does not substitute a source scan.
 - the full root suite passed (backend 54 suites / 189 tests; frontend 56 files / 307 tests, with the three opt-in running-instance tests skipped normally), the real-PostgreSQL E2E gate passed (9 suites / 26 tests), and both production builds completed.
 
-The opt-in automated seam is [e2ee-release-running-instance.spec.ts](../../frontend/src/e2ee/e2ee-release-running-instance.spec.ts). A separate isolated Chrome run verified login/unlock, exact decrypted scalar display, hard-reload relock, marker-free Local/Session/Cache Storage and IndexedDB, no service-worker registrations, named dialog/textbox/buttons/navigation in Chrome's accessibility tree, and no horizontal overflow at 390 × 844. English/German parity, complete keyboard/focus behavior, and role journeys are backed by the linked frontend view, component, and catalog suites and remain repeatable operator steps in the guide.
+The opt-in automated seam is [e2ee-release-running-instance.spec.ts](../../frontend/src/e2ee/e2ee-release-running-instance.spec.ts). A separate isolated Chrome run verified login/unlock, exact decrypted scalar display, hard-reload relock, marker-free Local/Session/Cache Storage and IndexedDB, no service-worker registrations, named dialog/textbox/buttons/navigation in Chrome's accessibility tree, and no horizontal overflow at 390 × 844. It did not execute marker creation through the UI, the full two-window journey, complete keyboard/focus traversal, or a second supported browser. Those items remain mandatory operator release checks in the guide; component/view/catalog tests support them but are not presented as equivalent physical-browser evidence.
 
 Slice evidence remains the detailed drill-down: [keys/setup/recovery](./e2ee-key-slice-evidence.md), [Topics](./e2ee-topic-slice-evidence.md), [Tasks/dashboard](./e2ee-task-slice-evidence.md), [Meeting workspace](./e2ee-meeting-workspace-evidence.md), [collaboration](./e2ee-meeting-collaboration-evidence.md), and [key operations](./e2ee-key-rotation-evidence.md).
 
@@ -201,5 +203,5 @@ Every production link below has a repository-relative entry and an immutable lin
 - Recovery Secret custody is organizational after two paper copies are verified. Loss of every unlock path is irreversible.
 - Rotation protects future writes; it cannot revoke ciphertext, keys, or plaintext already copied. Historical wrappers may remain readable indefinitely while frozen ciphertext references them.
 - There is no plaintext export/search/reporting path and no content-bearing server notification path in this release.
-- The primary automated smoke uses jsdom for its two independent cryptographic client contexts; a separate physical Chrome pass covered durable storage, unlock/relock, accessibility names, and phone-width overflow. Supported-browser manual interaction remains an operational release check because one engine cannot establish every browser's behavior.
-- No unresolved implementation defect was accepted for release at the reviewed revision. The canonical parent [#47](https://github.com/FeG-Dillenburg/elderflow/issues/47) remains the tracking record until this final gate is accepted; future security concerns must be ordinary linked GitHub issues and, if accepted for release, added here.
+- The primary automated smoke uses jsdom for its two independent cryptographic client contexts; a separate physical Chrome pass covered durable storage, unlock/relock, accessibility names, and phone-width overflow. UI marker creation, full two-window behavior, complete keyboard/focus traversal, and a second supported browser remain an operational release check because jsdom and one partial engine pass cannot establish that behavior.
+- No unresolved implementation defect was accepted for release at the reviewed revision. The browser checks listed above are an explicitly unexecuted release-verification item, so internal sign-off must not treat the dossier alone as a completed release gate. The canonical parent [#47](https://github.com/FeG-Dillenburg/elderflow/issues/47) remains the tracking record until this final gate is accepted; future security concerns must be ordinary linked GitHub issues and, if accepted for release, added here.

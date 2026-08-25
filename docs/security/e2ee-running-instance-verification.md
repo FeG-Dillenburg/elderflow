@@ -66,7 +66,7 @@ env \
   AUTH_SESSION_SECRET=e2ee54-local-smoke-only-session-secret \
   DEV_AUTH_BYPASS=false \
   DEV_USER_EMAIL=evidence54@example.com \
-  node backend/dist/main.js
+  node backend/dist/main.js 2>&1 | tee /tmp/elderflow-e2ee54-backend.log
 ```
 
 In a second terminal, create the setup/Topic prerequisite and then the final two-context fixture. Replace the one placeholder with the generated setup password.
@@ -92,29 +92,38 @@ Inspect the first persistence boundary. `rg` must print nothing and exit 1 becau
 
 ```sh
 docker exec elderflow-e2ee54-postgres \
-  pg_dump -U elderflow elderflow | rg -n 'EF54_'
+  pg_dump -U elderflow elderflow > /tmp/elderflow-e2ee54-before.sql
+rg -n 'EF54_' /tmp/elderflow-e2ee54-before.sql
 ```
 
-Stop only the backend process with `Ctrl-C`; leave the disposable PostgreSQL container running. Restart the same backend command above, then run the verify phase:
+Stop only the backend process with `Ctrl-C`; leave the disposable PostgreSQL container running. Restart the same backend command above, changing `tee` to `tee -a` so both process runs remain in the routine-log artifact, then run the verify phase:
 
 ```sh
 env \
   VITE_API_BASE_URL=http://127.0.0.1:3999 \
   E2EE_EVIDENCE_API_URL=http://127.0.0.1:3999 \
   E2EE_EVIDENCE_PHASE=verify \
+  E2EE_EVIDENCE_DATABASE_DUMP=/tmp/elderflow-e2ee54-before.sql \
+  E2EE_EVIDENCE_BACKEND_LOG=/tmp/elderflow-e2ee54-backend.log \
   pnpm --filter @elderflow/frontend exec vitest run \
   src/e2ee/e2ee-release-running-instance.spec.ts
 
 docker exec elderflow-e2ee54-postgres \
-  pg_dump -U elderflow elderflow | rg -n 'EF54_'
+  pg_dump -U elderflow elderflow > /tmp/elderflow-e2ee54-after.sql
+rg -n 'EF54_' \
+  /tmp/elderflow-e2ee54-before.sql \
+  /tmp/elderflow-e2ee54-after.sql \
+  /tmp/elderflow-e2ee54-backend.log
 ```
 
 Expected verify observations:
 
 - exact title and all three collaborative values decrypt after restart;
+- Guest receives structural data without Protected payload, while IT-admin and invalid-session requests cannot fetch the workspace;
 - HTTP workspace/Meeting bodies contain no `EF54_` and use `Cache-Control: no-store`;
-- captured outgoing WebSocket JSON contains tickets and opaque base64url envelopes, not markers;
-- the completed Meeting rejects the late envelope with `MEETING_COMPLETED_IMMUTABLE`;
+- captured incoming and outgoing WebSocket JSON contains tickets and opaque base64url envelopes, not markers;
+- both cryptographic client contexts converge after concurrent and disconnected edits;
+- the completed Meeting rejects the late envelope with `MEETING_COMPLETED_IMMUTABLE` and its canonical workspace remains byte-identical on reload;
 - routine backend output for that rejection contains only `{ outcome: 'MEETING_COMPLETED_IMMUTABLE' }`;
 - both dump scans have zero matches.
 
@@ -155,6 +164,27 @@ Record only compact observations/screenshots without Protected text beyond these
 
 Using two distinct eligible identities, exercise one successful representative routine or compromise ceremony plus an abort/race path as described in [key-operation evidence](./e2ee-key-rotation-evidence.md). Verify session/client-epoch revocation, authoritative-key writes, historical readability, content-free audit facts, and byte-identical Completed Meeting ciphertext. Routine grace and compromise no-grace must differ exactly as documented.
 
+The recorded representative ceremony is the automated planned Root-key rotation. Run it only after the verify phase has completed the Meeting:
+
+```sh
+env \
+  VITE_API_BASE_URL=http://127.0.0.1:3999 \
+  E2EE_EVIDENCE_API_URL=http://127.0.0.1:3999 \
+  E2EE_EVIDENCE_PHASE=ceremony \
+  pnpm --filter @elderflow/frontend exec vitest run \
+  src/e2ee/e2ee-release-running-instance.spec.ts
+
+docker exec elderflow-e2ee54-postgres psql -U elderflow -d elderflow -x -c \
+  'SELECT generation, ork_id, ock_id, ock_epoch FROM e2ee_key_state;
+   SELECT count(*) FILTER (WHERE revoked_at IS NULL) AS active_epochs,
+          count(*) FILTER (WHERE revoked_at IS NOT NULL) AS revoked_epochs
+   FROM e2ee_client_epochs;
+   SELECT event_type, key_generation, outcome, operation, reason_code, ork_id, ock_id
+   FROM e2ee_audit_events ORDER BY created_at;'
+```
+
+The phase requires independent initiator and approver sessions, verifies the candidate independently, activates generation 2, proves the old session is rejected, unlocks the rotated authoritative state in a fresh session, rereads the historical scalar/document markers, and compares the Completed workspace byte-for-byte. The compact SQL result must show the expected generation/key identifiers, revoked old epochs, and only content-free audit facts.
+
 There is no automatic key rollback. Before activation, failure leaves current state untouched. After activation, correction is a new ceremony. Application rollback after real encrypted data exists is only to a release compatible with the same encrypted formats and backups; plaintext columns/writes are never restored.
 
 ## Cleanup
@@ -170,13 +200,14 @@ Do not run `docker compose down -v` against staging or any installation holding 
 ## Recorded result — 2026-08-25
 
 - `pnpm test:e2ee:vectors`: pass; backend 6 suites / 19 tests, frontend 5 files / 15 tests.
-- Running-instance create: pass; two independent client epochs edited separate fragments, then an encrypted offline edit reconnected and converged.
+- Running-instance create: pass; two independent cryptographic client contexts edited separate fragments, then an encrypted offline edit reconnected and both contexts converged from the canonical workspace.
 - PostgreSQL dump scan before restart: zero `EF54_` matches.
-- Restart with the same tmpfs PostgreSQL data: pass; exact scalar and Collaborative-text markers decrypted under a fresh client epoch.
-- Completion/late write: pass; stable rejection `MEETING_COMPLETED_IMMUTABLE`; completed dump scan had zero marker matches.
-- Raw HTTP/WebSocket and routine-log checks: pass; protected HTTP used `no-store`, outgoing frames and content-free logs had zero marker matches.
-- Web Storage: pass in the harness. Cache Storage/IndexedDB: production-source audit passed because jsdom does not expose the physical stores.
-- Isolated physical Chrome: pass for login/unlock, exact scalar display, hard-reload relock, zero marker matches in Local/Session/Cache Storage and IndexedDB, zero service-worker registrations, named unlock-dialog/navigation/status/form controls in the accessibility tree, and no horizontal overflow at 390 × 844. Full manual two-window interaction, keyboard/focus traversal, and the second supported browser remain repeatable operator checks backed by the catalog/component/view suites.
+- Restart with the same tmpfs PostgreSQL data: pass; exact scalar and Collaborative-text markers decrypted under a fresh client epoch; Guest, IT-admin, locked, and invalid-session boundaries returned no marker or prohibited workspace.
+- Completion/late write: pass; stable rejection `MEETING_COMPLETED_IMMUTABLE`, with byte-identical canonical workspace before and after the rejected write; completed dump scan had zero marker matches.
+- Raw HTTP/WebSocket and routine-log checks: pass; protected HTTP used `no-store`; both WebSocket directions and content-free logs had zero marker matches.
+- Planned Root-key rotation: pass with two distinct eligible sessions; generation advanced to 2, the authoritative Root Key changed while the Content Key remained, four old epochs were revoked, a fresh epoch restored historical scalar/document reads, Completed workspace bytes were unchanged, and the audit row contained only `key_ceremony_activated`, generation/key IDs, `success`, `rotate_root_key`, and `planned_root_rotation`.
+- Web Storage: pass in the harness. Cache Storage and IndexedDB are not available in jsdom and are therefore covered only by the physical-browser inspection below, not by source-text inference.
+- Isolated physical Chrome: pass for login/unlock, exact scalar display, hard-reload relock, zero marker matches in Local/Session/Cache Storage and IndexedDB, zero service-worker registrations, named unlock-dialog/navigation/status/form controls in the accessibility tree, and no horizontal overflow at 390 × 844. Marker creation through the UI, full two-window interaction, keyboard/focus traversal, and the second supported browser were not executed in this recorded run and remain mandatory operator release checks.
 - `pnpm test`: pass; backend 54 suites / 189 tests and frontend 56 files / 307 tests, with the three opt-in running-instance tests skipped in the ordinary run.
 - `pnpm test:backend:e2e`: pass against disposable PostgreSQL; 9 suites / 26 tests.
 - `pnpm build`: pass for NestJS and the Vue/TypeScript production build. The existing Vite warnings for the externalized libsodium `crypto` fallback and chunks over 500 kB remain the documented bundle concern.

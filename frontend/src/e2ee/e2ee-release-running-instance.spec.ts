@@ -1,13 +1,22 @@
 // @vitest-environment jsdom
-import { readFileSync, readdirSync } from "node:fs";
-import { join } from "node:path";
+import { readFileSync } from "node:fs";
 import { Encoder } from "cbor-x";
 import sodium from "libsodium-wrappers-sumo";
 import { beforeAll, describe, expect, it } from "vitest";
 import vectors from "../../../docs/security/e2ee-v1-key-vectors.json";
 import { api } from "../api/domain";
-import { setSessionToken } from "../auth/session";
-import { protectMeetingTitle } from "./meeting-scalars";
+import { getSessionToken, setSessionToken } from "../auth/session";
+import {
+  createKeyCeremonyCandidate,
+  derivePassphraseKeyInCurrentContext,
+  unlockWithPassphrase,
+  verifyKeyCeremonyCandidate,
+} from "./crypto";
+import {
+  protectMeetingTitle,
+  unprotectMeetingTitle,
+  type EncryptedMeetingTitle,
+} from "./meeting-scalars";
 import {
   MeetingDocumentSession,
   type EncryptedWorkspace,
@@ -23,6 +32,10 @@ const marker = "EF54_";
 const meetingId = "00000000-0000-4000-8000-000000000054";
 const appearanceId = "00000000-0000-4000-8000-000000000154";
 const mutationId = "00000000-0000-4000-8000-000000000254";
+const guestEmail = "evidence-guest-54@example.com";
+const itAdminEmail = "evidence-it-admin-54@example.com";
+const approverEmail = "evidence-approver-54@example.com";
+const evidencePassword = "Evidence-account-54!";
 const encoder = new Encoder({
   mapsAsObjects: false,
   structuredClone: false,
@@ -45,6 +58,11 @@ const clientSpecs = {
     noncePrefix: new Uint8Array(16).fill(61),
     signingSeed: new Uint8Array(32).fill(61),
   },
+  ceremony: {
+    epochId: "00000000-0000-4000-8000-000000001254",
+    noncePrefix: new Uint8Array(16).fill(62),
+    signingSeed: new Uint8Array(32).fill(62),
+  },
 };
 
 evidence("E2EE release running instance", () => {
@@ -53,6 +71,7 @@ evidence("E2EE release running instance", () => {
 
   beforeAll(async () => {
     await sodium.ready;
+    installEvidenceStorage();
     const login = await api.login({
       email: "evidence@example.com",
       password: "Evidence-account-49!",
@@ -67,8 +86,27 @@ evidence("E2EE release running instance", () => {
       await createEvidenceFixture(token, userId);
       return;
     }
+    if (phase === "ceremony") {
+      const completedWorkspace = await rawRequest(
+        `/api/meetings/${meetingId}/workspace`,
+        token,
+      );
+      await runRootRotationCeremony(completedWorkspace);
+      return;
+    }
 
     const client = await createClient("verify", token);
+    unlockScalar(client);
+    const rawMeeting = await fetch(`${evidenceApiUrl}/api/meetings/${meetingId}`, {
+      headers: authorization(token),
+    });
+    expect(rawMeeting.headers.get("cache-control")).toBe("no-store");
+    const rawMeetingText = await rawMeeting.text();
+    expect(rawMeetingText).not.toContain(marker);
+    const encryptedMeeting = JSON.parse(rawMeetingText) as EncryptedMeetingTitle;
+    await expect(unprotectMeetingTitle(meetingId, encryptedMeeting.protected))
+      .resolves.toBe("EF54_SCALAR_7QX9");
+
     const rawWorkspace = await fetch(`${evidenceApiUrl}/api/meetings/${meetingId}/workspace`, {
       headers: authorization(token),
     });
@@ -84,6 +122,9 @@ evidence("E2EE release running instance", () => {
     expect(fragments.appearances.get(appearanceId)?.preparationContext)
       .toBe("EF54_COLLAB_7QX9_B");
 
+    await verifyAccessBoundaries(token, encryptedMeeting);
+    unlockScalar(client);
+
     const socket = await openCollaboration(token, workspace.documentId);
     const lateEnvelope = await client.session.createFragmentUpdate(
       meetingId,
@@ -94,19 +135,32 @@ evidence("E2EE release running instance", () => {
       method: "POST",
     });
     expect(JSON.stringify(completion)).not.toContain(marker);
+    const completedWorkspace = await rawRequest(`/api/meetings/${meetingId}/workspace`, token);
     socket.send({ type: "update", envelope: lateEnvelope });
-    await expect(socket.next((frame) => frame.type === "rejected"))
+    await expect(socket.next("rejected"))
       .resolves.toMatchObject({ code: "MEETING_COMPLETED_IMMUTABLE" });
-    expect(socket.sentText).not.toContain(marker);
+    const frozenReload = await rawRequest(`/api/meetings/${meetingId}/workspace`, token);
+    expect(frozenReload).toBe(completedWorkspace);
+    expect(socket.transcript).not.toContain(marker);
     socket.close();
 
-    expect(await browserPersistenceText()).not.toContain(marker);
+    expect(webStorageText()).not.toContain(marker);
+    expect(window.location.href).not.toContain(marker);
+    expect(evidenceArtifactText()).not.toContain(marker);
     client.session.lock();
     scalarSession.lock();
+    await expect(unprotectMeetingTitle(meetingId, encryptedMeeting.protected))
+      .resolves.not.toContain(marker);
+
   });
 });
 
 async function createEvidenceFixture(token: string, userId: string): Promise<void> {
+  await Promise.all([
+    createBoundaryUser(token, guestEmail, "guest"),
+    createBoundaryUser(token, itAdminEmail, "it-admin"),
+    createBoundaryUser(token, approverEmail, "admin"),
+  ]);
   const [clientA, clientB] = await Promise.all([
     createClient("a", token),
     createClient("b", token),
@@ -188,17 +242,37 @@ async function createEvidenceFixture(token: string, userId: string): Promise<voi
   socketA.send({ type: "update", envelope: envelopeA });
   socketB.send({ type: "update", envelope: envelopeB });
   const [ackA, ackB, remoteForA, remoteForB] = await Promise.all([
-    socketA.next((frame) => frame.type === "acknowledged"),
-    socketB.next((frame) => frame.type === "acknowledged"),
-    socketA.next((frame) => frame.type === "update"),
-    socketB.next((frame) => frame.type === "update"),
+    socketA.next("acknowledged"),
+    socketB.next("acknowledged"),
+    socketA.next("update"),
+    socketB.next("update"),
   ]);
-  clientA.session.acknowledge(meetingId, String(ackA.clientEpochId), String(ackA.authorClock), String(ackA.serverSequence));
-  clientB.session.acknowledge(meetingId, String(ackB.clientEpochId), String(ackB.authorClock), String(ackB.serverSequence));
+  clientA.session.acknowledge(
+    meetingId,
+    ackA.clientEpochId,
+    ackA.authorClock,
+    ackA.serverSequence,
+  );
+  clientB.session.acknowledge(
+    meetingId,
+    ackB.clientEpochId,
+    ackB.authorClock,
+    ackB.serverSequence,
+  );
   await Promise.all([
     clientA.session.applyRemoteUpdate(meetingId, remoteFrame(remoteForA), "remote"),
     clientB.session.applyRemoteUpdate(meetingId, remoteFrame(remoteForB), "remote"),
   ]);
+  const concurrentWorkspace = await jsonRequest<EncryptedWorkspace>(
+    `/api/meetings/${meetingId}/workspace`,
+    token,
+  );
+  await Promise.all([
+    clientA.session.load(meetingId, concurrentWorkspace),
+    clientB.session.load(meetingId, concurrentWorkspace),
+  ]);
+  expect(clientA.session.hydrateFragments(meetingId, [{ id: appearanceId, person: false }]))
+    .toEqual(clientB.session.hydrateFragments(meetingId, [{ id: appearanceId, person: false }]));
 
   socketB.close();
   const offlineEnvelope = await clientB.session.createFragmentUpdate(
@@ -212,7 +286,7 @@ async function createEvidenceFixture(token: string, userId: string): Promise<voi
     "EF54_COLLAB_7QX9_A_RECONNECTED",
   );
   socketA.send({ type: "update", envelope: reconnectEnvelope });
-  const reconnectAck = await socketA.next((frame) => frame.type === "acknowledged");
+  const reconnectAck = await socketA.next("acknowledged");
   clientA.session.acknowledge(
     meetingId,
     String(reconnectAck.clientEpochId),
@@ -222,17 +296,48 @@ async function createEvidenceFixture(token: string, userId: string): Promise<voi
 
   const reconnectedB = await openCollaboration(token, workspace.documentId);
   reconnectedB.send({ type: "update", envelope: offlineEnvelope });
-  await reconnectedB.next((frame) => frame.type === "acknowledged");
+  const offlineAck = await reconnectedB.next("acknowledged");
+  clientB.session.acknowledge(
+    meetingId,
+    offlineAck.clientEpochId,
+    offlineAck.authorClock,
+    offlineAck.serverSequence,
+  );
+
+  const convergedWorkspace = await jsonRequest<EncryptedWorkspace>(
+    `/api/meetings/${meetingId}/workspace`,
+    token,
+  );
+  await Promise.all([
+    clientA.session.load(meetingId, convergedWorkspace),
+    clientB.session.load(meetingId, convergedWorkspace),
+  ]);
+  const fragmentsA = clientA.session.hydrateFragments(
+    meetingId,
+    [{ id: appearanceId, person: false }],
+  );
+  const fragmentsB = clientB.session.hydrateFragments(
+    meetingId,
+    [{ id: appearanceId, person: false }],
+  );
+  expect(fragmentsA).toEqual(fragmentsB);
+  expect(fragmentsA).toMatchObject({
+    generalNotes: "EF54_COLLAB_7QX9_A_RECONNECTED",
+    openingInput: "EF54_COLLAB_7QX9_OFFLINE_B",
+  });
+  expect(fragmentsA.appearances.get(appearanceId)?.preparationContext)
+    .toBe("EF54_COLLAB_7QX9_B");
 
   const rawMeeting = await fetch(`${evidenceApiUrl}/api/meetings/${meetingId}`, {
     headers: authorization(token),
   });
   expect(rawMeeting.headers.get("cache-control")).toBe("no-store");
   expect(await rawMeeting.text()).not.toContain(marker);
-  expect(socketA.sentText).not.toContain(marker);
-  expect(socketB.sentText).not.toContain(marker);
-  expect(reconnectedB.sentText).not.toContain(marker);
-  expect(await browserPersistenceText()).not.toContain(marker);
+  expect(socketA.transcript).not.toContain(marker);
+  expect(socketB.transcript).not.toContain(marker);
+  expect(reconnectedB.transcript).not.toContain(marker);
+  expect(webStorageText()).not.toContain(marker);
+  expect(window.location.href).not.toContain(marker);
 
   socketA.close();
   reconnectedB.close();
@@ -241,9 +346,180 @@ async function createEvidenceFixture(token: string, userId: string): Promise<voi
   scalarSession.lock();
 }
 
+async function createBoundaryUser(
+  token: string,
+  email: string,
+  role: "guest" | "it-admin" | "admin",
+): Promise<void> {
+  await jsonRequest("/api/user", token, {
+    method: "POST",
+    body: JSON.stringify({
+      email,
+      firstName: "Evidence",
+      lastName: role === "guest"
+        ? "Guest"
+        : role === "it-admin"
+          ? "IT Admin"
+          : "Approver",
+      role,
+      password: evidencePassword,
+    }),
+  });
+}
+
+async function runRootRotationCeremony(
+  completedWorkspace: string,
+): Promise<void> {
+  const initiator = await api.login({
+    email: "evidence@example.com",
+    password: "Evidence-account-49!",
+  });
+  const initiatorToken = initiator.token;
+  setSessionToken(initiatorToken);
+  expect(getSessionToken()).toBe(initiatorToken);
+  const initialState = await api.e2eeRecoveryMetadata();
+  const candidate = await createKeyCeremonyCandidate({
+    operation: "rotate_root_key",
+    reasonCode: "planned_root_rotation",
+    state: initialState,
+    currentPassphrase: vectors.sharedPassphraseWrapper.passphraseUtf8,
+    currentRecoveryText: vectors.recoveryWrapper.recoveryText,
+    newPassphrase: vectors.sharedPassphraseWrapper.passphraseUtf8,
+  }, undefined, derivePassphraseKeyInCurrentContext);
+  const started = await api.startE2eeKeyCeremony(candidate.encodedCandidate);
+  await api.confirmE2eeKeyCeremonyPresence(started.id);
+
+  const approver = await api.login({ email: approverEmail, password: evidencePassword });
+  setSessionToken(approver.token);
+  const [approverState, ceremony] = await Promise.all([
+    api.e2eeRecoveryMetadata(),
+    api.e2eeKeyCeremony(started.id),
+  ]);
+  await expect(verifyKeyCeremonyCandidate(
+    ceremony.encodedCandidate,
+    ceremony.candidateFingerprint,
+    approverState,
+    {
+      currentPassphrase: vectors.sharedPassphraseWrapper.passphraseUtf8,
+      currentRecoveryText: vectors.recoveryWrapper.recoveryText,
+      candidatePassphrase: vectors.sharedPassphraseWrapper.passphraseUtf8,
+      candidateRecoveryText: vectors.recoveryWrapper.recoveryText,
+    },
+    undefined,
+    derivePassphraseKeyInCurrentContext,
+  )).resolves.toBe(true);
+  await api.approveE2eeKeyCeremony(started.id, ceremony.candidateFingerprint);
+  await api.confirmE2eeKeyCeremonyPresence(started.id);
+  await expect(api.activateE2eeKeyCeremony(started.id)).resolves.toEqual({
+    activated: true,
+    generation: initialState.generation + 1,
+  });
+
+  const revokedSession = await fetch(`${evidenceApiUrl}/api/auth/me`, {
+    headers: authorization(initiatorToken),
+  });
+  expect([401, 403]).toContain(revokedSession.status);
+  expect(await revokedSession.text()).not.toContain(marker);
+
+  const freshLogin = await api.login({
+    email: "evidence@example.com",
+    password: "Evidence-account-49!",
+  });
+  setSessionToken(freshLogin.token);
+  const rotatedState = await api.e2eeRecoveryMetadata();
+  expect(rotatedState).toMatchObject({
+    generation: initialState.generation + 1,
+    orkId: candidate.payload.orkId,
+    ockId: initialState.ockId,
+  });
+
+  const unlocked = await unlockWithPassphrase(
+    vectors.sharedPassphraseWrapper.passphraseUtf8,
+    rotatedState,
+    undefined,
+    derivePassphraseKeyInCurrentContext,
+  );
+  try {
+    expect(bytesToHex(unlocked.contentKey))
+      .toBe(vectors.signedNullScalar.organizationContentKeyHex);
+    const ceremonyClient = await createClientWithContentKey(
+      "ceremony",
+      freshLogin.token,
+      unlocked.contentKey,
+    );
+    unlockScalar(ceremonyClient);
+    const encryptedMeeting = JSON.parse(
+      await rawRequest(`/api/meetings/${meetingId}`, freshLogin.token),
+    ) as EncryptedMeetingTitle;
+    await expect(unprotectMeetingTitle(meetingId, encryptedMeeting.protected))
+      .resolves.toBe("EF54_SCALAR_7QX9");
+    const workspace = JSON.parse(
+      await rawRequest(`/api/meetings/${meetingId}/workspace`, freshLogin.token),
+    ) as EncryptedWorkspace;
+    await ceremonyClient.session.load(meetingId, workspace);
+    expect(ceremonyClient.session.hydrateFragments(
+      meetingId,
+      [{ id: appearanceId, person: false }],
+    )).toMatchObject({
+      generalNotes: "EF54_COLLAB_7QX9_A_RECONNECTED",
+      openingInput: "EF54_COLLAB_7QX9_OFFLINE_B",
+    });
+    expect(JSON.stringify(workspace)).toBe(completedWorkspace);
+    ceremonyClient.session.lock();
+    scalarSession.lock();
+  } finally {
+    sodium.memzero(unlocked.organizationRootKey);
+    sodium.memzero(unlocked.contentKey);
+    unlocked.historicalContentKeys.forEach((key) => sodium.memzero(key));
+  }
+}
+
+async function verifyAccessBoundaries(
+  token: string,
+  encryptedMeeting: EncryptedMeetingTitle,
+): Promise<void> {
+  scalarSession.lock();
+  await expect(unprotectMeetingTitle(meetingId, encryptedMeeting.protected))
+    .resolves.not.toContain(marker);
+
+  const [guest, itAdmin] = await Promise.all([
+    api.login({ email: guestEmail, password: evidencePassword }),
+    api.login({ email: itAdminEmail, password: evidencePassword }),
+  ]);
+  const guestResponse = await fetch(`${evidenceApiUrl}/api/meetings/${meetingId}`, {
+    headers: authorization(guest.token),
+  });
+  expect(guestResponse.status).toBe(200);
+  const guestText = await guestResponse.text();
+  expect(guestText).not.toContain(marker);
+  expect(JSON.parse(guestText)).toMatchObject({ protected: null });
+
+  for (const restrictedToken of [itAdmin.token, "not-a-session-token"]) {
+    const response = await fetch(`${evidenceApiUrl}/api/meetings/${meetingId}/workspace`, {
+      headers: authorization(restrictedToken),
+    });
+    expect([401, 403]).toContain(response.status);
+    expect(await response.text()).not.toContain(marker);
+  }
+
+  setSessionToken(token);
+}
+
 type ClientName = keyof typeof clientSpecs;
 
 async function createClient(name: ClientName, token: string) {
+  return createClientWithContentKey(
+    name,
+    token,
+    hexToBytes(vectors.signedNullScalar.organizationContentKeyHex),
+  );
+}
+
+async function createClientWithContentKey(
+  name: ClientName,
+  token: string,
+  contentKey: Uint8Array,
+) {
   const spec = clientSpecs[name];
   const signing = sodium.crypto_sign_seed_keypair(spec.signingSeed, "uint8array");
   await jsonRequest("/api/e2ee/client-epochs", token, {
@@ -260,7 +536,7 @@ async function createClient(name: ClientName, token: string) {
     ockId: vectors.signedNullScalar.ockId,
     clientEpochId: spec.epochId,
     noncePrefix: spec.noncePrefix,
-    contentKey: hexToBytes(vectors.signedNullScalar.organizationContentKeyHex),
+    contentKey,
     signingPrivateKey: signing.privateKey,
   });
   return { session, signing, spec };
@@ -277,50 +553,123 @@ function unlockScalar(client: Awaited<ReturnType<typeof createClient>>): void {
   });
 }
 
+type AuthenticatedFrame = { type: "authenticated"; documentId: string };
+type UpdateFrameBase = {
+  updateId: string;
+  clientEpochId: string;
+  authorClock: string;
+  serverSequence: string;
+  signingPublicKey: string;
+  envelope: string;
+};
+type UpdateFrame = UpdateFrameBase & { type: "update" };
+type AcknowledgedFrame = UpdateFrameBase & { type: "acknowledged" };
+type RejectedFrame = { type: "rejected"; code: string };
+type ParentChangedFrame = { type: "parent-changed" };
+type ServerFrame =
+  | AuthenticatedFrame
+  | UpdateFrame
+  | AcknowledgedFrame
+  | RejectedFrame
+  | ParentChangedFrame;
+type ClientFrame =
+  | { type: "authenticate"; ticket: string; documentId: string }
+  | { type: "update"; envelope: string };
+
 class SocketEvidence {
-  readonly frames: Array<Record<string, unknown>> = [];
+  readonly frames: ServerFrame[] = [];
   readonly sent: string[] = [];
+  readonly received: string[] = [];
+  private readonly waiters: Array<{
+    predicate: (frame: ServerFrame) => boolean;
+    resolve: (frame: ServerFrame) => void;
+    timer: number;
+  }> = [];
 
-  constructor(readonly socket: WebSocket) {}
-
-  get sentText(): string {
-    return this.sent.join("\n");
+  constructor(readonly socket: WebSocket) {
+    socket.addEventListener("message", (event) => {
+      const encoded = String(event.data);
+      this.received.push(encoded);
+      const frame = parseServerFrame(encoded);
+      const waiterIndex = this.waiters.findIndex(({ predicate }) => predicate(frame));
+      if (waiterIndex < 0) {
+        this.frames.push(frame);
+        return;
+      }
+      const [waiter] = this.waiters.splice(waiterIndex, 1);
+      window.clearTimeout(waiter.timer);
+      waiter.resolve(frame);
+    });
   }
 
-  send(frame: Record<string, unknown>): void {
+  get transcript(): string {
+    return [...this.sent, ...this.received].join("\n");
+  }
+
+  send(frame: ClientFrame): void {
     const encoded = JSON.stringify(frame);
     this.sent.push(encoded);
     this.socket.send(encoded);
   }
 
-  async next(
-    predicate: (frame: Record<string, unknown>) => boolean,
+  async next<T extends ServerFrame["type"]>(
+    type: T,
     timeoutMs = 5_000,
-  ): Promise<Record<string, unknown>> {
+  ): Promise<Extract<ServerFrame, { type: T }>> {
+    const predicate = (frame: ServerFrame) => frame.type === type;
     const existing = this.frames.find(predicate);
     if (existing) {
       this.frames.splice(this.frames.indexOf(existing), 1);
-      return existing;
+      return existing as Extract<ServerFrame, { type: T }>;
     }
-    return new Promise((resolve, reject) => {
+    return new Promise<ServerFrame>((resolve, reject) => {
       const timer = window.setTimeout(() => {
-        this.socket.removeEventListener("message", listener);
+        const waiterIndex = this.waiters.findIndex((waiter) => waiter.timer === timer);
+        if (waiterIndex >= 0) this.waiters.splice(waiterIndex, 1);
         reject(new Error("Timed out waiting for collaboration frame"));
       }, timeoutMs);
-      const listener = (event: MessageEvent) => {
-        const frame = JSON.parse(String(event.data)) as Record<string, unknown>;
-        if (!predicate(frame)) return;
-        window.clearTimeout(timer);
-        this.socket.removeEventListener("message", listener);
-        resolve(frame);
-      };
-      this.socket.addEventListener("message", listener);
-    });
+      this.waiters.push({ predicate, resolve, timer });
+    }) as Promise<Extract<ServerFrame, { type: T }>>;
   }
 
   close(): void {
     this.socket.close();
   }
+}
+
+function parseServerFrame(encoded: string): ServerFrame {
+  const value = JSON.parse(encoded) as unknown;
+  if (!value || typeof value !== "object" || !("type" in value)) {
+    throw new Error("Invalid collaboration evidence frame");
+  }
+  const frame = value as Record<string, unknown>;
+  if (frame.type === "parent-changed") return { type: "parent-changed" };
+  if (frame.type === "authenticated") {
+    return { type: "authenticated", documentId: requiredString(frame, "documentId") };
+  }
+  if (frame.type === "rejected") {
+    return { type: "rejected", code: requiredString(frame, "code") };
+  }
+  if (frame.type === "update" || frame.type === "acknowledged") {
+    return {
+      type: frame.type,
+      updateId: requiredString(frame, "updateId"),
+      clientEpochId: requiredString(frame, "clientEpochId"),
+      authorClock: requiredString(frame, "authorClock"),
+      serverSequence: requiredString(frame, "serverSequence"),
+      signingPublicKey: requiredString(frame, "signingPublicKey"),
+      envelope: requiredString(frame, "envelope"),
+    };
+  }
+  throw new Error(`Unexpected collaboration evidence frame: ${String(frame.type)}`);
+}
+
+function requiredString(frame: Record<string, unknown>, field: string): string {
+  const value = frame[field];
+  if (typeof value !== "string" || !value) {
+    throw new Error(`Invalid collaboration evidence frame field: ${field}`);
+  }
+  return value;
 }
 
 async function openCollaboration(token: string, documentId: string): Promise<SocketEvidence> {
@@ -334,9 +683,6 @@ async function openCollaboration(token: string, documentId: string): Promise<Soc
   url.protocol = "ws:";
   const socket = new WebSocket(url);
   const evidenceSocket = new SocketEvidence(socket);
-  socket.addEventListener("message", (event) => {
-    evidenceSocket.frames.push(JSON.parse(String(event.data)) as Record<string, unknown>);
-  });
   await new Promise<void>((resolve, reject) => {
     socket.addEventListener("open", () => resolve(), { once: true });
     socket.addEventListener("error", () => reject(new Error("Collaboration socket failed")), {
@@ -344,18 +690,28 @@ async function openCollaboration(token: string, documentId: string): Promise<Soc
     });
   });
   evidenceSocket.send({ type: "authenticate", ticket: ticket.ticket, documentId });
-  await evidenceSocket.next((frame) => frame.type === "authenticated");
+  await evidenceSocket.next("authenticated");
   return evidenceSocket;
 }
 
-function remoteFrame(frame: Record<string, unknown>) {
+function remoteFrame(frame: ServerFrame) {
+  if (frame.type !== "update") throw new Error("Expected collaboration update frame");
   return {
-    clientEpochId: String(frame.clientEpochId),
-    authorClock: String(frame.authorClock),
-    signingPublicKey: String(frame.signingPublicKey),
-    envelope: String(frame.envelope),
-    serverSequence: String(frame.serverSequence),
+    clientEpochId: frame.clientEpochId,
+    authorClock: frame.authorClock,
+    signingPublicKey: frame.signingPublicKey,
+    envelope: frame.envelope,
+    serverSequence: frame.serverSequence,
   };
+}
+
+async function rawRequest(path: string, token: string): Promise<string> {
+  const response = await fetch(`${evidenceApiUrl}${path}`, { headers: authorization(token) });
+  expect(response.ok).toBe(true);
+  expect(response.headers.get("cache-control")).toBe("no-store");
+  const text = await response.text();
+  expect(text).not.toContain(marker);
+  return text;
 }
 
 async function binaryRequest(path: string, token: string, body: Uint8Array): Promise<unknown> {
@@ -400,35 +756,55 @@ function hexToBytes(value: string): Uint8Array {
   return Uint8Array.from(value.match(/../g) ?? [], (byte) => Number.parseInt(byte, 16));
 }
 
-async function browserPersistenceText(): Promise<string> {
-  const inspected: unknown[] = [
-    { localStorage: { ...localStorage } },
-    { sessionStorage: { ...sessionStorage } },
-  ];
-  if ("caches" in globalThis) {
-    for (const cacheName of await globalThis.caches.keys()) {
-      const cache = await globalThis.caches.open(cacheName);
-      for (const response of await cache.matchAll()) inspected.push(await response.text());
-    }
-  } else {
-    expect(productionBrowserPersistenceSource()).not.toMatch(/\b(?:caches|CacheStorage)\b/);
-  }
-  if ("indexedDB" in globalThis && typeof globalThis.indexedDB.databases === "function") {
-    const databases = await globalThis.indexedDB.databases();
-    inspected.push(databases.map(({ name, version }) => ({ name, version })));
-  } else {
-    expect(productionBrowserPersistenceSource()).not.toMatch(/\bindexedDB\b/);
-  }
-  return JSON.stringify(inspected);
+function bytesToHex(value: Uint8Array): string {
+  return [...value].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
-function productionBrowserPersistenceSource(directory = join(process.cwd(), "src")): string {
-  return readdirSync(directory, { withFileTypes: true })
-    .flatMap((entry) => {
-      const path = join(directory, entry.name);
-      if (entry.isDirectory()) return productionBrowserPersistenceSource(path);
-      if (!/\.(?:ts|vue)$/.test(entry.name) || entry.name.endsWith(".spec.ts")) return [];
-      return [readFileSync(path, "utf8")];
-    })
-    .join("\n");
+function installEvidenceStorage(): void {
+  const probe = "elderflow:evidence-storage-probe";
+  try {
+    window.localStorage.setItem(probe, "ok");
+    window.localStorage.removeItem(probe);
+    return;
+  } catch {
+    // The jsdom evidence runner may expose an unusable opaque-origin Storage object.
+  }
+  Object.defineProperty(window, "localStorage", {
+    configurable: true,
+    value: memoryStorage(),
+  });
+  Object.defineProperty(window, "sessionStorage", {
+    configurable: true,
+    value: memoryStorage(),
+  });
+}
+
+function memoryStorage(): Storage {
+  const entries = new Map<string, string>();
+  return {
+    get length() { return entries.size; },
+    clear: () => entries.clear(),
+    getItem: (key) => entries.get(key) ?? null,
+    key: (index) => [...entries.keys()][index] ?? null,
+    removeItem: (key) => entries.delete(key),
+    setItem: (key, value) => entries.set(key, String(value)),
+  };
+}
+
+function webStorageText(): string {
+  return JSON.stringify([
+    { localStorage: { ...localStorage } },
+    { sessionStorage: { ...sessionStorage } },
+  ]);
+}
+
+function evidenceArtifactText(): string {
+  const dumpPath = process.env.E2EE_EVIDENCE_DATABASE_DUMP;
+  const logPath = process.env.E2EE_EVIDENCE_BACKEND_LOG;
+  if (!dumpPath || !logPath) {
+    throw new Error(
+      "E2EE_EVIDENCE_DATABASE_DUMP and E2EE_EVIDENCE_BACKEND_LOG are required for verify",
+    );
+  }
+  return `${readFileSync(dumpPath, "utf8")}\n${readFileSync(logPath, "utf8")}`;
 }
