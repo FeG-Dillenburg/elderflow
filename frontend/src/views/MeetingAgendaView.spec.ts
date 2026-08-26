@@ -370,6 +370,52 @@ describe("MeetingAgendaView", () => {
     expect(wrapper.get(".section-duration").text()).toBe("0 min.");
   });
 
+  it("keeps Meeting-minutes editors available to content managers during an active Meeting", async () => {
+    const activeMeeting = structuredClone(meeting);
+    activeMeeting.status = "in_progress";
+    activeMeeting.meetingLeaderId = "leader";
+    activeMeeting.minuteTakerId = "minute-taker";
+    const membershipItem = structuredClone(activeMeeting.agenda[0]);
+    membershipItem.id = "item-2";
+    membershipItem.topicId = "topic-2";
+    membershipItem.position = 2;
+    membershipItem.topic.id = "topic-2";
+    membershipItem.topic.name = "Membership Topic";
+    membershipItem.topic.type = "new_membership";
+    membershipItem.topic.membershipProcessStatus = null;
+    membershipItem.topic.membershipStatusSignal = "new";
+    membershipItem.topic.godparents = null;
+    activeMeeting.agenda.push(membershipItem);
+    auth.setUser(authenticatedUser("content-manager"));
+    protectedText.state.status = "unlocked";
+    vi.spyOn(api, "meeting").mockResolvedValueOnce(activeMeeting);
+
+    const wrapper = mount(MeetingAgendaView, {
+      shallow: false,
+      global: {
+        stubs: {
+          ...stubs,
+          TopicTypeRenderer: false,
+          MeetingCollaborationStatus: true,
+          Select: {
+            props: ["modelValue", "options"],
+            template: "<select><slot /></select>",
+          },
+          InputText: { template: "<input />" },
+          MeetingTextEditor: {
+            props: ["label"],
+            template: '<textarea :aria-label="label" />',
+          },
+        },
+      },
+    });
+    await flushPromises();
+
+    expect(wrapper.findAll('textarea[aria-label="Meeting minutes"]')).toHaveLength(2);
+    expect(wrapper.text()).not.toContain("No Meeting minutes recorded");
+    expect(wrapper.text()).not.toContain("Finish meeting");
+  });
+
   it.each([
     ["Meeting leader", "leader"],
     ["Minute taker", "minute-taker"],

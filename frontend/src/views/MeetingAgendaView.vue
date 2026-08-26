@@ -60,7 +60,10 @@ const canControlInProgressMeeting = computed(() => {
   );
 });
 const canFinish = canControlInProgressMeeting;
-const canWriteMinutes = canControlInProgressMeeting;
+const canWriteMinutes = computed(
+  () =>
+    canEditProtected.value && meeting.value?.status === "in_progress",
+);
 const { t } = useI18n();
 
 const route = useRoute();
