@@ -549,6 +549,7 @@ onMounted(() => {
             </div>
             <Button
               :aria-label="t('meetingPreparation.createTopic')"
+              class="create-topic-button"
               icon="pi pi-plus"
               rounded
               @click="newVisible = true"
@@ -977,6 +978,12 @@ onMounted(() => {
 }
 .suggestions-heading {
   margin-bottom: 0.8rem;
+}
+.create-topic-button {
+  flex: 0 0 2.5rem;
+  width: 2.5rem;
+  height: 2.5rem;
+  padding: 0;
 }
 .layout aside {
   position: sticky;
