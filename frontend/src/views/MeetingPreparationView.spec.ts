@@ -25,6 +25,8 @@ const stubs = {
 const meeting: any = {
   id: "meeting-1",
   title: "Council",
+  date: "2026-08-16",
+  beginTime: "19:30",
   status: "planned",
   agenda: [
     {
@@ -101,6 +103,17 @@ describe("MeetingPreparationView", () => {
     expect(api.updateMeeting).toHaveBeenCalledWith("meeting-1", {
       status: "in_progress",
     });
+  });
+  it("opens meeting details without leaving preparation", async () => {
+    const wrapper = await view();
+    const vm: any = wrapper.vm;
+
+    expect(vm.detailsVisible).toBe(false);
+
+    vm.openDetails();
+
+    expect(vm.detailsVisible).toBe(true);
+    expect(vm.detailsForm.title).toBe("Council");
   });
   it("loads future suggestions only after the toggle and renders them below it", async () => {
     vi.mocked(api.meetingSuggestions).mockImplementation(async (_id, options) =>
