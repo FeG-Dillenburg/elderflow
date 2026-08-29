@@ -205,6 +205,12 @@ async function logout(): Promise<void> {
   color: inherit;
 }
 
+:global(a[href]),
+:global(button:not(:disabled)),
+:global(.p-button:not(:disabled)) {
+  cursor: pointer;
+}
+
 .app-shell {
   display: grid;
   grid-template-columns: fit-content(340px) minmax(0, 1fr);

@@ -38,6 +38,7 @@ describe('App', () => {
       alt: 'Elderflow',
       src: '/elderflow-wordmark-white.png',
     });
+    expect(getComputedStyle(wrapper.get('.nav-link').element).cursor).toBe('pointer');
   });
 
   it('hides forbidden content navigation for an IT admin', () => {
