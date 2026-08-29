@@ -852,6 +852,45 @@ onMounted(async () => {
   background: transparent;
 }
 
+.agenda-topic-person {
+  margin: 0;
+  padding: 0;
+  border: 1px solid #d6dce5;
+  border-bottom: 0;
+  border-radius: 0;
+  background: #fff;
+}
+
+.agenda-topic-person:first-of-type,
+.agenda-topic:not(.agenda-topic-person) + .agenda-topic-person {
+  border-top-left-radius: 0.5rem;
+  border-top-right-radius: 0.5rem;
+}
+
+.agenda-topic-person + .agenda-topic-person {
+  border-top: 0;
+}
+
+.agenda-topic-person:not(:has(+ .agenda-topic-person)) {
+  margin-bottom: 0.7rem;
+  border-bottom: 1px solid #d6dce5;
+  border-bottom-right-radius: 0.5rem;
+  border-bottom-left-radius: 0.5rem;
+}
+
+.agenda-topic-person .appearance-layout {
+  padding: 0.35rem 0.7rem;
+}
+
+.agenda-topic-person :deep(.rich-text-editor) {
+  border: 0;
+  border-radius: 0;
+}
+
+.agenda-topic-person :deep(.save-feedback) {
+  min-height: 0;
+}
+
 .appearance-layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;

@@ -54,7 +54,11 @@ export const creatableTopicTypes = (): TopicType[] =>
 export const topicAgendaClass = (value: string): string[] => {
   const type = resolveTopicType(value);
   const presentation = type ? topicTypeRegistry[type].agendaPresentation : "standard";
-  return ["agenda-topic", `agenda-topic-${presentation}`];
+  return [
+    "agenda-topic",
+    `agenda-topic-${presentation}`,
+    ...(type === "person" ? ["agenda-topic-person"] : []),
+  ];
 };
 
 export const topicUsesPlannedDuration = (value: string): boolean => {

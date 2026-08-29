@@ -39,6 +39,7 @@ describe("Topic type registry", () => {
     expect(topicAgendaClass("person")).toEqual([
       "agenda-topic",
       "agenda-topic-compact",
+      "agenda-topic-person",
     ]);
     expect(topicAgendaClass("generic")).toEqual([
       "agenda-topic",
