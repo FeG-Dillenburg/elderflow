@@ -55,6 +55,7 @@ defineProps<{
 
 .person-name {
   color: inherit;
+  cursor: pointer;
   font-weight: 800;
   text-decoration: none;
 }

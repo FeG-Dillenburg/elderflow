@@ -44,6 +44,7 @@ describe("Recurring Topic renderers", () => {
 
     expect(wrapper.text()).toContain("TOP 2.1");
     expect(wrapper.text()).toContain("Quarterly review");
+    expect(wrapper.get(".topic-link-icon").classes()).toContain("pi-arrow-up-right");
     expect(wrapper.findComponent({ name: "PairedMeetingTexts" }).props("mode"))
       .toBe("preparation");
     expect(wrapper.text()).not.toContain("Recent updates");

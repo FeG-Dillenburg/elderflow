@@ -36,6 +36,7 @@ const saveCurrentMinutes = (text: string | null) =>
       <div class="topic-title">
         <RouterLink :to="`/topics/${item.topicId}`" class="topic-name">
           {{ item.topicNameSnapshot ?? item.topic?.name }}
+          <i class="pi pi-arrow-up-right topic-link-icon" aria-hidden="true" />
         </RouterLink>
         <span
           v-if="meetingStatus === 'completed' && item.deferredAt"
@@ -113,7 +114,21 @@ const saveCurrentMinutes = (text: string | null) =>
 
 .topic-name {
   display: block;
+  cursor: pointer;
   text-decoration: none;
+}
+
+.topic-link-icon {
+  margin-left: 0.35rem;
+  color: #607dae;
+  font-size: 0.85rem;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.topic-name:hover .topic-link-icon,
+.topic-name:focus-visible .topic-link-icon {
+  opacity: 1;
 }
 
 @media (max-width: 700px) {
