@@ -139,6 +139,7 @@ describe("New membership Topic renderers", () => {
     });
 
     expect(wrapper.text()).toContain("Recorded name");
+    expect(wrapper.get(".topic-link-icon").classes()).toContain("pi-arrow-up-right");
     expect(wrapper.text()).toContain("Recorded owner");
     expect(wrapper.text()).toContain("Recorded process");
     expect(wrapper.find(".signal-icon").attributes("aria-label")).toContain("Paused");

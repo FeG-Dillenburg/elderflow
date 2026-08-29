@@ -116,6 +116,7 @@ const saveCurrentMinutes = (text: string | null) =>
         <span class="cell-label">{{ t("newMembershipTopic.nameLabel") }}</span>
         <RouterLink class="cell-value name-value" :to="`/topics/${item.topicId}`">
           {{ display.name }}
+          <i class="pi pi-arrow-up-right topic-link-icon" aria-hidden="true" />
         </RouterLink>
       </div>
       <div class="table-cell responsible-cell">
@@ -301,6 +302,18 @@ const saveCurrentMinutes = (text: string | null) =>
   font-size: 1rem;
   font-weight: 800;
   text-decoration: none;
+}
+
+.topic-link-icon {
+  display: none;
+  margin-left: 0.35rem;
+  color: #607dae;
+  font-size: 0.85rem;
+}
+
+.name-value:hover .topic-link-icon,
+.name-value:focus-visible .topic-link-icon {
+  display: inline-block;
 }
 
 .status-value > strong,

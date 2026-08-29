@@ -192,7 +192,7 @@ describe("TopicTypeRenderer", () => {
     expect(wrapper.text()).not.toContain("TOP");
     expect(wrapper.find(".updates").exists()).toBe(false);
     expect(wrapper.find(".tasks").exists()).toBe(false);
-    expect(wrapper.get(".topic-link-icon").classes()).toContain("pi-arrow-up-right");
+    expect(wrapper.find(".topic-link-icon").exists()).toBe(false);
   });
 
   it("places the Person name inside the preparation note when an appearance exists", () => {

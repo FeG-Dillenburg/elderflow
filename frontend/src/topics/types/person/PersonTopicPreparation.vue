@@ -26,14 +26,12 @@ const { t } = useI18n();
       <template #label>
         <RouterLink :to="`/topics/${topic.id}`" class="person-name">
           {{ topic.name }}:
-          <i class="pi pi-arrow-up-right topic-link-icon" aria-hidden="true" />
         </RouterLink>
       </template>
     </PersonTopicNote>
     <template v-else>
       <RouterLink :to="`/topics/${topic.id}`" class="person-name">
         {{ topic.name }}
-        <i class="pi pi-arrow-up-right topic-link-icon" aria-hidden="true" />
       </RouterLink>
       <small v-if="showType">{{ t("topicTypes.person") }}</small>
     </template>
@@ -53,19 +51,6 @@ const { t } = useI18n();
   cursor: pointer !important;
   font-weight: 800;
   text-decoration: none;
-}
-
-.topic-link-icon {
-  margin-left: 0.2rem;
-  color: #607dae;
-  font-size: 0.8rem;
-  opacity: 0;
-  transition: opacity 0.15s ease;
-}
-
-.person-name:hover .topic-link-icon,
-.person-name:focus-visible .topic-link-icon {
-  opacity: 1 !important;
 }
 
 small {
