@@ -28,7 +28,6 @@ import {
   type User,
 } from "../api/domain";
 import { dateInputFormat, formatDate } from "../i18n";
-import { protectedText } from "../e2ee/protected-text";
 import { topicNameTranslationKey } from "../topics/topicTypes";
 import { assignableUsers } from "../auth/roles";
 import {
@@ -70,7 +69,7 @@ const startVisible = ref(false);
 const starting = ref(false);
 const newVisible = ref(false);
 const selectedSections = reactive<Record<string, string>>({});
-const canEditProtected = computed(() => protectedText.state.status === "unlocked");
+const detailsReadOnly = computed(() => meeting.value?.status === "in_progress");
 const detailsForm = reactive({
   title: "",
   date: null as Date | null,
@@ -372,7 +371,7 @@ const saveDetails = async () => {
     status: detailsForm.status,
     meetingLeaderId: detailsForm.meetingLeaderId,
     minuteTakerId: detailsForm.minuteTakerId,
-    ...(canEditProtected.value ? {
+    ...(!detailsReadOnly.value ? {
       title: detailsForm.title.trim() || null,
       generalNotes: detailsForm.generalNotes || null,
       openingInput: detailsForm.openingInput || null,
@@ -642,7 +641,7 @@ onMounted(() => {
             <span>{{ t('meetings.specialTitle') }}</span>
             <InputText
               v-model="detailsForm.title"
-              :disabled="!canEditProtected"
+              :disabled="detailsReadOnly"
               :placeholder="t('meetingAgenda.exampleTitle')"
             />
           </label>
@@ -714,7 +713,7 @@ onMounted(() => {
             v-model="detailsForm.openingInput"
             height="100px"
             :placeholder="t('meetingAgenda.opening')"
-            :readonly="!canEditProtected"
+            :readonly="detailsReadOnly"
             :meeting-id="id"
             fragment="meeting/opening-input"
           />
@@ -725,7 +724,7 @@ onMounted(() => {
             v-model="detailsForm.generalNotes"
             height="100px"
             :placeholder="t('meetingAgenda.generalNotes')"
-            :readonly="!canEditProtected"
+            :readonly="detailsReadOnly"
             :meeting-id="id"
             fragment="meeting/general-notes"
           />

@@ -114,6 +114,19 @@ describe("MeetingPreparationView", () => {
 
     expect(vm.detailsVisible).toBe(true);
     expect(vm.detailsForm.title).toBe("Council");
+    expect(vm.detailsReadOnly).toBe(false);
+  });
+  it("makes protected detail fields read-only after the Meeting starts", async () => {
+    vi.mocked(api.meeting).mockResolvedValueOnce({
+      ...structuredClone(meeting),
+      status: "in_progress",
+    });
+    const wrapper = await view();
+    const vm: any = wrapper.vm;
+
+    vm.openDetails();
+
+    expect(vm.detailsReadOnly).toBe(true);
   });
   it("loads future suggestions only after the toggle and renders them below it", async () => {
     vi.mocked(api.meetingSuggestions).mockImplementation(async (_id, options) =>
