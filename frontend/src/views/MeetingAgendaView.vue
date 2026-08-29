@@ -299,7 +299,7 @@ onMounted(async () => {
         <div v-if="canEdit" class="header-actions">
           <RouterLink :to="`/meetings/${id}/prepare`">
             <Button
-              icon="pi pi-pencil"
+              icon="pi pi-arrow-left"
               :label="t('meetingAgenda.prepare')"
               outlined
             />
@@ -874,7 +874,7 @@ onMounted(async () => {
 }
 
 .agenda-topic-person .appearance-layout {
-  padding: 0.35rem 0.7rem;
+  padding: 0.2rem 0.7rem;
 }
 
 .agenda-topic-person :deep(.rich-text-editor) {
