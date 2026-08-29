@@ -131,7 +131,7 @@ const saveCurrentMinutes = (text: string | null) =>
 
 .topic-heading a {
   text-decoration: none;
-  cursor: pointer;
+  cursor: pointer !important;
 }
 
 h3 {
@@ -155,7 +155,7 @@ h3 {
 
 .topic-heading a:hover .topic-link-icon,
 .topic-heading a:focus-visible .topic-link-icon {
-  opacity: 1;
+  opacity: 1 !important;
 }
 
 .deferred-marker {

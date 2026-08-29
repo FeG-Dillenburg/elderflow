@@ -45,7 +45,7 @@ const { t } = useI18n();
 <style scoped>
 .topic-name {
   color: inherit;
-  cursor: pointer;
+  cursor: pointer !important;
   text-decoration: none;
 }
 
@@ -59,7 +59,7 @@ const { t } = useI18n();
 
 .topic-name:hover .topic-link-icon,
 .topic-name:focus-visible .topic-link-icon {
-  opacity: 1;
+  opacity: 1 !important;
 }
 
 small {

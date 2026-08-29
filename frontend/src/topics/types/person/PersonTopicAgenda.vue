@@ -56,7 +56,7 @@ defineProps<{
 
 .person-name {
   color: inherit;
-  cursor: pointer;
+  cursor: pointer !important;
   font-weight: 800;
   text-decoration: none;
 }
@@ -71,7 +71,7 @@ defineProps<{
 
 .person-name:hover .topic-link-icon,
 .person-name:focus-visible .topic-link-icon {
-  opacity: 1;
+  opacity: 1 !important;
 }
 
 .lifecycle-actions {

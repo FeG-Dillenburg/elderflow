@@ -114,7 +114,7 @@ const saveCurrentMinutes = (text: string | null) =>
 
 .topic-name {
   display: block;
-  cursor: pointer;
+  cursor: pointer !important;
   text-decoration: none;
 }
 
@@ -128,7 +128,7 @@ const saveCurrentMinutes = (text: string | null) =>
 
 .topic-name:hover .topic-link-icon,
 .topic-name:focus-visible .topic-link-icon {
-  opacity: 1;
+  opacity: 1 !important;
 }
 
 @media (max-width: 700px) {

@@ -50,7 +50,7 @@ const { t } = useI18n();
 
 .person-name {
   color: inherit;
-  cursor: pointer;
+  cursor: pointer !important;
   font-weight: 800;
   text-decoration: none;
 }
@@ -65,7 +65,7 @@ const { t } = useI18n();
 
 .person-name:hover .topic-link-icon,
 .person-name:focus-visible .topic-link-icon {
-  opacity: 1;
+  opacity: 1 !important;
 }
 
 small {
