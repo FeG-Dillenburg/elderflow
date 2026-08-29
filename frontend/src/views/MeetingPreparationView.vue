@@ -800,7 +800,7 @@ onMounted(() => {
 }
 .layout aside {
   position: sticky;
-  top: 1rem;
+  top: calc(2.6rem + 1rem);
   min-width: 0;
   padding: 1rem;
   border: 1px solid #d8e0ec;
