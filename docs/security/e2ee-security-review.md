@@ -92,7 +92,7 @@ sequenceDiagram
   participant B as "Unlocked browser B"
   A->>R: request 30-second document-bound ticket
   R-->>A: random single-use ticket
-  A->>W: stable URL; ticket in first frame
+  A->>W: stable URL, ticket in first frame
   A->>W: signed encrypted Yjs update
   W->>P: validate and persist opaque update + sequence
   W-->>B: broadcast ciphertext
