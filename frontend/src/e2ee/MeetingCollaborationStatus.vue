@@ -5,17 +5,32 @@ import { meetingCollaboration, type CollaborationStatus } from "./meeting-collab
 
 const props = defineProps<{ meetingId: string }>();
 const { t } = useI18n();
-const provider = meetingCollaboration.get(props.meetingId);
-const status = ref<CollaborationStatus>(provider?.status ?? "offline");
+const provider = ref<ReturnType<typeof meetingCollaboration.get>>();
+const status = ref<CollaborationStatus>("offline");
 const changed = (event: Event) => {
   status.value = (event as CustomEvent<CollaborationStatus>).detail;
 };
-onMounted(() => provider?.addEventListener("status", changed));
-onBeforeUnmount(() => provider?.removeEventListener("status", changed));
+const connect = () => {
+  provider.value?.removeEventListener("status", changed);
+  provider.value = meetingCollaboration.get(props.meetingId);
+  status.value = provider.value?.status ?? "offline";
+  provider.value?.addEventListener("status", changed);
+};
+const providerStarted = (event: Event) => {
+  if ((event as CustomEvent<string>).detail === props.meetingId) connect();
+};
+onMounted(() => {
+  connect();
+  window.addEventListener("elderflow:meeting-collaboration-started", providerStarted);
+});
+onBeforeUnmount(() => {
+  provider.value?.removeEventListener("status", changed);
+  window.removeEventListener("elderflow:meeting-collaboration-started", providerStarted);
+});
 </script>
 
 <template>
-  <p class="collaboration-status" :class="status" role="status" aria-live="polite">
+  <p v-if="provider" class="collaboration-status" :class="status" role="status" aria-live="polite">
     <i class="pi" :class="status === 'online' ? 'pi-wifi' : status === 'pending' ? 'pi-clock' : 'pi-exclamation-triangle'" />
     {{ t(`e2ee.collaboration.${status}`) }}
   </p>

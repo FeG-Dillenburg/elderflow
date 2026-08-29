@@ -335,6 +335,9 @@ export const meetingCollaboration = {
       resync,
     );
     providers.set(meetingId, provider);
+    window.dispatchEvent(new CustomEvent("elderflow:meeting-collaboration-started", {
+      detail: meetingId,
+    }));
     await provider.connect();
     return provider;
   },

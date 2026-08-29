@@ -11,7 +11,6 @@ import Select from "primevue/select";
 import Tag from "primevue/tag";
 import RichTextEditor from "../components/RichTextEditor.vue";
 import { sanitizeRichText } from "../components/sanitize-rich-text";
-import MeetingCollaborationStatus from "../e2ee/MeetingCollaborationStatus.vue";
 import TopicTypeRenderer from "../topics/TopicTypeRenderer.vue";
 import {
   topicAgendaClass,
@@ -281,10 +280,6 @@ onMounted(async () => {
     </Message>
     <Message v-if="error" severity="error">{{ error }}</Message>
     <template v-if="meeting">
-      <MeetingCollaborationStatus
-        v-if="meeting.collaboration?.available && canEditProtected"
-        :meeting-id="id"
-      />
       <Message
         v-if="meeting.collaboration && !meeting.collaboration.available"
         severity="info"

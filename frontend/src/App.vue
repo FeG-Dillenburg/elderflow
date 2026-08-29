@@ -7,6 +7,7 @@ import { roleLabel } from "./auth/roles";
 import router from "./router";
 import { useI18n } from "vue-i18n";
 import UnlockDialog from "./e2ee/UnlockDialog.vue";
+import MeetingCollaborationStatus from "./e2ee/MeetingCollaborationStatus.vue";
 import { protectedText } from "./e2ee/protected-text";
 
 const { t } = useI18n();
@@ -69,6 +70,13 @@ const isSetupRoute = computed(() => router.currentRoute.value.name === "setup");
 const protectedRouteKey = computed(
   () => `${router.currentRoute.value.fullPath}:${protectedText.state.status}`,
 );
+const collaborationMeetingId = computed(() => {
+  const route = router.currentRoute.value;
+  return ["meeting", "meeting-prepare"].includes(String(route.name))
+    && typeof route.params.id === "string"
+    ? route.params.id
+    : null;
+});
 
 async function logout(): Promise<void> {
   auth.logout();
@@ -143,36 +151,44 @@ async function logout(): Promise<void> {
     </aside>
     <main class="main-content">
       <div
-        v-if="protectedText.isEligible(auth.state.user)"
-        class="protected-text-status"
+        v-if="collaborationMeetingId || protectedText.isEligible(auth.state.user)"
+        class="meeting-status-bar"
       >
-        <span
-          class="status-indicator"
-          :class="`status-${protectedText.state.status}`"
-          role="status"
-        >
-          {{
-            protectedText.state.status === "unlocked"
-              ? t("e2ee.unlocked")
-              : t("e2ee.locked")
-          }}
-        </span>
-        <button
+        <MeetingCollaborationStatus
+          v-if="collaborationMeetingId"
+          :meeting-id="collaborationMeetingId"
+        />
+        <div
           v-if="protectedText.isEligible(auth.state.user)"
-          type="button"
-          class="lock-button"
-          @click="
-            protectedText.state.status === 'unlocked'
-              ? protectedText.lock('explicit')
-              : protectedText.showUnlock()
-          "
+          class="protected-text-status"
         >
-          {{
-            protectedText.state.status === "unlocked"
-              ? t("e2ee.lockAction")
-              : t("e2ee.unlockAction")
-          }}
-        </button>
+          <span
+            class="status-indicator"
+            :class="`status-${protectedText.state.status}`"
+            role="status"
+          >
+            {{
+              protectedText.state.status === "unlocked"
+                ? t("e2ee.unlocked")
+                : t("e2ee.locked")
+            }}
+          </span>
+          <button
+            type="button"
+            class="lock-button"
+            @click="
+              protectedText.state.status === 'unlocked'
+                ? protectedText.lock('explicit')
+                : protectedText.showUnlock()
+            "
+          >
+            {{
+              protectedText.state.status === "unlocked"
+                ? t("e2ee.lockAction")
+                : t("e2ee.unlockAction")
+            }}
+          </button>
+        </div>
       </div>
       <RouterView :key="protectedRouteKey" />
     </main>
@@ -346,12 +362,28 @@ nav {
   padding: 2.25rem;
 }
 
+.meeting-status-bar {
+  position: sticky;
+  z-index: 10;
+  top: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 2.6rem;
+  margin: -2.25rem -2.25rem 1rem;
+  padding: 0.5rem 2.25rem;
+  background: #f5f6f8;
+}
+
+.meeting-status-bar :deep(.collaboration-status) {
+  margin: 0;
+}
+
 .protected-text-status {
   display: flex;
   justify-content: flex-end;
   align-items: center;
   gap: 0.65rem;
-  margin-bottom: 1rem;
 }
 
 .status-indicator {
@@ -395,6 +427,11 @@ nav {
 
   .main-content {
     padding: 1rem;
+  }
+
+  .meeting-status-bar {
+    margin: -1rem -1rem 1rem;
+    padding: 0.5rem 1rem;
   }
 }
 </style>

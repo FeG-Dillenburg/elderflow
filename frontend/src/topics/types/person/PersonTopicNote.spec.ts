@@ -1,7 +1,6 @@
 import { flushPromises, mount } from "@vue/test-utils";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import PersonTopicNote from "./PersonTopicNote.vue";
-import { meetingCollaboration } from "../../../e2ee/meeting-collaboration";
 
 const item = () => ({
   id: "appearance",
@@ -51,16 +50,12 @@ describe("PersonTopicNote", () => {
     const save = vi.fn().mockResolvedValue({ ...item(), agendaNote: "New note" });
     const wrapper = mountNote({ item: item(), readOnly: false, save });
 
-    expect(wrapper.find('[role="status"]').exists()).toBe(false);
     await wrapper.get("textarea").setValue("New note");
     expect(save).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(600);
     await flushPromises();
 
     expect(save).toHaveBeenCalledWith("New note");
-    expect(wrapper.get('[role="status"]').text()).toBe("Saved");
-    await vi.advanceTimersByTimeAsync(2_000);
-    expect(wrapper.find('[role="status"]').exists()).toBe(false);
   });
 
   it("saves immediately on blur", async () => {
@@ -74,48 +69,15 @@ describe("PersonTopicNote", () => {
     expect(save).toHaveBeenCalledWith("Blurred note");
   });
 
-  it("announces a collaborative save and clears the confirmation after two seconds", async () => {
-    vi.useFakeTimers();
-    let statusListener: ((event: Event) => void) | undefined;
-    const provider = {
-      addEventListener: vi.fn((_type: string, listener: (event: Event) => void) => {
-        statusListener = listener;
-      }),
-      removeEventListener: vi.fn(),
-    };
-    vi.spyOn(meetingCollaboration, "get").mockReturnValue(provider as never);
-    const wrapper = mountNote({ item: item(), readOnly: false, save: vi.fn() });
-
-    expect(meetingCollaboration.get).toHaveBeenCalledWith("meeting");
-    await wrapper.get("textarea").setValue("Collaborative note");
-    expect(wrapper.get('[role="status"]').text()).toBe("Saving…");
-
-    await flushPromises();
-    expect(statusListener).toBeDefined();
-    statusListener?.({ detail: "online" } as CustomEvent<string>);
-    await wrapper.vm.$nextTick();
-    expect(wrapper.get('[role="status"]').text()).toBe("Saved");
-
-    await vi.advanceTimersByTimeAsync(2_000);
-    expect(wrapper.find('[role="status"]').exists()).toBe(false);
-  });
-
-  it("retains failed input and retries it", async () => {
-    const save = vi.fn()
-      .mockRejectedValueOnce(new Error("Permission denied"))
-      .mockResolvedValueOnce({ ...item(), agendaNote: "Retained note" });
+  it("retains failed input without displaying per-field feedback", async () => {
+    const save = vi.fn().mockRejectedValueOnce(new Error("Permission denied"));
     const wrapper = mountNote({ item: item(), readOnly: false, save });
 
     await wrapper.get("textarea").setValue("Retained note");
     await wrapper.get("textarea").trigger("blur");
     await flushPromises();
     expect((wrapper.get("textarea").element as HTMLTextAreaElement).value).toBe("Retained note");
-    expect(wrapper.text()).toContain("Permission denied");
-
-    await wrapper.get("button").trigger("click");
-    await flushPromises();
-    expect(save).toHaveBeenLastCalledWith("Retained note");
-    expect(wrapper.get('[role="status"]').text()).toBe("Saved");
+    expect(wrapper.find('[role="status"]').exists()).toBe(false);
   });
 
   it("serializes saves so a stale response cannot replace newer local input", async () => {
@@ -129,7 +91,7 @@ describe("PersonTopicNote", () => {
     await wrapper.get("textarea").trigger("blur");
     expect(wrapper.get(".note-editor").attributes("aria-busy")).toBe("true");
     expect(wrapper.get("textarea").attributes("aria-label")).toBe("Meeting topic note");
-    expect(wrapper.get('[role="status"]').attributes("aria-live")).toBe("polite");
+    expect(wrapper.find('[role="status"]').exists()).toBe(false);
     await wrapper.get("textarea").setValue("Newest note");
     await wrapper.get("textarea").trigger("blur");
     expect(save).toHaveBeenCalledTimes(1);
