@@ -65,7 +65,8 @@ const refreshLiveCollaborators = () => {
   for (const state of liveProvider?.awareness.getStates().values() ?? []) {
     if (isCollaboratorPresentation(state.user)) {
       const isLocalCollaborator = state.user.id === localCollaborator.value.id;
-      if (state.cursor || (isLocalCollaborator && editorFocused.value)) {
+      if ((!isLocalCollaborator && state.cursor)
+        || (isLocalCollaborator && editorFocused.value)) {
         collaborators.set(state.user.id, state.user);
       }
     }
@@ -134,7 +135,15 @@ const editor = useEditor({
   onCreate: ({ editor: current }) => {
     model.value = current.getHTML();
   },
-  onBlur: () => emit("blur"),
+  onFocus: () => {
+    editorFocused.value = true;
+    refreshLiveCollaborators();
+  },
+  onBlur: () => {
+    editorFocused.value = false;
+    refreshLiveCollaborators();
+    emit("blur");
+  },
 });
 
 watch(model, (value) => {
@@ -273,8 +282,6 @@ onBeforeUnmount(() => {
     <EditorContent
       :editor="editor"
       :data-placeholder="resolvedPlaceholder"
-      @focusin="editorFocused = true; refreshLiveCollaborators()"
-      @focusout="editorFocused = false; refreshLiveCollaborators()"
     />
   </div>
 </template>

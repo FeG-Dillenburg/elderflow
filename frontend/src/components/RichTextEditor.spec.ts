@@ -115,10 +115,16 @@ describe("RichTextEditor", () => {
     expect(wrapper.findAll('[role="listitem"]')).toHaveLength(1);
     expect(wrapper.find('[aria-label="Daria Muster is collaborating live"]').text()).toBe("DM");
 
-    await wrapper.get('[contenteditable="true"]').trigger("focusin");
+    await wrapper.get('[contenteditable="true"]').trigger("focus");
+    await nextTick();
 
     expect(wrapper.findAll('[role="listitem"]')).toHaveLength(2);
     expect(wrapper.find('[aria-label="Daniel Haas is collaborating live"]').text()).toBe("DH");
+
+    await wrapper.get('[contenteditable="true"]').trigger("blur");
+    await nextTick();
+
+    expect(wrapper.findAll('[role="listitem"]')).toHaveLength(1);
 
     wrapper.unmount();
     awareness.destroy();

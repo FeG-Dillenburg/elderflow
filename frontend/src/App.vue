@@ -241,8 +241,7 @@ async function logout(): Promise<void> {
 .sidebar {
   position: sticky;
   top: 0;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  display: flex;
   flex-direction: column;
   height: 100vh;
   min-width: 248px;
@@ -372,9 +371,9 @@ nav {
   position: sticky;
   z-index: 10;
   top: 0;
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   align-items: center;
-  justify-content: space-between;
   min-height: 2.6rem;
   margin: -2.25rem -2.25rem 1rem;
   padding: 0.5rem 2.25rem;

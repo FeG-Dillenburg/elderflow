@@ -4,6 +4,7 @@ import { useI18n } from "vue-i18n";
 import { auth } from "../auth/auth";
 import CollaboratorAvatar from "../components/CollaboratorAvatar.vue";
 import {
+  createCollaboratorPresentation,
   isCollaboratorPresentation,
   type CollaboratorPresentation,
 } from "./collaborator-presentation";
@@ -15,10 +16,9 @@ const provider = ref<ReturnType<typeof meetingCollaboration.get>>();
 const collaborators = ref<CollaboratorPresentation[]>([]);
 
 const refresh = () => {
-  const localUserId = auth.state.user?.id;
   const people = new Map<string, CollaboratorPresentation>();
   for (const state of provider.value?.awareness.getStates().values() ?? []) {
-    if (isCollaboratorPresentation(state.user) && state.user.id !== localUserId) {
+    if (isCollaboratorPresentation(state.user)) {
       people.set(state.user.id, state.user);
     }
   }
@@ -29,6 +29,10 @@ const refresh = () => {
 const connect = () => {
   provider.value?.awareness.off("change", refresh);
   provider.value = meetingCollaboration.get(props.meetingId);
+  const user = auth.state.user;
+  if (user) {
+    provider.value?.awareness.setLocalStateField("user", createCollaboratorPresentation(user));
+  }
   provider.value?.awareness.on("change", refresh);
   refresh();
 };
