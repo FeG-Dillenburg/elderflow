@@ -20,14 +20,21 @@ const slots = useSlots();
 const inlineLabel = ref<HTMLElement>();
 const inlineLabelIndent = ref("0px");
 let labelObserver: ResizeObserver | undefined;
-const { localNote, state, error, saving, save, scheduleSave } =
+const { localNote, state, error, saving, save, scheduleSave, markSaving, markSaved } =
   useMeetingTopicNoteAutosave({
     source: () => props.item.personNote?.text,
     save: (note) => props.save(note),
     saveFailedMessage: () => t("personTopic.noteSaveFailed"),
   });
+const collaboration = meetingCollaboration.get(props.item.meetingId);
+const onCollaborationStatus = (event: Event) => {
+  const status = (event as CustomEvent<string>).detail;
+  if (status === "online") markSaved();
+};
+collaboration?.addEventListener("status", onCollaborationStatus);
 watch(localNote, () => {
-  if (!meetingCollaboration.get(props.item.meetingId)) scheduleSave();
+  if (collaboration) markSaving();
+  else scheduleSave();
 });
 const safe = sanitizeRichText;
 const saveIfStandalone = () => {
@@ -51,6 +58,7 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   labelObserver?.disconnect();
+  collaboration?.removeEventListener("status", onCollaborationStatus);
 });
 </script>
 
@@ -79,7 +87,7 @@ onBeforeUnmount(() => {
         @blur="saveIfStandalone"
       />
     </span>
-    <span class="save-feedback" role="status" aria-live="polite">
+    <span v-if="state !== 'idle'" class="save-feedback" role="status" aria-live="polite">
       <template v-if="state === 'saving'">{{ t("personTopic.saving") }}</template>
       <template v-else-if="state === 'saved'">{{ t("personTopic.saved") }}</template>
       <template v-else-if="state === 'error'">

@@ -1,6 +1,7 @@
 import { flushPromises, mount } from "@vue/test-utils";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import PersonTopicNote from "./PersonTopicNote.vue";
+import { meetingCollaboration } from "../../../e2ee/meeting-collaboration";
 
 const item = () => ({
   id: "appearance",
@@ -50,6 +51,7 @@ describe("PersonTopicNote", () => {
     const save = vi.fn().mockResolvedValue({ ...item(), agendaNote: "New note" });
     const wrapper = mountNote({ item: item(), readOnly: false, save });
 
+    expect(wrapper.find('[role="status"]').exists()).toBe(false);
     await wrapper.get("textarea").setValue("New note");
     expect(save).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(600);
@@ -57,6 +59,8 @@ describe("PersonTopicNote", () => {
 
     expect(save).toHaveBeenCalledWith("New note");
     expect(wrapper.get('[role="status"]').text()).toBe("Saved");
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(wrapper.find('[role="status"]').exists()).toBe(false);
   });
 
   it("saves immediately on blur", async () => {
@@ -68,6 +72,32 @@ describe("PersonTopicNote", () => {
     await flushPromises();
 
     expect(save).toHaveBeenCalledWith("Blurred note");
+  });
+
+  it("announces a collaborative save and clears the confirmation after two seconds", async () => {
+    vi.useFakeTimers();
+    let statusListener: ((event: Event) => void) | undefined;
+    const provider = {
+      addEventListener: vi.fn((_type: string, listener: (event: Event) => void) => {
+        statusListener = listener;
+      }),
+      removeEventListener: vi.fn(),
+    };
+    vi.spyOn(meetingCollaboration, "get").mockReturnValue(provider as never);
+    const wrapper = mountNote({ item: item(), readOnly: false, save: vi.fn() });
+
+    expect(meetingCollaboration.get).toHaveBeenCalledWith("meeting");
+    await wrapper.get("textarea").setValue("Collaborative note");
+    expect(wrapper.get('[role="status"]').text()).toBe("Saving…");
+
+    await flushPromises();
+    expect(statusListener).toBeDefined();
+    statusListener?.({ detail: "online" } as CustomEvent<string>);
+    await wrapper.vm.$nextTick();
+    expect(wrapper.get('[role="status"]').text()).toBe("Saved");
+
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(wrapper.find('[role="status"]').exists()).toBe(false);
   });
 
   it("retains failed input and retries it", async () => {
