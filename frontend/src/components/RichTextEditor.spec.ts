@@ -104,6 +104,7 @@ describe("RichTextEditor", () => {
       lastName: "Muster",
     });
     remoteAwareness.setLocalStateField("user", daria);
+    remoteAwareness.setLocalStateField("cursor", { anchor: 1, head: 1 });
     applyAwarenessUpdate(
       awareness,
       encodeAwarenessUpdate(remoteAwareness, [remoteDocument.clientID]),
@@ -111,9 +112,13 @@ describe("RichTextEditor", () => {
     );
     await nextTick();
 
+    expect(wrapper.findAll('[role="listitem"]')).toHaveLength(1);
+    expect(wrapper.find('[aria-label="Daria Muster is collaborating live"]').text()).toBe("DM");
+
+    await wrapper.get('[contenteditable="true"]').trigger("focusin");
+
     expect(wrapper.findAll('[role="listitem"]')).toHaveLength(2);
     expect(wrapper.find('[aria-label="Daniel Haas is collaborating live"]').text()).toBe("DH");
-    expect(wrapper.find('[aria-label="Daria Muster is collaborating live"]').text()).toBe("DM");
 
     wrapper.unmount();
     awareness.destroy();

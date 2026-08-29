@@ -8,6 +8,7 @@ import router from "./router";
 import { useI18n } from "vue-i18n";
 import UnlockDialog from "./e2ee/UnlockDialog.vue";
 import MeetingCollaborationStatus from "./e2ee/MeetingCollaborationStatus.vue";
+import MeetingCollaborationPresence from "./e2ee/MeetingCollaborationPresence.vue";
 import { protectedText } from "./e2ee/protected-text";
 
 const { t } = useI18n();
@@ -158,6 +159,10 @@ async function logout(): Promise<void> {
           v-if="collaborationMeetingId"
           :meeting-id="collaborationMeetingId"
         />
+        <MeetingCollaborationPresence
+          v-if="collaborationMeetingId"
+          :meeting-id="collaborationMeetingId"
+        />
         <div
           v-if="protectedText.isEligible(auth.state.user)"
           class="protected-text-status"
@@ -236,7 +241,8 @@ async function logout(): Promise<void> {
 .sidebar {
   position: sticky;
   top: 0;
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   flex-direction: column;
   height: 100vh;
   min-width: 248px;
@@ -384,6 +390,7 @@ nav {
   justify-content: flex-end;
   align-items: center;
   gap: 0.65rem;
+  justify-self: end;
 }
 
 .status-indicator {

@@ -58,12 +58,16 @@ const localCollaborator = computed<CollaboratorPresentation>(() => {
       });
 });
 const liveCollaborators = ref<CollaboratorPresentation[]>([]);
+const editorFocused = ref(false);
 
 const refreshLiveCollaborators = () => {
   const collaborators = new Map<string, CollaboratorPresentation>();
   for (const state of liveProvider?.awareness.getStates().values() ?? []) {
     if (isCollaboratorPresentation(state.user)) {
-      collaborators.set(state.user.id, state.user);
+      const isLocalCollaborator = state.user.id === localCollaborator.value.id;
+      if (state.cursor || (isLocalCollaborator && editorFocused.value)) {
+        collaborators.set(state.user.id, state.user);
+      }
     }
   }
   liveCollaborators.value = [...collaborators.values()]
@@ -142,6 +146,7 @@ watch(model, (value) => {
 watch(() => props.readonly, (value) => editor.value?.setEditable(!value));
 
 if (liveProvider) {
+  liveProvider.awareness.setLocalStateField("user", localCollaborator.value);
   watch(localCollaborator, (collaborator) => {
     liveProvider.awareness.setLocalStateField("user", collaborator);
   });
@@ -265,7 +270,12 @@ onBeforeUnmount(() => {
         />
       </div>
     </div>
-    <EditorContent :editor="editor" :data-placeholder="resolvedPlaceholder" />
+    <EditorContent
+      :editor="editor"
+      :data-placeholder="resolvedPlaceholder"
+      @focusin="editorFocused = true; refreshLiveCollaborators()"
+      @focusout="editorFocused = false; refreshLiveCollaborators()"
+    />
   </div>
 </template>
 
