@@ -26,6 +26,7 @@ defineProps<{
         <template #label>
           <RouterLink :to="`/topics/${item.topicId}`" class="person-name">
             {{ item.topicNameSnapshot ?? item.topic?.name }}:
+            <i class="pi pi-arrow-up-right topic-link-icon" aria-hidden="true" />
           </RouterLink>
         </template>
       </PersonTopicNote>
@@ -58,6 +59,19 @@ defineProps<{
   cursor: pointer;
   font-weight: 800;
   text-decoration: none;
+}
+
+.topic-link-icon {
+  margin-left: 0.2rem;
+  color: #607dae;
+  font-size: 0.8rem;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.person-name:hover .topic-link-icon,
+.person-name:focus-visible .topic-link-icon {
+  opacity: 1;
 }
 
 .lifecycle-actions {

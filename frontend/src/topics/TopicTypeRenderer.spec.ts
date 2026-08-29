@@ -84,14 +84,19 @@ describe("TopicTypeRenderer", () => {
     const wrapper = mount(GenericTopicPreparation, {
       props: {
         topic: {
+          id: "topic",
           name: "Topic",
           type: "generic",
           followUpDate: "2026-07-20",
         } as any,
         showType: true,
       },
+      global: {
+        stubs: { RouterLink: { template: "<a><slot /></a>" } },
+      },
     });
 
+    expect(wrapper.get(".topic-link-icon").classes()).toContain("pi-arrow-up-right");
     expect(wrapper.find("small").text().replace(/\s+/g, " ")).toBe(
       "Generic · 7/20/2026",
     );
@@ -187,7 +192,7 @@ describe("TopicTypeRenderer", () => {
     expect(wrapper.text()).not.toContain("TOP");
     expect(wrapper.find(".updates").exists()).toBe(false);
     expect(wrapper.find(".tasks").exists()).toBe(false);
-    expect(wrapper.find(".topic-link-icon").exists()).toBe(false);
+    expect(wrapper.get(".topic-link-icon").classes()).toContain("pi-arrow-up-right");
   });
 
   it("places the Person name inside the preparation note when an appearance exists", () => {

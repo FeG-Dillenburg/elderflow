@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { RouterLink } from "vue-router";
 import type { MeetingTopic, Topic } from "../../../api/domain";
 import { useI18n } from "vue-i18n";
 import { formatDate } from "../../../i18n";
@@ -19,7 +20,10 @@ const { t } = useI18n();
 
 <template>
   <div>
-    <strong>{{ topic.name }}</strong>
+    <RouterLink :to="`/topics/${topic.id}`" class="topic-name">
+      <strong>{{ topic.name }}</strong>
+      <i class="pi pi-arrow-up-right topic-link-icon" aria-hidden="true" />
+    </RouterLink>
     <small v-if="showType">
       {{ t(`topicTypes.${topic.type}`) }}
       <template v-if="topic.followUpDate">
@@ -39,6 +43,25 @@ const { t } = useI18n();
 </template>
 
 <style scoped>
+.topic-name {
+  color: inherit;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.topic-link-icon {
+  margin-left: 0.35rem;
+  color: #607dae;
+  font-size: 0.85rem;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.topic-name:hover .topic-link-icon,
+.topic-name:focus-visible .topic-link-icon {
+  opacity: 1;
+}
+
 small {
   display: block;
   margin-top: 0.2rem;

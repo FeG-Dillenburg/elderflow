@@ -297,6 +297,7 @@ const saveCurrentMinutes = (text: string | null) =>
 .name-value {
   padding: 0.55rem 0.8rem;
   color: inherit;
+  cursor: pointer;
   font-size: 1rem;
   font-weight: 800;
   text-decoration: none;
