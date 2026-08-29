@@ -48,14 +48,14 @@ describe("RichTextEditor", () => {
     expect(wrapper.find('[contenteditable="false"]').exists()).toBe(true);
   });
 
-  it("formats newly entered text in bold by default", async () => {
+  it("does not format newly entered text in bold by default", async () => {
     const wrapper = mount(RichTextEditor);
     await editorMounted();
 
     const editor = (wrapper.vm as any).editor;
-    expect(editor.isActive("bold")).toBe(true);
+    expect(editor.isActive("bold")).toBe(false);
     editor.commands.insertContent("New topic text");
-    expect(editor.getHTML()).toContain("<strong>New topic text</strong>");
+    expect(editor.getHTML()).not.toContain("<strong>New topic text</strong>");
   });
 
   it("supports a compact toolbar-free surface with first-line indentation", async () => {

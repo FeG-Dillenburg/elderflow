@@ -128,7 +128,6 @@ const editor = useEditor({
     model.value = current.getHTML();
   },
   onCreate: ({ editor: current }) => {
-    if (current.isEmpty && !props.readonly) current.commands.setMark("bold");
     model.value = current.getHTML();
   },
   onBlur: () => emit("blur"),
