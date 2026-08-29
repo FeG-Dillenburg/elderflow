@@ -412,6 +412,7 @@ onMounted(() => {
           <Button
             icon="pi pi-pencil"
             :label="t('meetingAgenda.editDetails')"
+            size="small"
             text
             @click="openDetails"
           />
@@ -426,6 +427,8 @@ onMounted(() => {
               icon="pi pi-arrow-right"
               icon-pos="right"
               :label="t('meetingPreparation.openAgenda')"
+              size="small"
+              text
             />
           </RouterLink>
         </div>
