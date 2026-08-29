@@ -135,7 +135,8 @@ const editor = useEditor({
   onCreate: ({ editor: current }) => {
     model.value = current.getHTML();
   },
-  onFocus: () => {
+  onFocus: ({ editor: current }) => {
+    if (current.isEmpty) current.view.dispatch(current.state.tr.setStoredMarks([]));
     editorFocused.value = true;
     refreshLiveCollaborators();
   },

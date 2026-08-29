@@ -48,14 +48,59 @@ describe("RichTextEditor", () => {
     expect(wrapper.find('[contenteditable="false"]').exists()).toBe(true);
   });
 
-  it("does not format newly entered text in bold by default", async () => {
-    const wrapper = mount(RichTextEditor);
+  it("does not format text entered into a newly focused editor with an empty nullable model in bold", async () => {
+    const wrapper = mount(RichTextEditor, {
+      props: { modelValue: null as any },
+    });
     await editorMounted();
 
     const editor = (wrapper.vm as any).editor;
     expect(editor.isActive("bold")).toBe(false);
+    editor.commands.focus("end");
     editor.commands.insertContent("New topic text");
     expect(editor.getHTML()).not.toContain("<strong>New topic text</strong>");
+  });
+
+  it("does not retain bold formatting in a newly focused collaborative editor", async () => {
+    const document = new Y.Doc();
+    const awareness = new Awareness(document);
+    vi.spyOn(meetingCollaboration, "get").mockReturnValue({
+      meetingId: "meeting",
+      document,
+      awareness,
+    } as any);
+    const wrapper = mount(RichTextEditor, {
+      props: {
+        meetingId: "meeting",
+        fragment: meetingFragmentId("meetingMinutes", "appearance"),
+      },
+    });
+    await editorMounted();
+
+    const editor = (wrapper.vm as any).editor;
+    editor.commands.focus("end");
+    editor.commands.insertContent("Meeting opening");
+
+    expect(editor.getHTML()).not.toContain("<strong>Meeting opening</strong>");
+
+    wrapper.unmount();
+    awareness.destroy();
+    document.destroy();
+  });
+
+  it("clears a stale bold mark before typing into an empty editor", async () => {
+    const wrapper = mount(RichTextEditor);
+    await editorMounted();
+
+    const editor = (wrapper.vm as any).editor;
+    editor.commands.focus("end");
+    editor.view.dispatch(editor.state.tr.setStoredMarks([
+      editor.schema.marks.bold.create(),
+    ]));
+    editor.options.onFocus({ editor });
+    editor.commands.insertContent("Plain text");
+
+    expect(editor.getHTML()).not.toContain("<strong>Plain text</strong>");
   });
 
   it("supports a compact toolbar-free surface with first-line indentation", async () => {
