@@ -39,7 +39,7 @@ const props = withDefaults(defineProps<{
 const model = defineModel<string>({ default: "" });
 const emit = defineEmits<{ blur: [] }>();
 const { t } = useI18n();
-const resolvedPlaceholder = computed(() => props.placeholder ?? t("topicDetail.addUpdate"));
+const resolvedPlaceholder = computed(() => props.placeholder ?? t("editor.placeholder"));
 const liveProvider = props.meetingId ? meetingCollaboration.get(props.meetingId) : undefined;
 const liveField = props.fragment ? `tiptap:${props.fragment}` : undefined;
 const extensions = meetingRichTextExtensions(Boolean(liveProvider));
@@ -128,6 +128,7 @@ const editor = useEditor({
     model.value = current.getHTML();
   },
   onCreate: ({ editor: current }) => {
+    if (current.isEmpty && !props.readonly) current.commands.setMark("bold");
     model.value = current.getHTML();
   },
   onBlur: () => emit("blur"),

@@ -25,6 +25,7 @@ const stubs = {
 const meeting: any = {
   id: "meeting-1",
   title: "Council",
+  status: "planned",
   agenda: [
     {
       id: "item-2",
@@ -86,6 +87,20 @@ describe("MeetingPreparationView", () => {
     });
     await flushPromises();
     expect((failed.vm as any).error).toBe("No meeting");
+  });
+  it("keeps Topic status out of preparation and starts a planned Meeting after confirmation", async () => {
+    const wrapper = await view();
+    const vm: any = wrapper.vm;
+    vi.spyOn(api, "updateMeeting").mockResolvedValue({ ...meeting, status: "in_progress" } as any);
+
+    expect(wrapper.text()).not.toContain("Open");
+    expect(wrapper.find('[label="Start meeting"]').exists()).toBe(true);
+
+    await vm.startMeeting();
+
+    expect(api.updateMeeting).toHaveBeenCalledWith("meeting-1", {
+      status: "in_progress",
+    });
   });
   it("loads future suggestions only after the toggle and renders them below it", async () => {
     vi.mocked(api.meetingSuggestions).mockImplementation(async (_id, options) =>

@@ -171,7 +171,11 @@ onMounted(load);
               </span>
             </div>
             <div v-if="canEditProtected" class="new-update">
-              <RichTextEditor v-model="updateText" height="120px" />
+              <RichTextEditor
+                v-model="updateText"
+                height="120px"
+                :placeholder="t('topicDetail.addUpdate')"
+              />
               <Button
                 :disabled="!updateText"
                 icon="pi pi-plus"
@@ -265,7 +269,11 @@ onMounted(load);
         </label>
         <label>
           <span>{{ t("common.description") }}</span>
-          <RichTextEditor v-model="task.description" height="100px" />
+          <RichTextEditor
+            v-model="task.description"
+            height="100px"
+            :placeholder="t('common.description')"
+          />
         </label>
         <div class="row">
           <label>

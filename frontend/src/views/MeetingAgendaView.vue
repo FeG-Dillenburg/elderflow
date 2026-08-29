@@ -265,12 +265,13 @@ const finishMeeting = async () => {
     finishing.value = false;
   }
 };
-onMounted(() => {
+onMounted(async () => {
   if (window.sessionStorage.getItem("elderflow:discarded-collaboration") === id) {
     discardedAfterReload.value = true;
     window.sessionStorage.removeItem("elderflow:discarded-collaboration");
   }
-  void load();
+  await load();
+  if (route.query?.edit === "true") openEdit();
 });
 </script>
 <template>
@@ -301,12 +302,6 @@ onMounted(() => {
           </p>
         </div>
         <div v-if="canEdit" class="header-actions">
-          <Button
-            icon="pi pi-cog"
-            :label="t('meetingAgenda.editDetails')"
-            text
-            @click="openEdit"
-          />
           <RouterLink :to="`/meetings/${id}/prepare`">
             <Button
               icon="pi pi-pencil"
@@ -621,6 +616,7 @@ onMounted(() => {
             <RichTextEditor
               v-model="editForm.openingInput"
               height="100px"
+              :placeholder="t('meetingAgenda.opening')"
               :readonly="!canEditProtected"
               :meeting-id="id"
               fragment="meeting/opening-input"
@@ -631,6 +627,7 @@ onMounted(() => {
             <RichTextEditor
               v-model="editForm.generalNotes"
               height="100px"
+              :placeholder="t('meetingAgenda.generalNotes')"
               :readonly="!canEditProtected"
               :meeting-id="id"
               fragment="meeting/general-notes"
@@ -848,6 +845,7 @@ onMounted(() => {
 }
 
 .agenda-topic-compact {
+  margin-bottom: 0.25rem;
   padding: 0.35rem 0;
   border-width: 0;
   border-radius: 0;

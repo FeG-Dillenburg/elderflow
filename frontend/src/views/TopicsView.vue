@@ -173,6 +173,7 @@ onMounted(load);
       />
       <Select
         v-model="filters.sort"
+        append-to="body"
         :options="[
           { value: 'updated', label: t('topics.sortUpdated') },
           { value: 'name', label: t('topics.sortName') },
@@ -183,12 +184,14 @@ onMounted(load);
       />
       <Select
         v-model="filters.status"
+        append-to="body"
         :options="statusOptions"
         option-label="label"
         option-value="value"
       />
       <Select
         v-model="filters.type"
+        append-to="body"
         :options="topicTypes"
         option-label="label"
         option-value="value"
@@ -197,6 +200,7 @@ onMounted(load);
       />
       <Select
         v-model="filters.defaultSectionId"
+        append-to="body"
         :options="sections"
         option-label="name"
         option-value="id"
@@ -205,6 +209,7 @@ onMounted(load);
       />
       <Select
         v-model="filters.responsibleUserId"
+        append-to="body"
         :options="users"
         option-label="firstName"
         option-value="id"

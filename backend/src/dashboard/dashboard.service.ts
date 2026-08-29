@@ -61,6 +61,7 @@ const dashboardTopicSelect: FindOptionsSelect<Topic> = {
 };
 
 export interface DashboardData {
+  currentMeeting: ReturnType<typeof nextMeetingResponse>;
   nextMeeting: ReturnType<typeof nextMeetingResponse>;
   myOpenTasks: TaskSummaryResponse[];
   overdueTasks: TaskSummaryResponse[];
@@ -78,7 +79,17 @@ export class DashboardService {
 
   async get(user: User): Promise<DashboardData> {
     const today = new Date().toISOString().slice(0, 10);
-    const [nextMeeting, myOpenTasks, overdueTasks, followUpTopics, recentTopics] = await Promise.all([
+    const [currentMeeting, nextMeeting, myOpenTasks, overdueTasks, followUpTopics, recentTopics] = await Promise.all([
+      this.meetings.findOne({
+        where: { status: 'in_progress' },
+        relations: { meetingLeader: true },
+        select: {
+          id: true, titleEnvelope: true, titleCommitRevision: true, date: true,
+          beginTime: true, status: true, meetingLeaderId: true,
+          meetingLeader: { id: true, email: true, firstName: true, lastName: true, role: true, language: true },
+        },
+        order: { date: 'ASC' },
+      }),
       this.meetings.findOne({
         where: { date: MoreThanOrEqual(today), status: 'planned' },
         relations: { meetingLeader: true },
@@ -140,6 +151,7 @@ export class DashboardService {
       }),
     ]);
     return {
+      currentMeeting: nextMeetingResponse(currentMeeting, user),
       nextMeeting: nextMeetingResponse(nextMeeting, user),
       myOpenTasks: myOpenTasks.map((task) => taskSummaryResponse(task, user)),
       overdueTasks: overdueTasks.map((task) => taskSummaryResponse(task, user)),

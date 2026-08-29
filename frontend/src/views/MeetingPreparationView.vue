@@ -48,7 +48,6 @@ type SuggestionClone = Topic & {
 
 const route = useRoute();
 const { t } = useI18n();
-const statusLabel = (value?: string) => (value ? t(`labels.${value}`) : "");
 const id = route.params.id as string;
 const meeting = ref<Meeting | null>(null);
 const readOnly = computed(() => meeting.value?.status === "completed");
@@ -63,6 +62,8 @@ const responsibleUserOptions = computed(() => assignableUsers(users.value));
 const grouped = ref<AgendaGroup[]>([]);
 const error = ref("");
 const pending = ref(false);
+const startVisible = ref(false);
+const starting = ref(false);
 const newVisible = ref(false);
 const selectedSections = reactive<Record<string, string>>({});
 const agendaGroup = { name: "agenda-topics", pull: true, put: true };
@@ -302,6 +303,22 @@ const createAndAdd = async () => {
   newVisible.value = false;
 };
 
+const startMeeting = async () => {
+  if (starting.value || !meeting.value) return;
+  starting.value = true;
+  try {
+    await api.updateMeeting(id, { status: "in_progress" });
+    startVisible.value = false;
+    await load();
+  } catch (cause) {
+    error.value = cause instanceof Error
+      ? cause.message
+      : t("meetingPreparation.startFailed");
+  } finally {
+    starting.value = false;
+  }
+};
+
 onMounted(() => {
   if (window.sessionStorage.getItem("elderflow:discarded-collaboration") === id) {
     discardedAfterReload.value = true;
@@ -334,13 +351,29 @@ onMounted(() => {
           <h1>{{ meetingLabel(meeting) }}</h1>
           <p>{{ t("meetingPreparation.description") }}</p>
         </div>
-        <RouterLink :to="`/meetings/${id}`">
+        <div class="header-actions">
+          <RouterLink :to="`/meetings/${id}?edit=true`">
+            <Button
+              icon="pi pi-cog"
+              :label="t('meetingAgenda.editDetails')"
+              text
+            />
+          </RouterLink>
           <Button
-            icon="pi pi-arrow-right"
-            icon-pos="right"
-            :label="t('meetingPreparation.openAgenda')"
+            v-if="meeting.status === 'planned' && !readOnly"
+            icon="pi pi-play"
+            :label="t('meetingPreparation.start')"
+            severity="success"
+            @click="startVisible = true"
           />
-        </RouterLink>
+          <RouterLink :to="`/meetings/${id}`">
+            <Button
+              icon="pi pi-arrow-right"
+              icon-pos="right"
+              :label="t('meetingPreparation.openAgenda')"
+            />
+          </RouterLink>
+        </div>
       </header>
       <div :class="['layout', { 'layout-read-only': readOnly }]">
         <main>
@@ -395,12 +428,9 @@ onMounted(() => {
                       :save-preparation-context="saveMeetingPreparationContext(id, item)"
                       :save-minutes="saveMeetingMinutes(id, item)"
                     />
-                    <small>
-                      {{ statusLabel(item.topic?.status) }}
-                      <template v-if="item.topic?.followUpDate">
-                        · {{ t("topics.followUp") }}
+                    <small v-if="item.topic?.followUpDate">
+                      {{ t("topics.followUp") }}
                         {{ formatDate(`${item.topic.followUpDate}T12:00:00`) }}
-                      </template>
                     </small>
                   </div>
                   <div v-if="!readOnly" class="item-actions">
@@ -599,6 +629,23 @@ onMounted(() => {
           form="new-topic"
           :label="t('meetingPreparation.createAndAdd')"
           type="submit"
+        />
+      </template>
+    </Dialog>
+    <Dialog
+      v-if="!readOnly"
+      v-model:visible="startVisible"
+      :header="t('meetingPreparation.startTitle')"
+      modal
+    >
+      <p>{{ t("meetingPreparation.startWarning") }}</p>
+      <template #footer>
+        <Button :label="t('common.cancel')" text @click="startVisible = false" />
+        <Button
+          :disabled="starting"
+          :label="t('meetingPreparation.confirmStart')"
+          severity="success"
+          @click="startMeeting"
         />
       </template>
     </Dialog>

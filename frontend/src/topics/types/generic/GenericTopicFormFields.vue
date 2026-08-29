@@ -18,7 +18,7 @@ const description = computed({
 <template>
   <label>
     <span>{{ t("topics.background") }}</span>
-    <RichTextEditor v-model="description" />
+    <RichTextEditor v-model="description" :placeholder="t('topics.background')" />
   </label>
 </template>
 

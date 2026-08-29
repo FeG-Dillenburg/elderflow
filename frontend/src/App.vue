@@ -56,6 +56,15 @@ const navigation: Array<{
 const visibleNavigation = computed(() =>
   navigation.filter((item) => auth.canView(item.permission)),
 );
+const primaryNavigation = computed(() =>
+  visibleNavigation.value.filter((item) => !["/users", "/agenda-sections"].includes(item.to)),
+);
+const settingsNavigation = computed(() =>
+  visibleNavigation.value.filter((item) => ["/users", "/agenda-sections"].includes(item.to)),
+);
+const hasSettingsNavigation = computed(() =>
+  settingsNavigation.value.length > 0 || protectedText.isEligible(auth.state.user),
+);
 const isSetupRoute = computed(() => router.currentRoute.value.name === "setup");
 const protectedRouteKey = computed(
   () => `${router.currentRoute.value.fullPath}:${protectedText.state.status}`,
@@ -85,7 +94,7 @@ async function logout(): Promise<void> {
       </div>
       <nav :aria-label="t('nav.main')">
         <RouterLink
-          v-for="item in visibleNavigation"
+          v-for="item in primaryNavigation"
           :key="item.to"
           :to="item.to"
           class="nav-link"
@@ -93,6 +102,15 @@ async function logout(): Promise<void> {
           <i :class="item.icon" aria-hidden="true" class="pi" />
           {{ t(item.labelKey) }}
         </RouterLink>
+        <p v-if="hasSettingsNavigation" class="nav-heading">
+          {{ t("nav.settings") }}
+        </p>
+        <template v-for="item in settingsNavigation" :key="item.to">
+          <RouterLink :to="item.to" class="nav-link">
+            <i :class="item.icon" aria-hidden="true" class="pi" />
+            {{ t(item.labelKey) }}
+          </RouterLink>
+        </template>
         <RouterLink
           v-if="protectedText.isEligible(auth.state.user)"
           to="/key-recovery"
@@ -189,7 +207,7 @@ async function logout(): Promise<void> {
 
 .app-shell {
   display: grid;
-  grid-template-columns: 248px minmax(0, 1fr);
+  grid-template-columns: fit-content(340px) minmax(0, 1fr);
   min-height: 100vh;
 }
 
@@ -199,6 +217,8 @@ async function logout(): Promise<void> {
   display: flex;
   flex-direction: column;
   height: 100vh;
+  min-width: 248px;
+  max-width: 340px;
   padding: 1.5rem 1rem;
   background: #18253c;
   color: #fff;
@@ -238,6 +258,15 @@ nav {
   border-radius: 0.6rem;
   color: #dce5f4;
   text-decoration: none;
+}
+
+.nav-heading {
+  margin: 1rem 0.9rem 0.2rem;
+  color: #aebbd0;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .nav-link:hover,

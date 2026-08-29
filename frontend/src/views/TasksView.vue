@@ -201,6 +201,7 @@ const safe = (html: string | null) => DOMPurify.sanitize(html ?? "");
       />
       <Select
         v-model="filters.assignedToId"
+        append-to="body"
         :options="users"
         option-label="firstName"
         option-value="id"
@@ -212,6 +213,7 @@ const safe = (html: string | null) => DOMPurify.sanitize(html ?? "");
       </Select>
       <Select
         v-model="filters.topicId"
+        append-to="body"
         :options="topics"
         option-label="name"
         option-value="id"
@@ -221,6 +223,7 @@ const safe = (html: string | null) => DOMPurify.sanitize(html ?? "");
       />
       <Select
         v-model="filters.meetingId"
+        append-to="body"
         :options="meetings"
         option-value="id"
         :placeholder="t('tasks.allMeetings')"
@@ -231,6 +234,7 @@ const safe = (html: string | null) => DOMPurify.sanitize(html ?? "");
       </Select>
       <Select
         v-model="filters.status"
+        append-to="body"
         :options="statusOptions"
         option-label="label"
         option-value="value"
@@ -335,7 +339,11 @@ const safe = (html: string | null) => DOMPurify.sanitize(html ?? "");
         </label>
         <label>
           <span>{{ t("common.description") }}</span>
-          <RichTextEditor v-model="form.description" height="110px" />
+          <RichTextEditor
+            v-model="form.description"
+            height="110px"
+            :placeholder="t('common.description')"
+          />
         </label>
         <label>
           <span>{{ t("common.topic") }}</span>

@@ -47,11 +47,12 @@ describe("DashboardService", () => {
       nameEnvelope: Buffer.from("recent"),
       descriptionEnvelope: Buffer.from("must-not-leak"),
     }];
-    meetings.findOne.mockResolvedValue(next);
+    meetings.findOne.mockResolvedValueOnce({ ...next, id: "current", status: "in_progress" }).mockResolvedValueOnce(next);
     tasks.find.mockResolvedValueOnce(mine).mockResolvedValueOnce(overdue);
     topics.find.mockResolvedValueOnce(followUps).mockResolvedValueOnce(recent);
     const result = await service.get({ id: "user", role: "user" } as any);
     expect(result).toMatchObject({
+      currentMeeting: expect.objectContaining({ id: "current", status: "in_progress" }),
       nextMeeting: expect.objectContaining({ id: "meeting", date: "2026-07-20" }),
       myOpenTasks: [expect.objectContaining({ id: "mine" })],
       overdueTasks: [expect.objectContaining({ id: "late" })],
@@ -76,13 +77,17 @@ describe("DashboardService", () => {
       nameCommitRevision: undefined,
     });
     expect(JSON.stringify(result)).not.toContain("must-not-leak");
-    expect(meetings.findOne).toHaveBeenCalledWith(expect.objectContaining({
+    expect(meetings.findOne).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      where: { status: "in_progress" },
+      order: { date: "ASC" },
+    }));
+    expect(meetings.findOne).toHaveBeenNthCalledWith(2, expect.objectContaining({
       where: { date: MoreThanOrEqual("2026-07-15"), status: "planned" },
       relations: { meetingLeader: true },
       order: { date: "ASC" },
       select: expect.objectContaining({ id: true, date: true }),
     }));
-    expect(meetings.findOne.mock.calls[0][0].select).not.toHaveProperty("title");
+    expect(meetings.findOne.mock.calls[1][0].select).not.toHaveProperty("title");
     expect(tasks.find).toHaveBeenNthCalledWith(1, expect.objectContaining({
       where: { assignedToId: "user", status: In(["open", "in_progress"]) },
       order: { dueDate: "ASC" },
@@ -120,6 +125,7 @@ describe("DashboardService", () => {
     tasks.find.mockResolvedValue([]);
     topics.find.mockResolvedValue([]);
     await expect(service.get({ id: "user", role: "user" } as any)).resolves.toEqual({
+      currentMeeting: null,
       nextMeeting: null,
       myOpenTasks: [],
       overdueTasks: [],
