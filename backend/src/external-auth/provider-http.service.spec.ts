@@ -1,4 +1,6 @@
 import { HttpStatus } from '@nestjs/common';
+import { createServer } from 'node:http';
+import { AddressInfo } from 'node:net';
 import { codedHttpException } from '../errors/coded-http.exception';
 import { ProviderHttpService, providerNetworkFailureCode } from './provider-http.service';
 
@@ -62,5 +64,25 @@ describe('ProviderHttpService diagnostics', () => {
           },
         },
       });
+  });
+
+  it('supports Node HTTP requests that ask the custom lookup for all addresses', async () => {
+    const server = createServer((_request, response) => {
+      response.setHeader('Content-Type', 'application/json');
+      response.end('{"ok":true}');
+    });
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const port = (server.address() as AddressInfo).port;
+    const addresses = [{ address: '127.0.0.1', family: 4 }];
+    const service = new ProviderHttpService({
+      assertSafe: jest.fn(async (url: string) => new URL(url)),
+      resolveSafeAddresses: jest.fn(async () => addresses),
+    } as any);
+
+    try {
+      await expect(service.getJson(`http://provider.test:${port}/userinfo`)).resolves.toEqual({ ok: true });
+    } finally {
+      await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+    }
   });
 });

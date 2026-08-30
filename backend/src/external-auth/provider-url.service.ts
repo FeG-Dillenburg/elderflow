@@ -4,6 +4,11 @@ import { lookup } from 'node:dns/promises';
 import { isIP } from 'node:net';
 import { codedHttpException } from '../errors/coded-http.exception';
 
+export interface SafeProviderAddress {
+  address: string;
+  family: 4 | 6;
+}
+
 @Injectable()
 export class ProviderUrlService {
   constructor(private readonly config: ConfigService) {}
@@ -17,25 +22,24 @@ export class ProviderUrlService {
     const localDevelopment = environment !== 'production' && ['localhost', '127.0.0.1', '::1'].includes(hostname);
     if (url.protocol !== 'https:' && !(localDevelopment && url.protocol === 'http:')) throw this.unsafe();
     if (['169.254.169.254', 'fd00:ec2::254', 'metadata.google.internal', 'instance-data.ec2.internal', 'metadata.azure.internal'].includes(hostname)) throw this.unsafe();
-    const addresses = isIP(hostname)
-      ? [{ address: hostname, family: isIP(hostname) }]
-      : await this.resolveSafeAddresses(hostname);
-    if (environment === 'production' && addresses.some(({ address }) => this.isLoopbackOrLinkLocal(address))) throw this.unsafe();
+    await this.resolveSafeAddresses(hostname);
     return url;
   }
 
-  async resolveSafeAddress(hostname: string): Promise<{ address: string; family: number }> {
+  async resolveSafeAddresses(hostname: string): Promise<SafeProviderAddress[]> {
     const normalizedHostname = this.normalizeHostname(hostname);
-    const addresses = isIP(normalizedHostname)
-      ? [{ address: normalizedHostname, family: isIP(normalizedHostname) }]
-      : await this.resolveSafeAddresses(normalizedHostname);
+    const literalFamily = isIP(normalizedHostname);
+    const addresses = literalFamily
+      ? [{ address: normalizedHostname, family: literalFamily }]
+      : await this.lookupAddresses(normalizedHostname);
+    if (!addresses.length || addresses.some(({ address, family }) => isIP(address) !== family)) throw this.dnsFailure();
     if (this.config.get<string>('NODE_ENV') === 'production' && addresses.some(({ address }) => this.isLoopbackOrLinkLocal(address))) throw this.unsafe();
-    return addresses[0];
+    return addresses as SafeProviderAddress[];
   }
 
-  private async resolveSafeAddresses(hostname: string): Promise<Array<{ address: string; family: number }>> {
+  private async lookupAddresses(hostname: string): Promise<Array<{ address: string; family: number }>> {
     return lookup(hostname, { all: true, verbatim: true }).catch(() => {
-      throw codedHttpException(HttpStatus.BAD_REQUEST, 'AUTH_PROVIDER_DNS_FAILED', 'Provider host could not be resolved');
+      throw this.dnsFailure();
     });
   }
 
@@ -50,5 +54,9 @@ export class ProviderUrlService {
 
   private unsafe() {
     return codedHttpException(HttpStatus.BAD_REQUEST, 'AUTH_PROVIDER_URL_UNSAFE', 'Provider URL is not allowed');
+  }
+
+  private dnsFailure() {
+    return codedHttpException(HttpStatus.BAD_REQUEST, 'AUTH_PROVIDER_DNS_FAILED', 'Provider host could not be resolved');
   }
 }

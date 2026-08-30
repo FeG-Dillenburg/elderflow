@@ -122,14 +122,18 @@ export class ProviderHttpService {
       const request = (url.protocol === 'https:' ? httpsRequest : httpRequest)(url, {
         method: init.method ?? 'GET',
         headers: init.headers as Record<string, string> | undefined,
-        lookup: (hostname, _options, callback) => {
-          void this.urls.resolveSafeAddress(hostname)
-            .then(({ address, family }) => {
-              resolvedAddress = address;
-              resolvedFamily = family === 4 || family === 6 ? family : undefined;
-              callback(null, address, family);
+        lookup: (hostname, options, callback) => {
+          void this.urls.resolveSafeAddresses(hostname)
+            .then((addresses) => {
+              resolvedAddress = addresses[0]?.address;
+              resolvedFamily = addresses[0]?.family;
+              if (options.all) callback(null, addresses);
+              else callback(null, addresses[0].address, addresses[0].family);
             })
-            .catch((error) => callback(error as Error, '', 0));
+            .catch((error) => {
+              if (options.all) callback(error as Error, []);
+              else callback(error as Error, '', 0);
+            });
         },
       }, (response) => {
         const chunks: Buffer[] = [];
