@@ -4,6 +4,7 @@ import { useI18n } from "vue-i18n";
 import { useRoute } from "vue-router";
 import Button from "primevue/button";
 import Checkbox from "primevue/checkbox";
+import Dialog from "primevue/dialog";
 import InputText from "primevue/inputtext";
 import Message from "primevue/message";
 import Password from "primevue/password";
@@ -26,6 +27,12 @@ const actionLoading = ref(false);
 const message = ref("");
 const errorMessage = ref("");
 const testResultCode = ref<string | null>(null);
+const confirmationError = ref("");
+const pendingConfirmation = ref<
+  | { kind: "remove-provider" }
+  | { kind: "reset-link"; user: ExternalLinkedUser }
+  | null
+>(null);
 const form = reactive({
   type: "oidc" as ExternalProviderType,
   displayLabel: "",
@@ -48,6 +55,26 @@ const testResultSeverity = computed(() => testResultCode.value === "AUTH_PROVIDE
 const providerDiagnosticCode = computed(() => provider.value?.diagnosticCode === testResultCode.value
   ? null
   : provider.value?.diagnosticCode ?? null);
+const confirmationVisible = computed({
+  get: () => pendingConfirmation.value !== null,
+  set: (visible: boolean) => {
+    if (!visible && !actionLoading.value) {
+      pendingConfirmation.value = null;
+      confirmationError.value = "";
+    }
+  },
+});
+const confirmationTitle = computed(() => pendingConfirmation.value?.kind === "reset-link"
+  ? t("externalAuth.resetLink")
+  : t("externalAuth.remove"));
+const confirmationMessage = computed(() => pendingConfirmation.value?.kind === "reset-link"
+  ? t("externalAuth.resetConfirm", {
+    name: `${pendingConfirmation.value.user.firstName} ${pendingConfirmation.value.user.lastName}`,
+  })
+  : t("externalAuth.removeConfirm"));
+const confirmationActionLabel = computed(() => pendingConfirmation.value?.kind === "reset-link"
+  ? t("externalAuth.resetLink")
+  : t("externalAuth.remove"));
 
 function diagnosticMessage(code: string): string {
   const httpFailure = /^AUTH_PROVIDER_(DISCOVERY|JWKS|TOKEN|USERINFO)_HTTP_([1-5][0-9]{2})$/.exec(code);
@@ -145,24 +172,48 @@ async function setEnabled(enabled: boolean): Promise<void> {
   }
 }
 
-async function removeProvider(): Promise<void> {
-  if (!window.confirm(t("externalAuth.removeConfirm"))) return;
+function requestProviderRemoval(): void {
+  confirmationError.value = "";
+  pendingConfirmation.value = { kind: "remove-provider" };
+}
+
+function requestLinkReset(user: ExternalLinkedUser): void {
+  confirmationError.value = "";
+  pendingConfirmation.value = { kind: "reset-link", user };
+}
+
+async function confirmPendingAction(): Promise<void> {
+  const pending = pendingConfirmation.value;
+  if (!pending) return;
   actionLoading.value = true;
+  confirmationError.value = "";
   try {
-    await externalAuthApi.remove();
-    applySettings(null);
-    users.value = [];
-    Object.assign(form, {
-      type: "oidc",
-      displayLabel: "",
-      issuerUrl: "",
-      churchToolsUrl: "",
-      clientId: "",
-      publicBaseUrl: window.location.origin,
-      clientSecret: "",
-      removeClientSecret: false,
-    });
-    message.value = t("externalAuth.removed");
+    if (pending.kind === "remove-provider") {
+      await externalAuthApi.remove();
+      applySettings(null);
+      users.value = [];
+      testResultCode.value = null;
+      Object.assign(form, {
+        type: "oidc",
+        displayLabel: "",
+        issuerUrl: "",
+        churchToolsUrl: "",
+        clientId: "",
+        publicBaseUrl: window.location.origin,
+        clientSecret: "",
+        removeClientSecret: false,
+      });
+      message.value = t("externalAuth.removed");
+    } else {
+      await externalAuthApi.resetLink(pending.user.id);
+      pending.user.linked = false;
+      message.value = t("externalAuth.linkReset");
+    }
+    pendingConfirmation.value = null;
+  } catch (error) {
+    confirmationError.value = error instanceof Error
+      ? error.message
+      : t(pending.kind === "remove-provider" ? "externalAuth.removeFailed" : "externalAuth.linkResetFailed");
   } finally {
     actionLoading.value = false;
   }
@@ -173,13 +224,6 @@ async function copyCallback(): Promise<void> {
     await navigator.clipboard.writeText(provider.value.callbackUrl);
     message.value = t("externalAuth.callbackCopied");
   }
-}
-
-async function resetLink(user: ExternalLinkedUser): Promise<void> {
-  if (!window.confirm(t("externalAuth.resetConfirm", { name: `${user.firstName} ${user.lastName}` }))) return;
-  await externalAuthApi.resetLink(user.id);
-  user.linked = false;
-  message.value = t("externalAuth.linkReset");
 }
 
 onMounted(load);
@@ -297,7 +341,7 @@ onMounted(load);
           :label="t('externalAuth.remove')"
           severity="danger"
           :loading="actionLoading"
-          @click="removeProvider"
+          @click="requestProviderRemoval"
         />
       </div>
     </form>
@@ -326,13 +370,40 @@ onMounted(load);
                 :label="t('externalAuth.resetLink')"
                 severity="secondary"
                 size="small"
-                @click="resetLink(user)"
+                @click="requestLinkReset(user)"
               />
             </td>
           </tr>
         </tbody>
       </table>
     </section>
+
+    <Dialog
+      v-model:visible="confirmationVisible"
+      modal
+      :header="confirmationTitle"
+      :style="{ width: '32rem', maxWidth: 'calc(100vw - 2rem)' }"
+    >
+      <Message v-if="confirmationError" severity="error" :closable="false">
+        {{ confirmationError }}
+      </Message>
+      <p>{{ confirmationMessage }}</p>
+      <template #footer>
+        <Button
+          :label="t('common.cancel')"
+          severity="secondary"
+          text
+          :disabled="actionLoading"
+          @click="confirmationVisible = false"
+        />
+        <Button
+          :label="confirmationActionLabel"
+          severity="danger"
+          :loading="actionLoading"
+          @click="confirmPendingAction"
+        />
+      </template>
+    </Dialog>
   </section>
 </template>
 

@@ -9,6 +9,7 @@ import AuthenticationSettingsView from './AuthenticationSettingsView.vue';
 const stubs = {
   Button: { props: ['label', 'loading', 'disabled'], template: '<button :disabled="disabled" :data-loading="loading">{{ label }}</button>' },
   Checkbox: { props: ['modelValue'], emits: ['update:modelValue'], template: '<input type="checkbox" :checked="modelValue" @change="$emit(\'update:modelValue\', $event.target.checked)" />' },
+  Dialog: { props: ['visible', 'header'], emits: ['update:visible'], template: '<section v-if="visible" class="confirmation-dialog"><h2>{{ header }}</h2><slot /><slot name="footer" /></section>' },
   InputText: { props: ['modelValue', 'type'], emits: ['update:modelValue'], template: '<input :type="type || \'text\'" :value="modelValue" @input="$emit(\'update:modelValue\', $event.target.value)" />' },
   Message: { props: ['severity'], template: '<div :data-severity="severity"><slot /></div>' },
   Password: { props: ['modelValue'], emits: ['update:modelValue'], template: '<input type="password" :value="modelValue" @input="$emit(\'update:modelValue\', $event.target.value)" />' },
@@ -210,7 +211,6 @@ describe('AuthenticationSettingsView', () => {
     vi.spyOn(externalAuthApi, 'enable').mockResolvedValue(providerSettings({ enabled: true, status: 'enabled' }));
     vi.spyOn(externalAuthApi, 'disable').mockResolvedValue(providerSettings({ status: 'tested-disabled' }));
     vi.spyOn(externalAuthApi, 'remove').mockResolvedValue();
-    vi.spyOn(window, 'confirm').mockReturnValue(true);
     const wrapper = mount(AuthenticationSettingsView, { global: { plugins: [router], stubs } });
     await flushPromises();
 
@@ -229,7 +229,11 @@ describe('AuthenticationSettingsView', () => {
 
     await wrapper.findAll('button').find((button) => button.text() === 'Remove provider')!.trigger('click');
     await flushPromises();
-    expect(window.confirm).toHaveBeenCalled();
+    expect(externalAuthApi.remove).not.toHaveBeenCalled();
+    expect(wrapper.get('.confirmation-dialog').text()).toContain('Existing sessions and Local login stay active');
+
+    await wrapper.get('.confirmation-dialog').findAll('button').find((button) => button.text() === 'Remove provider')!.trigger('click');
+    await flushPromises();
     expect(externalAuthApi.remove).toHaveBeenCalledOnce();
     expect(wrapper.text()).toContain('Not configured');
   });
@@ -265,7 +269,6 @@ describe('AuthenticationSettingsView', () => {
       { id: 'unlinked-id', email: 'grace@example.com', firstName: 'Grace', lastName: 'Hopper', linked: false },
     ]);
     vi.spyOn(externalAuthApi, 'resetLink').mockResolvedValue();
-    vi.spyOn(window, 'confirm').mockReturnValue(true);
     const wrapper = mount(AuthenticationSettingsView, { global: { plugins: [router], stubs } });
     await flushPromises();
 
@@ -276,10 +279,28 @@ describe('AuthenticationSettingsView', () => {
     const resetButton = wrapper.findAll('button').find((button) => button.text() === 'Reset link');
     await resetButton!.trigger('click');
     await flushPromises();
+    expect(externalAuthApi.resetLink).not.toHaveBeenCalled();
+
+    await wrapper.get('.confirmation-dialog').findAll('button').find((button) => button.text() === 'Reset link')!.trigger('click');
+    await flushPromises();
 
     expect(externalAuthApi.resetLink).toHaveBeenCalledWith('linked-id');
     expect(wrapper.text()).toContain('External identity link reset.');
     expect(wrapper.text()).not.toContain('LinkedReset link');
+  });
+
+  it('keeps a failed provider removal actionable inside the confirmation dialog', async () => {
+    vi.mocked(externalAuthApi.settings).mockResolvedValue(providerSettings());
+    vi.spyOn(externalAuthApi, 'remove').mockRejectedValue(new Error('Provider removal failed safely'));
+    const wrapper = mount(AuthenticationSettingsView, { global: { plugins: [router], stubs } });
+    await flushPromises();
+
+    await wrapper.findAll('button').find((button) => button.text() === 'Remove provider')!.trigger('click');
+    await wrapper.get('.confirmation-dialog').findAll('button').find((button) => button.text() === 'Remove provider')!.trigger('click');
+    await flushPromises();
+
+    expect(wrapper.get('.confirmation-dialog').text()).toContain('Provider removal failed safely');
+    expect(wrapper.find('.provider-form').exists()).toBe(true);
   });
 
   it.each(['admin', 'user', 'guest'] as const)('keeps the route inaccessible to the %s role', async (role) => {
