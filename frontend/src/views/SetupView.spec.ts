@@ -78,7 +78,7 @@ describe('SetupView', () => {
     vm.setupPassword = 'startup-password';
     await vm.verifyPassword();
 
-    expect(fetchMock).toHaveBeenNthCalledWith(2, 'http://localhost:3000/api/setup/verify', expect.objectContaining({
+    expect(fetchMock).toHaveBeenNthCalledWith(2, '/api/setup/verify', expect.objectContaining({
       method: 'POST', body: JSON.stringify({ setupPassword: 'startup-password' }),
     }));
     expect(vm.stage).toBe('user');
@@ -109,7 +109,7 @@ describe('SetupView', () => {
       sharedPassphrase: 'correct horse battery staple', sharedPassphraseConfirmation: 'correct horse battery staple',
     });
     await vm.prepareRecovery();
-    expect(fetchMock).toHaveBeenNthCalledWith(2, 'http://localhost:3000/api/setup/verify', expect.objectContaining({
+    expect(fetchMock).toHaveBeenNthCalledWith(2, '/api/setup/verify', expect.objectContaining({
       method: 'POST', body: JSON.stringify({ setupPassword: 'startup-password' }),
     }));
     expect(createInitialKeyState).toHaveBeenCalledWith(
@@ -124,7 +124,7 @@ describe('SetupView', () => {
     vm.secondCopyAcknowledged = true;
     await vm.createUser();
 
-    expect(fetchMock).toHaveBeenNthCalledWith(3, 'http://localhost:3000/api/setup', expect.objectContaining({
+    expect(fetchMock).toHaveBeenNthCalledWith(3, '/api/setup', expect.objectContaining({
       method: 'POST',
       headers: expect.objectContaining({ 'Content-Type': 'application/vnd.elderflow.e2ee+cbor;v=1' }),
     }));

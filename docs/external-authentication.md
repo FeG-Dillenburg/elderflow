@@ -16,6 +16,10 @@ https://elderflow.example.org/api/auth/external/callback
 
 Register that exact URL with the provider. Production URLs require HTTPS. Localhost HTTP is accepted only in development and test.
 
+For local testing, start the complete development environment with `pnpm dev` and use the printed frontend URL as the Public ElderFlow URL. Vite proxies `/api` HTTP and WebSocket traffic to the dynamically selected backend port, so the OAuth callback and the completion page share the frontend origin. ChurchTools only redirects the user's browser to the callback; it does not need direct server-to-server access to the local ElderFlow instance.
+
+The production image has the same same-origin layout without a development proxy. NestJS serves the compiled Vue application and the API from the container's port `8080`, while the deployment reverse proxy exposes that single origin and terminates TLS. Consequently, ElderFlow does not enable cross-origin API access in either environment.
+
 ## OpenID Connect
 
 Enter a display label, issuer URL, client ID, optional client secret, and Public ElderFlow URL. ElderFlow uses discovery and Authorization Code flow with PKCE S256, state, nonce, and fixed `openid email` scopes. It validates token signatures, issuer, audience, times, nonce, subject, and verified email. It does not request offline access or retain provider tokens.

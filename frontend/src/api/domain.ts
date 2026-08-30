@@ -415,8 +415,7 @@ export interface DashboardData {
   recentTopics: DashboardTopicSummary[];
 }
 
-const apiBaseUrl = import.meta.env.VITE_API_BASE_URL
-  ?? (import.meta.env.PROD ? '' : 'http://localhost:3000');
+const apiBaseUrl = import.meta.env.VITE_E2EE_EVIDENCE_API_URL ?? '';
 const cborEncoder = new Encoder({ mapsAsObjects: false, structuredClone: false, tagUint8Array: false, useRecords: false });
 const cborDecoder = new Decoder({ mapsAsObjects: false, useRecords: false });
 

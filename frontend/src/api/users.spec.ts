@@ -19,9 +19,9 @@ describe("users API client", () => {
     expect(
       fetch.mock.calls.map((call) => [call[0], call[1]?.method, call[1]?.body]),
     ).toEqual([
-      ["http://localhost:3000/api/users", undefined, undefined],
+      ["/api/users", undefined, undefined],
       [
-        "http://localhost:3000/api/user",
+        "/api/user",
         "POST",
         JSON.stringify({
           email: "ada@example.com",
@@ -38,7 +38,7 @@ describe("users API client", () => {
     vi.stubGlobal("fetch", fetch);
     await updateUser("user-id", { role: "guest", firstName: "Grace" });
     expect(fetch).toHaveBeenCalledWith(
-      "http://localhost:3000/api/users/user-id",
+      "/api/users/user-id",
       expect.objectContaining({ method: "PATCH", body: JSON.stringify({ role: "guest", firstName: "Grace" }) }),
     );
   });
@@ -51,9 +51,9 @@ describe("users API client", () => {
     await restoreUser("user-id");
 
     expect(fetch.mock.calls.map((call) => [call[0], call[1]?.method])).toEqual([
-      ["http://localhost:3000/api/users?includeArchived=true", undefined],
-      ["http://localhost:3000/api/users/user-id", "DELETE"],
-      ["http://localhost:3000/api/users/user-id/restore", "PATCH"],
+      ["/api/users?includeArchived=true", undefined],
+      ["/api/users/user-id", "DELETE"],
+      ["/api/users/user-id/restore", "PATCH"],
     ]);
   });
   it("reports string, array, and fallback failures", async () => {

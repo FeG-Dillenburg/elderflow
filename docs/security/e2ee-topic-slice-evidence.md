@@ -33,13 +33,13 @@ Both searches must return no marker occurrence outside deliberately named test f
 The opt-in running-instance test creates the exact fixture, checks unlocked projections and standalone history, proves a transplant is rejected, checks locked placeholders, asserts `no-store`, scans raw HTTP payload text for the marker, and inspects Local and Session Storage. Run it once to create the fixture, restart the backend process, and run it again with `E2EE_EVIDENCE_PHASE=verify`:
 
 ```sh
-VITE_API_BASE_URL=http://127.0.0.1:3998 \
+VITE_E2EE_EVIDENCE_API_URL=http://127.0.0.1:3998 \
 E2EE_EVIDENCE_API_URL=http://127.0.0.1:3998 \
 E2EE_EVIDENCE_PHASE=create \
 E2EE_EVIDENCE_SETUP_PASSWORD=<startup-password> \
 pnpm --filter @elderflow/frontend exec vitest run src/e2ee/topic-slice-running-instance.spec.ts
 
-VITE_API_BASE_URL=http://127.0.0.1:3998 \
+VITE_E2EE_EVIDENCE_API_URL=http://127.0.0.1:3998 \
 E2EE_EVIDENCE_API_URL=http://127.0.0.1:3998 \
 E2EE_EVIDENCE_PHASE=verify \
 pnpm --filter @elderflow/frontend exec vitest run src/e2ee/topic-slice-running-instance.spec.ts

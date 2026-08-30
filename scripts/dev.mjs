@@ -150,7 +150,7 @@ const children = [
       'false',
     ],
     {
-      env: { ...process.env, VITE_API_BASE_URL: apiBaseUrl },
+      env: { ...process.env, ELDERFLOW_API_PROXY_TARGET: apiBaseUrl },
     },
   ),
 ];

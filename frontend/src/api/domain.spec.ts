@@ -24,7 +24,7 @@ describe("domain API client", () => {
     await expect(
       request("/api/example", { headers: { Authorization: "Bearer token" } }),
     ).resolves.toEqual({ id: "one" });
-    expect(fetch).toHaveBeenCalledWith("http://localhost:3000/api/example", {
+    expect(fetch).toHaveBeenCalledWith("/api/example", {
       headers: {
         "Content-Type": "application/json",
         Authorization: "Bearer token",
@@ -126,7 +126,7 @@ describe("domain API client", () => {
     vi.stubGlobal("fetch", fetch);
     await api.tasks({ status: "open", overdue: false, dueOn: undefined });
     expect(fetch.mock.calls[0][0]).toBe(
-      "http://localhost:3000/api/tasks?status=open&overdue=false",
+      "/api/tasks?status=open&overdue=false",
     );
   });
   it("loads referenced users from the non-administrative directory endpoint", async () => {
@@ -134,7 +134,7 @@ describe("domain API client", () => {
     vi.stubGlobal("fetch", fetch);
     await api.userDirectory();
     expect(fetch).toHaveBeenCalledWith(
-      "http://localhost:3000/api/user-directory",
+      "/api/user-directory",
       expect.any(Object),
     );
   });
@@ -158,7 +158,7 @@ describe("domain API client", () => {
       })],
     });
     expect(fetch).toHaveBeenCalledWith(
-      "http://localhost:3000/api/tasks/references",
+      "/api/tasks/references",
       expect.any(Object),
     );
   });
@@ -203,7 +203,7 @@ describe("domain API client", () => {
     await api.topicHistory("topic");
 
     expect(fetch).toHaveBeenCalledWith(
-      "http://localhost:3000/api/topics/topic/history",
+      "/api/topics/topic/history",
       expect.any(Object),
     );
   });
@@ -214,7 +214,7 @@ describe("domain API client", () => {
     await api.meetingSuggestions("meeting", { future: true });
 
     expect(fetch).toHaveBeenCalledWith(
-      "http://localhost:3000/api/meetings/meeting/suggestions?future=true",
+      "/api/meetings/meeting/suggestions?future=true",
       expect.any(Object),
     );
   });
@@ -233,9 +233,9 @@ describe("domain API client", () => {
     } as any, { deferred: true });
     await api.deleteSection("section");
     expect(fetch.mock.calls.map((call) => [call[0], call[1]?.method])).toEqual([
-      ["http://localhost:3000/api/topics/topic", undefined],
-      ["http://localhost:3000/api/meetings/meeting/topics/item", "PUT"],
-      ["http://localhost:3000/api/agenda-sections/section", "DELETE"],
+      ["/api/topics/topic", undefined],
+      ["/api/meetings/meeting/topics/item", "PUT"],
+      ["/api/agenda-sections/section", "DELETE"],
     ]);
     expect(JSON.parse(fetch.mock.calls[1][1].body)).toEqual({
       sectionId: "section",
@@ -255,8 +255,8 @@ describe("domain API client", () => {
       { id: "item-2", sectionId: "section", position: 2 },
     ]);
     expect(fetch.mock.calls.map((call) => [call[0], call[1]?.method])).toEqual([
-      ["http://localhost:3000/api/meetings/meeting/topics", "POST"],
-      ["http://localhost:3000/api/meetings/meeting/topics/order", "PUT"],
+      ["/api/meetings/meeting/topics", "POST"],
+      ["/api/meetings/meeting/topics/order", "PUT"],
     ]);
     const mutation = new Decoder({ mapsAsObjects: false, useRecords: false })
       .decode(fetch.mock.calls[0][1].body) as unknown[];
@@ -360,7 +360,7 @@ describe("domain API client", () => {
     await api.completeMeeting("meeting");
 
     expect(fetch).toHaveBeenCalledWith(
-      "http://localhost:3000/api/meetings/meeting/complete",
+      "/api/meetings/meeting/complete",
       expect.objectContaining({ method: "POST" }),
     );
     expect(fetch.mock.calls[0][1]?.body).toBeUndefined();
@@ -376,7 +376,7 @@ describe("domain API client", () => {
     });
 
     expect(fetch).toHaveBeenCalledWith(
-      "http://localhost:3000/api/meetings/meeting/workspace/updates",
+      "/api/meetings/meeting/workspace/updates",
       expect.objectContaining({
         method: "POST",
         body: expect.any(Uint8Array),
@@ -423,7 +423,7 @@ describe("domain API client", () => {
     });
 
     expect(fetch).toHaveBeenCalledWith(
-      "http://localhost:3000/api/meetings/meeting/topics/appearance/fields",
+      "/api/meetings/meeting/topics/appearance/fields",
       expect.objectContaining({
         method: "PUT",
         body: JSON.stringify({ membershipStatusSignal: "attention" }),

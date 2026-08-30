@@ -73,7 +73,7 @@ In a second terminal, create the setup/Topic prerequisite and then the final two
 
 ```sh
 env \
-  VITE_API_BASE_URL=http://127.0.0.1:3999 \
+  VITE_E2EE_EVIDENCE_API_URL=http://127.0.0.1:3999 \
   E2EE_EVIDENCE_API_URL=http://127.0.0.1:3999 \
   E2EE_EVIDENCE_PHASE=create \
   E2EE_EVIDENCE_SETUP_PASSWORD=<setup-password-from-backend-output> \
@@ -81,7 +81,7 @@ env \
   src/e2ee/topic-slice-running-instance.spec.ts
 
 env \
-  VITE_API_BASE_URL=http://127.0.0.1:3999 \
+  VITE_E2EE_EVIDENCE_API_URL=http://127.0.0.1:3999 \
   E2EE_EVIDENCE_API_URL=http://127.0.0.1:3999 \
   E2EE_EVIDENCE_PHASE=create \
   pnpm --filter @elderflow/frontend exec vitest run \
@@ -100,7 +100,7 @@ Stop only the backend process with `Ctrl-C`; leave the disposable PostgreSQL con
 
 ```sh
 env \
-  VITE_API_BASE_URL=http://127.0.0.1:3999 \
+  VITE_E2EE_EVIDENCE_API_URL=http://127.0.0.1:3999 \
   E2EE_EVIDENCE_API_URL=http://127.0.0.1:3999 \
   E2EE_EVIDENCE_PHASE=verify \
   E2EE_EVIDENCE_DATABASE_DUMP=/tmp/elderflow-e2ee54-before.sql \
@@ -141,7 +141,7 @@ pnpm build
 Automation covers the real REST/WebSocket/PostgreSQL seam, but physical browser storage, accessibility, and responsive behavior must be checked in supported browsers. Start the Vite frontend against the running backend:
 
 ```sh
-env VITE_API_BASE_URL=http://127.0.0.1:3999 \
+env ELDERFLOW_API_PROXY_TARGET=http://127.0.0.1:3999 \
   pnpm --filter @elderflow/frontend dev \
   --host 127.0.0.1 --port 5174 --strictPort
 ```
@@ -168,7 +168,7 @@ The recorded representative ceremony is the automated planned Root-key rotation.
 
 ```sh
 env \
-  VITE_API_BASE_URL=http://127.0.0.1:3999 \
+  VITE_E2EE_EVIDENCE_API_URL=http://127.0.0.1:3999 \
   E2EE_EVIDENCE_API_URL=http://127.0.0.1:3999 \
   E2EE_EVIDENCE_PHASE=ceremony \
   pnpm --filter @elderflow/frontend exec vitest run \

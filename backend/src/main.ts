@@ -11,7 +11,6 @@ async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule);
   app.use('/api/meetings', raw({ type: isE2eeMediaType, limit: '17mb' }));
   app.use(raw({ type: isE2eeMediaType, limit: '16kb' }));
-  app.enableCors();
 
   const frontendDirectory = join(process.cwd(), 'frontend', 'dist');
   const frontendIndex = join(frontendDirectory, 'index.html');
