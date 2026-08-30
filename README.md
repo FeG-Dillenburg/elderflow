@@ -1,5 +1,12 @@
 # Elderflow
 
+[![CI](https://github.com/FeG-Dillenburg/elderflow/actions/workflows/ci.yml/badge.svg?branch=main&event=push)](https://github.com/FeG-Dillenburg/elderflow/actions/workflows/ci.yml?query=branch%3Amain+event%3Apush)
+[![Backend unit tests](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2FFeG-Dillenburg%2Felderflow%2Fbadges%2Fbackend-unit.json)](https://github.com/FeG-Dillenburg/elderflow/actions/workflows/ci.yml?query=branch%3Amain+event%3Apush)
+[![Frontend unit tests](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2FFeG-Dillenburg%2Felderflow%2Fbadges%2Ffrontend-unit.json)](https://github.com/FeG-Dillenburg/elderflow/actions/workflows/ci.yml?query=branch%3Amain+event%3Apush)
+[![Backend e2e tests](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2FFeG-Dillenburg%2Felderflow%2Fbadges%2Fbackend-e2e.json)](https://github.com/FeG-Dillenburg/elderflow/actions/workflows/ci.yml?query=branch%3Amain+event%3Apush)
+[![Backend unit coverage](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2FFeG-Dillenburg%2Felderflow%2Fbadges%2Fbackend-unit-coverage.json)](https://github.com/FeG-Dillenburg/elderflow/actions/workflows/ci.yml?query=branch%3Amain+event%3Apush)
+[![Frontend unit coverage](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2FFeG-Dillenburg%2Felderflow%2Fbadges%2Ffrontend-unit-coverage.json)](https://github.com/FeG-Dillenburg/elderflow/actions/workflows/ci.yml?query=branch%3Amain+event%3Apush)
+
 Elderflow is a pnpm workspace with a NestJS/PostgreSQL backend and a Vue 3/PrimeVue frontend.
 
 ## Repository layout
@@ -47,6 +54,8 @@ pnpm test:backend:e2e
 pnpm test:frontend
 pnpm build
 ```
+
+GitHub Actions runs these checks for pull requests and pushes to `main`. Test runners produce JSON result and line-coverage summaries as workflow artifacts. Only a trusted `push` run for `main` may transform those reports into Shields endpoint JSON and publish it to the orphan `badges` branch; pull-request runs retain read-only repository permission. The badge metadata records the source commit and generation time, and the workflow prevents an older run from replacing data for a newer `main` commit.
 
 ## Production deployment
 
