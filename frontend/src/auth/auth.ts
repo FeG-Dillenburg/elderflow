@@ -5,6 +5,7 @@ import { setLanguage } from '../i18n';
 import { resolveEffectiveLanguage } from '../i18n/language';
 import { clearSessionToken, getSessionToken, setSessionToken } from './session';
 import { protectedText } from '../e2ee/protected-text';
+import { externalAuthApi } from '../api/external-auth';
 
 const state = reactive<{ user: AuthUser | null; ready: boolean }>({ user: null, ready: false });
 let initialization: Promise<void> | null = null;
@@ -24,6 +25,19 @@ export const auth = {
   },
   async login(email: string, password: string): Promise<void> {
     const result = await api.login({ email, password });
+    setSessionToken(result.token);
+    state.user = result.user;
+    state.ready = true;
+    setLanguage(resolveEffectiveLanguage({
+      authenticated: true,
+      userLanguage: result.user.language,
+      installationDefault: installation.defaultLanguage,
+      browserLanguages: navigator.languages,
+    }));
+    await protectedText.offerUnlock(result.user);
+  },
+  async completeExternal(code: string): Promise<void> {
+    const result = await externalAuthApi.complete(code);
     setSessionToken(result.token);
     state.user = result.user;
     state.ready = true;

@@ -54,15 +54,21 @@ const navigation: Array<{
     labelKey: "nav.sections",
     permission: "contentSettings",
   },
+  {
+    to: "/authentication-settings",
+    icon: "pi-shield",
+    labelKey: "nav.authentication",
+    permission: "authSettings",
+  },
 ];
 const visibleNavigation = computed(() =>
   navigation.filter((item) => auth.canView(item.permission)),
 );
 const primaryNavigation = computed(() =>
-  visibleNavigation.value.filter((item) => !["/users", "/agenda-sections"].includes(item.to)),
+  visibleNavigation.value.filter((item) => !["/users", "/agenda-sections", "/authentication-settings"].includes(item.to)),
 );
 const settingsNavigation = computed(() =>
-  visibleNavigation.value.filter((item) => ["/users", "/agenda-sections"].includes(item.to)),
+  visibleNavigation.value.filter((item) => ["/users", "/agenda-sections", "/authentication-settings"].includes(item.to)),
 );
 const hasSettingsNavigation = computed(() =>
   settingsNavigation.value.length > 0 || protectedText.isEligible(auth.state.user),

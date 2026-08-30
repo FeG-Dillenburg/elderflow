@@ -8,6 +8,7 @@ services:
       PORT: 8080
       DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL to the PostgreSQL connection URL for the bundled database.}
       AUTH_SESSION_SECRET: ${AUTH_SESSION_SECRET:?Set AUTH_SESSION_SECRET to a unique secret of at least 32 characters.}
+      AUTH_PROVIDER_SECRETS_KEY: ${AUTH_PROVIDER_SECRETS_KEY:-}
       DEV_AUTH_BYPASS: "false"
     depends_on:
       postgres:

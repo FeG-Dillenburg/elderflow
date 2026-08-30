@@ -49,6 +49,7 @@ describe('App', () => {
     const wrapper = mount(App, { global: { stubs } });
     expect(wrapper.text()).toContain('IT admin');
     expect(wrapper.html()).toContain('href="/users"');
+    expect(wrapper.html()).toContain('href="/authentication-settings"');
     expect(wrapper.html()).not.toContain('href="/meetings"');
     expect(wrapper.html()).not.toContain('href="/key-recovery"');
   });

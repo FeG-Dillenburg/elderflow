@@ -11,6 +11,7 @@ const router = createRouter({
   routes: [
     { path: '/setup/', alias: '/setup', name: 'setup', component: () => import('../views/SetupView.vue'), meta: { public: true } },
     { path: '/login', name: 'login', component: () => import('../views/LoginView.vue'), meta: { public: true } },
+    { path: '/auth/external/complete', name: 'external-auth-complete', component: () => import('../views/ExternalAuthCompleteView.vue'), meta: { public: true } },
     { path: '/', name: 'dashboard', component: DashboardView, meta: { permission: 'dashboard' } },
     { path: '/meetings', name: 'meetings', component: () => import('../views/MeetingsView.vue'), meta: { permission: 'meetings' } },
     { path: '/meetings/:id', name: 'meeting', component: () => import('../views/MeetingAgendaView.vue'), meta: { permission: 'meetings' } },
@@ -20,6 +21,7 @@ const router = createRouter({
     { path: '/tasks', name: 'tasks', component: () => import('../views/TasksView.vue'), meta: { permission: 'tasks' } },
     { path: '/agenda-sections', name: 'agenda-sections', component: () => import('../views/AgendaSectionsView.vue'), meta: { permission: 'contentSettings' } },
     { path: '/users', name: 'users', component: () => import('../views/UsersView.vue'), meta: { permission: 'users' } },
+    { path: '/authentication-settings', name: 'authentication-settings', component: () => import('../views/AuthenticationSettingsView.vue'), meta: { permission: 'authSettings' } },
     { path: '/profile', name: 'profile', component: () => import('../views/ProfileView.vue') },
     { path: '/key-recovery', name: 'key-recovery', component: () => import('../views/RecoveryView.vue'), meta: { keyOperator: true } },
   ],
@@ -36,9 +38,9 @@ router.beforeEach(async (to) => {
   if (to.meta.keyOperator && !isE2eeKeyOperator(auth.state.user)) return { path: '/profile' };
   const permission = to.meta.permission as PermissionCategory | undefined;
   if (permission && !auth.canView(permission)) {
-    const fallback = (['dashboard', 'meetings', 'topics', 'tasks', 'users', 'contentSettings'] as PermissionCategory[])
+    const fallback = (['dashboard', 'meetings', 'topics', 'tasks', 'users', 'contentSettings', 'authSettings'] as PermissionCategory[])
       .find((category) => auth.canView(category));
-    const paths: Partial<Record<PermissionCategory, string>> = { dashboard: '/', meetings: '/meetings', topics: '/topics', tasks: '/tasks', users: '/users', contentSettings: '/agenda-sections' };
+    const paths: Partial<Record<PermissionCategory, string>> = { dashboard: '/', meetings: '/meetings', topics: '/topics', tasks: '/tasks', users: '/users', contentSettings: '/agenda-sections', authSettings: '/authentication-settings' };
     return { path: fallback ? paths[fallback] : '/profile' };
   }
   if (permission && to.meta.manage && !auth.canManage(permission)) {

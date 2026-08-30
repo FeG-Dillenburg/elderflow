@@ -16,6 +16,7 @@ import { SetupModule } from './setup/setup.module';
 import { E2eeModule } from './e2ee/e2ee.module';
 import { APP_INTERCEPTOR } from '@nestjs/core';
 import { ProtectedTextBoundaryInterceptor } from './e2ee/protected-text-boundary.interceptor';
+import { ExternalAuthModule } from './external-auth/external-auth.module';
 
 @Module({
   imports: [
@@ -36,6 +37,7 @@ import { ProtectedTextBoundaryInterceptor } from './e2ee/protected-text-boundary
           then: Joi.required(),
           otherwise: Joi.string().default('elderflow-development-session-secret'),
         }),
+        AUTH_PROVIDER_SECRETS_KEY: Joi.string().allow('').optional(),
       }),
     }),
     TypeOrmModule.forRootAsync({
@@ -58,6 +60,7 @@ import { ProtectedTextBoundaryInterceptor } from './e2ee/protected-text-boundary
     DashboardModule,
     SetupModule,
     E2eeModule,
+    ExternalAuthModule,
   ],
   controllers: [AppController],
   providers: [
