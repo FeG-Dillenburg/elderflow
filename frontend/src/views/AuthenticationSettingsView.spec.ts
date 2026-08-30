@@ -249,7 +249,7 @@ describe('AuthenticationSettingsView', () => {
     expect(wrapper.text()).not.toContain('LinkedReset link');
   });
 
-  it.each(['admin', 'user'] as const)('keeps the route inaccessible to the %s role', async (role) => {
+  it.each(['admin', 'user', 'guest'] as const)('keeps the route inaccessible to the %s role', async (role) => {
     auth.completeInitialization({
       id: role, email: `${role}@example.com`, firstName: 'No', lastName: 'Access', role, language: 'en',
       permissions: { dashboard: 'view', users: 'hide', references: 'view', meetings: 'view', topics: 'view', tasks: 'view', contentSettings: 'hide', authSettings: 'hide' },
