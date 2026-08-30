@@ -2,21 +2,24 @@
 import { onMounted, reactive, ref } from "vue";
 import { computed } from "vue";
 import { useI18n } from "vue-i18n";
-import { RouterLink, useRoute } from "vue-router";
+import { RouterLink, useRoute, useRouter } from "vue-router";
 import Draggable from "vuedraggable";
 import Button from "primevue/button";
+import DatePicker from "primevue/datepicker";
 import Dialog from "primevue/dialog";
 import InputNumber from "primevue/inputnumber";
 import InputText from "primevue/inputtext";
 import Message from "primevue/message";
 import Select from "primevue/select";
 import Tag from "primevue/tag";
+import RichTextEditor from "../components/RichTextEditor.vue";
 import TopicTypeRenderer from "../topics/TopicTypeRenderer.vue";
 import TopicTypeRadioGroup from "../topics/components/TopicTypeRadioGroup.vue";
 import {
   api,
   formatUser,
   meetingLabel,
+  toLocalDate,
   type AgendaSection,
   type Meeting,
   type MeetingTopic,
@@ -24,10 +27,9 @@ import {
   type TopicInput,
   type User,
 } from "../api/domain";
-import { formatDate } from "../i18n";
+import { dateInputFormat, formatDate } from "../i18n";
 import { topicNameTranslationKey } from "../topics/topicTypes";
 import { assignableUsers } from "../auth/roles";
-import MeetingCollaborationStatus from "../e2ee/MeetingCollaborationStatus.vue";
 import {
   saveMeetingMinutes,
   saveMeetingPreparationContext,
@@ -47,8 +49,8 @@ type SuggestionClone = Topic & {
 };
 
 const route = useRoute();
+const router = useRouter();
 const { t } = useI18n();
-const statusLabel = (value?: string) => (value ? t(`labels.${value}`) : "");
 const id = route.params.id as string;
 const meeting = ref<Meeting | null>(null);
 const readOnly = computed(() => meeting.value?.status === "completed");
@@ -63,8 +65,28 @@ const responsibleUserOptions = computed(() => assignableUsers(users.value));
 const grouped = ref<AgendaGroup[]>([]);
 const error = ref("");
 const pending = ref(false);
+const detailsVisible = ref(false);
+const startVisible = ref(false);
+const starting = ref(false);
 const newVisible = ref(false);
 const selectedSections = reactive<Record<string, string>>({});
+const detailsReadOnly = computed(() => meeting.value?.status === "in_progress");
+const detailsForm = reactive({
+  title: "",
+  date: null as Date | null,
+  beginTime: null as Date | null,
+  status: "planned",
+  meetingLeaderId: null as string | null,
+  minuteTakerId: null as string | null,
+  generalNotes: "",
+  openingInput: "",
+});
+const statusOptions = computed(() =>
+  ["planned", "in_progress"].map((value) => ({
+    value,
+    label: t(`labels.${value}`),
+  })),
+);
 const agendaGroup = { name: "agenda-topics", pull: true, put: true };
 const suggestionGroup = { name: "agenda-topics", pull: "clone", put: false };
 let temporaryKey = 0;
@@ -302,6 +324,63 @@ const createAndAdd = async () => {
   newVisible.value = false;
 };
 
+const startMeeting = async () => {
+  if (starting.value || !meeting.value) return;
+  starting.value = true;
+  try {
+    await api.updateMeeting(id, { status: "in_progress" });
+    startVisible.value = false;
+    await router.push(`/meetings/${id}`);
+  } catch (cause) {
+    error.value = cause instanceof Error
+      ? cause.message
+      : t("meetingPreparation.startFailed");
+  } finally {
+    starting.value = false;
+  }
+};
+
+const timeToDate = (value: string) => {
+  const [hours, minutes] = value.split(":").map(Number);
+  const date = new Date();
+  date.setHours(hours, minutes, 0, 0);
+  return date;
+};
+const toLocalTime = (value: Date) =>
+  `${String(value.getHours()).padStart(2, "0")}:${String(value.getMinutes()).padStart(2, "0")}`;
+const openDetails = () => {
+  if (!meeting.value) return;
+  Object.assign(detailsForm, {
+    title: meeting.value.title ?? "",
+    date: new Date(`${meeting.value.date}T12:00:00`),
+    beginTime: timeToDate(meeting.value.beginTime),
+    status: meeting.value.status,
+    meetingLeaderId: meeting.value.meetingLeaderId,
+    minuteTakerId: meeting.value.minuteTakerId,
+    generalNotes: meeting.value.generalNotes ?? "",
+    openingInput: meeting.value.openingInput ?? "",
+  });
+  detailsVisible.value = true;
+};
+const saveDetails = async () => {
+  if (!meeting.value || !detailsForm.date || !detailsForm.beginTime) return;
+  const date = detailsForm.date;
+  const beginTime = detailsForm.beginTime;
+  await withReload(() => api.updateMeeting(id, {
+    date: toLocalDate(date)!,
+    beginTime: toLocalTime(beginTime),
+    status: detailsForm.status,
+    meetingLeaderId: detailsForm.meetingLeaderId,
+    minuteTakerId: detailsForm.minuteTakerId,
+    ...(!detailsReadOnly.value ? {
+      title: detailsForm.title.trim() || null,
+      generalNotes: detailsForm.generalNotes || null,
+      openingInput: detailsForm.openingInput || null,
+    } : {}),
+  }));
+  detailsVisible.value = false;
+};
+
 onMounted(() => {
   if (window.sessionStorage.getItem("elderflow:discarded-collaboration") === id) {
     discardedAfterReload.value = true;
@@ -318,10 +397,6 @@ onMounted(() => {
     </Message>
     <Message v-if="error" severity="error">{{ error }}</Message>
     <template v-if="meeting">
-      <MeetingCollaborationStatus
-        v-if="meeting.collaboration?.available"
-        :meeting-id="id"
-      />
       <Message
         v-if="meeting.collaboration && !meeting.collaboration.available"
         severity="info"
@@ -334,13 +409,30 @@ onMounted(() => {
           <h1>{{ meetingLabel(meeting) }}</h1>
           <p>{{ t("meetingPreparation.description") }}</p>
         </div>
-        <RouterLink :to="`/meetings/${id}`">
+        <div class="header-actions">
           <Button
-            icon="pi pi-arrow-right"
-            icon-pos="right"
-            :label="t('meetingPreparation.openAgenda')"
+            icon="pi pi-pencil"
+            :label="t('meetingAgenda.editDetails')"
+            size="small"
+            text
+            @click="openDetails"
           />
-        </RouterLink>
+          <Button
+            v-if="meeting.status === 'planned' && !readOnly"
+            icon="pi pi-play"
+            :label="t('meetingPreparation.start')"
+            @click="startVisible = true"
+          />
+          <RouterLink :to="`/meetings/${id}`">
+            <Button
+              icon="pi pi-arrow-right"
+              icon-pos="right"
+              :label="t('meetingPreparation.openAgenda')"
+              size="small"
+              text
+            />
+          </RouterLink>
+        </div>
       </header>
       <div :class="['layout', { 'layout-read-only': readOnly }]">
         <main>
@@ -395,12 +487,9 @@ onMounted(() => {
                       :save-preparation-context="saveMeetingPreparationContext(id, item)"
                       :save-minutes="saveMeetingMinutes(id, item)"
                     />
-                    <small>
-                      {{ statusLabel(item.topic?.status) }}
-                      <template v-if="item.topic?.followUpDate">
-                        · {{ t("topics.followUp") }}
+                    <small v-if="item.topic?.followUpDate">
+                      {{ t("topics.followUp") }}
                         {{ formatDate(`${item.topic.followUpDate}T12:00:00`) }}
-                      </template>
                     </small>
                   </div>
                   <div v-if="!readOnly" class="item-actions">
@@ -461,6 +550,7 @@ onMounted(() => {
             </div>
             <Button
               :aria-label="t('meetingPreparation.createTopic')"
+              class="create-topic-button"
               icon="pi pi-plus"
               rounded
               @click="newVisible = true"
@@ -545,6 +635,123 @@ onMounted(() => {
     </template>
     <Dialog
       v-if="!readOnly"
+      v-model:visible="detailsVisible"
+      :style="{ width: '48rem', maxWidth: 'calc(100vw - 2rem)' }"
+      :header="t('meetingAgenda.editTitle')"
+      modal
+    >
+      <form id="edit-meeting-details" class="form" @submit.prevent="saveDetails">
+        <div class="row">
+          <label>
+            <span>{{ t('meetings.specialTitle') }}</span>
+            <InputText
+              v-model="detailsForm.title"
+              :disabled="detailsReadOnly"
+              :placeholder="t('meetingAgenda.exampleTitle')"
+            />
+          </label>
+          <label>
+            <span>{{ t('common.date') }}</span>
+            <DatePicker
+              v-model="detailsForm.date"
+              :date-format="dateInputFormat()"
+              icon="pi pi-calendar"
+              icon-display="input"
+              required
+              show-icon
+            />
+          </label>
+          <label>
+            <span>{{ t('meetingAgenda.beginTime') }}</span>
+            <DatePicker
+              v-model="detailsForm.beginTime"
+              :step-minute="15"
+              hour-format="24"
+              icon="pi pi-clock"
+              icon-display="input"
+              required
+              show-icon
+              time-only
+            />
+          </label>
+          <label>
+            <span>{{ t('common.status') }}</span>
+            <Select
+              v-model="detailsForm.status"
+              :options="statusOptions"
+              option-label="label"
+              option-value="value"
+            />
+          </label>
+        </div>
+        <div class="row">
+          <label>
+            <span>{{ t('meetingAgenda.leader') }}</span>
+            <Select
+              v-model="detailsForm.meetingLeaderId"
+              :options="responsibleUserOptions"
+              option-label="firstName"
+              option-value="id"
+              :placeholder="t('meetingAgenda.selectLeader')"
+              show-clear
+            >
+              <template #option="{ option }">{{ formatUser(option) }}</template>
+            </Select>
+          </label>
+          <label>
+            <span>{{ t('meetingAgenda.minuteTaker') }}</span>
+            <Select
+              v-model="detailsForm.minuteTakerId"
+              :options="responsibleUserOptions"
+              option-label="firstName"
+              option-value="id"
+              :placeholder="t('meetingAgenda.selectMinuteTaker')"
+              show-clear
+            >
+              <template #option="{ option }">{{ formatUser(option) }}</template>
+            </Select>
+          </label>
+        </div>
+        <label>
+          <span>{{ t('meetingAgenda.opening') }}</span>
+          <RichTextEditor
+            v-model="detailsForm.openingInput"
+            height="100px"
+            :placeholder="t('meetingAgenda.opening')"
+            :readonly="detailsReadOnly"
+            :meeting-id="id"
+            fragment="meeting/opening-input"
+          />
+        </label>
+        <label>
+          <span>{{ t('meetingAgenda.generalNotes') }}</span>
+          <RichTextEditor
+            v-model="detailsForm.generalNotes"
+            height="100px"
+            :placeholder="t('meetingAgenda.generalNotes')"
+            :readonly="detailsReadOnly"
+            :meeting-id="id"
+            fragment="meeting/general-notes"
+          />
+        </label>
+      </form>
+      <template #footer>
+        <Button
+          :label="t('common.cancel')"
+          severity="secondary"
+          text
+          @click="detailsVisible = false"
+        />
+        <Button
+          form="edit-meeting-details"
+          icon="pi pi-check"
+          :label="t('meetingAgenda.saveDetails')"
+          type="submit"
+        />
+      </template>
+    </Dialog>
+    <Dialog
+      v-if="!readOnly"
       v-model:visible="newVisible"
       :style="{ width: '44rem', maxWidth: 'calc(100vw - 2rem)' }"
       :header="t('meetingPreparation.createAndAddTitle')"
@@ -599,6 +806,22 @@ onMounted(() => {
           form="new-topic"
           :label="t('meetingPreparation.createAndAdd')"
           type="submit"
+        />
+      </template>
+    </Dialog>
+    <Dialog
+      v-if="!readOnly"
+      v-model:visible="startVisible"
+      :header="t('meetingPreparation.startTitle')"
+      modal
+    >
+      <p>{{ t("meetingPreparation.startWarning") }}</p>
+      <template #footer>
+        <Button :label="t('common.cancel')" text @click="startVisible = false" />
+        <Button
+          :disabled="starting"
+          :label="t('meetingPreparation.confirmStart')"
+          @click="startMeeting"
         />
       </template>
     </Dialog>
@@ -756,9 +979,15 @@ onMounted(() => {
 .suggestions-heading {
   margin-bottom: 0.8rem;
 }
+.create-topic-button {
+  flex: 0 0 2.5rem;
+  width: 2.5rem;
+  height: 2.5rem;
+  padding: 0;
+}
 .layout aside {
   position: sticky;
-  top: 1rem;
+  top: calc(2.6rem + 1rem);
   min-width: 0;
   padding: 1rem;
   border: 1px solid #d8e0ec;

@@ -4,9 +4,12 @@ import { api } from "../api/domain";
 import MeetingPreparationView from "./MeetingPreparationView.vue";
 import { savePersonMeetingNote } from "../topics/meetingTopicEdits";
 
+const { routerPush } = vi.hoisted(() => ({ routerPush: vi.fn() }));
+
 vi.mock("vue-router", () => ({
   RouterLink: { template: "<a><slot /></a>" },
   useRoute: () => ({ params: { id: "meeting-1" } }),
+  useRouter: () => ({ push: routerPush }),
 }));
 const stubs = {
   Button: true,
@@ -25,6 +28,9 @@ const stubs = {
 const meeting: any = {
   id: "meeting-1",
   title: "Council",
+  date: "2026-08-16",
+  beginTime: "19:30",
+  status: "planned",
   agenda: [
     {
       id: "item-2",
@@ -48,6 +54,8 @@ const meeting: any = {
 describe("MeetingPreparationView", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    routerPush.mockReset();
+    routerPush.mockResolvedValue(undefined);
     vi.spyOn(api, "meeting").mockResolvedValue(structuredClone(meeting));
     vi.spyOn(api, "sections").mockResolvedValue([
       { id: "first", name: "First", position: 1, isDefault: true },
@@ -86,6 +94,45 @@ describe("MeetingPreparationView", () => {
     });
     await flushPromises();
     expect((failed.vm as any).error).toBe("No meeting");
+  });
+  it("keeps Topic status out of preparation and starts a planned Meeting after confirmation", async () => {
+    const wrapper = await view();
+    const vm: any = wrapper.vm;
+    vi.spyOn(api, "updateMeeting").mockResolvedValue({ ...meeting, status: "in_progress" } as any);
+
+    expect(wrapper.text()).not.toContain("Open");
+    expect(wrapper.find('[label="Start meeting"]').exists()).toBe(true);
+
+    await vm.startMeeting();
+
+    expect(api.updateMeeting).toHaveBeenCalledWith("meeting-1", {
+      status: "in_progress",
+    });
+    expect(routerPush).toHaveBeenCalledWith("/meetings/meeting-1");
+  });
+  it("opens meeting details without leaving preparation", async () => {
+    const wrapper = await view();
+    const vm: any = wrapper.vm;
+
+    expect(vm.detailsVisible).toBe(false);
+
+    vm.openDetails();
+
+    expect(vm.detailsVisible).toBe(true);
+    expect(vm.detailsForm.title).toBe("Council");
+    expect(vm.detailsReadOnly).toBe(false);
+  });
+  it("makes protected detail fields read-only after the Meeting starts", async () => {
+    vi.mocked(api.meeting).mockResolvedValueOnce({
+      ...structuredClone(meeting),
+      status: "in_progress",
+    });
+    const wrapper = await view();
+    const vm: any = wrapper.vm;
+
+    vm.openDetails();
+
+    expect(vm.detailsReadOnly).toBe(true);
   });
   it("loads future suggestions only after the toggle and renders them below it", async () => {
     vi.mocked(api.meetingSuggestions).mockImplementation(async (_id, options) =>

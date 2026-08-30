@@ -78,6 +78,7 @@ onBeforeUnmount(() => {
       auto-resize
       rows="2"
       :aria-label="label"
+      :placeholder="label"
       @input="schedule"
       @blur="save"
     />

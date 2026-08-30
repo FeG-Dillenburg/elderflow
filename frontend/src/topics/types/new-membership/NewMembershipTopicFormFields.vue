@@ -69,6 +69,7 @@ onMounted(() => {
       <span>{{ t("newMembershipTopic.description") }}</span>
       <RichTextEditor
         :model-value="modelValue.description ?? ''"
+        :placeholder="t('newMembershipTopic.description')"
         @update:model-value="patch('description', $event || null)"
       />
     </label>

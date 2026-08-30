@@ -164,6 +164,7 @@ describe("domain API client", () => {
   });
   it("projects locked dashboard summaries without description or Meeting-title overfetch", async () => {
     const fetch = vi.fn().mockResolvedValue(response({
+      currentMeeting: null,
       nextMeeting: {
         id: "meeting",
         date: "2026-08-20",

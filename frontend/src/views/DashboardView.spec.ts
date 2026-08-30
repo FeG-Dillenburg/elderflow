@@ -17,6 +17,14 @@ describe("DashboardView", () => {
   beforeEach(() => vi.restoreAllMocks());
   it("renders populated dashboard links and unassigned/date fallbacks", async () => {
     vi.spyOn(api, "dashboard").mockResolvedValue({
+      currentMeeting: {
+        id: "current",
+        title: "Current council",
+        date: "2026-07-15",
+        beginTime: "19:30",
+        status: "in_progress",
+        meetingLeader: null,
+      },
       nextMeeting: {
         id: "meeting",
         title: "Council",
@@ -44,11 +52,13 @@ describe("DashboardView", () => {
     await flushPromises();
     expect(wrapper.text()).toContain("Unassigned");
     expect(wrapper.text()).toContain("No date");
-    expect(wrapper.html()).toContain("/meetings/meeting");
+    expect(wrapper.html()).toContain("/meetings/current");
+    expect(wrapper.html()).toContain("/meetings/meeting/prepare");
     expect(wrapper.html()).toContain("/topics/topic");
   });
   it("renders empty/error states", async () => {
     vi.spyOn(api, "dashboard").mockResolvedValue({
+      currentMeeting: null,
       nextMeeting: null,
       myOpenTasks: [],
       overdueTasks: [],

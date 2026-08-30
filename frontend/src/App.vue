@@ -7,6 +7,8 @@ import { roleLabel } from "./auth/roles";
 import router from "./router";
 import { useI18n } from "vue-i18n";
 import UnlockDialog from "./e2ee/UnlockDialog.vue";
+import MeetingCollaborationStatus from "./e2ee/MeetingCollaborationStatus.vue";
+import MeetingCollaborationPresence from "./e2ee/MeetingCollaborationPresence.vue";
 import { protectedText } from "./e2ee/protected-text";
 
 const { t } = useI18n();
@@ -56,10 +58,26 @@ const navigation: Array<{
 const visibleNavigation = computed(() =>
   navigation.filter((item) => auth.canView(item.permission)),
 );
+const primaryNavigation = computed(() =>
+  visibleNavigation.value.filter((item) => !["/users", "/agenda-sections"].includes(item.to)),
+);
+const settingsNavigation = computed(() =>
+  visibleNavigation.value.filter((item) => ["/users", "/agenda-sections"].includes(item.to)),
+);
+const hasSettingsNavigation = computed(() =>
+  settingsNavigation.value.length > 0 || protectedText.isEligible(auth.state.user),
+);
 const isSetupRoute = computed(() => router.currentRoute.value.name === "setup");
 const protectedRouteKey = computed(
   () => `${router.currentRoute.value.fullPath}:${protectedText.state.status}`,
 );
+const collaborationMeetingId = computed(() => {
+  const route = router.currentRoute.value;
+  return ["meeting", "meeting-prepare"].includes(String(route.name))
+    && typeof route.params.id === "string"
+    ? route.params.id
+    : null;
+});
 
 async function logout(): Promise<void> {
   auth.logout();
@@ -85,7 +103,7 @@ async function logout(): Promise<void> {
       </div>
       <nav :aria-label="t('nav.main')">
         <RouterLink
-          v-for="item in visibleNavigation"
+          v-for="item in primaryNavigation"
           :key="item.to"
           :to="item.to"
           class="nav-link"
@@ -93,6 +111,15 @@ async function logout(): Promise<void> {
           <i :class="item.icon" aria-hidden="true" class="pi" />
           {{ t(item.labelKey) }}
         </RouterLink>
+        <p v-if="hasSettingsNavigation" class="nav-heading">
+          {{ t("nav.settings") }}
+        </p>
+        <template v-for="item in settingsNavigation" :key="item.to">
+          <RouterLink :to="item.to" class="nav-link">
+            <i :class="item.icon" aria-hidden="true" class="pi" />
+            {{ t(item.labelKey) }}
+          </RouterLink>
+        </template>
         <RouterLink
           v-if="protectedText.isEligible(auth.state.user)"
           to="/key-recovery"
@@ -125,36 +152,48 @@ async function logout(): Promise<void> {
     </aside>
     <main class="main-content">
       <div
-        v-if="protectedText.isEligible(auth.state.user)"
-        class="protected-text-status"
+        v-if="collaborationMeetingId || protectedText.isEligible(auth.state.user)"
+        class="meeting-status-bar"
       >
-        <span
-          class="status-indicator"
-          :class="`status-${protectedText.state.status}`"
-          role="status"
-        >
-          {{
-            protectedText.state.status === "unlocked"
-              ? t("e2ee.unlocked")
-              : t("e2ee.locked")
-          }}
-        </span>
-        <button
+        <MeetingCollaborationStatus
+          v-if="collaborationMeetingId"
+          :meeting-id="collaborationMeetingId"
+        />
+        <MeetingCollaborationPresence
+          v-if="collaborationMeetingId"
+          :meeting-id="collaborationMeetingId"
+        />
+        <div
           v-if="protectedText.isEligible(auth.state.user)"
-          type="button"
-          class="lock-button"
-          @click="
-            protectedText.state.status === 'unlocked'
-              ? protectedText.lock('explicit')
-              : protectedText.showUnlock()
-          "
+          class="protected-text-status"
         >
-          {{
-            protectedText.state.status === "unlocked"
-              ? t("e2ee.lockAction")
-              : t("e2ee.unlockAction")
-          }}
-        </button>
+          <span
+            class="status-indicator"
+            :class="`status-${protectedText.state.status}`"
+            role="status"
+          >
+            {{
+              protectedText.state.status === "unlocked"
+                ? t("e2ee.unlocked")
+                : t("e2ee.locked")
+            }}
+          </span>
+          <button
+            type="button"
+            class="lock-button"
+            @click="
+              protectedText.state.status === 'unlocked'
+                ? protectedText.lock('explicit')
+                : protectedText.showUnlock()
+            "
+          >
+            {{
+              protectedText.state.status === "unlocked"
+                ? t("e2ee.lockAction")
+                : t("e2ee.unlockAction")
+            }}
+          </button>
+        </div>
       </div>
       <RouterView :key="protectedRouteKey" />
     </main>
@@ -187,9 +226,15 @@ async function logout(): Promise<void> {
   color: inherit;
 }
 
+:global(a[href]),
+:global(button:not(:disabled)),
+:global(.p-button:not(:disabled)) {
+  cursor: pointer;
+}
+
 .app-shell {
   display: grid;
-  grid-template-columns: 248px minmax(0, 1fr);
+  grid-template-columns: fit-content(340px) minmax(0, 1fr);
   min-height: 100vh;
 }
 
@@ -199,6 +244,8 @@ async function logout(): Promise<void> {
   display: flex;
   flex-direction: column;
   height: 100vh;
+  min-width: 248px;
+  max-width: 340px;
   padding: 1.5rem 1rem;
   background: #18253c;
   color: #fff;
@@ -238,6 +285,15 @@ nav {
   border-radius: 0.6rem;
   color: #dce5f4;
   text-decoration: none;
+}
+
+.nav-heading {
+  margin: 1rem 0.9rem 0.2rem;
+  color: #aebbd0;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .nav-link:hover,
@@ -311,12 +367,29 @@ nav {
   padding: 2.25rem;
 }
 
+.meeting-status-bar {
+  position: sticky;
+  z-index: 10;
+  top: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  min-height: 2.6rem;
+  margin: -2.25rem -2.25rem 1rem;
+  padding: 0.5rem 2.25rem;
+  background: #f5f6f8;
+}
+
+.meeting-status-bar :deep(.collaboration-status) {
+  margin: 0;
+}
+
 .protected-text-status {
   display: flex;
   justify-content: flex-end;
   align-items: center;
   gap: 0.65rem;
-  margin-bottom: 1rem;
+  justify-self: end;
 }
 
 .status-indicator {
@@ -360,6 +433,11 @@ nav {
 
   .main-content {
     padding: 1rem;
+  }
+
+  .meeting-status-bar {
+    margin: -1rem -1rem 1rem;
+    padding: 0.5rem 1rem;
   }
 }
 </style>

@@ -11,7 +11,6 @@ import Select from "primevue/select";
 import Tag from "primevue/tag";
 import RichTextEditor from "../components/RichTextEditor.vue";
 import { sanitizeRichText } from "../components/sanitize-rich-text";
-import MeetingCollaborationStatus from "../e2ee/MeetingCollaborationStatus.vue";
 import TopicTypeRenderer from "../topics/TopicTypeRenderer.vue";
 import {
   topicAgendaClass,
@@ -265,12 +264,13 @@ const finishMeeting = async () => {
     finishing.value = false;
   }
 };
-onMounted(() => {
+onMounted(async () => {
   if (window.sessionStorage.getItem("elderflow:discarded-collaboration") === id) {
     discardedAfterReload.value = true;
     window.sessionStorage.removeItem("elderflow:discarded-collaboration");
   }
-  void load();
+  await load();
+  if (route.query?.edit === "true") openEdit();
 });
 </script>
 <template>
@@ -280,10 +280,6 @@ onMounted(() => {
     </Message>
     <Message v-if="error" severity="error">{{ error }}</Message>
     <template v-if="meeting">
-      <MeetingCollaborationStatus
-        v-if="meeting.collaboration?.available && canEditProtected"
-        :meeting-id="id"
-      />
       <Message
         v-if="meeting.collaboration && !meeting.collaboration.available"
         severity="info"
@@ -301,15 +297,9 @@ onMounted(() => {
           </p>
         </div>
         <div v-if="canEdit" class="header-actions">
-          <Button
-            icon="pi pi-cog"
-            :label="t('meetingAgenda.editDetails')"
-            text
-            @click="openEdit"
-          />
           <RouterLink :to="`/meetings/${id}/prepare`">
             <Button
-              icon="pi pi-pencil"
+              icon="pi pi-arrow-left"
               :label="t('meetingAgenda.prepare')"
               outlined
             />
@@ -621,6 +611,7 @@ onMounted(() => {
             <RichTextEditor
               v-model="editForm.openingInput"
               height="100px"
+              :placeholder="t('meetingAgenda.opening')"
               :readonly="!canEditProtected"
               :meeting-id="id"
               fragment="meeting/opening-input"
@@ -631,6 +622,7 @@ onMounted(() => {
             <RichTextEditor
               v-model="editForm.generalNotes"
               height="100px"
+              :placeholder="t('meetingAgenda.generalNotes')"
               :readonly="!canEditProtected"
               :meeting-id="id"
               fragment="meeting/general-notes"
@@ -848,10 +840,50 @@ onMounted(() => {
 }
 
 .agenda-topic-compact {
+  margin-bottom: 0.25rem;
   padding: 0.35rem 0;
   border-width: 0;
   border-radius: 0;
   background: transparent;
+}
+
+.agenda-topic-person {
+  margin: 0;
+  padding: 0;
+  border: 1px solid #d6dce5;
+  border-bottom: 0;
+  border-radius: 0;
+  background: #fff;
+}
+
+.agenda-topic-person:first-of-type,
+.agenda-topic:not(.agenda-topic-person) + .agenda-topic-person {
+  border-top-left-radius: 0.5rem;
+  border-top-right-radius: 0.5rem;
+}
+
+.agenda-topic-person + .agenda-topic-person {
+  border-top: 0;
+}
+
+.agenda-topic-person:not(:has(+ .agenda-topic-person)) {
+  margin-bottom: 0.7rem;
+  border-bottom: 1px solid #d6dce5;
+  border-bottom-right-radius: 0.5rem;
+  border-bottom-left-radius: 0.5rem;
+}
+
+.agenda-topic-person .appearance-layout {
+  padding: 0.2rem 0.7rem;
+}
+
+.agenda-topic-person :deep(.rich-text-editor) {
+  border: 0;
+  border-radius: 0;
+}
+
+.agenda-topic-person :deep(.save-feedback) {
+  min-height: 0;
 }
 
 .appearance-layout {

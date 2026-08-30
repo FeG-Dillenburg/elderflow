@@ -56,7 +56,6 @@ describe("PersonTopicNote", () => {
     await flushPromises();
 
     expect(save).toHaveBeenCalledWith("New note");
-    expect(wrapper.get('[role="status"]').text()).toBe("Saved");
   });
 
   it("saves immediately on blur", async () => {
@@ -70,22 +69,15 @@ describe("PersonTopicNote", () => {
     expect(save).toHaveBeenCalledWith("Blurred note");
   });
 
-  it("retains failed input and retries it", async () => {
-    const save = vi.fn()
-      .mockRejectedValueOnce(new Error("Permission denied"))
-      .mockResolvedValueOnce({ ...item(), agendaNote: "Retained note" });
+  it("retains failed input without displaying per-field feedback", async () => {
+    const save = vi.fn().mockRejectedValueOnce(new Error("Permission denied"));
     const wrapper = mountNote({ item: item(), readOnly: false, save });
 
     await wrapper.get("textarea").setValue("Retained note");
     await wrapper.get("textarea").trigger("blur");
     await flushPromises();
     expect((wrapper.get("textarea").element as HTMLTextAreaElement).value).toBe("Retained note");
-    expect(wrapper.text()).toContain("Permission denied");
-
-    await wrapper.get("button").trigger("click");
-    await flushPromises();
-    expect(save).toHaveBeenLastCalledWith("Retained note");
-    expect(wrapper.get('[role="status"]').text()).toBe("Saved");
+    expect(wrapper.find('[role="status"]').exists()).toBe(false);
   });
 
   it("serializes saves so a stale response cannot replace newer local input", async () => {
@@ -99,7 +91,7 @@ describe("PersonTopicNote", () => {
     await wrapper.get("textarea").trigger("blur");
     expect(wrapper.get(".note-editor").attributes("aria-busy")).toBe("true");
     expect(wrapper.get("textarea").attributes("aria-label")).toBe("Meeting topic note");
-    expect(wrapper.get('[role="status"]').attributes("aria-live")).toBe("polite");
+    expect(wrapper.find('[role="status"]').exists()).toBe(false);
     await wrapper.get("textarea").setValue("Newest note");
     await wrapper.get("textarea").trigger("blur");
     expect(save).toHaveBeenCalledTimes(1);

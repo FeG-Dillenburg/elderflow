@@ -98,6 +98,26 @@ describe("MeetingsService encrypted transaction boundaries", () => {
     }));
   });
 
+  it("reopens a deferred Topic when it is added to an agenda", async () => {
+    manager.findOne.mockImplementation(async (entity) => {
+      if (entity === Topic) return { id: "topic", type: "generic", status: "deferred" };
+      return { id: "meeting", status: "planned" };
+    });
+
+    await service.addTopic("meeting", {
+      id: "appearance",
+      mutationId: "mutation",
+      topicId: "topic",
+      sectionId: "section",
+      initialUpdateEnvelope: "opaque",
+    } as never, user);
+
+    expect(manager.save).toHaveBeenCalledWith(Topic, expect.objectContaining({
+      id: "topic",
+      status: "open",
+    }));
+  });
+
   it("recognizes an exact mutation retry after compaction removed its covered update", async () => {
     const input = {
       id: "appearance",

@@ -47,6 +47,8 @@ const { t } = useI18n();
 }
 
 .person-name {
+  color: inherit;
+  cursor: pointer !important;
   font-weight: 800;
   text-decoration: none;
 }

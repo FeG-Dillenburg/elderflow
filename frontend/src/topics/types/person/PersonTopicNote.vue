@@ -20,7 +20,7 @@ const slots = useSlots();
 const inlineLabel = ref<HTMLElement>();
 const inlineLabelIndent = ref("0px");
 let labelObserver: ResizeObserver | undefined;
-const { localNote, state, error, saving, save, scheduleSave } =
+const { localNote, saving, save, scheduleSave } =
   useMeetingTopicNoteAutosave({
     source: () => props.item.personNote?.text,
     save: (note) => props.save(note),
@@ -79,14 +79,6 @@ onBeforeUnmount(() => {
         @blur="saveIfStandalone"
       />
     </span>
-    <span class="save-feedback" role="status" aria-live="polite">
-      <template v-if="state === 'saving'">{{ t("personTopic.saving") }}</template>
-      <template v-else-if="state === 'saved'">{{ t("personTopic.saved") }}</template>
-      <template v-else-if="state === 'error'">
-        {{ error }}
-        <button type="button" @click="save">{{ t("personTopic.retry") }}</button>
-      </template>
-    </span>
   </span>
 </template>
 
@@ -109,22 +101,6 @@ onBeforeUnmount(() => {
   left: 0.75rem;
   font-weight: 800;
   pointer-events: auto;
-}
-
-.save-feedback {
-  min-height: 1rem;
-  color: #68758a;
-  font-size: 0.72rem;
-}
-
-.save-feedback button {
-  border: 0;
-  padding: 0 0.2rem;
-  color: #315c9b;
-  background: transparent;
-  font: inherit;
-  text-decoration: underline;
-  cursor: pointer;
 }
 
 .read-only-note {

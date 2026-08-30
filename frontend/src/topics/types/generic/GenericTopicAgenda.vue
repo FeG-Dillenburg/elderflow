@@ -45,6 +45,7 @@ const saveCurrentMinutes = (text: string | null) =>
       <RouterLink v-if="item.topic" :to="`/topics/${item.topicId}`">
         <span class="topic-title">
           <h3>{{ item.topic.name }}</h3>
+          <i class="pi pi-arrow-up-right topic-link-icon" aria-hidden="true" />
           <span
             v-if="meetingStatus === 'completed' && item.deferredAt"
             class="deferred-marker"
@@ -130,6 +131,7 @@ const saveCurrentMinutes = (text: string | null) =>
 
 .topic-heading a {
   text-decoration: none;
+  cursor: pointer !important;
 }
 
 h3 {
@@ -142,6 +144,18 @@ h3 {
   flex-wrap: wrap;
   align-items: baseline;
   gap: 0.65rem;
+}
+
+.topic-link-icon {
+  color: #607dae;
+  font-size: 0.85rem;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.topic-heading a:hover .topic-link-icon,
+.topic-heading a:focus-visible .topic-link-icon {
+  opacity: 1 !important;
 }
 
 .deferred-marker {

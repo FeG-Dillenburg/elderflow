@@ -40,6 +40,23 @@ const date = (value: string | null) =>
     </header>
     <Message v-if="error" severity="error">{{ error }}</Message>
     <div v-if="data" class="dashboard-grid">
+      <Card v-if="data.currentMeeting" class="current-meeting">
+        <template #title>{{ t("dashboard.currentMeeting") }}</template>
+        <template #content>
+          <h2>{{ meetingLabel(data.currentMeeting) }}</h2>
+          <p>
+            {{ date(data.currentMeeting.date) }} {{ t("common.at") }}
+            {{ formatTime(data.currentMeeting.beginTime) }}
+          </p>
+          <RouterLink :to="`/meetings/${data.currentMeeting.id}`">
+            <Button
+              icon="pi pi-play-circle"
+              icon-pos="right"
+              :label="t('dashboard.openCurrentMeeting')"
+            />
+          </RouterLink>
+        </template>
+      </Card>
       <Card class="next-meeting">
         <template #title>{{ t("dashboard.nextMeeting") }}</template>
         <template #content>
@@ -56,7 +73,7 @@ const date = (value: string | null) =>
                 })
               }}
             </p>
-            <RouterLink :to="`/meetings/${data.nextMeeting.id}`">
+            <RouterLink :to="`/meetings/${data.nextMeeting.id}/prepare`">
               <Button
                 icon="pi pi-arrow-right"
                 icon-pos="right"
@@ -191,6 +208,12 @@ h1 {
 .next-meeting {
   grid-column: span 2;
   background: linear-gradient(120deg, #fff, #f1f5fc);
+}
+
+.current-meeting {
+  grid-column: span 2;
+  border-color: #86efac !important;
+  background: linear-gradient(120deg, #f0fdf4, #fff);
 }
 
 .next-meeting h2 {

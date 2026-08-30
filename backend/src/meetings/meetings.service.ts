@@ -366,6 +366,10 @@ export class MeetingsService {
       ]);
       if (!topic) throw codedHttpException(HttpStatus.NOT_FOUND, "TOPIC_NOT_FOUND", "Topic not found");
       if (!section) throw codedHttpException(HttpStatus.NOT_FOUND, "AGENDA_SECTION_NOT_FOUND", "Agenda section not found");
+      if (topic.status === "deferred") {
+        topic.status = "open";
+        await manager.save(Topic, topic);
+      }
       if (existing && existing.id !== source?.id) {
         throw codedHttpException(HttpStatus.CONFLICT, "AGENDA_TOPIC_CONFLICT", "Topic is already on this agenda");
       }

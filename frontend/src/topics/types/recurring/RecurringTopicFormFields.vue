@@ -31,7 +31,7 @@ const units = computed(() => [
   <div class="recurrence-fields">
     <label>
       <span>{{ t("recurringTopic.description") }}</span>
-      <RichTextEditor v-model="description" />
+      <RichTextEditor v-model="description" :placeholder="t('recurringTopic.description')" />
     </label>
     <div class="row">
       <label>

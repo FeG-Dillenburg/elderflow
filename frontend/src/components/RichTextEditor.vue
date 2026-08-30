@@ -39,7 +39,7 @@ const props = withDefaults(defineProps<{
 const model = defineModel<string>({ default: "" });
 const emit = defineEmits<{ blur: [] }>();
 const { t } = useI18n();
-const resolvedPlaceholder = computed(() => props.placeholder ?? t("topicDetail.addUpdate"));
+const resolvedPlaceholder = computed(() => props.placeholder ?? t("editor.placeholder"));
 const liveProvider = props.meetingId ? meetingCollaboration.get(props.meetingId) : undefined;
 const liveField = props.fragment ? `tiptap:${props.fragment}` : undefined;
 const extensions = meetingRichTextExtensions(Boolean(liveProvider));
@@ -58,12 +58,17 @@ const localCollaborator = computed<CollaboratorPresentation>(() => {
       });
 });
 const liveCollaborators = ref<CollaboratorPresentation[]>([]);
+const editorFocused = ref(false);
 
 const refreshLiveCollaborators = () => {
   const collaborators = new Map<string, CollaboratorPresentation>();
   for (const state of liveProvider?.awareness.getStates().values() ?? []) {
     if (isCollaboratorPresentation(state.user)) {
-      collaborators.set(state.user.id, state.user);
+      const isLocalCollaborator = state.user.id === localCollaborator.value.id;
+      if ((!isLocalCollaborator && state.cursor)
+        || (isLocalCollaborator && editorFocused.value)) {
+        collaborators.set(state.user.id, state.user);
+      }
     }
   }
   liveCollaborators.value = [...collaborators.values()]
@@ -130,7 +135,16 @@ const editor = useEditor({
   onCreate: ({ editor: current }) => {
     model.value = current.getHTML();
   },
-  onBlur: () => emit("blur"),
+  onFocus: ({ editor: current }) => {
+    if (current.isEmpty) current.view.dispatch(current.state.tr.setStoredMarks([]));
+    editorFocused.value = true;
+    refreshLiveCollaborators();
+  },
+  onBlur: () => {
+    editorFocused.value = false;
+    refreshLiveCollaborators();
+    emit("blur");
+  },
 });
 
 watch(model, (value) => {
@@ -142,6 +156,7 @@ watch(model, (value) => {
 watch(() => props.readonly, (value) => editor.value?.setEditable(!value));
 
 if (liveProvider) {
+  liveProvider.awareness.setLocalStateField("user", localCollaborator.value);
   watch(localCollaborator, (collaborator) => {
     liveProvider.awareness.setLocalStateField("user", collaborator);
   });
@@ -265,7 +280,10 @@ onBeforeUnmount(() => {
         />
       </div>
     </div>
-    <EditorContent :editor="editor" :data-placeholder="resolvedPlaceholder" />
+    <EditorContent
+      :editor="editor"
+      :data-placeholder="resolvedPlaceholder"
+    />
   </div>
 </template>
 

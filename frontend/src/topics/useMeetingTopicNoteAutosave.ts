@@ -17,6 +17,8 @@ export const useMeetingTopicNoteAutosave = (options: {
   saving: Ref<boolean>;
   save: () => void;
   scheduleSave: () => void;
+  markSaving: () => void;
+  markSaved: () => void;
 } => {
   const initialNote = options.source() ?? "";
   const localNote = ref(initialNote);
@@ -25,11 +27,28 @@ export const useMeetingTopicNoteAutosave = (options: {
   const error = ref("");
   const saving = ref(false);
   let timer: ReturnType<typeof setTimeout> | undefined;
+  let savedTimer: ReturnType<typeof setTimeout> | undefined;
   let queuedNote: string | null | undefined;
 
   const clearTimer = () => {
     if (timer) clearTimeout(timer);
     timer = undefined;
+  };
+  const clearSavedTimer = () => {
+    if (savedTimer) clearTimeout(savedTimer);
+    savedTimer = undefined;
+  };
+  const markSaving = () => {
+    clearSavedTimer();
+    state.value = "saving";
+  };
+  const markSaved = () => {
+    clearSavedTimer();
+    state.value = "saved";
+    savedTimer = setTimeout(() => {
+      state.value = "idle";
+      savedTimer = undefined;
+    }, 2_000);
   };
 
   const drain = async () => {
@@ -39,12 +58,12 @@ export const useMeetingTopicNoteAutosave = (options: {
       queuedNote = undefined;
       if ((note ?? "") === persistedNote.value) continue;
       saving.value = true;
-      state.value = "saving";
+      markSaving();
       error.value = "";
       try {
         await options.save(note);
         persistedNote.value = note ?? "";
-        state.value = "saved";
+        markSaved();
       } catch (cause) {
         if (isExpectedLockedState(cause)) {
           state.value = "idle";
@@ -74,6 +93,7 @@ export const useMeetingTopicNoteAutosave = (options: {
   };
 
   const scheduleSave = () => {
+    clearSavedTimer();
     if (localNote.value === persistedNote.value) return;
     state.value = "idle";
     clearTimer();
@@ -86,7 +106,10 @@ export const useMeetingTopicNoteAutosave = (options: {
     persistedNote.value = next;
   });
 
-  onBeforeUnmount(clearTimer);
+  onBeforeUnmount(() => {
+    clearTimer();
+    clearSavedTimer();
+  });
 
   return {
     localNote,
@@ -95,5 +118,7 @@ export const useMeetingTopicNoteAutosave = (options: {
     saving,
     save,
     scheduleSave,
+    markSaving,
+    markSaved,
   };
 };

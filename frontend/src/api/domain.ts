@@ -407,6 +407,7 @@ export interface DashboardTaskSummary {
 }
 
 export interface DashboardData {
+  currentMeeting: Pick<Meeting, 'id' | 'title' | 'date' | 'beginTime' | 'status' | 'meetingLeaderId' | 'meetingLeader'> | null;
   nextMeeting: Pick<Meeting, 'id' | 'title' | 'date' | 'beginTime' | 'status' | 'meetingLeaderId' | 'meetingLeader'> | null;
   myOpenTasks: DashboardTaskSummary[];
   overdueTasks: DashboardTaskSummary[];
@@ -582,7 +583,8 @@ const query = (values: Record<string, string | boolean | null | undefined>): str
 };
 
 type EncryptedDashboardTopicSummary = Omit<DashboardTopicSummary, 'name'> & EncryptedTopicLabel;
-type EncryptedDashboardData = Omit<DashboardData, 'myOpenTasks' | 'overdueTasks' | 'followUpTopics' | 'recentTopics' | 'nextMeeting'> & {
+type EncryptedDashboardData = Omit<DashboardData, 'myOpenTasks' | 'overdueTasks' | 'followUpTopics' | 'recentTopics' | 'currentMeeting' | 'nextMeeting'> & {
+  currentMeeting: (Omit<NonNullable<DashboardData['currentMeeting']>, 'title'> & EncryptedMeetingTitle) | null;
   nextMeeting: (Omit<NonNullable<DashboardData['nextMeeting']>, 'title'> & EncryptedMeetingTitle) | null;
   myOpenTasks: EncryptedTaskSummaryResponse[];
   overdueTasks: EncryptedTaskSummaryResponse[];
@@ -774,6 +776,12 @@ export const api = {
     const data = await request<EncryptedDashboardData>('/api/dashboard');
     return {
       ...data,
+      currentMeeting: data.currentMeeting
+        ? {
+            ...data.currentMeeting,
+            title: await unprotectMeetingTitle(data.currentMeeting.id, data.currentMeeting.protected),
+          }
+        : null,
       nextMeeting: data.nextMeeting
         ? {
             ...data.nextMeeting,
