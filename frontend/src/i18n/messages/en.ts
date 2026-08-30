@@ -27,7 +27,7 @@ export default {
     testLogin: 'Test provider login', enable: 'Enable', disable: 'Disable', remove: 'Remove provider', removeConfirm: 'Remove this provider? Existing sessions and Local login stay active; historical links remain reserved.',
     saved: 'Provider draft saved.', saveFailed: 'Provider settings could not be saved.', loadFailed: 'Authentication settings could not be loaded.', testFailed: 'Provider test could not be started.', enabled: 'External login enabled.', disabled: 'External login disabled.', removed: 'Provider removed.',
     linkedUsers: 'User link status', linked: 'Linked', unlinked: 'Unlinked', noUsers: 'No active Users.', resetLink: 'Reset link', resetConfirm: 'Reset the External identity link for {name}? Their Local login and current sessions remain active.', linkReset: 'External identity link reset.',
-    signInWith: 'Sign in with {provider}', localSeparator: 'or use Local login', localTitle: 'Local login', loginFailed: 'External login was not completed. You can try again or use Local login.', completing: 'Completing External login',
+    signInWith: 'Sign in with {provider}', localSeparator: 'or use Local login', loginFailed: 'External login was not completed. You can try again or use Local login.', completing: 'Completing External login',
     status: { notConfigured: 'Not configured', draft: 'Draft — test required', 'tested-disabled': 'Tested — disabled', enabled: 'Enabled' },
     diagnosticAtStage: '{stage}: {reason}',
     diagnosticHttpStatus: 'The provider returned HTTP {status}.',

@@ -76,7 +76,7 @@ async function submit(): Promise<void> {
         v-if="externalProvider"
         class="external-login"
         :label="t('externalAuth.signInWith', { provider: externalProvider.displayLabel })"
-        icon="pi pi-sign-in"
+        :icon="externalProvider.type === 'churchtools' ? 'churchtools-login-icon' : 'pi pi-sign-in'"
         :loading="externalLoading"
         @click="startExternalLogin"
       />
@@ -84,7 +84,6 @@ async function submit(): Promise<void> {
         {{ t("externalAuth.localSeparator") }}
       </Divider>
       <form class="login-form" @submit.prevent="submit">
-        <h2>{{ t("externalAuth.localTitle") }}</h2>
         <label>
           <span>{{ t("common.email") }}</span>
           <InputText
@@ -151,14 +150,27 @@ h1 {
 .login-form {
   gap: 1rem;
 }
-.login-form h2 {
-  margin: 0;
-  color: #334155;
-  font-size: 1rem;
-}
 .external-login {
   width: 100%;
   margin-bottom: 0.5rem;
+}
+:deep(.external-login.p-button) {
+  border-color: #cbd5e1;
+  background: #f1f5f9;
+  color: #334155;
+}
+:deep(.external-login.p-button:not(:disabled):hover) {
+  border-color: #94a3b8;
+  background: #e2e8f0;
+  color: #1e293b;
+}
+:deep(.external-login.p-button:not(:disabled):active) {
+  background: #cbd5e1;
+}
+:deep(.churchtools-login-icon) {
+  width: 1.25rem;
+  height: 1.25rem;
+  background: url("/churchtools-icon.png") center / contain no-repeat;
 }
 .login-form label {
   color: #334155;

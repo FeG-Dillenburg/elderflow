@@ -7,7 +7,7 @@ import { installation } from '../installation';
 import LoginView from './LoginView.vue';
 
 const stubs = {
-  Button: { props: ['label', 'loading'], template: '<button :data-loading="loading">{{ label }}</button>' },
+  Button: { props: ['icon', 'label', 'loading'], template: '<button :data-icon="icon" :data-loading="loading">{{ label }}</button>' },
   Divider: { template: '<div class="divider"><slot /></div>' },
   InputText: { props: ['modelValue'], template: '<input />' },
   Message: { template: '<div><slot /></div>' },
@@ -59,7 +59,8 @@ describe('LoginView', () => {
 
     expect(wrapper.get('.external-login').text()).toContain(`Sign in with ${displayLabel}`);
     expect(wrapper.get('.divider').text()).toContain('or use Local login');
-    expect(wrapper.get('.login-form').text()).toContain('Local login');
+    expect(wrapper.find('.login-form h2').exists()).toBe(false);
+    expect(wrapper.get('.external-login').attributes('data-icon')).toBe(type === 'churchtools' ? 'churchtools-login-icon' : 'pi pi-sign-in');
     expect(wrapper.findAll('.login-form input')).toHaveLength(2);
     expect(wrapper.get('.external-login').element.compareDocumentPosition(wrapper.get('.login-form').element) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
