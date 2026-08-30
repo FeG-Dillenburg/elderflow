@@ -4,7 +4,7 @@ ElderFlow can use one installation-wide OpenID Connect or ChurchTools External l
 
 Superadmins and IT admins configure the provider under **Settings → Authentication**. Save the provider as a draft, copy the displayed callback URL into the provider, complete a real test login, and then enable it explicitly. The login page presents External login first while retaining the complete Local login form.
 
-Provider tests report one localized result and distinguish discovery, token, signing-key, and user-info failures. Network diagnostics identify safe categories such as DNS, TLS, connection, timeout, invalid response, and oversized response; backend warnings contain only the diagnostic code, provider type, and test transaction ID, never authorization codes, tokens, provider response bodies, or secrets. Returning from a provider test prepares Protected-text unlocking but does not open the unlock dialog automatically.
+Provider tests report one localized result and distinguish discovery, token, signing-key, and user-info failures. Network diagnostics identify safe categories such as DNS, TLS, connection, timeout, invalid response, and oversized response. The transaction-correlated backend warning includes the request stage and method, the endpoint without credentials or query parameters, the HTTP status when available, and the selected IP address/family plus safe Node.js network code for connection failures. It never includes authorization codes, tokens, form or response bodies, headers, query parameters, or secrets. Returning from a provider test prepares Protected-text unlocking but does not open the unlock dialog automatically.
 
 ## Public URL and callback registration
 

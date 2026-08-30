@@ -1,6 +1,7 @@
 import { HttpException, HttpStatus, Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { randomBytes } from 'node:crypto';
+import { isIP } from 'node:net';
 import { DataSource, Repository } from 'typeorm';
 import { AuthService, AuthUser } from '../auth/auth.service';
 import { codedHttpException } from '../errors/coded-http.exception';
@@ -10,6 +11,7 @@ import { configurationFingerprint, safeReturnPath, sha256 } from './external-aut
 import { ExternalIdentityService } from './external-identity.service';
 import { ExternalLoginPurpose, ExternalLoginTransaction } from './external-login-transaction.entity';
 import { ProviderRegistryService } from './provider-registry.service';
+import type { ProviderRequestDiagnostic, ProviderRequestStage } from './provider-http.service';
 import { ProviderSettingsService } from './provider-settings.service';
 
 @Injectable()
@@ -93,6 +95,7 @@ export class ExternalAuthFlowService {
           outcome: codeValue,
           providerType: provider.type,
           transactionId: transaction.id,
+          ...this.providerDiagnostic(error),
         });
         await this.recordTestDiagnostic(provider.id, transaction.configurationFingerprint, codeValue);
       }
@@ -192,6 +195,35 @@ export class ExternalAuthFlowService {
       if (typeof response === 'object' && response && 'code' in response && typeof response.code === 'string') return response.code;
     }
     return error instanceof Error && /^AUTH_[A-Z0-9_]+$/.test(error.message) ? error.message : 'AUTH_PROVIDER_TEST_FAILED';
+  }
+
+  private providerDiagnostic(error: unknown): ProviderRequestDiagnostic {
+    if (!(error instanceof HttpException)) return {};
+    const response = error.getResponse();
+    if (!response || typeof response !== 'object' || !('params' in response) || !response.params || typeof response.params !== 'object') return {};
+    const params = response.params as Record<string, unknown>;
+    const stages: ProviderRequestStage[] = ['discovery', 'jwks', 'token', 'userinfo'];
+    const endpoint = this.safeProviderEndpoint(params.endpoint);
+    return {
+      ...(endpoint ? { endpoint } : {}),
+      ...(Number.isInteger(params.httpStatus) && Number(params.httpStatus) >= 100 && Number(params.httpStatus) <= 599 ? { httpStatus: Number(params.httpStatus) } : {}),
+      ...(params.method === 'GET' || params.method === 'POST' ? { method: params.method } : {}),
+      ...(typeof params.networkCode === 'string' && /^[A-Z0-9_]+$/.test(params.networkCode) ? { networkCode: params.networkCode } : {}),
+      ...(typeof params.resolvedAddress === 'string' && isIP(params.resolvedAddress) ? { resolvedAddress: params.resolvedAddress } : {}),
+      ...(params.resolvedFamily === 4 || params.resolvedFamily === 6 ? { resolvedFamily: params.resolvedFamily } : {}),
+      ...(typeof params.stage === 'string' && stages.includes(params.stage as ProviderRequestStage) ? { stage: params.stage as ProviderRequestStage } : {}),
+    };
+  }
+
+  private safeProviderEndpoint(value: unknown): string | undefined {
+    if (typeof value !== 'string' || value.length > 2_048) return undefined;
+    try {
+      const url = new URL(value);
+      if (!['http:', 'https:'].includes(url.protocol)) return undefined;
+      return `${url.origin}${url.pathname}`;
+    } catch {
+      return undefined;
+    }
   }
 
   private testRedirect(provider: ExternalAuthProvider, transactionId: string): string {

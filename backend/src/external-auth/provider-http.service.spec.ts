@@ -22,11 +22,28 @@ describe('ProviderHttpService diagnostics', () => {
   it('attaches the OAuth stage to a safe provider failure', async () => {
     const service = new ProviderHttpService({} as any);
     jest.spyOn(service as any, 'requestJson').mockRejectedValue(
-      codedHttpException(HttpStatus.BAD_GATEWAY, 'AUTH_PROVIDER_RESPONSE_INVALID', 'sensitive provider response'),
+      codedHttpException(HttpStatus.BAD_GATEWAY, 'AUTH_PROVIDER_CONNECTION_FAILED', 'sensitive provider response', {
+        ignored: 'sensitive detail',
+        networkCode: 'ECONNREFUSED',
+        resolvedAddress: '203.0.113.8',
+        resolvedFamily: 4,
+      }),
     );
 
-    await expect(service.postForm('https://provider.example/token', new URLSearchParams(), undefined, 'token'))
-      .rejects.toMatchObject({ response: { code: 'AUTH_PROVIDER_TOKEN_RESPONSE_INVALID' } });
+    await expect(service.postForm('https://user:password@provider.example/token?code=secret', new URLSearchParams(), undefined, 'token'))
+      .rejects.toMatchObject({
+        response: {
+          code: 'AUTH_PROVIDER_TOKEN_CONNECTION_FAILED',
+          params: {
+            endpoint: 'https://provider.example/token',
+            method: 'POST',
+            networkCode: 'ECONNREFUSED',
+            resolvedAddress: '203.0.113.8',
+            resolvedFamily: 4,
+            stage: 'token',
+          },
+        },
+      });
   });
 
   it('retains a safe HTTP status while discarding the provider response body', async () => {
@@ -34,6 +51,16 @@ describe('ProviderHttpService diagnostics', () => {
     jest.spyOn(service as any, 'request').mockResolvedValue({ status: 401, body: 'sensitive provider response' });
 
     await expect(service.postForm('https://provider.example/token', new URLSearchParams(), undefined, 'token'))
-      .rejects.toMatchObject({ response: { code: 'AUTH_PROVIDER_TOKEN_HTTP_401' } });
+      .rejects.toMatchObject({
+        response: {
+          code: 'AUTH_PROVIDER_TOKEN_HTTP_401',
+          params: {
+            endpoint: 'https://provider.example/token',
+            httpStatus: 401,
+            method: 'POST',
+            stage: 'token',
+          },
+        },
+      });
   });
 });
