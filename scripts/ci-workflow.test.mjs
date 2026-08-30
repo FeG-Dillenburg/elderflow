@@ -19,7 +19,6 @@ test('limits badge publication write permission to trusted main pushes', () => {
     /publish-badges:[\s\S]*?if: \$\{\{ always\(\) && github\.event_name == 'push' && github\.ref == 'refs\/heads\/main' \}\}/,
   );
   assert.match(workflow, /publish-badges:[\s\S]*?permissions:\n      contents: write/);
-  assert.match(workflow, /publish-badges:[\s\S]*?needs: \[tests, e2e, syntax\]/);
 });
 
 test('prevents older main runs from publishing after newer runs', () => {
@@ -37,6 +36,12 @@ test('uploads machine-readable reports even when a test suite fails', () => {
   assert.match(workflow, /name: ci-report-backend-e2e/);
   assert.equal(workflow.match(/uses: actions\/upload-artifact@v4/g)?.length, 2);
   assert.equal(workflow.match(/if: always\(\)/g)?.length, 2);
+});
+
+test('runs badge transformation tests and semantic workflow validation in CI', () => {
+  assert.match(workflow, /badge-tooling:[\s\S]*?run: pnpm run test:ci-badges/);
+  assert.match(workflow, /badge-tooling:[\s\S]*?uses: docker:\/\/rhysd\/actionlint:1\.7\.7/);
+  assert.match(workflow, /publish-badges:[\s\S]*?needs: \[tests, e2e, syntax, badge-tooling\]/);
 });
 
 test('README links all six main-push badges to CI diagnostics', () => {

@@ -130,10 +130,26 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @elderflow/${{ matrix.workspace }} build
 
+  badge-tooling:
+    name: Badge tooling
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.26.1
+          run_install: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: pnpm run test:ci-badges
+      - name: Validate GitHub Actions workflow
+        uses: docker://rhysd/actionlint:1.7.7
+
   publish-badges:
     name: Publish badges
     if: ${{ always() && github.event_name == 'push' && github.ref == 'refs/heads/main' }}
-    needs: [tests, e2e, syntax]
+    needs: [tests, e2e, syntax, badge-tooling]
     runs-on: ubuntu-latest
     permissions:
       contents: write
