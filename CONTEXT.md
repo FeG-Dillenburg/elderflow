@@ -112,6 +112,18 @@ _Avoid_: Action; Aktion
 A user classification that determines their permissions, with the canonical English labels Superadmin, IT admin, Admin, User, and Guest, and the canonical German labels Superadministrator, IT-Administrator, Administrator, Benutzer, and Gast.
 _Avoid_: Account type; Kontotyp
 
+**External identity (Externe Identität)**:
+An identity from an External login provider that is linked to an existing ElderFlow User and may authenticate that User. The first successful External login links by matching the provider's email address to an existing User; later logins use the provider's stable identity. An External identity never creates an ElderFlow User or determines that User's role or permissions.
+_Avoid_: External User, imported User; Externer Benutzer, importierter Benutzer
+
+**External login provider (Externer Anmeldeanbieter)**:
+The single active installation-configured identity source through which an existing ElderFlow User may authenticate, with the supported provider types OpenID Connect and ChurchTools. Superadmins and IT admins manage it, and it supplements rather than replaces Local login.
+_Avoid_: User directory, OAuth User; Benutzerverzeichnis, OAuth-Benutzer
+
+**Local login (Lokale Anmeldung)**:
+Authentication with credentials managed by the ElderFlow installation. It remains available when External login providers are enabled so authorized users retain an installation-controlled recovery path when an external provider is unavailable.
+_Avoid_: Development identity, Protected-text unlock; Entwicklungsidentität, Entsperrung geschützter Texte
+
 **Protected text (Geschützter Text)**:
 Confidential user-authored domain content whose readable form is available only to an authorized user who has unlocked it in a trusted client. Server-side storage, backups, logs, and passive infrastructure access reveal only encrypted content; account identity and structural metadata remain server-readable.
 _Avoid_: Protected metadata, server-readable text; Geschützte Metadaten, serverlesbarer Text
