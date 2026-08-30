@@ -45,9 +45,9 @@ export class OidcAdapter implements ProviderAdapter {
     } else if (discovery.token_endpoint_auth_methods_supported && !discovery.token_endpoint_auth_methods_supported.includes('none')) {
       throw this.invalid('AUTH_PROVIDER_TOKEN_AUTH_UNSUPPORTED');
     }
-    const token = await this.http.postForm(discovery.token_endpoint!, form, authorization);
+    const token = await this.http.postForm(discovery.token_endpoint!, form, authorization, 'token');
     if (typeof token.id_token !== 'string') throw this.invalid('AUTH_PROVIDER_TOKEN_INVALID');
-    const jwks = await this.http.getJson(discovery.jwks_uri!);
+    const jwks = await this.http.getJson(discovery.jwks_uri!, undefined, 'jwks');
     let claims: Record<string, unknown>;
     try {
       claims = verifyOidcIdToken({ token: token.id_token, jwks: jwks as { keys?: Array<JsonWebKey & { kid?: string }> }, issuer: provider.issuerUrl!, clientId: provider.clientId!, nonce: transaction.nonce!, supportedAlgorithms: discovery.id_token_signing_alg_values_supported });
@@ -55,7 +55,7 @@ export class OidcAdapter implements ProviderAdapter {
     let identity = claims;
     if (typeof identity.email !== 'string' || identity.email_verified !== true) {
       if (!discovery.userinfo_endpoint || typeof token.access_token !== 'string') throw this.invalid('AUTH_PROVIDER_EMAIL_UNVERIFIED');
-      identity = await this.http.getJson(discovery.userinfo_endpoint, `Bearer ${token.access_token}`);
+      identity = await this.http.getJson(discovery.userinfo_endpoint, `Bearer ${token.access_token}`, 'userinfo');
       if (identity.sub !== claims.sub) throw this.invalid('AUTH_PROVIDER_SUBJECT_MISMATCH');
     }
     if (typeof claims.sub !== 'string' || typeof identity.email !== 'string' || identity.email_verified !== true) throw this.invalid('AUTH_PROVIDER_EMAIL_UNVERIFIED');
@@ -66,7 +66,7 @@ export class OidcAdapter implements ProviderAdapter {
     if (!provider.issuerUrl || !provider.clientId || !provider.publicBaseUrl) throw new Error('AUTH_PROVIDER_CONFIGURATION_INCOMPLETE');
     await this.urls.assertSafe(provider.issuerUrl);
     const discoveryUrl = `${provider.issuerUrl.replace(/\/$/, '')}/.well-known/openid-configuration`;
-    const discovery = await this.http.getJson(discoveryUrl) as Discovery;
+    const discovery = await this.http.getJson(discoveryUrl, undefined, 'discovery') as Discovery;
     if (discovery.issuer !== provider.issuerUrl || !discovery.authorization_endpoint || !discovery.token_endpoint || !discovery.jwks_uri) throw this.invalid('AUTH_PROVIDER_DISCOVERY_INVALID');
     await Promise.all([discovery.token_endpoint, discovery.jwks_uri, discovery.userinfo_endpoint].filter(Boolean).map((url) => this.urls.assertSafe(url as string)));
     return discovery;

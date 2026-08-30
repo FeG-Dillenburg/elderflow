@@ -25,6 +25,7 @@ const saving = ref(false);
 const actionLoading = ref(false);
 const message = ref("");
 const errorMessage = ref("");
+const testResultCode = ref<string | null>(null);
 const form = reactive({
   type: "oidc" as ExternalProviderType,
   displayLabel: "",
@@ -43,6 +44,26 @@ const providerTypes = computed(() => [
 const statusLabel = computed(() => provider.value
   ? t(`externalAuth.status.${provider.value.status}`)
   : t("externalAuth.status.notConfigured"));
+const testResultSeverity = computed(() => testResultCode.value === "AUTH_PROVIDER_TEST_SUCCEEDED" ? "success" : "error");
+const providerDiagnosticCode = computed(() => provider.value?.diagnosticCode === testResultCode.value
+  ? null
+  : provider.value?.diagnosticCode ?? null);
+
+function diagnosticMessage(code: string): string {
+  const httpFailure = /^AUTH_PROVIDER_(DISCOVERY|JWKS|TOKEN|USERINFO)_HTTP_([1-5][0-9]{2})$/.exec(code);
+  if (httpFailure) {
+    return t("externalAuth.diagnosticAtStage", {
+      stage: t(`externalAuth.diagnosticStages.${httpFailure[1]}`),
+      reason: t("externalAuth.diagnosticHttpStatus", { status: httpFailure[2] }),
+    });
+  }
+  const staged = /^AUTH_PROVIDER_(DISCOVERY|JWKS|TOKEN|USERINFO)_(CONNECTION_FAILED|DNS_FAILED|RESPONSE_INVALID|RESPONSE_TOO_LARGE|TIMEOUT|TLS_FAILED)$/.exec(code);
+  if (!staged) return t(`externalAuth.diagnostics.${code}`);
+  return t("externalAuth.diagnosticAtStage", {
+    stage: t(`externalAuth.diagnosticStages.${staged[1]}`),
+    reason: t(`externalAuth.diagnosticReasons.${staged[2]}`),
+  });
+}
 
 function applySettings(settings: ExternalProviderSettings | null): void {
   provider.value = settings;
@@ -67,7 +88,7 @@ async function load(): Promise<void> {
     const testId = typeof route.query.test === "string" ? route.query.test : null;
     if (testId) {
       const result = await externalAuthApi.testResult(testId);
-      message.value = result.code ? t(`externalAuth.diagnostics.${result.code}`) : "";
+      testResultCode.value = result.code;
     }
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : t("externalAuth.loadFailed");
@@ -178,9 +199,12 @@ onMounted(load);
     </header>
 
     <Message v-if="message" severity="success" :closable="false">{{ message }}</Message>
+    <Message v-if="testResultCode" :severity="testResultSeverity" :closable="false">
+      {{ diagnosticMessage(testResultCode) }}
+    </Message>
     <Message v-if="errorMessage" severity="error" :closable="false">{{ errorMessage }}</Message>
-    <Message v-if="provider?.diagnosticCode" severity="warn" :closable="false">
-      {{ t(`externalAuth.diagnostics.${provider.diagnosticCode}`) }}
+    <Message v-if="providerDiagnosticCode" severity="warn" :closable="false">
+      {{ diagnosticMessage(providerDiagnosticCode) }}
     </Message>
 
     <form v-if="!loading" class="provider-form" @submit.prevent="save">

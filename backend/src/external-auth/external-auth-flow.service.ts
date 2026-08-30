@@ -1,4 +1,4 @@
-import { HttpException, HttpStatus, Injectable } from '@nestjs/common';
+import { HttpException, HttpStatus, Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { randomBytes } from 'node:crypto';
 import { DataSource, Repository } from 'typeorm';
@@ -14,6 +14,8 @@ import { ProviderSettingsService } from './provider-settings.service';
 
 @Injectable()
 export class ExternalAuthFlowService {
+  private readonly logger = new Logger(ExternalAuthFlowService.name);
+
   constructor(
     @InjectRepository(ExternalLoginTransaction) private readonly transactions: Repository<ExternalLoginTransaction>,
     @InjectRepository(ExternalAuthProvider) private readonly providers: Repository<ExternalAuthProvider>,
@@ -87,6 +89,11 @@ export class ExternalAuthFlowService {
       transaction.resultCode = transaction.purpose === 'test' ? codeValue : 'AUTH_EXTERNAL_LOGIN_FAILED';
       await this.transactions.save(transaction);
       if (transaction.purpose === 'test') {
+        this.logger.warn({
+          outcome: codeValue,
+          providerType: provider.type,
+          transactionId: transaction.id,
+        });
         await this.recordTestDiagnostic(provider.id, transaction.configurationFingerprint, codeValue);
       }
       return transaction.purpose === 'test' ? this.testRedirect(provider, transaction.id) : this.failureRedirect(provider, transaction.returnPath);

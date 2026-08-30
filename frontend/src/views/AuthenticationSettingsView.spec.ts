@@ -10,7 +10,7 @@ const stubs = {
   Button: { props: ['label', 'loading', 'disabled'], template: '<button :disabled="disabled" :data-loading="loading">{{ label }}</button>' },
   Checkbox: { props: ['modelValue'], emits: ['update:modelValue'], template: '<input type="checkbox" :checked="modelValue" @change="$emit(\'update:modelValue\', $event.target.checked)" />' },
   InputText: { props: ['modelValue', 'type'], emits: ['update:modelValue'], template: '<input :type="type || \'text\'" :value="modelValue" @input="$emit(\'update:modelValue\', $event.target.value)" />' },
-  Message: { template: '<div><slot /></div>' },
+  Message: { props: ['severity'], template: '<div :data-severity="severity"><slot /></div>' },
   Password: { props: ['modelValue'], emits: ['update:modelValue'], template: '<input type="password" :value="modelValue" @input="$emit(\'update:modelValue\', $event.target.value)" />' },
   Select: {
     props: ['modelValue', 'options'],
@@ -165,6 +165,39 @@ describe('AuthenticationSettingsView', () => {
 
     expect(externalAuthApi.testResult).toHaveBeenCalledWith('test-transaction');
     expect(wrapper.text()).toContain('The provider login test succeeded.');
+    expect(wrapper.get('[data-severity="success"]').attributes('data-severity')).toBe('success');
+  });
+
+  it('shows one staged provider failure with error severity', async () => {
+    vi.mocked(externalAuthApi.settings).mockResolvedValue(providerSettings({
+      diagnosticCode: 'AUTH_PROVIDER_TOKEN_TLS_FAILED',
+    }));
+    vi.spyOn(externalAuthApi, 'testResult').mockResolvedValue({
+      pending: false,
+      code: 'AUTH_PROVIDER_TOKEN_TLS_FAILED',
+    });
+    await router.push('/authentication-settings?test=test-transaction');
+    const wrapper = mount(AuthenticationSettingsView, { global: { plugins: [router], stubs } });
+    await flushPromises();
+
+    expect(wrapper.findAll('[data-severity="error"]')).toHaveLength(1);
+    expect(wrapper.text().match(/Token endpoint: TLS certificate validation failed\./g)).toHaveLength(1);
+  });
+
+  it('shows a safe endpoint HTTP status without a provider response body', async () => {
+    vi.mocked(externalAuthApi.settings).mockResolvedValue(providerSettings({
+      diagnosticCode: 'AUTH_PROVIDER_TOKEN_HTTP_401',
+    }));
+    vi.spyOn(externalAuthApi, 'testResult').mockResolvedValue({
+      pending: false,
+      code: 'AUTH_PROVIDER_TOKEN_HTTP_401',
+    });
+    await router.push('/authentication-settings?test=test-transaction');
+    const wrapper = mount(AuthenticationSettingsView, { global: { plugins: [router], stubs } });
+    await flushPromises();
+
+    expect(wrapper.text()).toContain('Token endpoint: The provider returned HTTP 401.');
+    expect(wrapper.text()).not.toContain('response body');
   });
 
   it('drives test, enable, disable, and remove transitions with confirmations', async () => {

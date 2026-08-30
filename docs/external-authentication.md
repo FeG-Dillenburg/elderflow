@@ -4,6 +4,8 @@ ElderFlow can use one installation-wide OpenID Connect or ChurchTools External l
 
 Superadmins and IT admins configure the provider under **Settings → Authentication**. Save the provider as a draft, copy the displayed callback URL into the provider, complete a real test login, and then enable it explicitly. The login page presents External login first while retaining the complete Local login form.
 
+Provider tests report one localized result and distinguish discovery, token, signing-key, and user-info failures. Network diagnostics identify safe categories such as DNS, TLS, connection, timeout, invalid response, and oversized response; backend warnings contain only the diagnostic code, provider type, and test transaction ID, never authorization codes, tokens, provider response bodies, or secrets. Returning from a provider test prepares Protected-text unlocking but does not open the unlock dialog automatically.
+
 ## Public URL and callback registration
 
 Set **Public ElderFlow URL** to the canonical URL users open in their browsers, for example `https://elderflow.example.org`. This value must describe the reverse-proxy-facing origin; ElderFlow does not trust request `Host` or forwarded-host headers for OAuth redirects.

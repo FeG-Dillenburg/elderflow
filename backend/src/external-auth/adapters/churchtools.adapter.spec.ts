@@ -19,7 +19,13 @@ describe('ChurchToolsAdapter contract', () => {
     });
     const form = http.postForm.mock.calls[0][1] as URLSearchParams;
     expect(http.postForm.mock.calls[0][0]).toBe('https://example.church.tools/oauth/access_token');
-    expect(http.getJson).toHaveBeenCalledWith('https://example.church.tools/oauth/userinfo', 'Bearer transient-token');
+    expect(http.postForm).toHaveBeenCalledWith(
+      'https://example.church.tools/oauth/access_token',
+      expect.any(URLSearchParams),
+      undefined,
+      'token',
+    );
+    expect(http.getJson).toHaveBeenCalledWith('https://example.church.tools/oauth/userinfo', 'Bearer transient-token', 'userinfo');
     expect(form.has('scope')).toBe(false);
     expect(form.has('client_secret')).toBe(false);
   });
