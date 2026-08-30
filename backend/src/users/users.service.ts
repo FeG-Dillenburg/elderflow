@@ -79,6 +79,7 @@ export class UsersService {
           UNION ALL SELECT 1 FROM "e2ee_key_state" WHERE "custody_acknowledged_by" = $1
           UNION ALL SELECT 1 FROM "e2ee_client_epochs" WHERE "user_id" = $1
           UNION ALL SELECT 1 FROM "e2ee_recovery_ceremonies" WHERE "initiator_id" = $1 OR "approver_id" = $1
+          UNION ALL SELECT 1 FROM "external_identities" WHERE "user_id" = $1
         ) AS "referenced"`,
         [id],
       ) as Array<{ referenced: boolean }>;

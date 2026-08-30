@@ -66,6 +66,7 @@ Before deploying, configure these environment variables in Coolify (or a Compose
 - `POSTGRES_PASSWORD` - a strong password for the bundled PostgreSQL database
 - `DATABASE_URL` - the matching database URL, for example `postgresql://elderflow:your-url-encoded-password@postgres:5432/elderflow`
 - `AUTH_SESSION_SECRET` - a unique secret of at least 32 characters
+- `AUTH_PROVIDER_SECRETS_KEY` - an optional, dedicated 32-byte base64url key used only to encrypt External login provider client secrets
 
 `POSTGRES_DB` and `POSTGRES_USER` default to `elderflow` and may be overridden. Database data persists in the `elderflow-postgres-data` volume. The application runs migrations automatically when it starts.
 
@@ -102,6 +103,8 @@ Sign in with one of the development seed users below. Their shared development p
 - `sam@example.com` - read-only guest
 
 Set a unique `AUTH_SESSION_SECRET` of at least 32 characters in production. Set `DEV_AUTH_BYPASS=true` to opt into the `DEV_USER_EMAIL` development/test-only impersonation fallback for API development; it is never accepted in production.
+
+External login is configured after initial setup from **Settings → Authentication**. Local login always remains visible and usable. See [External authentication](docs/external-authentication.md) for provider registration, reverse-proxy, testing, secret-key, and removal guidance.
 
 ## Application model
 

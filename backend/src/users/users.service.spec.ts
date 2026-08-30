@@ -168,6 +168,10 @@ describe("UsersService", () => {
       expect.stringContaining('FROM "meeting_users"'),
       [user.id],
     );
+    expect(manager.query).toHaveBeenCalledWith(
+      expect.stringContaining('FROM "external_identities"'),
+      [user.id],
+    );
     expect(manager.delete).toHaveBeenCalledWith(User, user.id);
     expect(manager.save).not.toHaveBeenCalled();
   });

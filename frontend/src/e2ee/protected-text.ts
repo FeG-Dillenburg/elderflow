@@ -39,13 +39,13 @@ export const protectedText = {
   isEligible(user: AuthUser | null): boolean {
     return isE2eeKeyOperator(user);
   },
-  async offerUnlock(user: AuthUser | null): Promise<void> {
+  async offerUnlock(user: AuthUser | null, showPrompt = true): Promise<void> {
     protectedText.lock('identity-change', false);
     activeUserId = user?.id ?? null;
     if (!protectedText.isEligible(user)) return;
     try {
       keyState = await api.e2eeKeyState();
-      state.promptVisible = true;
+      state.promptVisible = showPrompt;
     } catch {
       keyState = null;
       state.promptVisible = false;

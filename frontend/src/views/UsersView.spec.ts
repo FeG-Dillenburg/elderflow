@@ -82,7 +82,7 @@ describe("UsersView", () => {
     await flushPromises();
 
     expect(fetch).toHaveBeenCalledWith(
-      "http://localhost:3000/api/users",
+      "/api/users",
       expect.any(Object),
     );
     expect(wrapper.text()).toContain("Users");
@@ -137,7 +137,7 @@ describe("UsersView", () => {
     await vm.submitUser();
     expect(fetchMock).toHaveBeenNthCalledWith(
       2,
-      "http://localhost:3000/api/user",
+      "/api/user",
       expect.objectContaining({
         method: "POST",
         body: JSON.stringify(vm.form),
@@ -243,7 +243,7 @@ describe("UsersView", () => {
     expect(vm.showArchived).toBe(true);
     expect(fetchMock).toHaveBeenNthCalledWith(
       2,
-      "http://localhost:3000/api/users?includeArchived=true",
+      "/api/users?includeArchived=true",
       expect.any(Object),
     );
 
@@ -254,7 +254,7 @@ describe("UsersView", () => {
     await vm.confirmRemoval();
     expect(fetchMock).toHaveBeenNthCalledWith(
       3,
-      "http://localhost:3000/api/users/active-user",
+      "/api/users/active-user",
       expect.objectContaining({ method: "DELETE" }),
     );
     expect(vm.removalDialogVisible).toBe(false);
@@ -262,7 +262,7 @@ describe("UsersView", () => {
     await vm.restore(archivedUser);
     expect(fetchMock).toHaveBeenNthCalledWith(
       5,
-      "http://localhost:3000/api/users/archived-user/restore",
+      "/api/users/archived-user/restore",
       expect.objectContaining({ method: "PATCH" }),
     );
     expect(vm.processingUserId).toBeNull();
