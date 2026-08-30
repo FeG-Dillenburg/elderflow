@@ -1,6 +1,10 @@
 import { flushPromises, mount } from '@vue/test-utils';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { externalAuthApi } from '../api/external-auth';
 import { auth } from '../auth/auth';
+import { getSessionToken } from '../auth/session';
+import { protectedText } from '../e2ee/protected-text';
+import { currentLanguage } from '../i18n';
 import { installation } from '../installation';
 import router from '../router';
 import ExternalAuthCompleteView from './ExternalAuthCompleteView.vue';
@@ -30,9 +34,23 @@ const user = {
 };
 
 describe('ExternalAuthCompleteView', () => {
+  const storedValues = new Map<string, string>();
+
   beforeEach(() => {
     installation.setupRequired = false;
     auth.completeInitialization(null);
+    storedValues.clear();
+    Object.defineProperty(window, 'localStorage', {
+      configurable: true,
+      value: {
+        getItem: (key: string) => storedValues.get(key) ?? null,
+        setItem: (key: string, value: string) => storedValues.set(key, value),
+        removeItem: (key: string) => storedValues.delete(key),
+        clear: () => storedValues.clear(),
+        key: (index: number) => [...storedValues.keys()][index] ?? null,
+        get length() { return storedValues.size; },
+      } satisfies Storage,
+    });
   });
 
   afterEach(() => {
@@ -40,15 +58,18 @@ describe('ExternalAuthCompleteView', () => {
   });
 
   it('exchanges the completion code and safely restores the requested route', async () => {
-    vi.spyOn(auth, 'completeExternal').mockImplementation(async () => {
-      auth.completeInitialization(user);
-    });
+    vi.spyOn(externalAuthApi, 'complete').mockResolvedValue({ token: 'external-session', user });
+    const unlock = vi.spyOn(protectedText, 'offerUnlock').mockResolvedValue();
     await router.push('/auth/external/complete?code=single-use&return=%2Fmeetings%3Fview%3Dmine');
     const wrapper = mount(ExternalAuthCompleteView, { global: { plugins: [router], stubs } });
 
     await flushPromises();
 
-    expect(auth.completeExternal).toHaveBeenCalledWith('single-use');
+    expect(externalAuthApi.complete).toHaveBeenCalledWith('single-use');
+    expect(getSessionToken()).toBe('external-session');
+    expect(auth.state.user).toEqual(user);
+    expect(currentLanguage()).toBe('en');
+    expect(unlock).toHaveBeenCalledWith(user);
     await vi.waitFor(() => {
       expect(router.currentRoute.value.fullPath).toBe('/meetings?view=mine');
     });
@@ -56,9 +77,8 @@ describe('ExternalAuthCompleteView', () => {
   });
 
   it('rejects an unsafe return path', async () => {
-    vi.spyOn(auth, 'completeExternal').mockImplementation(async () => {
-      auth.completeInitialization(user);
-    });
+    vi.spyOn(externalAuthApi, 'complete').mockResolvedValue({ token: 'external-session', user });
+    vi.spyOn(protectedText, 'offerUnlock').mockResolvedValue();
     await router.push('/auth/external/complete?code=single-use&return=%2F%2Fevil.example');
     const wrapper = mount(ExternalAuthCompleteView, { global: { plugins: [router], stubs } });
 
@@ -69,7 +89,7 @@ describe('ExternalAuthCompleteView', () => {
   });
 
   it('handles a failed exchange through Local login', async () => {
-    vi.spyOn(auth, 'completeExternal').mockRejectedValue(new Error('expired'));
+    vi.spyOn(externalAuthApi, 'complete').mockRejectedValue(new Error('expired'));
     await router.push('/auth/external/complete?code=expired');
     const wrapper = mount(ExternalAuthCompleteView, { global: { plugins: [router], stubs } });
 
