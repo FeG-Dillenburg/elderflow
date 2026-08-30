@@ -68,11 +68,7 @@ export class ExternalAuthFlowService {
       if (transaction.configurationFingerprint !== configurationFingerprint(provider)) throw codedHttpException(HttpStatus.CONFLICT, 'AUTH_PROVIDER_CONFIGURATION_CHANGED', 'Provider configuration changed');
       const identity = await this.registry.for(provider).exchange(provider, transaction, { code });
       if (transaction.purpose === 'test') {
-        provider.testedFingerprint = transaction.configurationFingerprint;
-        provider.testedAt = new Date();
-        provider.diagnosticCode = null;
-        transaction.resultCode = 'AUTH_PROVIDER_TEST_SUCCEEDED';
-        await Promise.all([this.providers.save(provider), this.transactions.save(transaction)]);
+        await this.recordSuccessfulTest(provider.id, transaction);
         return this.testRedirect(provider, transaction.id);
       }
       if (!this.settings.usable(provider)) throw codedHttpException(HttpStatus.SERVICE_UNAVAILABLE, 'AUTH_PROVIDER_UNAVAILABLE', 'External login is unavailable');
@@ -89,8 +85,10 @@ export class ExternalAuthFlowService {
     } catch (error) {
       const codeValue = this.errorCode(error);
       transaction.resultCode = transaction.purpose === 'test' ? codeValue : 'AUTH_EXTERNAL_LOGIN_FAILED';
-      provider.diagnosticCode = transaction.purpose === 'test' ? codeValue : provider.diagnosticCode;
-      await Promise.all([this.transactions.save(transaction), transaction.purpose === 'test' ? this.providers.save(provider) : Promise.resolve(provider)]);
+      await this.transactions.save(transaction);
+      if (transaction.purpose === 'test') {
+        await this.recordTestDiagnostic(provider.id, transaction.configurationFingerprint, codeValue);
+      }
       return transaction.purpose === 'test' ? this.testRedirect(provider, transaction.id) : this.failureRedirect(provider, transaction.returnPath);
     }
   }
@@ -145,6 +143,40 @@ export class ExternalAuthFlowService {
       WHERE "expires_at" < now() OR "completion_consumed_at" IS NOT NULL
       ORDER BY "created_at" ASC LIMIT 100
     )`);
+  }
+
+  private async recordSuccessfulTest(providerId: string, transaction: ExternalLoginTransaction): Promise<void> {
+    await this.dataSource.transaction(async (manager) => {
+      const provider = await manager.getRepository(ExternalAuthProvider).createQueryBuilder('provider')
+        .addSelect('provider.clientSecretEnvelope')
+        .setLock('pessimistic_write')
+        .where('provider.id = :providerId', { providerId })
+        .andWhere('provider.removed_at IS NULL')
+        .getOne();
+      if (!provider || configurationFingerprint(provider) !== transaction.configurationFingerprint) {
+        throw codedHttpException(HttpStatus.CONFLICT, 'AUTH_PROVIDER_CONFIGURATION_CHANGED', 'Provider configuration changed');
+      }
+      provider.testedFingerprint = transaction.configurationFingerprint;
+      provider.testedAt = new Date();
+      provider.diagnosticCode = null;
+      transaction.resultCode = 'AUTH_PROVIDER_TEST_SUCCEEDED';
+      await manager.save(ExternalAuthProvider, provider);
+      await manager.save(ExternalLoginTransaction, transaction);
+    });
+  }
+
+  private async recordTestDiagnostic(providerId: string, fingerprint: string, code: string): Promise<void> {
+    await this.dataSource.transaction(async (manager) => {
+      const provider = await manager.getRepository(ExternalAuthProvider).createQueryBuilder('provider')
+        .addSelect('provider.clientSecretEnvelope')
+        .setLock('pessimistic_write')
+        .where('provider.id = :providerId', { providerId })
+        .andWhere('provider.removed_at IS NULL')
+        .getOne();
+      if (!provider || configurationFingerprint(provider) !== fingerprint) return;
+      provider.diagnosticCode = code;
+      await manager.save(ExternalAuthProvider, provider);
+    });
   }
 
   private errorCode(error: unknown): string {

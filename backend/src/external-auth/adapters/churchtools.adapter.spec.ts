@@ -1,4 +1,5 @@
 import { ChurchToolsAdapter } from './churchtools.adapter';
+import contract from './fixtures/churchtools-userinfo.contract.json';
 
 describe('ChurchToolsAdapter contract', () => {
   const http = { postForm: jest.fn(), getJson: jest.fn() };
@@ -11,7 +12,7 @@ describe('ChurchToolsAdapter contract', () => {
 
   it('uses the documented endpoints, sends no scope or secret, and treats id as the stable subject', async () => {
     http.postForm.mockResolvedValue({ access_token: 'transient-token', token_type: 'Bearer' });
-    http.getJson.mockResolvedValue({ id: 4711, email: 'user@example.com', firstName: 'Ada', groups: [] });
+    http.getJson.mockResolvedValue(contract.response);
 
     await expect(adapter.exchange(provider, transaction, { code: 'authorization-code' })).resolves.toEqual({
       subject: '4711', email: 'user@example.com',

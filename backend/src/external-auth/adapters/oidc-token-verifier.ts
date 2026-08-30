@@ -33,7 +33,7 @@ export function verifyOidcIdToken(input: {
   if (!algorithm || input.supportedAlgorithms && !input.supportedAlgorithms.includes(header.alg!)) throw new Error('AUTH_PROVIDER_TOKEN_INVALID');
   const keys = input.jwks.keys ?? [];
   const jwk = header.kid ? keys.find((candidate) => candidate.kid === header.kid) : keys.length === 1 ? keys[0] : undefined;
-  if (!jwk) throw new Error('AUTH_PROVIDER_TOKEN_INVALID');
+  if (!jwk || (jwk.use && jwk.use !== 'sig') || (jwk.alg && jwk.alg !== header.alg)) throw new Error('AUTH_PROVIDER_TOKEN_INVALID');
   let valid = false;
   try {
     valid = verify(algorithm.digest, Buffer.from(`${parts[0]}.${parts[1]}`), {

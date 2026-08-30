@@ -10,6 +10,19 @@ import { externalAuthApi } from '../api/external-auth';
 const state = reactive<{ user: AuthUser | null; ready: boolean }>({ user: null, ready: false });
 let initialization: Promise<void> | null = null;
 
+async function acceptSession(result: { token: string; user: AuthUser }): Promise<void> {
+  setSessionToken(result.token);
+  state.user = result.user;
+  state.ready = true;
+  setLanguage(resolveEffectiveLanguage({
+    authenticated: true,
+    userLanguage: result.user.language,
+    installationDefault: installation.defaultLanguage,
+    browserLanguages: navigator.languages,
+  }));
+  await protectedText.offerUnlock(result.user);
+}
+
 export const auth = {
   state,
   user: computed(() => state.user),
@@ -24,30 +37,10 @@ export const auth = {
     return initialization;
   },
   async login(email: string, password: string): Promise<void> {
-    const result = await api.login({ email, password });
-    setSessionToken(result.token);
-    state.user = result.user;
-    state.ready = true;
-    setLanguage(resolveEffectiveLanguage({
-      authenticated: true,
-      userLanguage: result.user.language,
-      installationDefault: installation.defaultLanguage,
-      browserLanguages: navigator.languages,
-    }));
-    await protectedText.offerUnlock(result.user);
+    await acceptSession(await api.login({ email, password }));
   },
   async completeExternal(code: string): Promise<void> {
-    const result = await externalAuthApi.complete(code);
-    setSessionToken(result.token);
-    state.user = result.user;
-    state.ready = true;
-    setLanguage(resolveEffectiveLanguage({
-      authenticated: true,
-      userLanguage: result.user.language,
-      installationDefault: installation.defaultLanguage,
-      browserLanguages: navigator.languages,
-    }));
-    await protectedText.offerUnlock(result.user);
+    await acceptSession(await externalAuthApi.complete(code));
   },
   logout(): void {
     protectedText.lock('logout');

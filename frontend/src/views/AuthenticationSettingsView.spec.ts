@@ -44,4 +44,35 @@ describe('AuthenticationSettingsView', () => {
     expect(wrapper.text()).not.toContain('Issuer URL');
     expect(wrapper.text()).not.toContain('Client secret');
   });
+
+  it('loads active-user link status immediately after the first provider save', async () => {
+    vi.spyOn(externalAuthApi, 'save').mockResolvedValue({
+      id: 'provider-id',
+      type: 'oidc',
+      displayLabel: 'Company SSO',
+      issuerUrl: 'https://identity.example.com',
+      churchToolsUrl: null,
+      clientId: 'elderflow',
+      publicBaseUrl: window.location.origin,
+      callbackUrl: `${window.location.origin}/api/auth/external/callback`,
+      clientSecretConfigured: false,
+      enabled: false,
+      testedAt: null,
+      canEnable: false,
+      status: 'draft',
+      diagnosticCode: null,
+    });
+    vi.mocked(externalAuthApi.users).mockResolvedValue([
+      { id: 'user-id', email: 'ada@example.com', firstName: 'Ada', lastName: 'Lovelace', linked: false },
+    ]);
+    const wrapper = mount(AuthenticationSettingsView, { global: { plugins: [router], stubs } });
+    await flushPromises();
+
+    await wrapper.get('form').trigger('submit');
+    await flushPromises();
+
+    expect(externalAuthApi.users).toHaveBeenCalledOnce();
+    expect(wrapper.text()).toContain('Ada Lovelace');
+    expect(wrapper.text()).toContain('Unlinked');
+  });
 });

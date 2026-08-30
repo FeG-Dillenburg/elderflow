@@ -7,6 +7,7 @@ import { generateKeyPairSync, sign } from 'node:crypto';
 import request from 'supertest';
 import { DataSource } from 'typeorm';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { ExternalAuthentication1720000019000 } from '../src/database/migrations/1720000019000-ExternalAuthentication';
 import { SessionService } from '../src/auth/session.service';
 import { E2eeRecoveryCeremony } from '../src/e2ee/e2ee-recovery-ceremony.entity';
 import { ExternalAuthModule } from '../src/external-auth/external-auth.module';
@@ -18,6 +19,7 @@ import { User } from '../src/users/user.entity';
 const databaseUrl = process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL;
 const describeWithPostgres = databaseUrl ? describe : describe.skip;
 const schema = `external_auth_${process.pid}_${Date.now()}`;
+const migrationSchema = `${schema}_migration`;
 
 describeWithPostgres('External login HTTP API with PostgreSQL and a local provider (e2e)', () => {
   let admin: DataSource;
@@ -107,8 +109,50 @@ describeWithPostgres('External login HTTP API with PostgreSQL and a local provid
     if (app) await app.close();
     await new Promise<void>((resolve) => providerServer?.close(() => resolve()));
     if (admin?.isInitialized) {
+      await admin.query(`DROP SCHEMA IF EXISTS "${migrationSchema}" CASCADE`);
       await admin.query(`DROP SCHEMA "${schema}" CASCADE`);
       await admin.destroy();
+    }
+  });
+
+  it('upgrades an existing installation without changing its Users or installation data', async () => {
+    await admin.query(`CREATE SCHEMA "${migrationSchema}"`);
+    const migrationDatabase = new DataSource({
+      type: 'postgres',
+      url: databaseUrl,
+      schema: migrationSchema,
+    });
+    await migrationDatabase.initialize();
+    const runner = migrationDatabase.createQueryRunner();
+    await runner.connect();
+    try {
+      await runner.query(`SET search_path TO "${migrationSchema}"`);
+      await runner.query(`CREATE TABLE "users" ("id" uuid PRIMARY KEY, "email" text NOT NULL)`);
+      await runner.query(`CREATE TABLE "installation_settings" ("id" integer PRIMARY KEY, "name" text NOT NULL)`);
+      await runner.query(`INSERT INTO "users" ("id", "email") VALUES ('00000000-0000-4000-8000-000000000066', 'existing@example.com')`);
+      await runner.query(`INSERT INTO "installation_settings" ("id", "name") VALUES (1, 'Existing installation')`);
+
+      await new ExternalAuthentication1720000019000().up(runner);
+
+      await expect(runner.query(`SELECT "email" FROM "users"`)).resolves.toEqual([
+        { email: 'existing@example.com' },
+      ]);
+      await expect(runner.query(`SELECT "name" FROM "installation_settings"`)).resolves.toEqual([
+        { name: 'Existing installation' },
+      ]);
+      const tables = await runner.query(`
+        SELECT table_name
+        FROM information_schema.tables
+        WHERE table_schema = $1
+      `, [migrationSchema]) as Array<{ table_name: string }>;
+      expect(tables.map(({ table_name }) => table_name)).toEqual(expect.arrayContaining([
+        'external_auth_providers',
+        'external_identities',
+        'external_login_transactions',
+      ]));
+    } finally {
+      await runner.release();
+      await migrationDatabase.destroy();
     }
   });
 

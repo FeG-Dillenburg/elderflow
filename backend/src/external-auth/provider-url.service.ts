@@ -13,21 +13,22 @@ export class ProviderUrlService {
     try { url = new URL(value); } catch { throw this.unsafe(); }
     if (url.username || url.password || url.hash) throw this.unsafe();
     const environment = this.config.get<string>('NODE_ENV') ?? 'development';
-    const localDevelopment = environment !== 'production' && ['localhost', '127.0.0.1', '::1'].includes(url.hostname);
+    const hostname = this.normalizeHostname(url.hostname);
+    const localDevelopment = environment !== 'production' && ['localhost', '127.0.0.1', '::1'].includes(hostname);
     if (url.protocol !== 'https:' && !(localDevelopment && url.protocol === 'http:')) throw this.unsafe();
-    const hostname = url.hostname.toLowerCase().replace(/\.$/, '');
-    if (['169.254.169.254', 'fd00:ec2::254', '[fd00:ec2::254]', 'metadata.google.internal', 'instance-data.ec2.internal', 'metadata.azure.internal'].includes(hostname)) throw this.unsafe();
-    const addresses = isIP(url.hostname)
-      ? [{ address: url.hostname, family: isIP(url.hostname) }]
-      : await this.resolveSafeAddresses(url.hostname);
+    if (['169.254.169.254', 'fd00:ec2::254', 'metadata.google.internal', 'instance-data.ec2.internal', 'metadata.azure.internal'].includes(hostname)) throw this.unsafe();
+    const addresses = isIP(hostname)
+      ? [{ address: hostname, family: isIP(hostname) }]
+      : await this.resolveSafeAddresses(hostname);
     if (environment === 'production' && addresses.some(({ address }) => this.isLoopbackOrLinkLocal(address))) throw this.unsafe();
     return url;
   }
 
   async resolveSafeAddress(hostname: string): Promise<{ address: string; family: number }> {
-    const addresses = isIP(hostname)
-      ? [{ address: hostname, family: isIP(hostname) }]
-      : await this.resolveSafeAddresses(hostname);
+    const normalizedHostname = this.normalizeHostname(hostname);
+    const addresses = isIP(normalizedHostname)
+      ? [{ address: normalizedHostname, family: isIP(normalizedHostname) }]
+      : await this.resolveSafeAddresses(normalizedHostname);
     if (this.config.get<string>('NODE_ENV') === 'production' && addresses.some(({ address }) => this.isLoopbackOrLinkLocal(address))) throw this.unsafe();
     return addresses[0];
   }
@@ -41,6 +42,10 @@ export class ProviderUrlService {
   private isLoopbackOrLinkLocal(address: string): boolean {
     return address === '::1' || address.startsWith('127.') || address.startsWith('169.254.')
       || /^::ffff:127\./i.test(address) || /^fe[89ab]/i.test(address) || address.toLowerCase() === 'fd00:ec2::254';
+  }
+
+  private normalizeHostname(hostname: string): string {
+    return hostname.toLowerCase().replace(/^\[|\]$/g, '').replace(/\.$/, '');
   }
 
   private unsafe() {

@@ -12,12 +12,26 @@ const { t } = useI18n();
 const failed = ref(false);
 
 function safeReturnPath(value: unknown): string {
-  return typeof value === "string"
-    && value.startsWith("/")
-    && !value.startsWith("//")
-    && !value.includes("\\")
-    ? value
-    : "/";
+  if (
+    typeof value !== "string"
+    || !value.startsWith("/")
+    || value.startsWith("//")
+    || value.includes("\\")
+  ) {
+    return "/";
+  }
+  try {
+    const decoded = decodeURIComponent(value);
+    if (decoded.startsWith("//") || decoded.includes("\\")) {
+      return "/";
+    }
+    const parsed = new URL(value, "https://elderflow.invalid");
+    return parsed.origin === "https://elderflow.invalid"
+      ? `${parsed.pathname}${parsed.search}${parsed.hash}`
+      : "/";
+  } catch {
+    return "/";
+  }
 }
 
 onMounted(async () => {

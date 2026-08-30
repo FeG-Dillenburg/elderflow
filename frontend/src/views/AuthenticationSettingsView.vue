@@ -40,7 +40,9 @@ const providerTypes = computed(() => [
   { label: t("externalAuth.oidc"), value: "oidc" },
   { label: t("externalAuth.churchTools"), value: "churchtools" },
 ]);
-const statusLabel = computed(() => provider.value ? t(`externalAuth.status.${provider.value.status}`) : t("externalAuth.status.notConfigured"));
+const statusLabel = computed(() => provider.value
+  ? t(`externalAuth.status.${provider.value.status}`)
+  : t("externalAuth.status.notConfigured"));
 
 function applySettings(settings: ExternalProviderSettings | null): void {
   provider.value = settings;
@@ -79,7 +81,7 @@ async function save(): Promise<void> {
   message.value = "";
   errorMessage.value = "";
   try {
-    applySettings(await externalAuthApi.save({
+    const savedProvider = await externalAuthApi.save({
       type: form.type,
       displayLabel: form.displayLabel,
       issuerUrl: form.type === "oidc" ? form.issuerUrl || null : null,
@@ -88,7 +90,9 @@ async function save(): Promise<void> {
       publicBaseUrl: form.publicBaseUrl || null,
       clientSecret: form.type === "oidc" && form.clientSecret ? form.clientSecret : undefined,
       removeClientSecret: form.type === "oidc" && form.removeClientSecret,
-    }));
+    });
+    applySettings(savedProvider);
+    users.value = await externalAuthApi.users();
     message.value = t("externalAuth.saved");
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : t("externalAuth.saveFailed");
@@ -127,7 +131,16 @@ async function removeProvider(): Promise<void> {
     await externalAuthApi.remove();
     applySettings(null);
     users.value = [];
-    Object.assign(form, { type: "oidc", displayLabel: "", issuerUrl: "", churchToolsUrl: "", clientId: "", publicBaseUrl: window.location.origin, clientSecret: "", removeClientSecret: false });
+    Object.assign(form, {
+      type: "oidc",
+      displayLabel: "",
+      issuerUrl: "",
+      churchToolsUrl: "",
+      clientId: "",
+      publicBaseUrl: window.location.origin,
+      clientSecret: "",
+      removeClientSecret: false,
+    });
     message.value = t("externalAuth.removed");
   } finally {
     actionLoading.value = false;
@@ -158,7 +171,10 @@ onMounted(load);
         <h1>{{ t("externalAuth.settingsTitle") }}</h1>
         <p>{{ t("externalAuth.settingsDescription") }}</p>
       </div>
-      <Tag :value="statusLabel" :severity="provider?.enabled ? 'success' : 'secondary'" />
+      <Tag
+        :value="statusLabel"
+        :severity="provider?.enabled ? 'success' : 'secondary'"
+      />
     </header>
 
     <Message v-if="message" severity="success" :closable="false">{{ message }}</Message>
@@ -170,7 +186,13 @@ onMounted(load);
     <form v-if="!loading" class="provider-form" @submit.prevent="save">
       <label>
         <span>{{ t("externalAuth.providerType") }}</span>
-        <Select v-model="form.type" :options="providerTypes" option-label="label" option-value="value" :disabled="Boolean(provider)" />
+        <Select
+          v-model="form.type"
+          :options="providerTypes"
+          option-label="label"
+          option-value="value"
+          :disabled="Boolean(provider)"
+        />
       </label>
       <label>
         <span>{{ t("externalAuth.displayLabel") }}</span>
@@ -190,7 +212,12 @@ onMounted(load);
       </label>
       <label v-if="form.type === 'oidc'">
         <span>{{ provider?.clientSecretConfigured ? t("externalAuth.replaceClientSecret") : t("externalAuth.clientSecret") }}</span>
-        <Password v-model="form.clientSecret" :feedback="false" toggle-mask autocomplete="new-password" />
+        <Password
+          v-model="form.clientSecret"
+          :feedback="false"
+          toggle-mask
+          autocomplete="new-password"
+        />
       </label>
       <label v-if="form.type === 'oidc' && provider?.clientSecretConfigured" class="check-label">
         <Checkbox v-model="form.removeClientSecret" binary input-id="remove-client-secret" />
@@ -205,15 +232,49 @@ onMounted(load);
         <span>{{ t("externalAuth.callbackUrl") }}</span>
         <span class="callback-row">
           <InputText :model-value="provider.callbackUrl" readonly />
-          <Button type="button" icon="pi pi-copy" :label="t('externalAuth.copyCallback')" severity="secondary" @click="copyCallback" />
+          <Button
+            type="button"
+            icon="pi pi-copy"
+            :label="t('externalAuth.copyCallback')"
+            severity="secondary"
+            @click="copyCallback"
+          />
         </span>
       </label>
       <div class="actions">
         <Button type="submit" :label="t('common.save')" :loading="saving" />
-        <Button v-if="provider" type="button" :label="t('externalAuth.testLogin')" severity="secondary" :loading="actionLoading" @click="startTest" />
-        <Button v-if="provider && !provider.enabled" type="button" :label="t('externalAuth.enable')" :disabled="!provider.canEnable" :loading="actionLoading" @click="setEnabled(true)" />
-        <Button v-if="provider?.enabled" type="button" :label="t('externalAuth.disable')" severity="secondary" :loading="actionLoading" @click="setEnabled(false)" />
-        <Button v-if="provider" type="button" :label="t('externalAuth.remove')" severity="danger" :loading="actionLoading" @click="removeProvider" />
+        <Button
+          v-if="provider"
+          type="button"
+          :label="t('externalAuth.testLogin')"
+          severity="secondary"
+          :loading="actionLoading"
+          @click="startTest"
+        />
+        <Button
+          v-if="provider && !provider.enabled"
+          type="button"
+          :label="t('externalAuth.enable')"
+          :disabled="!provider.canEnable"
+          :loading="actionLoading"
+          @click="setEnabled(true)"
+        />
+        <Button
+          v-if="provider?.enabled"
+          type="button"
+          :label="t('externalAuth.disable')"
+          severity="secondary"
+          :loading="actionLoading"
+          @click="setEnabled(false)"
+        />
+        <Button
+          v-if="provider"
+          type="button"
+          :label="t('externalAuth.remove')"
+          severity="danger"
+          :loading="actionLoading"
+          @click="removeProvider"
+        />
       </div>
     </form>
 
@@ -221,13 +282,29 @@ onMounted(load);
       <h2>{{ t("externalAuth.linkedUsers") }}</h2>
       <p v-if="!users.length">{{ t("externalAuth.noUsers") }}</p>
       <table v-else>
-        <thead><tr><th>{{ t("common.user") }}</th><th>{{ t("common.email") }}</th><th>{{ t("common.status") }}</th><th>{{ t("common.actions") }}</th></tr></thead>
+        <thead>
+          <tr>
+            <th>{{ t("common.user") }}</th>
+            <th>{{ t("common.email") }}</th>
+            <th>{{ t("common.status") }}</th>
+            <th>{{ t("common.actions") }}</th>
+          </tr>
+        </thead>
         <tbody>
           <tr v-for="user in users" :key="user.id">
             <td>{{ user.firstName }} {{ user.lastName }}</td>
             <td>{{ user.email }}</td>
             <td>{{ t(user.linked ? "externalAuth.linked" : "externalAuth.unlinked") }}</td>
-            <td><Button v-if="user.linked" type="button" :label="t('externalAuth.resetLink')" severity="secondary" size="small" @click="resetLink(user)" /></td>
+            <td>
+              <Button
+                v-if="user.linked"
+                type="button"
+                :label="t('externalAuth.resetLink')"
+                severity="secondary"
+                size="small"
+                @click="resetLink(user)"
+              />
+            </td>
           </tr>
         </tbody>
       </table>
@@ -236,16 +313,78 @@ onMounted(load);
 </template>
 
 <style scoped>
-.settings-page { display: grid; max-width: 60rem; gap: 1rem; padding: 2rem; }
-header { display: flex; align-items: start; justify-content: space-between; gap: 1rem; }
-h1, h2, p { margin-top: 0; }
-.provider-form { display: grid; gap: 1rem; padding: 1.5rem; border: 1px solid #dbe2ea; border-radius: 0.75rem; background: #fff; }
-.provider-form label { display: grid; gap: 0.4rem; font-weight: 600; }
-.provider-form small { color: #64748b; font-weight: 400; }
-.check-label { grid-template-columns: auto 1fr; align-items: center; }
-.callback-row, .actions { display: flex; flex-wrap: wrap; gap: 0.75rem; }
-.callback-row :deep(input) { min-width: min(30rem, 70vw); }
-.linked-users { padding: 1.5rem; border: 1px solid #dbe2ea; border-radius: 0.75rem; background: #fff; }
-table { width: 100%; border-collapse: collapse; }
-th, td { padding: 0.75rem; border-bottom: 1px solid #e2e8f0; text-align: left; }
+.settings-page {
+  display: grid;
+  max-width: 60rem;
+  gap: 1rem;
+  padding: 2rem;
+}
+
+header {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+h1,
+h2,
+p {
+  margin-top: 0;
+}
+
+.provider-form {
+  display: grid;
+  gap: 1rem;
+  padding: 1.5rem;
+  border: 1px solid #dbe2ea;
+  border-radius: 0.75rem;
+  background: #fff;
+}
+
+.provider-form label {
+  display: grid;
+  gap: 0.4rem;
+  font-weight: 600;
+}
+
+.provider-form small {
+  color: #64748b;
+  font-weight: 400;
+}
+
+.check-label {
+  grid-template-columns: auto 1fr;
+  align-items: center;
+}
+
+.callback-row,
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.callback-row :deep(input) {
+  min-width: min(30rem, 70vw);
+}
+
+.linked-users {
+  padding: 1.5rem;
+  border: 1px solid #dbe2ea;
+  border-radius: 0.75rem;
+  background: #fff;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th,
+td {
+  padding: 0.75rem;
+  border-bottom: 1px solid #e2e8f0;
+  text-align: left;
+}
 </style>

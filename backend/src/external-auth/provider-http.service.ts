@@ -29,6 +29,9 @@ export class ProviderHttpService {
       const preserveMethod = [307, 308].includes(response.status);
       const next: RequestInit = preserveMethod ? { ...init } : { method: 'GET', headers: init.headers };
       const headers = new Headers(next.headers);
+      if (!sameOrigin && (init.body || headers.has('Authorization'))) {
+        throw codedHttpException(HttpStatus.BAD_GATEWAY, 'AUTH_PROVIDER_RESPONSE_INVALID', 'Provider redirected sensitive authentication data to another origin');
+      }
       if (!sameOrigin) headers.delete('Authorization');
       next.headers = Object.fromEntries(headers.entries());
       if (!preserveMethod) delete next.body;

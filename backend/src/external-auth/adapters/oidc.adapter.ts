@@ -39,9 +39,11 @@ export class OidcAdapter implements ProviderAdapter {
     if (provider.clientSecretEnvelope) {
       const secret = this.secrets.decrypt(provider.clientSecretEnvelope);
       const methods = discovery.token_endpoint_auth_methods_supported ?? ['client_secret_basic'];
-      if (methods.includes('client_secret_basic')) authorization = `Basic ${Buffer.from(`${provider.clientId}:${secret}`).toString('base64')}`;
+      if (methods.includes('client_secret_basic')) authorization = `Basic ${Buffer.from(`${this.formEncode(provider.clientId!)}:${this.formEncode(secret)}`).toString('base64')}`;
       else if (methods.includes('client_secret_post')) form.set('client_secret', secret);
       else throw this.invalid('AUTH_PROVIDER_TOKEN_AUTH_UNSUPPORTED');
+    } else if (discovery.token_endpoint_auth_methods_supported && !discovery.token_endpoint_auth_methods_supported.includes('none')) {
+      throw this.invalid('AUTH_PROVIDER_TOKEN_AUTH_UNSUPPORTED');
     }
     const token = await this.http.postForm(discovery.token_endpoint!, form, authorization);
     if (typeof token.id_token !== 'string') throw this.invalid('AUTH_PROVIDER_TOKEN_INVALID');
@@ -63,12 +65,16 @@ export class OidcAdapter implements ProviderAdapter {
   private async discovery(provider: ExternalAuthProvider): Promise<Discovery> {
     if (!provider.issuerUrl || !provider.clientId || !provider.publicBaseUrl) throw new Error('AUTH_PROVIDER_CONFIGURATION_INCOMPLETE');
     await this.urls.assertSafe(provider.issuerUrl);
-    const issuer = provider.issuerUrl.replace(/\/$/, '');
-    const discovery = await this.http.getJson(`${issuer}/.well-known/openid-configuration`) as Discovery;
-    if (discovery.issuer !== issuer || !discovery.authorization_endpoint || !discovery.token_endpoint || !discovery.jwks_uri) throw this.invalid('AUTH_PROVIDER_DISCOVERY_INVALID');
+    const discoveryUrl = `${provider.issuerUrl.replace(/\/$/, '')}/.well-known/openid-configuration`;
+    const discovery = await this.http.getJson(discoveryUrl) as Discovery;
+    if (discovery.issuer !== provider.issuerUrl || !discovery.authorization_endpoint || !discovery.token_endpoint || !discovery.jwks_uri) throw this.invalid('AUTH_PROVIDER_DISCOVERY_INVALID');
     await Promise.all([discovery.token_endpoint, discovery.jwks_uri, discovery.userinfo_endpoint].filter(Boolean).map((url) => this.urls.assertSafe(url as string)));
     return discovery;
   }
 
   private invalid(code: string) { return codedHttpException(HttpStatus.BAD_GATEWAY, code, 'OpenID Connect response is invalid'); }
+
+  private formEncode(value: string): string {
+    return new URLSearchParams({ value }).toString().slice('value='.length);
+  }
 }

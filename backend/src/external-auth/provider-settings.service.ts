@@ -56,7 +56,7 @@ export class ProviderSettingsService {
       provider = this.providers.create({
         type: input.type,
         displayLabel: input.displayLabel.trim(),
-        issuerUrl: input.type === 'oidc' ? input.issuerUrl?.replace(/\/$/, '') ?? null : null,
+        issuerUrl: input.type === 'oidc' ? input.issuerUrl ?? null : null,
         churchToolsUrl: input.type === 'churchtools' ? input.churchToolsUrl?.replace(/\/$/, '') ?? null : null,
         clientId: input.clientId?.trim() || null,
         publicBaseUrl: input.publicBaseUrl?.replace(/\/$/, '') ?? null,
@@ -70,7 +70,7 @@ export class ProviderSettingsService {
     } else {
       this.assertImmutable(provider, input);
       provider.displayLabel = input.displayLabel.trim();
-      provider.issuerUrl = provider.type === 'oidc' ? provider.issuerUrl ?? input.issuerUrl?.replace(/\/$/, '') ?? null : null;
+      provider.issuerUrl = provider.type === 'oidc' ? provider.issuerUrl ?? input.issuerUrl ?? null : null;
       provider.churchToolsUrl = provider.type === 'churchtools' ? provider.churchToolsUrl ?? input.churchToolsUrl?.replace(/\/$/, '') ?? null : null;
       provider.clientId = provider.clientId ?? (input.clientId?.trim() || null);
       provider.publicBaseUrl = input.publicBaseUrl?.replace(/\/$/, '') ?? null;
@@ -172,7 +172,7 @@ export class ProviderSettingsService {
 
   private assertImmutable(provider: ExternalAuthProvider, input: SaveExternalProviderDto): void {
     const changed = provider.type !== input.type
-      || provider.issuerUrl && input.issuerUrl !== undefined && provider.issuerUrl !== input.issuerUrl?.replace(/\/$/, '')
+      || provider.issuerUrl && input.issuerUrl !== undefined && provider.issuerUrl !== input.issuerUrl
       || provider.churchToolsUrl && input.churchToolsUrl !== undefined && provider.churchToolsUrl !== input.churchToolsUrl?.replace(/\/$/, '')
       || provider.clientId && input.clientId !== undefined && provider.clientId !== (input.clientId?.trim() || null);
     if (changed) throw codedHttpException(HttpStatus.CONFLICT, 'AUTH_PROVIDER_NAMESPACE_IMMUTABLE', 'Provider identity fields cannot be changed');

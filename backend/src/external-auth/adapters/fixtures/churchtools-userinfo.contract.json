@@ -1,0 +1,18 @@
+{
+  "provenance": {
+    "capturedAt": "2026-08-30",
+    "endpoint": "/oauth/userinfo",
+    "sources": [
+      "https://churchtools.academy/en/help/system-settings/oauth-login-systemsettings/oauth-authentication-with-churchtools/",
+      "https://forum.church.tools/topic/10650/oauth2-bei-gleicher-email-adresse"
+    ],
+    "notes": "The ChurchTools documentation establishes the OAuth flow. The ChurchTools community contract confirms that the user-info response supplies the numeric ChurchTools ID and email, and that the ID—not email—is the stable identity. Personal values below are synthetic."
+  },
+  "response": {
+    "id": 4711,
+    "email": "user@example.com",
+    "firstName": "Ada",
+    "lastName": "Example",
+    "groups": []
+  }
+}
