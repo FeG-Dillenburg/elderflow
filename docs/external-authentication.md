@@ -28,7 +28,7 @@ A missing or wrong key does not prevent startup or Local login. A provider that 
 
 Enter a display label, the ChurchTools installation URL, the OAuth client identifier created in ChurchTools, and the Public ElderFlow URL. Do not configure a scope or client secret. ChurchTools users need its “Login to External System” permission.
 
-The adapter follows the ChurchTools contract: `/oauth/authorize`, `/oauth/access_token`, and `/oauth/userinfo`; user-info `id` is the stable identity and `email` is the authoritative email. Support was verified against the ChurchTools OAuth setup documentation and a contract fixture on 2026-08-30. If either value is absent, ElderFlow rejects the login rather than using email as a lasting identity.
+The adapter follows the ChurchTools contract: `/oauth/authorize`, `/oauth/access_token`, and `/oauth/userinfo`; user-info `id` is the stable identity and `email` is the authoritative email. Support was verified against ChurchTools 3.135.2 using a real, sanitized contract capture on 2026-08-30. ChurchTools duplicated the profile fields at the response root and under `data`; ElderFlow reads the root first and uses `data` as a compatibility fallback. See [the captured response reference](references/churchtools-userinfo-3.135.2.md). If either identity value is absent from both locations, ElderFlow rejects the login rather than using email as a lasting identity.
 
 ## Linking and maintenance
 

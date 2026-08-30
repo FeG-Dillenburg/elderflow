@@ -64,7 +64,8 @@ describeWithPostgres('External login HTTP API with PostgreSQL and a local provid
       }
       if (req.url === '/oauth/userinfo' && req.headers.authorization === 'Bearer provider-token') {
         res.setHeader('Content-Type', 'application/json');
-        res.end(JSON.stringify({ ...churchIdentity, firstName: 'Provider', groups: [] }));
+        const profile = { ...churchIdentity, firstName: 'Provider', groups: [] };
+        res.end(JSON.stringify({ data: profile, ...profile }));
         return;
       }
       res.statusCode = 404;

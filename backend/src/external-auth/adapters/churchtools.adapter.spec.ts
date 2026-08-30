@@ -24,9 +24,32 @@ describe('ChurchToolsAdapter contract', () => {
     expect(form.has('client_secret')).toBe(false);
   });
 
+  it('prefers root identity fields over the duplicated data object', async () => {
+    http.postForm.mockResolvedValue({ access_token: 'token' });
+    http.getJson.mockResolvedValue({
+      ...contract.response,
+      id: 815,
+      email: 'root@example.com',
+      data: { ...contract.response.data, id: 4711, email: 'nested@example.com' },
+    });
+
+    await expect(adapter.exchange(provider, transaction, { code: 'code' })).resolves.toEqual({
+      subject: '815', email: 'root@example.com',
+    });
+  });
+
+  it('falls back to the data object when root identity fields are missing or invalid', async () => {
+    http.postForm.mockResolvedValue({ access_token: 'token' });
+    http.getJson.mockResolvedValue({ id: null, email: '', data: contract.response.data });
+
+    await expect(adapter.exchange(provider, transaction, { code: 'code' })).resolves.toEqual({
+      subject: '4711', email: 'user@example.com',
+    });
+  });
+
   it('rejects email-only profiles because email is not a stable identity', async () => {
     http.postForm.mockResolvedValue({ access_token: 'token' });
-    http.getJson.mockResolvedValue({ email: 'user@example.com' });
+    http.getJson.mockResolvedValue({ email: 'user@example.com', data: { email: 'nested@example.com' } });
     await expect(adapter.exchange(provider, transaction, { code: 'code' })).rejects.toThrow('Provider identity response is invalid');
   });
 });

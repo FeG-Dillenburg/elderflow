@@ -1,18 +1,49 @@
 {
   "provenance": {
     "capturedAt": "2026-08-30",
+    "churchToolsVersion": "3.135.2",
+    "instanceType": "ChurchTools-hosted",
     "endpoint": "/oauth/userinfo",
-    "sources": [
-      "https://churchtools.academy/en/help/system-settings/oauth-login-systemsettings/oauth-authentication-with-churchtools/",
-      "https://forum.church.tools/topic/10650/oauth2-bei-gleicher-email-adresse"
-    ],
-    "notes": "The ChurchTools documentation establishes the OAuth flow. The ChurchTools community contract confirms that the user-info response supplies the numeric ChurchTools ID and email, and that the ID—not email—is the stable identity. Personal values below are synthetic."
+    "captureMethod": "Manual authorization-code login followed by an authenticated curl request with the returned bearer token.",
+    "stableIdentityEvidence": "The capturing administrator confirmed that id and sub equal the immutable ChurchTools User ID displayed by the ChurchTools UI.",
+    "notes": "Field names, nesting, duplication, and JSON value types are structurally verbatim. Personal values, image identifiers, groups, and roles are sanitized."
   },
   "response": {
+    "data": {
+      "id": 4711,
+      "sub": 4711,
+      "firstName": "Ada",
+      "lastName": "Example",
+      "email": "user@example.com",
+      "imageUrl": "https://example.church.tools/images/sanitized-image-id",
+      "photoURL": "https://example.church.tools/images/sanitized-image-id",
+      "displayName": "Ada Example",
+      "userName": "aexample",
+      "groups": [
+        "Example group 1",
+        "Example group 2"
+      ],
+      "roles": [
+        "Example role 1",
+        "Example role 2"
+      ]
+    },
     "id": 4711,
-    "email": "user@example.com",
+    "sub": 4711,
     "firstName": "Ada",
     "lastName": "Example",
-    "groups": []
+    "email": "user@example.com",
+    "imageUrl": "https://example.church.tools/images/sanitized-image-id",
+    "photoURL": "https://example.church.tools/images/sanitized-image-id",
+    "displayName": "Ada Example",
+    "userName": "aexample",
+    "groups": [
+      "Example group 1",
+      "Example group 2"
+    ],
+    "roles": [
+      "Example role 1",
+      "Example role 2"
+    ]
   }
 }

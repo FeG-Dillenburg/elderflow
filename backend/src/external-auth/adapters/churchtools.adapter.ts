@@ -25,13 +25,32 @@ export class ChurchToolsAdapter implements ProviderAdapter {
     }));
     if (typeof token.access_token !== 'string') throw this.invalid();
     const profile = await this.http.getJson(new URL('/oauth/userinfo', `${base}/`).toString(), `Bearer ${token.access_token}`);
-    if ((typeof profile.id !== 'string' && typeof profile.id !== 'number') || typeof profile.email !== 'string' || !profile.email.trim()) throw this.invalid();
-    return { subject: String(profile.id), email: profile.email };
+    const nestedProfile = this.record(profile.data);
+    const id = this.identityId(profile.id) ?? this.identityId(nestedProfile?.id);
+    const email = this.identityEmail(profile.email) ?? this.identityEmail(nestedProfile?.email);
+    if (id === null || email === null) throw this.invalid();
+    return { subject: String(id), email };
   }
 
   private base(provider: ExternalAuthProvider): string {
     if (!provider.churchToolsUrl || !provider.clientId || !provider.publicBaseUrl) throw new Error('AUTH_PROVIDER_CONFIGURATION_INCOMPLETE');
     return provider.churchToolsUrl.replace(/\/$/, '');
+  }
+
+  private record(value: unknown): Record<string, unknown> | null {
+    return value !== null && typeof value === 'object' && !Array.isArray(value)
+      ? value as Record<string, unknown>
+      : null;
+  }
+
+  private identityId(value: unknown): string | number | null {
+    return typeof value === 'string' && value.length > 0 || typeof value === 'number' && Number.isFinite(value)
+      ? value
+      : null;
+  }
+
+  private identityEmail(value: unknown): string | null {
+    return typeof value === 'string' && value.trim() ? value.trim() : null;
   }
 
   private invalid() { return codedHttpException(HttpStatus.BAD_GATEWAY, 'AUTH_PROVIDER_IDENTITY_INVALID', 'Provider identity response is invalid'); }
