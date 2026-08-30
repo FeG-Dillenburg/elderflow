@@ -4,9 +4,12 @@ import { api } from "../api/domain";
 import MeetingPreparationView from "./MeetingPreparationView.vue";
 import { savePersonMeetingNote } from "../topics/meetingTopicEdits";
 
+const { routerPush } = vi.hoisted(() => ({ routerPush: vi.fn() }));
+
 vi.mock("vue-router", () => ({
   RouterLink: { template: "<a><slot /></a>" },
   useRoute: () => ({ params: { id: "meeting-1" } }),
+  useRouter: () => ({ push: routerPush }),
 }));
 const stubs = {
   Button: true,
@@ -51,6 +54,8 @@ const meeting: any = {
 describe("MeetingPreparationView", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    routerPush.mockReset();
+    routerPush.mockResolvedValue(undefined);
     vi.spyOn(api, "meeting").mockResolvedValue(structuredClone(meeting));
     vi.spyOn(api, "sections").mockResolvedValue([
       { id: "first", name: "First", position: 1, isDefault: true },
@@ -103,6 +108,7 @@ describe("MeetingPreparationView", () => {
     expect(api.updateMeeting).toHaveBeenCalledWith("meeting-1", {
       status: "in_progress",
     });
+    expect(routerPush).toHaveBeenCalledWith("/meetings/meeting-1");
   });
   it("opens meeting details without leaving preparation", async () => {
     const wrapper = await view();

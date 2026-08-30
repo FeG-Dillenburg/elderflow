@@ -2,7 +2,7 @@
 import { onMounted, reactive, ref } from "vue";
 import { computed } from "vue";
 import { useI18n } from "vue-i18n";
-import { RouterLink, useRoute } from "vue-router";
+import { RouterLink, useRoute, useRouter } from "vue-router";
 import Draggable from "vuedraggable";
 import Button from "primevue/button";
 import DatePicker from "primevue/datepicker";
@@ -49,6 +49,7 @@ type SuggestionClone = Topic & {
 };
 
 const route = useRoute();
+const router = useRouter();
 const { t } = useI18n();
 const id = route.params.id as string;
 const meeting = ref<Meeting | null>(null);
@@ -329,7 +330,7 @@ const startMeeting = async () => {
   try {
     await api.updateMeeting(id, { status: "in_progress" });
     startVisible.value = false;
-    await load();
+    await router.push(`/meetings/${id}`);
   } catch (cause) {
     error.value = cause instanceof Error
       ? cause.message
@@ -820,7 +821,6 @@ onMounted(() => {
         <Button
           :disabled="starting"
           :label="t('meetingPreparation.confirmStart')"
-          severity="success"
           @click="startMeeting"
         />
       </template>
