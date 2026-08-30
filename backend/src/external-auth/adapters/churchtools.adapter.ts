@@ -18,10 +18,10 @@ export class ChurchToolsAdapter implements ProviderAdapter {
     return url.toString();
   }
 
-  async exchange(provider: ExternalAuthProvider, transaction: ExternalLoginTransaction, callback: ExternalCallback): Promise<ExternalIdentityResult> {
+  async exchange(provider: ExternalAuthProvider, _transaction: ExternalLoginTransaction, callback: ExternalCallback): Promise<ExternalIdentityResult> {
     const base = this.base(provider);
     const token = await this.http.postForm(new URL('/oauth/access_token', `${base}/`).toString(), new URLSearchParams({
-      grant_type: 'authorization_code', code: callback.code, client_id: provider.clientId!, redirect_uri: callbackUrl(provider), code_verifier: transaction.codeVerifier,
+      grant_type: 'authorization_code', code: callback.code, client_id: provider.clientId!, redirect_uri: callbackUrl(provider),
     }), undefined, 'token');
     if (typeof token.access_token !== 'string') throw this.invalid();
     const profile = await this.http.getJson(new URL('/oauth/userinfo', `${base}/`).toString(), `Bearer ${token.access_token}`, 'userinfo');

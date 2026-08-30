@@ -10,7 +10,7 @@ describe('ChurchToolsAdapter contract', () => {
 
   beforeEach(() => jest.clearAllMocks());
 
-  it('uses the documented endpoints, sends no scope or secret, and treats id as the stable subject', async () => {
+  it('uses the documented endpoints, sends no scope, secret, or unpaired PKCE verifier, and treats id as the stable subject', async () => {
     http.postForm.mockResolvedValue({ access_token: 'transient-token', token_type: 'Bearer' });
     http.getJson.mockResolvedValue(contract.response);
 
@@ -28,6 +28,7 @@ describe('ChurchToolsAdapter contract', () => {
     expect(http.getJson).toHaveBeenCalledWith('https://example.church.tools/oauth/userinfo', 'Bearer transient-token', 'userinfo');
     expect(form.has('scope')).toBe(false);
     expect(form.has('client_secret')).toBe(false);
+    expect(form.has('code_verifier')).toBe(false);
   });
 
   it('prefers root identity fields over the duplicated data object', async () => {

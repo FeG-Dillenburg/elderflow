@@ -50,7 +50,15 @@ describe('ProviderHttpService diagnostics', () => {
 
   it('retains a safe HTTP status while discarding the provider response body', async () => {
     const service = new ProviderHttpService({ assertSafe: jest.fn(async (url: string) => new URL(url)) } as any);
-    jest.spyOn(service as any, 'request').mockResolvedValue({ status: 401, body: 'sensitive provider response' });
+    jest.spyOn(service as any, 'request').mockResolvedValue({
+      status: 401,
+      body: JSON.stringify({
+        error: 'invalid_grant',
+        error_description: 'Authorization code sensitive-code was rejected',
+        messageKey: 'error.oauth.invalid_grant',
+        args: { id: 'sensitive-code', model: 'OAuthAuthorizationCodeEntity' },
+      }),
+    });
 
     await expect(service.postForm('https://provider.example/token', new URLSearchParams(), undefined, 'token'))
       .rejects.toMatchObject({
@@ -60,6 +68,9 @@ describe('ProviderHttpService diagnostics', () => {
             endpoint: 'https://provider.example/token',
             httpStatus: 401,
             method: 'POST',
+            providerError: 'invalid_grant',
+            providerErrorModel: 'OAuthAuthorizationCodeEntity',
+            providerMessageKey: 'error.oauth.invalid_grant',
             stage: 'token',
           },
         },

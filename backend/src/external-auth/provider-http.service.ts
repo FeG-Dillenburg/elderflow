@@ -11,6 +11,9 @@ export interface ProviderRequestDiagnostic {
   httpStatus?: number;
   method?: 'GET' | 'POST';
   networkCode?: string;
+  providerError?: string;
+  providerErrorModel?: string;
+  providerMessageKey?: string;
   resolvedAddress?: string;
   resolvedFamily?: 4 | 6;
   stage?: ProviderRequestStage;
@@ -45,6 +48,12 @@ const safeNetworkCode = (error: unknown): string | undefined => {
       : undefined;
   return code && /^[A-Z0-9_]+$/.test(code) ? code : undefined;
 };
+
+const safeProviderToken = (value: unknown): string | undefined => typeof value === 'string'
+  && value.length <= 128
+  && /^[A-Za-z0-9][A-Za-z0-9._:-]*$/.test(value)
+  ? value
+  : undefined;
 
 export function providerNetworkFailureCode(error: unknown): string {
   const code = error && typeof error === 'object' && 'code' in error && typeof error.code === 'string'
@@ -104,6 +113,7 @@ export class ProviderHttpService {
         endpoint: safeEndpoint(parsed),
         httpStatus: response.status,
         method: (init.method ?? 'GET').toUpperCase(),
+        ...this.providerErrorDiagnostic(response.body),
       });
     }
     try { return JSON.parse(response.body) as Record<string, unknown>; } catch {
@@ -204,13 +214,40 @@ export class ProviderHttpService {
     if (!response || typeof response !== 'object' || !('params' in response) || !response.params || typeof response.params !== 'object') return {};
     const params = response.params as Record<string, unknown>;
     const endpoint = typeof params.endpoint === 'string' ? safeEndpoint(params.endpoint) : undefined;
+    const providerError = safeProviderToken(params.providerError);
+    const providerErrorModel = safeProviderToken(params.providerErrorModel);
+    const providerMessageKey = safeProviderToken(params.providerMessageKey);
     return {
       ...(endpoint ? { endpoint } : {}),
       ...(Number.isInteger(params.httpStatus) && Number(params.httpStatus) >= 100 && Number(params.httpStatus) <= 599 ? { httpStatus: Number(params.httpStatus) } : {}),
       ...(params.method === 'GET' || params.method === 'POST' ? { method: params.method } : {}),
       ...(typeof params.networkCode === 'string' && /^[A-Z0-9_]+$/.test(params.networkCode) ? { networkCode: params.networkCode } : {}),
+      ...(providerError ? { providerError } : {}),
+      ...(providerErrorModel ? { providerErrorModel } : {}),
+      ...(providerMessageKey ? { providerMessageKey } : {}),
       ...(typeof params.resolvedAddress === 'string' ? { resolvedAddress: params.resolvedAddress } : {}),
       ...(params.resolvedFamily === 4 || params.resolvedFamily === 6 ? { resolvedFamily: params.resolvedFamily } : {}),
     };
+  }
+
+  private providerErrorDiagnostic(body: string): ProviderRequestDiagnostic {
+    try {
+      const response = JSON.parse(body) as unknown;
+      if (!response || typeof response !== 'object' || Array.isArray(response)) return {};
+      const record = response as Record<string, unknown>;
+      const args = record.args && typeof record.args === 'object' && !Array.isArray(record.args)
+        ? record.args as Record<string, unknown>
+        : {};
+      const providerError = safeProviderToken(record.error);
+      const providerErrorModel = safeProviderToken(args.model);
+      const providerMessageKey = safeProviderToken(record.messageKey);
+      return {
+        ...(providerError ? { providerError } : {}),
+        ...(providerErrorModel ? { providerErrorModel } : {}),
+        ...(providerMessageKey ? { providerMessageKey } : {}),
+      };
+    } catch {
+      return {};
+    }
   }
 }

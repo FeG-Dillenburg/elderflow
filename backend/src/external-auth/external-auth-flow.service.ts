@@ -204,11 +204,17 @@ export class ExternalAuthFlowService {
     const params = response.params as Record<string, unknown>;
     const stages: ProviderRequestStage[] = ['discovery', 'jwks', 'token', 'userinfo'];
     const endpoint = this.safeProviderEndpoint(params.endpoint);
+    const providerError = this.safeProviderToken(params.providerError);
+    const providerErrorModel = this.safeProviderToken(params.providerErrorModel);
+    const providerMessageKey = this.safeProviderToken(params.providerMessageKey);
     return {
       ...(endpoint ? { endpoint } : {}),
       ...(Number.isInteger(params.httpStatus) && Number(params.httpStatus) >= 100 && Number(params.httpStatus) <= 599 ? { httpStatus: Number(params.httpStatus) } : {}),
       ...(params.method === 'GET' || params.method === 'POST' ? { method: params.method } : {}),
       ...(typeof params.networkCode === 'string' && /^[A-Z0-9_]+$/.test(params.networkCode) ? { networkCode: params.networkCode } : {}),
+      ...(providerError ? { providerError } : {}),
+      ...(providerErrorModel ? { providerErrorModel } : {}),
+      ...(providerMessageKey ? { providerMessageKey } : {}),
       ...(typeof params.resolvedAddress === 'string' && isIP(params.resolvedAddress) ? { resolvedAddress: params.resolvedAddress } : {}),
       ...(params.resolvedFamily === 4 || params.resolvedFamily === 6 ? { resolvedFamily: params.resolvedFamily } : {}),
       ...(typeof params.stage === 'string' && stages.includes(params.stage as ProviderRequestStage) ? { stage: params.stage as ProviderRequestStage } : {}),
@@ -224,6 +230,12 @@ export class ExternalAuthFlowService {
     } catch {
       return undefined;
     }
+  }
+
+  private safeProviderToken(value: unknown): string | undefined {
+    return typeof value === 'string' && value.length <= 128 && /^[A-Za-z0-9][A-Za-z0-9._:-]*$/.test(value)
+      ? value
+      : undefined;
   }
 
   private testRedirect(provider: ExternalAuthProvider, transactionId: string): string {
