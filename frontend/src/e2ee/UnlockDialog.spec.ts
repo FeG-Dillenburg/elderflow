@@ -36,16 +36,26 @@ const stubs = {
       toggleMask: Boolean,
     },
     emits: ["update:modelValue"],
+    data: () => ({ revealed: false }),
     template: `
       <span>
         <input
           :id="inputId"
-          type="password"
+          :type="revealed ? 'text' : 'password'"
           :value="modelValue"
           :placeholder="placeholder"
           :disabled="disabled"
           @input="$emit('update:modelValue', $event.target.value)"
         />
+        <button
+          v-if="toggleMask"
+          class="toggle-password"
+          type="button"
+          :disabled="disabled"
+          @click="revealed = !revealed"
+        >
+          Toggle password visibility
+        </button>
       </span>
     `,
   },
@@ -191,5 +201,51 @@ describe("Protected-text unlock dialog", () => {
 
     expect(protectedText.state.promptVisible).toBe(false);
     expect(protectedText.state.status).toBe("locked");
+  });
+
+  it("closes after a successful keyboard submission", async () => {
+    vi.spyOn(protectedText, "unlock").mockImplementation(async () => {
+      protectedText.state.status = "unlocked";
+      protectedText.state.promptVisible = false;
+    });
+    protectedText.state.promptVisible = true;
+    const wrapper = mount(UnlockDialog, { global: { stubs } });
+    await wrapper.get("input").setValue("correct passphrase");
+
+    await wrapper.get("form").trigger("submit");
+    await flushPromises();
+
+    expect(protectedText.unlock).toHaveBeenCalledWith("correct passphrase");
+    expect(wrapper.find('[role="dialog"]').exists()).toBe(false);
+    expect(protectedText.state.status).toBe("unlocked");
+  });
+
+  it("opens and focuses again after continuing without unlocking", async () => {
+    protectedText.state.promptVisible = true;
+    const wrapper = mount(UnlockDialog, {
+      attachTo: document.body,
+      global: { stubs },
+    });
+    await wrapper.get(".continue-button").trigger("click");
+    expect(wrapper.find('[role="dialog"]').exists()).toBe(false);
+
+    protectedText.state.promptVisible = true;
+    await flushPromises();
+
+    expect(wrapper.find('[role="dialog"]').exists()).toBe(true);
+    expect(document.activeElement).toBe(wrapper.get("input").element);
+    wrapper.unmount();
+  });
+
+  it("reveals and hides the passphrase with the visibility control", async () => {
+    protectedText.state.promptVisible = true;
+    const wrapper = mount(UnlockDialog, { global: { stubs } });
+    const input = wrapper.get("input");
+
+    expect(input.attributes("type")).toBe("password");
+    await wrapper.get(".toggle-password").trigger("click");
+    expect(input.attributes("type")).toBe("text");
+    await wrapper.get(".toggle-password").trigger("click");
+    expect(input.attributes("type")).toBe("password");
   });
 });
