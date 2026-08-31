@@ -38,7 +38,7 @@ const de = {
     },
   },
   e2ee: {
-    locked: 'Geschützter Text gesperrt', unlocked: 'Geschützter Text entsperrt', unlockEyebrow: 'Noch ein vertraulicher Schritt', unlockTitle: 'Geschützten Text entsperren?',
+    locked: 'Geschützter Text gesperrt', unlocked: 'Geschützter Text entsperrt', lockedControl: 'gesperrt', unlockedControl: 'entsperrt', unlockControl: 'entsperren', lockControl: 'sperren', lockProtectedText: 'Geschützten Text sperren', unlockEyebrow: 'Noch ein vertraulicher Schritt', unlockTitle: 'Geschützten Text entsperren?',
     unlockDescription: 'Sie sind angemeldet. Geben Sie die separate gemeinsame Passphrase ein, um vertrauliche Sitzungstexte auf diesem Gerät zu lesen und zu bearbeiten.',
     sharedPassphrase: 'Gemeinsame Passphrase', confirmSharedPassphrase: 'Gemeinsame Passphrase bestätigen', unlockPassphraseLabel: 'Gemeinsame Entsperrpassphrase', unlockPassphrasePlaceholder: 'Passphrase eingeben', unlockAction: 'Entsperren', unlockSubmit: 'Geschützten Text entsperren', lockAction: 'Sperren',
     continueLocked: 'Ohne Entsperren fortfahren', unknownPassphrase: 'Ich kenne die Passphrase nicht', unlockBoundary: 'Beim Entsperren wird Geschützter Text nur für diese Browsersitzung entschlüsselt. Die Schlüssel werden beim Sperren der Sitzung oder beim Abmelden gelöscht.', unlockFailed: 'Mit dieser Passphrase konnte Geschützter Text nicht entsperrt werden. Prüfen Sie sie und versuchen Sie es erneut.',

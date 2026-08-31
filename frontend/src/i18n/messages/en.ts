@@ -38,7 +38,7 @@ export default {
     },
   },
   e2ee: {
-    locked: 'Protected text locked', unlocked: 'Protected text unlocked', unlockEyebrow: 'One more private step', unlockTitle: 'Unlock Protected text?',
+    locked: 'Protected text locked', unlocked: 'Protected text unlocked', lockedControl: 'locked', unlockedControl: 'unlocked', unlockControl: 'unlock', lockControl: 'lock', lockProtectedText: 'Lock Protected text', unlockEyebrow: 'One more private step', unlockTitle: 'Unlock Protected text?',
     unlockDescription: 'You are signed in. Enter the separate shared passphrase to read and edit confidential meeting text on this device.',
     sharedPassphrase: 'Shared passphrase', confirmSharedPassphrase: 'Confirm shared passphrase', unlockPassphraseLabel: 'Shared unlock passphrase', unlockPassphrasePlaceholder: 'Enter the passphrase', unlockAction: 'Unlock', unlockSubmit: 'Unlock Protected text', lockAction: 'Lock',
     continueLocked: 'Continue without unlocking', unknownPassphrase: 'I do not know the passphrase', unlockBoundary: 'Unlocking decrypts Protected text only in this browser session. The keys are cleared when the session is locked or you sign out.', unlockFailed: 'That passphrase did not unlock Protected text. Check it and try again.',
