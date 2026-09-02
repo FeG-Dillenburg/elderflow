@@ -201,36 +201,22 @@ describe("MeetingPreparationView", () => {
     expect(wrapper.text()).toContain("15 min.");
     expect(wrapper.text()).not.toContain("25 min.");
   });
-  it("selects explicit, topic-default, then first available section and does nothing without one", async () => {
+  it("selects explicit, previous, topic-default, then first available section", async () => {
     const wrapper = await view();
     const vm: any = wrapper.vm;
-    vi.spyOn(api, "addMeetingTopic").mockResolvedValue({} as any);
     const topic = { id: "topic-3", defaultSectionId: "second" };
-    await vm.add(topic);
-    expect(api.addMeetingTopic).toHaveBeenLastCalledWith("meeting-1", {
-      topicId: "topic-3",
-      sectionId: "second",
-      topic,
-    });
+    expect(vm.sectionFor(topic)).toBe("second");
     vm.selectedSections["topic-3"] = "first";
-    await vm.add(topic);
-    expect(api.addMeetingTopic).toHaveBeenLastCalledWith("meeting-1", {
-      topicId: "topic-3",
-      sectionId: "first",
-      topic,
-    });
+    expect(vm.sectionFor(topic)).toBe("first");
     vm.selectedSections = {};
-    const firstSectionTopic = { id: "topic-4", defaultSectionId: null };
-    await vm.add(firstSectionTopic);
-    expect(api.addMeetingTopic).toHaveBeenLastCalledWith("meeting-1", {
-      topicId: "topic-4",
-      sectionId: "first",
-      topic: firstSectionTopic,
-    });
+    expect(vm.sectionFor({
+      id: "topic-4",
+      previousSectionId: "second",
+      defaultSectionId: "first",
+    })).toBe("second");
+    expect(vm.sectionFor({ id: "topic-5", defaultSectionId: null })).toBe("first");
     vm.sections = [];
-    const calls = (api.addMeetingTopic as any).mock.calls.length;
-    await vm.add({ id: "none", defaultSectionId: null });
-    expect((api.addMeetingTopic as any).mock.calls).toHaveLength(calls);
+    expect(vm.sectionFor({ id: "none", defaultSectionId: null })).toBeUndefined();
   });
   it("defaults to the previous section, marks new Topics, and batches preselected additions", async () => {
     vi.mocked(api.meetingSuggestions).mockResolvedValueOnce([{
@@ -269,6 +255,26 @@ describe("MeetingPreparationView", () => {
 
     expect(vm.isSelected(vm.suggestions[0])).toBe(true);
     expect(vm.error).toBe("Batch failed");
+  });
+  it("defaults future suggestions to their previous Meeting section", async () => {
+    vi.mocked(api.meetingSuggestions).mockImplementation(async (_id, options) =>
+      options?.future
+        ? [{
+            id: "future",
+            name: "Future",
+            type: "generic",
+            defaultSectionId: "second",
+            previousSectionId: "first",
+          } as any]
+        : []);
+    const wrapper = await view();
+    const vm: any = wrapper.vm;
+
+    await vm.toggleFutureTopics();
+    await flushPromises();
+
+    expect(vm.selectedSections.future).toBe("first");
+    expect(vm.sectionFor(vm.futureSuggestions[0])).toBe("first");
   });
   it("adds a dragged suggestion at the target section and exact one-based position", async () => {
     const wrapper = await view();

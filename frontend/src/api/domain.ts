@@ -628,37 +628,50 @@ const query = (values: Record<string, string | boolean | null | undefined>): str
   return result ? `?${result}` : '';
 };
 
+const recoverMeetingWorkspace = async (meetingId: string): Promise<void> => {
+  try {
+    const workspace = await request<EncryptedWorkspace | null>(
+      `/api/meetings/${meetingId}/workspace`,
+    );
+    if (workspace) await meetingDocumentSession.load(meetingId, workspace);
+    else meetingDocumentSession.discard(meetingId);
+  } catch {
+    meetingDocumentSession.discard(meetingId);
+  }
+};
+
 const initialMeetingTopicText = async (
   meetingId: string,
   input: MeetingTopicAddition,
 ): Promise<string> => {
+  if (!input.topic) return '';
   const person = input.topic?.type === 'person';
-  let initialText = input.topic?.description ?? '';
-  if (person || input.topic?.type === 'recurring') {
-    const suggestion = input.topic as Partial<MeetingSuggestion> | undefined;
-    const priorAppearance = input.sourceAppearance
-      ?? suggestion?.previousAppearance
-      ?? (suggestion?.isNew === undefined
-        ? (await api.topicAppearances(input.topicId, { beforeMeetingId: meetingId }))[0]
-        : undefined);
-    if (priorAppearance) {
-      const priorWorkspace = await request<EncryptedWorkspace | null>(
-        `/api/meetings/${priorAppearance.meetingId}/workspace`,
-      );
-      if (priorWorkspace) {
-        const sessionId = `copy-forward:${priorAppearance.meetingId}`;
-        await meetingDocumentSession.load(sessionId, priorWorkspace);
-        const priorValues = meetingDocumentSession.hydrateFragments(sessionId, [{
-          id: priorAppearance.id,
-          person,
-        }]).appearances.get(priorAppearance.id);
-        initialText = person
-          ? priorValues?.personNote ?? ''
-          : priorValues?.preparationContext ?? '';
-      }
+  if (input.topic.type === 'recurring') return input.topic.description ?? '';
+
+  const suggestion = input.topic as Partial<MeetingSuggestion>;
+  let priorAppearance = input.sourceAppearance ?? suggestion.previousAppearance;
+  if (suggestion.isNew === undefined && !priorAppearance) {
+    priorAppearance = (await api.topicAppearances(
+      input.topicId,
+      { beforeMeetingId: meetingId },
+    ))[0];
+  }
+  const firstAppearance = suggestion.isNew ?? !priorAppearance;
+  if (firstAppearance) return input.topic.description ?? '';
+  if (person && priorAppearance) {
+    const priorWorkspace = await request<EncryptedWorkspace | null>(
+      `/api/meetings/${priorAppearance.meetingId}/workspace`,
+    );
+    if (priorWorkspace) {
+      const sessionId = `copy-forward:${priorAppearance.meetingId}`;
+      await meetingDocumentSession.load(sessionId, priorWorkspace);
+      return meetingDocumentSession.hydrateFragments(sessionId, [{
+        id: priorAppearance.id,
+        person: true,
+      }]).appearances.get(priorAppearance.id)?.personNote ?? '';
     }
   }
-  return initialText;
+  return '';
 };
 
 type EncryptedDashboardTopicSummary = Omit<DashboardTopicSummary, 'name'> & EncryptedTopicLabel;
@@ -1099,13 +1112,7 @@ export const api = {
         appearanceId ? { 'X-ElderFlow-Appearance-Id': appearanceId } : {},
       );
     } catch (error) {
-      try {
-        const workspace = await request<EncryptedWorkspace | null>(`/api/meetings/${id}/workspace`);
-        if (workspace) await meetingDocumentSession.load(id, workspace);
-        else meetingDocumentSession.discard(id);
-      } catch {
-        meetingDocumentSession.discard(id);
-      }
+      await recoverMeetingWorkspace(id);
       throw error;
     }
   },
@@ -1177,15 +1184,7 @@ export const api = {
         }),
       );
     } catch (error) {
-      try {
-        const workspace = await request<EncryptedWorkspace | null>(
-          `/api/meetings/${meetingId}/workspace`,
-        );
-        if (workspace) await meetingDocumentSession.load(meetingId, workspace);
-        else meetingDocumentSession.discard(meetingId);
-      } catch {
-        meetingDocumentSession.discard(meetingId);
-      }
+      await recoverMeetingWorkspace(meetingId);
       throw error;
     }
   },
@@ -1240,15 +1239,7 @@ export const api = {
         ),
       );
     } catch (error) {
-      try {
-        const workspace = await request<EncryptedWorkspace | null>(
-          `/api/meetings/${meetingId}/workspace`,
-        );
-        if (workspace) await meetingDocumentSession.load(meetingId, workspace);
-        else meetingDocumentSession.discard(meetingId);
-      } catch {
-        meetingDocumentSession.discard(meetingId);
-      }
+      await recoverMeetingWorkspace(meetingId);
       throw error;
     }
   },

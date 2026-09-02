@@ -380,6 +380,36 @@ describe("domain API client", () => {
       );
     },
   );
+  it.each(["generic", "new_membership"])(
+    "leaves a returning %s Topic preparation empty instead of reusing its description",
+    async (type) => {
+      const fetch = vi.fn().mockResolvedValue(response({ id: "target-appearance" }));
+      vi.stubGlobal("fetch", fetch);
+      const createUpdate = vi.spyOn(meetingDocumentSession, "createFragmentUpdate")
+        .mockResolvedValue("AQID");
+
+      await api.addMeetingTopic("target-meeting", {
+        topicId: "topic",
+        sectionId: "section",
+        topic: {
+          type,
+          description: "Topic description",
+          isNew: false,
+          previousAppearance: {
+            id: "source-appearance",
+            meetingId: "source-meeting",
+          },
+        } as any,
+      });
+
+      expect(createUpdate).toHaveBeenCalledWith(
+        "target-meeting",
+        expect.stringMatching(/^appearance\/[^/]+\/preparation-context$/),
+        "",
+        MEETING_COLLABORATION_ORIGIN,
+      );
+    },
+  );
   it("adds preselected Topics with one encrypted document update and one request", async () => {
     const fetch = vi.fn().mockResolvedValue(response([
       { id: "appearance-1" },
@@ -393,12 +423,16 @@ describe("domain API client", () => {
       {
         topicId: "00000000-0000-4000-8000-000000000001",
         sectionId: "00000000-0000-4000-8000-000000000002",
-        topic: { type: "generic", description: "First description" } as any,
+        topic: { type: "generic", description: "First description", isNew: true } as any,
       },
       {
         topicId: "00000000-0000-4000-8000-000000000003",
         sectionId: "00000000-0000-4000-8000-000000000004",
-        topic: { type: "new_membership", description: "Second description" } as any,
+        topic: {
+          type: "new_membership",
+          description: "Second description",
+          isNew: true,
+        } as any,
       },
     ]);
 
@@ -420,21 +454,9 @@ describe("domain API client", () => {
     expect(mutation[0]).toEqual(Uint8Array.from([7, 8]));
     expect(mutation[1]).toHaveLength(2);
   });
-  it("copies recurring Preparation context from the planned prior workspace into an independent target fragment", async () => {
-    const fetch = vi.fn()
-      .mockResolvedValueOnce(response({ documentId: "source-document" }))
-      .mockResolvedValueOnce(response({ id: "target-appearance" }));
+  it("copies the current recurring description instead of prior Preparation context", async () => {
+    const fetch = vi.fn().mockResolvedValue(response({ id: "target-appearance" }));
     vi.stubGlobal("fetch", fetch);
-    vi.spyOn(meetingDocumentSession, "load").mockResolvedValue();
-    vi.spyOn(meetingDocumentSession, "hydrateFragments").mockReturnValue({
-      generalNotes: "",
-      openingInput: "",
-      appearances: new Map([["source-appearance", {
-        preparationContext: "Prior context",
-        personNote: null,
-        meetingMinutes: "",
-      }]]),
-    });
     const createUpdate = vi.spyOn(meetingDocumentSession, "createFragmentUpdate")
       .mockResolvedValue("AQID");
 
@@ -446,14 +468,10 @@ describe("domain API client", () => {
       sourceAppearance: { id: "source-appearance", meetingId: "source-meeting" },
     });
 
-    expect(meetingDocumentSession.load).toHaveBeenCalledWith(
-      "copy-forward:source-meeting",
-      expect.objectContaining({ documentId: "source-document" }),
-    );
     expect(createUpdate).toHaveBeenCalledWith(
       "target-meeting",
       expect.stringMatching(/^appearance\/[^/]+\/preparation-context$/),
-      "Prior context",
+      "Template",
       MEETING_COLLABORATION_ORIGIN,
     );
   });

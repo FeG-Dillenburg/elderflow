@@ -83,6 +83,16 @@ const detailsForm = reactive({
   generalNotes: "",
   openingInput: "",
 });
+
+const initialiseSelectedSection = (
+  topic: MeetingSuggestion,
+  availableSections: AgendaSection[] = sections.value,
+) => {
+  const sectionId = topic.previousSectionId
+    || topic.defaultSectionId
+    || availableSections[0]?.id;
+  if (sectionId) selectedSections[topic.id] = sectionId;
+};
 const statusOptions = computed(() =>
   ["planned", "in_progress"].map((value) => ({
     value,
@@ -150,10 +160,7 @@ const load = async () => {
     futureSuggestions.value = loadedFutureSuggestions;
     users.value = loadedUsers;
     for (const topic of [...loadedSuggestions, ...loadedFutureSuggestions]) {
-      const sectionId = topic.previousSectionId
-        || topic.defaultSectionId
-        || loadedSections[0]?.id;
-      if (sectionId) selectedSections[topic.id] = sectionId;
+      initialiseSelectedSection(topic, loadedSections);
     }
     initialiseGroups();
   } catch (cause) {
@@ -173,9 +180,11 @@ const toggleFutureTopics = async () => {
   futureTopicsLoading.value = true;
   error.value = "";
   try {
-    futureSuggestions.value = await api.meetingSuggestions(id, {
+    const loadedFutureSuggestions = await api.meetingSuggestions(id, {
       future: true,
     });
+    futureSuggestions.value = loadedFutureSuggestions;
+    for (const topic of loadedFutureSuggestions) initialiseSelectedSection(topic);
     showFutureTopics.value = true;
   } catch (cause) {
     error.value = cause instanceof Error
@@ -275,17 +284,10 @@ const toggleSelected = (topic: Topic) => {
     : [...selectedTopicIds.value, topic.id];
 };
 
-const sectionFor = (topic: Topic) => selectedSections[topic.id]
+const sectionFor = (topic: Topic & Partial<MeetingSuggestion>) => selectedSections[topic.id]
+  || topic.previousSectionId
   || topic.defaultSectionId
   || sections.value[0]?.id;
-
-const add = async (topic: Topic) => {
-  const sectionId = sectionFor(topic);
-  if (!sectionId) return;
-  await withReload(() =>
-    api.addMeetingTopic(id, { topicId: topic.id, sectionId, topic }),
-  );
-};
 
 const addSelected = async () => {
   const additions = selectedTopics.value.flatMap((topic) => {

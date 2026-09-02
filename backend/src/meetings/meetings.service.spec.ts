@@ -204,6 +204,9 @@ describe("MeetingsService encrypted transaction boundaries", () => {
         },
       }),
     ]);
+    expect((repository as unknown as { find: jest.Mock }).find.mock.calls[2][0].order).toEqual({
+      meeting: { date: "DESC", beginTime: "DESC", id: "DESC" },
+    });
   });
 
   it("adds several Topic appearances with one encrypted document update in one transaction", async () => {

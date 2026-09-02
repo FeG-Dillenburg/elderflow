@@ -622,7 +622,7 @@ export class MeetingsService {
         ? this.meetingTopics.find({
           where: { topicId: In(candidateIds) },
           relations: { meeting: true },
-          order: { meeting: { date: "DESC", beginTime: "DESC" } },
+          order: { meeting: { date: "DESC", beginTime: "DESC", id: "DESC" } },
         })
         : Promise.resolve([]),
       this.dataSource.manager.find(SkippedRecurrence, { where: { meetingId } }),
