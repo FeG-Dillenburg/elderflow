@@ -4,6 +4,7 @@ import GenericTopicAgenda from "./types/generic/GenericTopicAgenda.vue";
 import GenericTopicPreparation from "./types/generic/GenericTopicPreparation.vue";
 import NewMembershipTopicAppearance from "./types/new-membership/NewMembershipTopicAppearance.vue";
 import RecurringTopicAgenda from "./types/recurring/RecurringTopicAgenda.vue";
+import PersonTopicPreparation from "./types/person/PersonTopicPreparation.vue";
 
 const item = (type: string) => ({
   id: "appearance",
@@ -40,6 +41,57 @@ describe("paired Topic renderers", () => {
 
     const texts = wrapper.getComponent({ name: "PairedMeetingTexts" });
     expect(texts.props("mode")).toBe("preparation");
+  });
+
+  it.each([
+    ["generic", GenericTopicPreparation],
+    ["person", PersonTopicPreparation],
+  ])("shows previous Meeting content and standalone Updates above %s preparation", (type, component) => {
+    const topicItem = {
+      ...item(type),
+      previousAppearance: {
+        appearanceId: "previous",
+        meetingId: "previous-meeting",
+        preparationContext: { id: "previous", text: "Earlier preparation", version: 0 },
+        personNote: type === "person"
+          ? { id: "previous", text: "Earlier Person note", version: 0 }
+          : null,
+        meetingMinutes: { id: "previous", text: "Earlier minutes", version: 0 },
+      },
+    };
+    topicItem.topic.updates = [{
+      id: "update",
+      text: "Standalone update",
+      date: "2026-08-20T18:00:00Z",
+    }];
+    const wrapper = shallowMount(component as any, {
+      props: (type === "person"
+        ? {
+            topic: topicItem.topic,
+            item: topicItem,
+            readOnly: false,
+            saveNote: vi.fn(),
+          }
+        : {
+            topic: topicItem.topic,
+            item: topicItem,
+            readOnly: false,
+            ...saves,
+          }) as any,
+      global: {
+        stubs: {
+          RouterLink: { template: "<a><slot /></a>" },
+        },
+      },
+    });
+
+    const context = wrapper.findComponent({ name: "MeetingPreparationContext" });
+    expect(context.exists()).toBe(true);
+    expect(context.props("item")).toEqual(topicItem);
+    expect(wrapper.html().indexOf("meeting-preparation-context-stub"))
+      .toBeLessThan(wrapper.html().indexOf(type === "person"
+        ? "person-topic-note-stub"
+        : "paired-meeting-texts-stub"));
   });
 
   it.each([

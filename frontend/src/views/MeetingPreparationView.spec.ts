@@ -232,6 +232,44 @@ describe("MeetingPreparationView", () => {
     await vm.add({ id: "none", defaultSectionId: null });
     expect((api.addMeetingTopic as any).mock.calls).toHaveLength(calls);
   });
+  it("defaults to the previous section, marks new Topics, and batches preselected additions", async () => {
+    vi.mocked(api.meetingSuggestions).mockResolvedValueOnce([{
+      id: "topic-3",
+      name: "Suggested",
+      type: "generic",
+      defaultSectionId: "second",
+      previousSectionId: "first",
+      isNew: true,
+    }] as any);
+    const wrapper = await view();
+    const vm: any = wrapper.vm;
+    vi.spyOn(api, "addMeetingTopics").mockResolvedValue([]);
+
+    expect(vm.selectedSections["topic-3"]).toBe("first");
+    expect(wrapper.get(".new-topic-tag").attributes("value")).toBe("New");
+
+    vm.toggleSelected(vm.suggestions[0]);
+    expect(vm.isSelected(vm.suggestions[0])).toBe(true);
+    await vm.addSelected();
+
+    expect(api.addMeetingTopics).toHaveBeenCalledWith("meeting-1", [{
+      topicId: "topic-3",
+      sectionId: "first",
+      topic: expect.objectContaining({ id: "topic-3" }),
+    }]);
+  });
+  it("keeps the preselection available when a batched addition fails", async () => {
+    const wrapper = await view();
+    const vm: any = wrapper.vm;
+    vi.spyOn(api, "addMeetingTopics").mockRejectedValue(new Error("Batch failed"));
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    vm.toggleSelected(vm.suggestions[0]);
+
+    await vm.addSelected();
+
+    expect(vm.isSelected(vm.suggestions[0])).toBe(true);
+    expect(vm.error).toBe("Batch failed");
+  });
   it("adds a dragged suggestion at the target section and exact one-based position", async () => {
     const wrapper = await view();
     const vm: any = wrapper.vm;

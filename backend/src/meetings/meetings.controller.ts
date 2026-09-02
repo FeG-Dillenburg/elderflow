@@ -23,13 +23,20 @@ import {
   MeetingDto,
   MeetingParticipantDto,
   MeetingTopicDto,
+  MeetingTopicsDto,
   MeetingUpdateDto,
   ReorderMeetingTopicsDto,
   UpdateMeetingTopicDto,
 } from "./dto/meeting.dto";
 import { MeetingsService } from "./meetings.service";
 import { MeetingCollaborationTicketService } from "./meeting-collaboration-ticket.service";
-import { MeetingCreateBinaryPipe, MeetingSnapshotBinaryPipe, MeetingTopicBinaryPipe, MeetingUpdateBinaryPipe } from "./meeting-binary.pipe";
+import {
+  MeetingCreateBinaryPipe,
+  MeetingSnapshotBinaryPipe,
+  MeetingTopicBinaryPipe,
+  MeetingTopicsBinaryPipe,
+  MeetingUpdateBinaryPipe,
+} from "./meeting-binary.pipe";
 
 @Controller("api/meetings")
 @Permission("meetings")
@@ -145,6 +152,14 @@ export class MeetingsController {
     @Body(new MeetingTopicBinaryPipe()) input: unknown,
     @CurrentUser() user: User,
   ) { return this.service.addTopic(id, input as MeetingTopicDto, user); }
+
+  @Post(":id/topics/batch")
+  @Header("Cache-Control", "no-store")
+  addTopics(
+    @Param("id", ParseUUIDPipe) id: string,
+    @Body(new MeetingTopicsBinaryPipe()) input: unknown,
+    @CurrentUser() user: User,
+  ) { return this.service.addTopics(id, input as MeetingTopicsDto, user); }
 
   @Put(":id/topics/order")
   reorderTopics(

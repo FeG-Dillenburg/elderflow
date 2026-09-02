@@ -25,6 +25,7 @@ interface DocumentSessionKeys {
 }
 
 export interface EncryptedWorkspace {
+  meetingId?: string;
   documentId: string;
   activeSnapshotId: string;
   currentServerSequence: string;
@@ -260,6 +261,18 @@ export class MeetingDocumentSession {
     const loaded = this.requiredDocument(meetingId);
     const update = replaceMeetingFragment(loaded.document, fragment, value, origin);
     return this.createDocumentUpdate(meetingId, update);
+  }
+
+  async createFragmentsUpdate(
+    meetingId: string,
+    fragments: Array<{ fragment: StableMeetingFragment; value: string }>,
+    origin?: unknown,
+  ): Promise<string> {
+    this.requiredKeys();
+    const loaded = this.requiredDocument(meetingId);
+    const updates = fragments.map(({ fragment, value }) =>
+      replaceMeetingFragment(loaded.document, fragment, value, origin));
+    return this.createDocumentUpdate(meetingId, Y.mergeUpdatesV2(updates));
   }
 
   async createDocumentUpdate(meetingId: string, update: Uint8Array): Promise<string> {

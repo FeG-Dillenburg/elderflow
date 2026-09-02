@@ -73,6 +73,23 @@ const create = async () => {
       openingInput: null,
     };
     const meeting = await api.createMeeting(input);
+    const [sections, dueSuggestions, futureSuggestions] = await Promise.all([
+      api.sections(),
+      api.meetingSuggestions(meeting.id),
+      api.meetingSuggestions(meeting.id, { future: true }),
+    ]);
+    const automaticTopics = [...dueSuggestions, ...futureSuggestions]
+      .filter((topic) => ["open", "deferred"].includes(topic.status))
+      .filter((topic) => ["person", "new_membership"].includes(topic.type))
+      .flatMap((topic) => {
+        const sectionId = topic.previousSectionId
+          || topic.defaultSectionId
+          || sections[0]?.id;
+        return sectionId ? [{ topicId: topic.id, sectionId, topic }] : [];
+      });
+    if (automaticTopics.length) {
+      await api.addMeetingTopics(meeting.id, automaticTopics);
+    }
     visible.value = false;
     await router.push(`/meetings/${meeting.id}/prepare`);
   } catch (e) {

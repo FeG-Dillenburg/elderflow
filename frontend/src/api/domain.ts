@@ -242,8 +242,23 @@ export interface MeetingTopic {
   godparentsSnapshot?: string | null;
   protectedSnapshot?: EncryptedTopicSnapshot | null;
   meeting?: Meeting;
-  previousAppearance?: { appearanceId: string; meetingId: string } | null;
+  previousAppearance?: ({ appearanceId: string; meetingId: string } & Partial<MeetingAppearanceTexts>) | null;
 }
+
+export interface MeetingTopicAddition {
+  topicId: string;
+  sectionId: string;
+  position?: number;
+  topic?: Topic;
+  source?: AgendaAppearanceSource;
+  sourceAppearance?: { id: string; meetingId: string } | null;
+}
+
+export type MeetingSuggestion = Topic & {
+  isNew: boolean;
+  previousSectionId: string | null;
+  previousAppearance: { id: string; meetingId: string } | null;
+};
 
 export interface SkippedRecurrence {
   id: string;
@@ -571,6 +586,38 @@ function encodeMeetingTopicMutation(input: {
   ]));
 }
 
+function encodeMeetingTopicsMutation(
+  initialUpdateEnvelope: string,
+  items: Array<{
+    id: string;
+    mutationId: string;
+    topicId: string;
+    sectionId: string;
+    source?: 'manual' | 'recurrence';
+    position?: number;
+    plannedDuration?: number | null;
+    sourceAppearanceId?: string;
+  }>,
+): Uint8Array {
+  return Uint8Array.from(cborEncoder.encode([
+    base64UrlToBytes(initialUpdateEnvelope),
+    items.map((input) => [
+      input.id,
+      input.mutationId,
+      input.topicId,
+      input.sectionId,
+      input.source ?? null,
+      input.source !== undefined,
+      input.position ?? null,
+      input.position !== undefined,
+      input.plannedDuration ?? null,
+      input.plannedDuration !== undefined,
+      input.sourceAppearanceId ?? null,
+      input.sourceAppearanceId !== undefined,
+    ]),
+  ]));
+}
+
 
 const query = (values: Record<string, string | boolean | null | undefined>): string => {
   const params = new URLSearchParams();
@@ -579,6 +626,39 @@ const query = (values: Record<string, string | boolean | null | undefined>): str
   });
   const result = params.toString();
   return result ? `?${result}` : '';
+};
+
+const initialMeetingTopicText = async (
+  meetingId: string,
+  input: MeetingTopicAddition,
+): Promise<string> => {
+  const person = input.topic?.type === 'person';
+  let initialText = input.topic?.description ?? '';
+  if (person || input.topic?.type === 'recurring') {
+    const suggestion = input.topic as Partial<MeetingSuggestion> | undefined;
+    const priorAppearance = input.sourceAppearance
+      ?? suggestion?.previousAppearance
+      ?? (suggestion?.isNew === undefined
+        ? (await api.topicAppearances(input.topicId, { beforeMeetingId: meetingId }))[0]
+        : undefined);
+    if (priorAppearance) {
+      const priorWorkspace = await request<EncryptedWorkspace | null>(
+        `/api/meetings/${priorAppearance.meetingId}/workspace`,
+      );
+      if (priorWorkspace) {
+        const sessionId = `copy-forward:${priorAppearance.meetingId}`;
+        await meetingDocumentSession.load(sessionId, priorWorkspace);
+        const priorValues = meetingDocumentSession.hydrateFragments(sessionId, [{
+          id: priorAppearance.id,
+          person,
+        }]).appearances.get(priorAppearance.id);
+        initialText = person
+          ? priorValues?.personNote ?? ''
+          : priorValues?.preparationContext ?? '';
+      }
+    }
+  }
+  return initialText;
 };
 
 type EncryptedDashboardTopicSummary = Omit<DashboardTopicSummary, 'name'> & EncryptedTopicLabel;
@@ -625,11 +705,51 @@ const unprotectMeeting = async (response: EncryptedMeetingResponse): Promise<Mee
       const meetingMinutes = values.meetingMinutes === null
         ? null
         : { id: item.id, text: values.meetingMinutes, version: 0 };
+      const priorWorkspace = item.previousAppearance
+        ? response.workspace?.priorDocuments?.find((prior) =>
+            prior.meetingId === item.previousAppearance?.meetingId)
+        : undefined;
+      const priorValues = item.previousAppearance && priorWorkspace
+        ? meetingDocumentSession.hydrateFragments(
+            `prior:${priorWorkspace.documentId}`,
+            [{
+              id: item.previousAppearance.appearanceId,
+              person: item.topic?.type === 'person',
+            }],
+          ).appearances.get(item.previousAppearance.appearanceId)
+        : undefined;
+      const previousAppearance = item.previousAppearance
+        ? {
+            ...item.previousAppearance,
+            preparationContext: priorValues?.preparationContext == null
+              ? null
+              : {
+                  id: item.previousAppearance.appearanceId,
+                  text: priorValues.preparationContext,
+                  version: 0,
+                },
+            personNote: priorValues?.personNote == null
+              ? null
+              : {
+                  id: item.previousAppearance.appearanceId,
+                  text: priorValues.personNote,
+                  version: 0,
+                },
+            meetingMinutes: priorValues?.meetingMinutes == null
+              ? null
+              : {
+                  id: item.previousAppearance.appearanceId,
+                  text: priorValues.meetingMinutes,
+                  version: 0,
+                },
+          }
+        : null;
       return {
         ...item,
         preparationContext,
         personNote,
         meetingMinutes,
+        previousAppearance,
       };
     });
   } catch {
@@ -1015,47 +1135,25 @@ export const api = {
     await reconcileAllRecurringTopics();
     return meeting;
   },
-  meetingSuggestions: async (id: string, options?: { future?: boolean }) => Promise.all(
-    (await request<EncryptedTopicResponse[]>(`/api/meetings/${id}/suggestions${query({
+  meetingSuggestions: async (id: string, options?: { future?: boolean }): Promise<MeetingSuggestion[]> => Promise.all(
+    (await request<Array<EncryptedTopicResponse & Pick<MeetingSuggestion, 'isNew' | 'previousSectionId' | 'previousAppearance'>>>(`/api/meetings/${id}/suggestions${query({
       future: options?.future ? true : undefined,
-    })}`)).map((topic) => unprotectTopic(topic)),
+    })}`)).map(async (topic) => ({
+      ...await unprotectTopic(topic),
+      isNew: topic.isNew,
+      previousSectionId: topic.previousSectionId,
+      previousAppearance: topic.previousAppearance,
+    } as MeetingSuggestion)),
   ),
   addParticipant: (meetingId: string, input: { userId: string; attendanceStatus: string }) => request<MeetingParticipant>(`/api/meetings/${meetingId}/participants`, { method: 'POST', body: JSON.stringify(input) }),
   removeParticipant: (meetingId: string, userId: string) => request<void>(`/api/meetings/${meetingId}/participants/${userId}`, { method: 'DELETE' }),
   addMeetingTopic: async (
     meetingId: string,
-    input: {
-      topicId: string;
-      sectionId: string;
-      position?: number;
-      topic?: Topic;
-      source?: 'manual' | 'recurrence';
-      sourceAppearance?: { id: string; meetingId: string } | null;
-    },
+    input: MeetingTopicAddition,
   ) => {
     const appearanceId = crypto.randomUUID();
     const person = input.topic?.type === 'person';
-    let initialText = input.topic?.type === 'recurring' ? input.topic.description ?? '' : '';
-    if (person || input.topic?.type === 'recurring') {
-      const priorAppearance = input.sourceAppearance
-        ?? (await api.topicAppearances(input.topicId, { beforeMeetingId: meetingId }))[0];
-      if (priorAppearance) {
-        const priorWorkspace = await request<EncryptedWorkspace | null>(
-          `/api/meetings/${priorAppearance.meetingId}/workspace`,
-        );
-        if (priorWorkspace) {
-          const sessionId = `copy-forward:${priorAppearance.meetingId}`;
-          await meetingDocumentSession.load(sessionId, priorWorkspace);
-          const priorValues = meetingDocumentSession.hydrateFragments(sessionId, [{
-            id: priorAppearance.id,
-            person,
-          }]).appearances.get(priorAppearance.id);
-          initialText = person
-            ? priorValues?.personNote ?? ''
-            : priorValues?.preparationContext ?? '';
-        }
-      }
-    }
+    const initialText = await initialMeetingTopicText(meetingId, input);
     const initialUpdateEnvelope = await meetingDocumentSession.createFragmentUpdate(
       meetingId,
       meetingFragmentId(person ? 'personNote' : 'preparationContext', appearanceId),
@@ -1077,6 +1175,69 @@ export const api = {
           sourceAppearanceId: sourceAppearance?.id,
           initialUpdateEnvelope,
         }),
+      );
+    } catch (error) {
+      try {
+        const workspace = await request<EncryptedWorkspace | null>(
+          `/api/meetings/${meetingId}/workspace`,
+        );
+        if (workspace) await meetingDocumentSession.load(meetingId, workspace);
+        else meetingDocumentSession.discard(meetingId);
+      } catch {
+        meetingDocumentSession.discard(meetingId);
+      }
+      throw error;
+    }
+  },
+  addMeetingTopics: async (
+    meetingId: string,
+    inputs: MeetingTopicAddition[],
+  ): Promise<MeetingTopic[]> => {
+    if (!inputs.length) return [];
+    const prepared: Array<{
+      input: MeetingTopicAddition;
+      id: string;
+      mutationId: string;
+      initialText: string;
+    }> = [];
+    for (const input of inputs) {
+      prepared.push({
+        input,
+        id: crypto.randomUUID(),
+        mutationId: crypto.randomUUID(),
+        initialText: await initialMeetingTopicText(meetingId, input),
+      });
+    }
+    const initialUpdateEnvelope = await meetingDocumentSession.createFragmentsUpdate(
+      meetingId,
+      prepared.map(({ id, input, initialText }) => ({
+        fragment: meetingFragmentId(
+          input.topic?.type === 'person' ? 'personNote' : 'preparationContext',
+          id,
+        ),
+        value: initialText,
+      })),
+      MEETING_COLLABORATION_ORIGIN,
+    );
+    try {
+      return await requestWithBinaryBody<MeetingTopic[]>(
+        `/api/meetings/${meetingId}/topics/batch`,
+        encodeMeetingTopicsMutation(
+          initialUpdateEnvelope,
+          prepared.map(({ input, id, mutationId }) => ({
+            id,
+            mutationId,
+            topicId: input.topicId,
+            sectionId: input.sectionId,
+            source: input.source,
+            position: input.position,
+            plannedDuration: input.topic?.type === 'person'
+              || input.topic?.type === 'new_membership'
+              ? null
+              : undefined,
+            sourceAppearanceId: input.sourceAppearance?.id,
+          })),
+        ),
       );
     } catch (error) {
       try {

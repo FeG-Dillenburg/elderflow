@@ -3,6 +3,7 @@ import { computed } from "vue";
 import type { MeetingTopic, Topic, TopicFieldPatch, User } from "../../../api/domain";
 import NewMembershipTopicAppearance from "./NewMembershipTopicAppearance.vue";
 import NewMembershipTopicList from "./NewMembershipTopicList.vue";
+import MeetingPreparationContext from "../../components/MeetingPreparationContext.vue";
 
 const props = defineProps<{
   topic: Topic;
@@ -20,16 +21,18 @@ const preparationReadOnly = computed(() => Boolean(
 </script>
 
 <template>
-  <NewMembershipTopicAppearance
-    v-if="item && saveField && savePreparationContext && saveMinutes"
-    :item="item"
-    :can-edit="!preparationReadOnly"
-    :completed="preparationReadOnly"
-    :users="users ?? []"
-    :save-field="saveField"
-    :meeting-text-mode="preparationReadOnly ? 'completed' : 'preparation'"
-    :save-preparation-context="savePreparationContext"
-    :save-minutes="saveMinutes"
-  />
+  <div v-if="item && saveField && savePreparationContext && saveMinutes">
+    <MeetingPreparationContext :item="item" />
+    <NewMembershipTopicAppearance
+      :item="item"
+      :can-edit="!preparationReadOnly"
+      :completed="preparationReadOnly"
+      :users="users ?? []"
+      :save-field="saveField"
+      :meeting-text-mode="preparationReadOnly ? 'completed' : 'preparation'"
+      :save-preparation-context="savePreparationContext"
+      :save-minutes="saveMinutes"
+    />
+  </div>
   <NewMembershipTopicList v-else :topic="topic" />
 </template>

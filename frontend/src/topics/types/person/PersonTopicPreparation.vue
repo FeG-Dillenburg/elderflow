@@ -3,6 +3,7 @@ import { RouterLink } from "vue-router";
 import type { MeetingTopic, Topic } from "../../../api/domain";
 import { useI18n } from "vue-i18n";
 import PersonTopicNote from "./PersonTopicNote.vue";
+import MeetingPreparationContext from "../../components/MeetingPreparationContext.vue";
 
 defineProps<{
   topic: Topic;
@@ -17,6 +18,7 @@ const { t } = useI18n();
 
 <template>
   <div class="person-preparation">
+    <MeetingPreparationContext v-if="item" :item="item" />
     <PersonTopicNote
       v-if="item && saveNote"
       :item="item"

@@ -149,4 +149,108 @@ describe("MeetingsService encrypted transaction boundaries", () => {
     expect(documents.storedUpdateMatches).not.toHaveBeenCalled();
     expect(documents.appendUpdate).not.toHaveBeenCalled();
   });
+
+  it("marks first appearances as new and suggests the most recent earlier section", async () => {
+    const firstTopic = {
+      id: "first-topic",
+      type: "generic",
+      status: "open",
+      followUpDate: null,
+      defaultSectionId: "default-section",
+    } as Topic;
+    const returningTopic = {
+      id: "returning-topic",
+      type: "person",
+      status: "open",
+      followUpDate: null,
+      defaultSectionId: "default-section",
+    } as Topic;
+    (repository as { findOneBy?: jest.Mock }).findOneBy = jest.fn()
+      .mockResolvedValue({ id: "meeting", date: "2026-09-15", beginTime: "19:00" });
+    (repository as { find?: jest.Mock }).find = jest.fn()
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([firstTopic, returningTopic])
+      .mockResolvedValueOnce([
+        {
+          id: "later-appearance",
+          meetingId: "prior-meeting",
+          topicId: "returning-topic",
+          sectionId: "later-section",
+          meeting: { date: "2026-09-01", beginTime: "19:00" },
+        },
+        {
+          id: "earlier-appearance",
+          meetingId: "earlier-meeting",
+          topicId: "returning-topic",
+          sectionId: "earlier-section",
+          meeting: { date: "2026-08-01", beginTime: "19:00" },
+        },
+      ]);
+    (dataSource as { manager?: typeof manager }).manager = manager;
+
+    await expect(service.suggestions("meeting", false, user)).resolves.toEqual([
+      expect.objectContaining({
+        id: "first-topic",
+        isNew: true,
+        previousSectionId: null,
+      }),
+      expect.objectContaining({
+        id: "returning-topic",
+        isNew: false,
+        previousSectionId: "later-section",
+        previousAppearance: {
+          id: "later-appearance",
+          meetingId: "prior-meeting",
+        },
+      }),
+    ]);
+  });
+
+  it("adds several Topic appearances with one encrypted document update in one transaction", async () => {
+    manager.findOne.mockImplementation(async (entity, options) => {
+      if (entity === Topic) {
+        return { id: options.where.id, type: "generic", status: "open" };
+      }
+      return { id: "meeting", status: "planned" };
+    });
+    manager.findOneBy.mockImplementation(async (entity) => {
+      if (entity === AgendaSection) return { id: "section" };
+      return null;
+    });
+
+    await service.addTopics("meeting", {
+      initialUpdateEnvelope: "shared-opaque-update",
+      items: [
+        {
+          id: "appearance-1",
+          mutationId: "mutation-1",
+          topicId: "topic-1",
+          sectionId: "section",
+        },
+        {
+          id: "appearance-2",
+          mutationId: "mutation-2",
+          topicId: "topic-2",
+          sectionId: "section",
+        },
+      ],
+    }, user);
+
+    expect(dataSource.transaction).toHaveBeenCalledTimes(1);
+    expect(documents.appendUpdate).toHaveBeenCalledTimes(1);
+    expect(documents.appendUpdate).toHaveBeenCalledWith(
+      manager,
+      user,
+      "meeting",
+      "shared-opaque-update",
+    );
+    expect(manager.save).toHaveBeenCalledWith(MeetingTopic, expect.objectContaining({
+      id: "appearance-1",
+      topicId: "topic-1",
+    }));
+    expect(manager.save).toHaveBeenCalledWith(MeetingTopic, expect.objectContaining({
+      id: "appearance-2",
+      topicId: "topic-2",
+    }));
+  });
 });

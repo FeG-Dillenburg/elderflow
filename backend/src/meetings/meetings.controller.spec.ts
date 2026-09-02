@@ -9,6 +9,7 @@ describe("MeetingsController encrypted workspace boundary", () => {
     findOne: jest.fn(),
     appendWorkspaceUpdate: jest.fn(),
     addTopic: jest.fn(),
+    addTopics: jest.fn(),
   };
   const collaborationTickets = { mint: jest.fn() };
   const controller = new MeetingsController(service as never, collaborationTickets as never);
@@ -45,6 +46,22 @@ describe("MeetingsController encrypted workspace boundary", () => {
     await controller.addTopic("meeting", input, user);
 
     expect(service.addTopic).toHaveBeenCalledWith("meeting", input, user);
+  });
+
+  it("passes a batch of appearance structures and one encrypted update to one command", async () => {
+    const input = {
+      initialUpdateEnvelope: "opaque-update",
+      items: [{
+        id: "00000000-0000-4000-8000-000000000004",
+        mutationId: "00000000-0000-4000-8000-000000000005",
+        topicId: "00000000-0000-4000-8000-000000000006",
+        sectionId: "00000000-0000-4000-8000-000000000007",
+      }],
+    } as never;
+
+    await controller.addTopics("meeting", input, user);
+
+    expect(service.addTopics).toHaveBeenCalledWith("meeting", input, user);
   });
 
   it("keeps workspace endpoints under backend Meeting authorization", () => {

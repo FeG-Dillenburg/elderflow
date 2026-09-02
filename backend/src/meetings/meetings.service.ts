@@ -22,6 +22,7 @@ import {
   MeetingDto,
   MeetingParticipantDto,
   MeetingTopicDto,
+  MeetingTopicsDto,
   MeetingTopicOrderItemDto,
   MeetingUpdateDto,
   UpdateMeetingTopicDto,
@@ -323,7 +324,40 @@ export class MeetingsService {
 
   async addTopic(meetingId: string, input: MeetingTopicDto, user: User): Promise<MeetingTopic> {
     this.documents.assertContentUser(user);
+    return this.dataSource.transaction(async (manager) =>
+      (await this.addTopicWithinTransaction(manager, meetingId, input, user)).appearance);
+  }
+
+  async addTopics(meetingId: string, input: MeetingTopicsDto, user: User): Promise<MeetingTopic[]> {
+    this.documents.assertContentUser(user);
     return this.dataSource.transaction(async (manager) => {
+      const appearances: MeetingTopic[] = [];
+      let documentUpdate: Awaited<ReturnType<MeetingDocumentService["appendUpdate"]>> | undefined;
+      for (const item of input.items) {
+        const result = await this.addTopicWithinTransaction(
+          manager,
+          meetingId,
+          { ...item, initialUpdateEnvelope: input.initialUpdateEnvelope },
+          user,
+          documentUpdate,
+        );
+        appearances.push(result.appearance);
+        documentUpdate = result.documentUpdate;
+      }
+      return appearances;
+    });
+  }
+
+  private async addTopicWithinTransaction(
+    manager: Parameters<typeof lockedMutableMeeting>[0],
+    meetingId: string,
+    input: MeetingTopicDto,
+    user: User,
+    sharedDocumentUpdate?: Awaited<ReturnType<MeetingDocumentService["appendUpdate"]>>,
+  ): Promise<{
+    appearance: MeetingTopic;
+    documentUpdate?: Awaited<ReturnType<MeetingDocumentService["appendUpdate"]>>;
+  }> {
       await lockedMutableMeeting(manager, meetingId);
       const requestFingerprint = this.meetingTopicRequestFingerprint(input);
       const replay = await manager.findOneBy(MeetingDocumentMutation, { id: input.mutationId });
@@ -351,7 +385,7 @@ export class MeetingsService {
             "Meeting mutation was retried with different structure",
           );
         }
-        return appearance!;
+        return { appearance: appearance!, documentUpdate: sharedDocumentUpdate };
       }
       const [topic, section, existing, source] = await Promise.all([
         manager.findOne(Topic, { where: { id: input.topicId }, lock: { mode: "pessimistic_write" } }),
@@ -421,7 +455,7 @@ export class MeetingsService {
       const shifted = items.filter((item) => item.position >= position);
       for (const item of shifted) item.position += 1;
       if (shifted.length) await manager.save(MeetingTopic, shifted);
-      const opaque = await this.documents.appendUpdate(
+      const opaque = sharedDocumentUpdate ?? await this.documents.appendUpdate(
         manager,
         user,
         meetingId,
@@ -445,8 +479,7 @@ export class MeetingsService {
         updateId: opaque.update.id,
         requestFingerprint,
       }));
-      return appearance;
-    });
+      return { appearance, documentUpdate: opaque };
   }
 
   async reorderTopics(meetingId: string, input: MeetingTopicOrderItemDto[]): Promise<MeetingTopic[]> {
@@ -583,12 +616,13 @@ export class MeetingsService {
       relations: { responsibleUser: true, defaultSection: true },
       order: { followUpDate: "ASC", updatedAt: "DESC" },
     });
-    const recurringIds = candidates.filter((topic) => topic.type === "recurring").map((topic) => topic.id);
-    const [recurringAppearances, skipped] = await Promise.all([
-      recurringIds.length
+    const candidateIds = candidates.map((topic) => topic.id);
+    const [candidateAppearances, skipped] = await Promise.all([
+      candidateIds.length
         ? this.meetingTopics.find({
-          where: { topicId: In(recurringIds) },
+          where: { topicId: In(candidateIds) },
           relations: { meeting: true },
+          order: { meeting: { date: "DESC", beginTime: "DESC" } },
         })
         : Promise.resolve([]),
       this.dataSource.manager.find(SkippedRecurrence, { where: { meetingId } }),
@@ -600,14 +634,31 @@ export class MeetingsService {
         const dueDate = topic.type === "recurring"
           ? this.recurrence.nextDueDate(
             topic,
-            recurringAppearances
+            candidateAppearances
               .filter((appearance) => appearance.topicId === topic.id && appearance.meeting)
               .map((appearance) => appearance.meeting!.date),
           )
           : topic.followUpDate;
         return future === Boolean(dueDate && dueDate > meeting.date);
       })
-      .map((topic) => topicResponse(topic, user));
+      .map((topic) => {
+        const appearances = candidateAppearances
+          .filter((appearance) => appearance.topicId === topic.id);
+        const previous = appearances.find((appearance) => Boolean(
+          appearance.meeting
+          && [appearance.meeting.date, appearance.meeting.beginTime, appearance.meeting.id]
+            .join("|")
+            < [meeting.date, meeting.beginTime, meeting.id].join("|"),
+        ));
+        return {
+          ...topicResponse(topic, user),
+          isNew: appearances.length === 0,
+          previousSectionId: previous?.sectionId ?? null,
+          previousAppearance: previous
+            ? { id: previous.id, meetingId: previous.meetingId }
+            : null,
+        };
+      });
   }
 
   private meetingTopicRequestFingerprint(input: MeetingTopicDto): Buffer {
