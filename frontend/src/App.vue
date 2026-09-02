@@ -1,5 +1,5 @@
 <script lang="ts" setup>
-import { computed } from "vue";
+import { computed, ref } from "vue";
 import { RouterLink, RouterView } from "vue-router";
 import { formatUser, type PermissionCategory } from "./api/domain";
 import { auth } from "./auth/auth";
@@ -12,6 +12,7 @@ import MeetingCollaborationPresence from "./e2ee/MeetingCollaborationPresence.vu
 import { protectedText } from "./e2ee/protected-text";
 
 const { t } = useI18n();
+const protectedTextControlHovered = ref(false);
 const navigation: Array<{
   to: string;
   icon: string;
@@ -88,6 +89,14 @@ const collaborationMeetingId = computed(() => {
 async function logout(): Promise<void> {
   auth.logout();
   await router.push("/login");
+}
+
+function toggleProtectedText(): void {
+  if (protectedText.state.status === "unlocked") {
+    protectedText.lock("explicit");
+  } else {
+    protectedText.showUnlock();
+  }
 }
 </script>
 
@@ -173,30 +182,42 @@ async function logout(): Promise<void> {
           v-if="protectedText.isEligible(auth.state.user)"
           class="protected-text-status"
         >
-          <span
-            class="status-indicator"
-            :class="`status-${protectedText.state.status}`"
-            role="status"
-          >
-            {{
-              protectedText.state.status === "unlocked"
-                ? t("e2ee.unlocked")
-                : t("e2ee.locked")
-            }}
-          </span>
           <button
             type="button"
-            class="lock-button"
-            @click="
+            class="protected-text-control"
+            :class="`status-${protectedText.state.status}`"
+            :disabled="protectedText.state.status === 'unlocking'"
+            :aria-label="
               protectedText.state.status === 'unlocked'
-                ? protectedText.lock('explicit')
-                : protectedText.showUnlock()
+                ? t('e2ee.lockProtectedText')
+                : t('e2ee.unlockSubmit')
             "
+            :title="
+              protectedText.state.status === 'unlocked'
+                ? t('e2ee.lockProtectedText')
+                : t('e2ee.unlockSubmit')
+            "
+            @mouseenter="protectedTextControlHovered = true"
+            @mouseleave="protectedTextControlHovered = false"
+            @click="toggleProtectedText"
           >
+            <i
+              class="pi"
+              :class="
+                protectedText.state.status === 'unlocked'
+                  ? 'pi-lock-open'
+                  : 'pi-lock'
+              "
+              aria-hidden="true"
+            />
             {{
               protectedText.state.status === "unlocked"
-                ? t("e2ee.lockAction")
-                : t("e2ee.unlockAction")
+                ? protectedTextControlHovered
+                  ? t("e2ee.lockControl")
+                  : t("e2ee.unlockedControl")
+                : protectedTextControlHovered
+                  ? t("e2ee.unlockControl")
+                  : t("e2ee.lockedControl")
             }}
           </button>
         </div>
@@ -394,25 +415,36 @@ nav {
   display: flex;
   justify-content: flex-end;
   align-items: center;
-  gap: 0.65rem;
+  grid-column-start: 3;
   justify-self: end;
 }
 
-.status-indicator {
+.protected-text-control {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.3rem 0;
+  border: 0;
+  background: transparent;
+  color: #526176;
+  cursor: pointer;
+  font: inherit;
   font-size: 0.8rem;
   font-weight: 700;
 }
 
-.status-unlocked {
+.protected-text-control.status-unlocked {
   color: #177245;
 }
 
-.lock-button {
-  border: 0;
-  background: transparent;
-  color: #334155;
-  text-decoration: underline;
-  cursor: pointer;
+.protected-text-control:hover,
+.protected-text-control:focus-visible {
+  color: #315f9f;
+}
+
+.protected-text-control:disabled {
+  cursor: wait;
+  opacity: 0.6;
 }
 
 @media (max-width: 760px) {
