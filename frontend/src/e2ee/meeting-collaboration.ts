@@ -156,10 +156,7 @@ export class EncryptedMeetingCollaborationProvider extends EventTarget {
       );
       this.flush();
       if (!this.pending.length && Number(frame.serverSequence) % 100 === 0 && !this.compacting) {
-        this.compacting = true;
-        void this.compact?.().catch(() => this.setStatus("rejected")).finally(() => {
-          this.compacting = false;
-        });
+        this.scheduleCompaction();
       }
       return;
     }
@@ -266,6 +263,23 @@ export class EncryptedMeetingCollaborationProvider extends EventTarget {
       && this.status === "online"
       && this.pending.length === 0
       && this.sent.size === 0;
+  }
+
+  private scheduleCompaction(): void {
+    this.compacting = true;
+    void this.enqueue(async () => {
+      if (this.stopped || this.pending.length) return;
+      await this.compact?.();
+    }).catch(async () => {
+      if (this.stopped) return;
+      try {
+        await this.synchronize();
+      } catch {
+        this.setStatus("rejected");
+      }
+    }).finally(() => {
+      this.compacting = false;
+    });
   }
 
   private async rebasePending(): Promise<void> {

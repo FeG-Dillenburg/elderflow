@@ -1118,22 +1118,17 @@ export const api = {
   },
   compactMeetingWorkspace: async (id: string, fragments: import('../e2ee/meeting-document-codec').StableMeetingFragment[]) => {
     const snapshot = await meetingDocumentSession.createCompaction(id, fragments);
-    try {
-      await requestWithBinaryBody(
-        `/api/meetings/${id}/workspace/compact`,
-        base64UrlToBytes(snapshot.snapshotEnvelope),
-        { 'X-ElderFlow-Snapshot-Id': snapshot.snapshotId },
-      );
-      await meetingDocumentSession.acceptCompaction(
-        id,
-        snapshot.snapshotId,
-        snapshot.snapshotEnvelope,
-        MEETING_COLLABORATION_ORIGIN,
-      );
-    } catch (error) {
-      await meetingCollaboration.get(id)?.synchronize();
-      throw error;
-    }
+    await requestWithBinaryBody(
+      `/api/meetings/${id}/workspace/compact`,
+      base64UrlToBytes(snapshot.snapshotEnvelope),
+      { 'X-ElderFlow-Snapshot-Id': snapshot.snapshotId },
+    );
+    await meetingDocumentSession.acceptCompaction(
+      id,
+      snapshot.snapshotId,
+      snapshot.snapshotEnvelope,
+      MEETING_COLLABORATION_ORIGIN,
+    );
   },
   completeMeeting: async (id: string) => {
     const response = await request<EncryptedMeetingResponse>(`/api/meetings/${id}/complete`, { method: 'POST' });

@@ -154,6 +154,69 @@ describe("EncryptedMeetingCollaborationProvider", () => {
     document.destroy();
   });
 
+  it("finishes automatic compaction before encrypting the next local edit", async () => {
+    const document = new Y.Doc();
+    const socket = new FakeSocket();
+    const encrypt = vi.spyOn(meetingDocumentSession, "createPendingDocumentUpdate")
+      .mockResolvedValueOnce({
+        envelope: "before-compaction",
+        activeSnapshotId: "old-snapshot",
+        authorClock: 100,
+      })
+      .mockResolvedValueOnce({
+        envelope: "after-compaction",
+        activeSnapshotId: "new-snapshot",
+        authorClock: 101,
+      });
+    vi.spyOn(meetingDocumentSession, "encryptAwareness").mockResolvedValue("awareness");
+    vi.spyOn(meetingDocumentSession, "acknowledge").mockImplementation(() => undefined);
+    let finishCompaction!: () => void;
+    let markCompactionStarted!: () => void;
+    const compactionStarted = new Promise<void>((resolve) => {
+      markCompactionStarted = resolve;
+    });
+    const compaction = new Promise<void>((resolve) => {
+      finishCompaction = resolve;
+    });
+    const provider = new EncryptedMeetingCollaborationProvider(
+      "meeting",
+      document,
+      async () => ({ ticket: "ticket", documentId: "document", websocketPath: "/socket" }),
+      () => socket as unknown as WebSocket,
+      async () => {
+        markCompactionStarted();
+        await compaction;
+      },
+    );
+    await provider.connect();
+    socket.open();
+    socket.receive({ type: "authenticated" });
+    await settle();
+
+    document.getText("field").insert(0, "a");
+    await settle();
+    socket.receive({
+      type: "acknowledged",
+      envelope: "before-compaction",
+      clientEpochId: "epoch",
+      authorClock: "100",
+      serverSequence: "100",
+    });
+    await compactionStarted;
+    document.getText("field").insert(1, "b");
+    await settle();
+
+    expect(encrypt).toHaveBeenCalledTimes(1);
+    finishCompaction();
+    await settle();
+    expect(encrypt).toHaveBeenCalledTimes(2);
+    expect(socket.sent.map((value) => JSON.parse(value)))
+      .toContainEqual({ type: "update", envelope: "after-compaction" });
+
+    provider.destroy();
+    document.destroy();
+  });
+
   it("reseals each pending delta after compaction instead of encoding the whole document", async () => {
     const document = new Y.Doc();
     document.getText("large-existing-field").insert(0, "x".repeat(1_100_000));
