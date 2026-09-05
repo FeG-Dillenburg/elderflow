@@ -55,13 +55,17 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <span v-if="readOnly" class="read-only-note">
+  <div v-if="readOnly" class="read-only-note">
     <span v-if="$slots.label" class="read-only-label">
       <slot name="label" />
     </span>
-    <span v-if="localNote" v-html="safe(localNote)" />
+    <div
+      v-if="localNote"
+      class="read-only-content"
+      v-html="safe(localNote)"
+    />
     <template v-else>{{ t("personTopic.noNote") }}</template>
-  </span>
+  </div>
   <span v-else class="note-editor" :aria-busy="saving">
     <span class="note-input">
       <span v-if="$slots.label" ref="inlineLabel" class="inline-label">
@@ -104,13 +108,22 @@ onBeforeUnmount(() => {
 }
 
 .read-only-note {
-  white-space: pre-wrap;
+  display: flow-root;
+  min-width: 0;
 }
 
 .read-only-label {
   float: left;
   margin-right: 0.35rem;
   font-weight: 800;
+}
+
+.read-only-content :deep(> :first-child) {
+  margin-top: 0;
+}
+
+.read-only-content :deep(> :last-child) {
+  margin-bottom: 0;
 }
 
 </style>
