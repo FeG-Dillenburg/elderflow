@@ -153,6 +153,69 @@ describe("EncryptedMeetingCollaborationProvider", () => {
     document.destroy();
   });
 
+  it("reseals a pending edit after the server rejects its stale snapshot context", async () => {
+    const document = new Y.Doc();
+    const socket = new FakeSocket();
+    const encrypt = vi.spyOn(meetingDocumentSession, "createPendingDocumentUpdate")
+      .mockResolvedValueOnce({
+        envelope: "old-snapshot-envelope",
+        activeSnapshotId: "old-snapshot",
+        authorClock: 1,
+      })
+      .mockResolvedValueOnce({
+        envelope: "current-snapshot-envelope",
+        activeSnapshotId: "current-snapshot",
+        authorClock: 2,
+      });
+    vi.spyOn(meetingDocumentSession, "decryptPendingDocumentUpdate")
+      .mockResolvedValue(new Uint8Array([1, 2, 3]));
+    vi.spyOn(meetingDocumentSession, "encryptAwareness").mockResolvedValue("awareness");
+    vi.spyOn(meetingDocumentSession, "acknowledge").mockImplementation(() => undefined);
+    const resync = vi.fn().mockResolvedValue({ parentChanged: false });
+    const provider = new EncryptedMeetingCollaborationProvider(
+      "meeting",
+      document,
+      async () => ({ ticket: "ticket", documentId: "document", websocketPath: "/socket" }),
+      () => socket as unknown as WebSocket,
+      undefined,
+      resync,
+    );
+    await provider.connect();
+    socket.open();
+    socket.receive({ type: "authenticated" });
+    await settle();
+
+    document.getText("field").insert(0, "not yet saved");
+    await settle();
+    expect(socket.sent.map((value) => JSON.parse(value)))
+      .toContainEqual({ type: "update", envelope: "old-snapshot-envelope" });
+
+    socket.receive({
+      type: "rejected",
+      code: "E2EE_ENVELOPE_CONTEXT_INVALID",
+    });
+    await settle();
+
+    expect(resync).toHaveBeenCalledTimes(2);
+    expect(encrypt).toHaveBeenCalledTimes(2);
+    expect(socket.sent.map((value) => JSON.parse(value)))
+      .toContainEqual({ type: "update", envelope: "current-snapshot-envelope" });
+    expect(provider.status).toBe("pending");
+
+    socket.receive({
+      type: "acknowledged",
+      envelope: "current-snapshot-envelope",
+      clientEpochId: "epoch",
+      authorClock: "2",
+      serverSequence: "101",
+    });
+    await settle();
+    expect(provider.status).toBe("online");
+
+    provider.destroy();
+    document.destroy();
+  });
+
   it("zeroes a plaintext delta when encryption finishes after destruction", async () => {
     const document = new Y.Doc();
     const socket = new FakeSocket();

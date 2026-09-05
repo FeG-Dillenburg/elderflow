@@ -205,7 +205,7 @@ export class EncryptedMeetingCollaborationProvider extends EventTarget {
         this.reloadCanonical();
       } else if (["E2EE_SNAPSHOT_PARENT_INVALID", "E2EE_ENVELOPE_CONTEXT_INVALID"].includes(frame.code)) {
         this.setStatus("connecting");
-        await this.synchronize();
+        await this.synchronize(true);
       } else if (frame.code === "E2EE_AUTHOR_CLOCK_GAP") {
         this.setStatus("connecting");
         await this.synchronize(true);
