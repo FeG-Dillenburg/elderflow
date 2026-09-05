@@ -22,7 +22,6 @@ const preparationReadOnly = computed(() => Boolean(
 
 <template>
   <div v-if="item && saveField && savePreparationContext && saveMinutes">
-    <MeetingPreparationContext :item="item" />
     <NewMembershipTopicAppearance
       :item="item"
       :can-edit="!preparationReadOnly"
@@ -32,7 +31,11 @@ const preparationReadOnly = computed(() => Boolean(
       :meeting-text-mode="preparationReadOnly ? 'completed' : 'preparation'"
       :save-preparation-context="savePreparationContext"
       :save-minutes="saveMinutes"
-    />
+    >
+      <template #before-meeting-texts>
+        <MeetingPreparationContext :item="item" />
+      </template>
+    </NewMembershipTopicAppearance>
   </div>
   <NewMembershipTopicList v-else :topic="topic" />
 </template>

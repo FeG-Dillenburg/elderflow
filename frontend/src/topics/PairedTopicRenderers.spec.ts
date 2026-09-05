@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import GenericTopicAgenda from "./types/generic/GenericTopicAgenda.vue";
 import GenericTopicPreparation from "./types/generic/GenericTopicPreparation.vue";
 import NewMembershipTopicAppearance from "./types/new-membership/NewMembershipTopicAppearance.vue";
+import NewMembershipTopicPreparation from "./types/new-membership/NewMembershipTopicPreparation.vue";
 import RecurringTopicAgenda from "./types/recurring/RecurringTopicAgenda.vue";
 import PersonTopicPreparation from "./types/person/PersonTopicPreparation.vue";
 
@@ -43,19 +44,15 @@ describe("paired Topic renderers", () => {
     expect(texts.props("mode")).toBe("preparation");
   });
 
-  it.each([
-    ["generic", GenericTopicPreparation],
-    ["person", PersonTopicPreparation],
-  ])("shows previous Meeting content and standalone Updates above %s preparation", (type, component) => {
+  it("shows previous Meeting content and standalone Updates above Generic preparation", () => {
+    const type = "generic";
     const topicItem = {
       ...item(type),
       previousAppearance: {
         appearanceId: "previous",
         meetingId: "previous-meeting",
         preparationContext: { id: "previous", text: "Earlier preparation", version: 0 },
-        personNote: type === "person"
-          ? { id: "previous", text: "Earlier Person note", version: 0 }
-          : null,
+        personNote: null,
         meetingMinutes: { id: "previous", text: "Earlier minutes", version: 0 },
       },
     };
@@ -64,20 +61,13 @@ describe("paired Topic renderers", () => {
       text: "Standalone update",
       date: "2026-08-20T18:00:00Z",
     }];
-    const wrapper = shallowMount(component as any, {
-      props: (type === "person"
-        ? {
-            topic: topicItem.topic,
-            item: topicItem,
-            readOnly: false,
-            saveNote: vi.fn(),
-          }
-        : {
-            topic: topicItem.topic,
-            item: topicItem,
-            readOnly: false,
-            ...saves,
-          }) as any,
+    const wrapper = shallowMount(GenericTopicPreparation, {
+      props: {
+        topic: topicItem.topic,
+        item: topicItem,
+        readOnly: false,
+        ...saves,
+      } as any,
       global: {
         stubs: {
           RouterLink: { template: "<a><slot /></a>" },
@@ -89,9 +79,81 @@ describe("paired Topic renderers", () => {
     expect(context.exists()).toBe(true);
     expect(context.props("item")).toEqual(topicItem);
     expect(wrapper.html().indexOf("meeting-preparation-context-stub"))
-      .toBeLessThan(wrapper.html().indexOf(type === "person"
-        ? "person-topic-note-stub"
-        : "paired-meeting-texts-stub"));
+      .toBeLessThan(wrapper.html().indexOf("paired-meeting-texts-stub"));
+  });
+
+  it("omits previous Meeting content and standalone Updates from Person preparation", () => {
+    const personItem = {
+      ...item("person"),
+      previousAppearance: {
+        appearanceId: "previous",
+        meetingId: "previous-meeting",
+        personNote: { id: "previous", text: "Earlier Person note", version: 0 },
+      },
+    };
+    personItem.topic.updates = [{
+      id: "update",
+      text: "Standalone update",
+      date: "2026-08-20T18:00:00Z",
+    }];
+    const wrapper = shallowMount(PersonTopicPreparation, {
+      props: {
+        topic: personItem.topic,
+        item: personItem,
+        readOnly: false,
+        saveNote: vi.fn(),
+      },
+      global: {
+        stubs: {
+          RouterLink: { template: "<a><slot /></a>" },
+        },
+      },
+    });
+
+    expect(wrapper.findComponent({ name: "MeetingPreparationContext" }).exists()).toBe(false);
+    expect(wrapper.findComponent({ name: "PersonTopicNote" }).exists()).toBe(true);
+  });
+
+  it("places New membership history inside the lower note box above its editor", () => {
+    const membershipItem = {
+      ...item("new_membership"),
+      previousAppearance: {
+        appearanceId: "previous",
+        meetingId: "previous-meeting",
+        preparationContext: { id: "previous", text: "Earlier preparation", version: 0 },
+        meetingMinutes: { id: "previous", text: "Earlier minutes", version: 0 },
+      },
+    };
+    const wrapper = shallowMount(NewMembershipTopicPreparation, {
+      props: {
+        topic: membershipItem.topic,
+        item: membershipItem,
+        readOnly: false,
+        users: [],
+        saveField: vi.fn(),
+        ...saves,
+      },
+      global: {
+        stubs: {
+          NewMembershipTopicAppearance: {
+            name: "NewMembershipTopicAppearance",
+            template: `
+              <div class="membership-appearance-stub">
+                <div class="note-field">
+                  <slot name="before-meeting-texts" />
+                  <div class="paired-meeting-texts-stub" />
+                </div>
+              </div>
+            `,
+          },
+        },
+      },
+    });
+
+    const noteField = wrapper.get(".note-field");
+    expect(noteField.findComponent({ name: "MeetingPreparationContext" }).exists()).toBe(true);
+    expect(noteField.html().indexOf("meeting-preparation-context-stub"))
+      .toBeLessThan(noteField.html().indexOf("paired-meeting-texts-stub"));
   });
 
   it.each([
