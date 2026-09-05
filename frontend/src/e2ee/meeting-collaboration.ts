@@ -255,6 +255,19 @@ export class EncryptedMeetingCollaborationProvider extends EventTarget {
     });
   }
 
+  async readyForCompletion(): Promise<boolean> {
+    let queued = this.encryption;
+    await queued;
+    while (queued !== this.encryption) {
+      queued = this.encryption;
+      await queued;
+    }
+    return !this.stopped
+      && this.status === "online"
+      && this.pending.length === 0
+      && this.sent.size === 0;
+  }
+
   private async rebasePending(): Promise<void> {
     this.sent.clear();
     for (let index = 0; index < this.pending.length; index += 1) {

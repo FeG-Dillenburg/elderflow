@@ -36,6 +36,7 @@ import {
   type User,
 } from "../api/domain";
 import { protectedText } from "../e2ee/protected-text";
+import { meetingCollaboration } from "../e2ee/meeting-collaboration";
 import { useI18n } from "vue-i18n";
 import { dateInputFormat, formatDate, formatTime } from "../i18n";
 
@@ -254,6 +255,11 @@ const finishMeeting = async () => {
   finishing.value = true;
   finishError.value = "";
   try {
+    const provider = meetingCollaboration.get(id);
+    if (provider && !(await provider.readyForCompletion())) {
+      finishError.value = t("meetingAgenda.finishPendingChanges");
+      return;
+    }
     meeting.value = await api.completeMeeting(id);
     finishVisible.value = false;
     await load();

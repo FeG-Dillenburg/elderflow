@@ -102,6 +102,58 @@ describe("EncryptedMeetingCollaborationProvider", () => {
     document.destroy();
   });
 
+  it("is not ready for Meeting completion until queued updates are acknowledged", async () => {
+    const document = new Y.Doc();
+    const socket = new FakeSocket();
+    let finishEncryption!: (pending: {
+      envelope: string;
+      activeSnapshotId: string;
+      authorClock: number;
+    }) => void;
+    vi.spyOn(meetingDocumentSession, "createPendingDocumentUpdate")
+      .mockReturnValue(new Promise((resolve) => {
+        finishEncryption = resolve;
+      }));
+    vi.spyOn(meetingDocumentSession, "encryptAwareness").mockResolvedValue("awareness");
+    vi.spyOn(meetingDocumentSession, "acknowledge").mockImplementation(() => undefined);
+    const provider = new EncryptedMeetingCollaborationProvider(
+      "meeting",
+      document,
+      async () => ({ ticket: "ticket", documentId: "document", websocketPath: "/socket" }),
+      () => socket as unknown as WebSocket,
+    );
+    await provider.connect();
+    socket.open();
+    socket.receive({ type: "authenticated" });
+    await settle();
+
+    document.getText("field").insert(0, "not yet saved");
+    const readiness = (provider as unknown as {
+      readyForCompletion: () => Promise<boolean>;
+    }).readyForCompletion();
+    finishEncryption({
+      envelope: "pending-envelope",
+      activeSnapshotId: "snapshot",
+      authorClock: 1,
+    });
+
+    await expect(readiness).resolves.toBe(false);
+    socket.receive({
+      type: "acknowledged",
+      envelope: "pending-envelope",
+      clientEpochId: "epoch",
+      authorClock: "1",
+      serverSequence: "1",
+    });
+    await settle();
+    await expect((provider as unknown as {
+      readyForCompletion: () => Promise<boolean>;
+    }).readyForCompletion()).resolves.toBe(true);
+
+    provider.destroy();
+    document.destroy();
+  });
+
   it("reseals each pending delta after compaction instead of encoding the whole document", async () => {
     const document = new Y.Doc();
     document.getText("large-existing-field").insert(0, "x".repeat(1_100_000));
