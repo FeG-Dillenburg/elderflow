@@ -220,6 +220,7 @@ export class MeetingDocumentSession {
     loaded.currentServerSequence = Number(workspace.currentServerSequence);
     loaded.authorClocks = this.workspaceAuthorClocks(workspace);
     loaded.authorClock = Math.max(
+      loaded.authorClock,
       this.coveredClock(workspace),
       loaded.authorClocks.get(keys.clientEpochId) ?? 0,
     );
