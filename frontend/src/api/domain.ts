@@ -697,7 +697,18 @@ const unprotectMeeting = async (response: EncryptedMeetingResponse): Promise<Mee
   };
   if (!response.workspace) return meeting;
   try {
-    await meetingDocumentSession.load(response.id, response.workspace);
+    const provider = meetingCollaboration.get(response.id);
+    if (provider) {
+      try {
+        await provider.synchronize();
+      } catch {
+        // Keep the attached local document visible while its live provider reports the failure.
+      }
+      await Promise.all((response.workspace.priorDocuments ?? []).map((prior) =>
+        meetingDocumentSession.load(`prior:${prior.documentId}`, prior)));
+    } else {
+      await meetingDocumentSession.load(response.id, response.workspace);
+    }
     const fragments = meetingDocumentSession.hydrateFragments(
       response.id,
       (response.agenda ?? []).map((item) => ({
@@ -1015,32 +1026,34 @@ export const api = {
       }));
     }
     if (meeting.workspace && meeting.status !== 'completed' && scalarSession.isUnlocked()) {
-      await meetingCollaboration.start(
-        id,
-        () => request<CollaborationTicket>(`/api/meetings/${id}/collaboration-ticket`, { method: 'POST' }),
-        (path) => {
-          const url = new URL(`${apiBaseUrl}${path}`, window.location.origin);
-          url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
-          return new WebSocket(url);
-        },
-        () => api.compactMeetingWorkspace(id, [
-          'meeting/general-notes',
-          'meeting/opening-input',
-          ...(meeting.agenda ?? []).flatMap((item) => item.topic?.type === 'person'
-            ? [meetingFragmentId('personNote', item.id)]
-            : [
-                meetingFragmentId('preparationContext', item.id),
-                meetingFragmentId('meetingMinutes', item.id),
-              ]),
-        ]),
-        async () => {
-          const workspace = await request<EncryptedWorkspace | null>(
-            `/api/meetings/${id}/workspace`,
-          );
-          if (!workspace) throw new Error('MEETING_WORKSPACE_UNAVAILABLE');
-          return meetingDocumentSession.merge(id, workspace, MEETING_COLLABORATION_ORIGIN);
-        },
-      );
+      if (!meetingCollaboration.get(id)) {
+        await meetingCollaboration.start(
+          id,
+          () => request<CollaborationTicket>(`/api/meetings/${id}/collaboration-ticket`, { method: 'POST' }),
+          (path) => {
+            const url = new URL(`${apiBaseUrl}${path}`, window.location.origin);
+            url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
+            return new WebSocket(url);
+          },
+          () => api.compactMeetingWorkspace(id, [
+            'meeting/general-notes',
+            'meeting/opening-input',
+            ...(meeting.agenda ?? []).flatMap((item) => item.topic?.type === 'person'
+              ? [meetingFragmentId('personNote', item.id)]
+              : [
+                  meetingFragmentId('preparationContext', item.id),
+                  meetingFragmentId('meetingMinutes', item.id),
+                ]),
+          ]),
+          async () => {
+            const workspace = await request<EncryptedWorkspace | null>(
+              `/api/meetings/${id}/workspace`,
+            );
+            if (!workspace) throw new Error('MEETING_WORKSPACE_UNAVAILABLE');
+            return meetingDocumentSession.merge(id, workspace, MEETING_COLLABORATION_ORIGIN);
+          },
+        );
+      }
       meeting.collaboration = { available: true };
     }
     return meeting;

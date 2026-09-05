@@ -426,6 +426,52 @@ describe("EncryptedMeetingCollaborationProvider", () => {
     document.destroy();
   });
 
+  it("reconnects after a failed explicit synchronization", async () => {
+    const document = new Y.Doc();
+    const sockets = [new FakeSocket(), new FakeSocket()];
+    let socketIndex = 0;
+    let synchronization = 0;
+    vi.spyOn(meetingDocumentSession, "encryptAwareness").mockResolvedValue("awareness");
+    const provider = new EncryptedMeetingCollaborationProvider(
+      "meeting",
+      document,
+      async () => ({ ticket: "ticket", documentId: "document", websocketPath: "/socket" }),
+      () => sockets[socketIndex++] as unknown as WebSocket,
+      undefined,
+      async () => {
+        synchronization += 1;
+        if (synchronization === 2) throw new Error("Network unavailable");
+        return { parentChanged: false };
+      },
+    );
+    await provider.connect();
+    sockets[0].open();
+    sockets[0].receive({ type: "authenticated" });
+    await settle();
+    expect(provider.status).toBe("online");
+    vi.spyOn(window, "setTimeout").mockImplementation((handler: TimerHandler) => {
+      queueMicrotask(() => (handler as () => void)());
+      return 1 as any;
+    });
+
+    await expect(provider.synchronize()).rejects.toThrow("Network unavailable");
+
+    expect(provider.status).toBe("connecting");
+    expect(sockets[0].readyState).toBe(WebSocket.CLOSED);
+    for (let index = 0; index < 10 && socketIndex < 2; index += 1) {
+      await Promise.resolve();
+    }
+    expect(socketIndex).toBe(2);
+    sockets[1].open();
+    sockets[1].receive({ type: "authenticated" });
+    for (let index = 0; index < 10 && provider.status !== "online"; index += 1) {
+      await Promise.resolve();
+    }
+    expect(provider.status).toBe("online");
+    provider.destroy();
+    document.destroy();
+  });
+
   it("serializes a new edit behind parent-change resealing", async () => {
     const document = new Y.Doc();
     const socket = new FakeSocket();

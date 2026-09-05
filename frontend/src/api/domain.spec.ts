@@ -2,7 +2,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { api, formatUser, meetingLabel, request, toLocalDate } from "./domain";
 import { Decoder, Encoder } from "cbor-x";
 import { meetingDocumentSession } from "../e2ee/meeting-document-session";
-import { MEETING_COLLABORATION_ORIGIN } from "../e2ee/meeting-collaboration";
+import {
+  MEETING_COLLABORATION_ORIGIN,
+  meetingCollaboration,
+} from "../e2ee/meeting-collaboration";
+import { scalarSession } from "../e2ee/scalar-session";
 
 const response = (body: unknown, options: Partial<Response> = {}) =>
   ({
@@ -15,6 +19,7 @@ const response = (body: unknown, options: Partial<Response> = {}) =>
 
 describe("domain API client", () => {
   afterEach(() => {
+    vi.restoreAllMocks();
     vi.unstubAllEnvs();
     vi.unstubAllGlobals();
   });
@@ -291,6 +296,91 @@ describe("domain API client", () => {
       preparationContext: { text: "Earlier preparation" },
       meetingMinutes: { text: "Earlier minutes" },
     });
+  });
+  it("keeps the active collaborative document attached while refreshing Meeting data", async () => {
+    const workspace = {
+      meetingId: "meeting",
+      documentId: "document",
+      activeSnapshotId: "snapshot",
+      currentServerSequence: "23",
+      snapshot: {},
+      updates: [],
+      priorDocuments: [{
+        meetingId: "prior-meeting",
+        documentId: "prior-document",
+        activeSnapshotId: "prior-snapshot",
+        currentServerSequence: "4",
+        snapshot: {},
+        updates: [],
+      }],
+    };
+    const fetch = vi.fn().mockResolvedValue(response({
+      id: "meeting",
+      protected: null,
+      date: "2026-09-05",
+      beginTime: "19:00",
+      status: "in_progress",
+      agenda: [],
+      workspace,
+    }));
+    vi.stubGlobal("fetch", fetch);
+    const synchronize = vi.fn().mockResolvedValue(undefined);
+    vi.spyOn(meetingCollaboration, "get").mockReturnValue({
+      meetingId: "meeting",
+      synchronize,
+    } as any);
+    vi.spyOn(scalarSession, "isUnlocked").mockReturnValue(true);
+    const start = vi.spyOn(meetingCollaboration, "start");
+    const load = vi.spyOn(meetingDocumentSession, "load").mockResolvedValue();
+    vi.spyOn(meetingDocumentSession, "hydrateFragments").mockReturnValue({
+      generalNotes: "Current notes",
+      openingInput: "",
+      appearances: new Map(),
+    });
+
+    const result = await api.meeting("meeting");
+
+    expect(result.generalNotes).toBe("Current notes");
+    expect(synchronize).toHaveBeenCalledOnce();
+    expect(load).toHaveBeenCalledOnce();
+    expect(load).toHaveBeenCalledWith(
+      "prior:prior-document",
+      workspace.priorDocuments[0],
+    );
+    expect(start).not.toHaveBeenCalled();
+  });
+  it("keeps current collaborative text when an in-place refresh cannot synchronize", async () => {
+    const fetch = vi.fn().mockResolvedValue(response({
+      id: "meeting",
+      protected: null,
+      date: "2026-09-05",
+      beginTime: "19:00",
+      status: "in_progress",
+      agenda: [],
+      workspace: {
+        meetingId: "meeting",
+        documentId: "document",
+        activeSnapshotId: "snapshot",
+        currentServerSequence: "23",
+        snapshot: {},
+        updates: [],
+      },
+    }));
+    vi.stubGlobal("fetch", fetch);
+    vi.spyOn(meetingCollaboration, "get").mockReturnValue({
+      meetingId: "meeting",
+      synchronize: vi.fn().mockRejectedValue(new Error("Network unavailable")),
+    } as any);
+    vi.spyOn(scalarSession, "isUnlocked").mockReturnValue(true);
+    vi.spyOn(meetingDocumentSession, "hydrateFragments").mockReturnValue({
+      generalNotes: "Unsaved current notes",
+      openingInput: "",
+      appearances: new Map(),
+    });
+
+    const result = await api.meeting("meeting");
+
+    expect(result.generalNotes).toBe("Unsaved current notes");
   });
   it("sends representative GET/PUT/DELETE requests and a mutable meeting-topic payload", async () => {
     const fetch = vi.fn().mockResolvedValue(response({}));

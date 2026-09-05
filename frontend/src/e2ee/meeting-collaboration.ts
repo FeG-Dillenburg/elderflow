@@ -246,10 +246,19 @@ export class EncryptedMeetingCollaborationProvider extends EventTarget {
   }
 
   async synchronize(rebasePending = false): Promise<void> {
-    await this.enqueue(async () => {
-      const { parentChanged } = await this.resync?.() ?? { parentChanged: false };
-      if ((parentChanged || rebasePending) && this.pending.length) await this.rebasePending();
-    });
+    try {
+      await this.enqueue(async () => {
+        const { parentChanged } = await this.resync?.() ?? { parentChanged: false };
+        if ((parentChanged || rebasePending) && this.pending.length) await this.rebasePending();
+      });
+    } catch (error) {
+      if (!this.stopped && this.socket?.readyState === WebSocket.OPEN) {
+        this.socket.close();
+      } else if (!this.stopped) {
+        this.setStatus(this.pending.length ? "pending" : "offline");
+      }
+      throw error;
+    }
   }
 
   async readyForCompletion(): Promise<boolean> {
