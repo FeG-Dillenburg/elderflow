@@ -156,10 +156,7 @@ export class EncryptedMeetingCollaborationProvider extends EventTarget {
       );
       this.flush();
       if (!this.pending.length && Number(frame.serverSequence) % 100 === 0 && !this.compacting) {
-        this.compacting = true;
-        void this.compact?.().catch(() => this.setStatus("rejected")).finally(() => {
-          this.compacting = false;
-        });
+        this.scheduleCompaction();
       }
       return;
     }
@@ -205,7 +202,7 @@ export class EncryptedMeetingCollaborationProvider extends EventTarget {
         this.reloadCanonical();
       } else if (["E2EE_SNAPSHOT_PARENT_INVALID", "E2EE_ENVELOPE_CONTEXT_INVALID"].includes(frame.code)) {
         this.setStatus("connecting");
-        await this.synchronize();
+        await this.synchronize(true);
       } else if (frame.code === "E2EE_AUTHOR_CLOCK_GAP") {
         this.setStatus("connecting");
         await this.synchronize(true);
@@ -249,9 +246,48 @@ export class EncryptedMeetingCollaborationProvider extends EventTarget {
   }
 
   async synchronize(rebasePending = false): Promise<void> {
-    await this.enqueue(async () => {
-      const { parentChanged } = await this.resync?.() ?? { parentChanged: false };
-      if ((parentChanged || rebasePending) && this.pending.length) await this.rebasePending();
+    try {
+      await this.enqueue(async () => {
+        const { parentChanged } = await this.resync?.() ?? { parentChanged: false };
+        if ((parentChanged || rebasePending) && this.pending.length) await this.rebasePending();
+      });
+    } catch (error) {
+      if (!this.stopped && this.socket?.readyState === WebSocket.OPEN) {
+        this.socket.close();
+      } else if (!this.stopped) {
+        this.setStatus(this.pending.length ? "pending" : "offline");
+      }
+      throw error;
+    }
+  }
+
+  async readyForCompletion(): Promise<boolean> {
+    let queued = this.encryption;
+    await queued;
+    while (queued !== this.encryption) {
+      queued = this.encryption;
+      await queued;
+    }
+    return !this.stopped
+      && this.status === "online"
+      && this.pending.length === 0
+      && this.sent.size === 0;
+  }
+
+  private scheduleCompaction(): void {
+    this.compacting = true;
+    void this.enqueue(async () => {
+      if (this.stopped || this.pending.length) return;
+      await this.compact?.();
+    }).catch(async () => {
+      if (this.stopped) return;
+      try {
+        await this.synchronize();
+      } catch {
+        this.setStatus("rejected");
+      }
+    }).finally(() => {
+      this.compacting = false;
     });
   }
 

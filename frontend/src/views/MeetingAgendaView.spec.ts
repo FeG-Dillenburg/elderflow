@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { api, type AuthUser } from "../api/domain";
 import { auth } from "../auth/auth";
 import { protectedText } from "../e2ee/protected-text";
+import { meetingCollaboration } from "../e2ee/meeting-collaboration";
 import MeetingAgendaView from "./MeetingAgendaView.vue";
 import { savePersonMeetingNote } from "../topics/meetingTopicEdits";
 
@@ -468,6 +469,31 @@ describe("MeetingAgendaView", () => {
     const wrapper = await view();
 
     expect(wrapper.text()).not.toContain("Finish meeting");
+  });
+
+  it("does not complete while this browser still has unsaved Meeting text", async () => {
+    const activeMeeting = structuredClone(meeting);
+    activeMeeting.status = "in_progress";
+    activeMeeting.meetingLeaderId = "leader";
+    auth.setUser(authenticatedUser("leader"));
+    vi.spyOn(api, "meeting").mockResolvedValueOnce(activeMeeting);
+    const complete = vi.spyOn(api, "completeMeeting");
+    const readyForCompletion = vi.fn().mockResolvedValue(false);
+    vi.spyOn(meetingCollaboration, "get").mockReturnValue({
+      readyForCompletion,
+    } as unknown as ReturnType<typeof meetingCollaboration.get>);
+
+    const wrapper = await view();
+    const vm: any = wrapper.vm;
+    vm.finishVisible = true;
+    await vm.finishMeeting();
+    await flushPromises();
+
+    expect(readyForCompletion).toHaveBeenCalledOnce();
+    expect(complete).not.toHaveBeenCalled();
+    expect(wrapper.text()).toContain(
+      "Encrypted Meeting changes have not finished saving. Wait for live collaboration to connect, then try again.",
+    );
   });
 
   it("prevents duplicate completion, reports failure, and switches successful completion to read-only", async () => {

@@ -242,8 +242,23 @@ export interface MeetingTopic {
   godparentsSnapshot?: string | null;
   protectedSnapshot?: EncryptedTopicSnapshot | null;
   meeting?: Meeting;
-  previousAppearance?: { appearanceId: string; meetingId: string } | null;
+  previousAppearance?: ({ appearanceId: string; meetingId: string } & Partial<MeetingAppearanceTexts>) | null;
 }
+
+export interface MeetingTopicAddition {
+  topicId: string;
+  sectionId: string;
+  position?: number;
+  topic?: Topic;
+  source?: AgendaAppearanceSource;
+  sourceAppearance?: { id: string; meetingId: string } | null;
+}
+
+export type MeetingSuggestion = Topic & {
+  isNew: boolean;
+  previousSectionId: string | null;
+  previousAppearance: { id: string; meetingId: string } | null;
+};
 
 export interface SkippedRecurrence {
   id: string;
@@ -571,6 +586,38 @@ function encodeMeetingTopicMutation(input: {
   ]));
 }
 
+function encodeMeetingTopicsMutation(
+  initialUpdateEnvelope: string,
+  items: Array<{
+    id: string;
+    mutationId: string;
+    topicId: string;
+    sectionId: string;
+    source?: 'manual' | 'recurrence';
+    position?: number;
+    plannedDuration?: number | null;
+    sourceAppearanceId?: string;
+  }>,
+): Uint8Array {
+  return Uint8Array.from(cborEncoder.encode([
+    base64UrlToBytes(initialUpdateEnvelope),
+    items.map((input) => [
+      input.id,
+      input.mutationId,
+      input.topicId,
+      input.sectionId,
+      input.source ?? null,
+      input.source !== undefined,
+      input.position ?? null,
+      input.position !== undefined,
+      input.plannedDuration ?? null,
+      input.plannedDuration !== undefined,
+      input.sourceAppearanceId ?? null,
+      input.sourceAppearanceId !== undefined,
+    ]),
+  ]));
+}
+
 
 const query = (values: Record<string, string | boolean | null | undefined>): string => {
   const params = new URLSearchParams();
@@ -579,6 +626,52 @@ const query = (values: Record<string, string | boolean | null | undefined>): str
   });
   const result = params.toString();
   return result ? `?${result}` : '';
+};
+
+const recoverMeetingWorkspace = async (meetingId: string): Promise<void> => {
+  try {
+    const workspace = await request<EncryptedWorkspace | null>(
+      `/api/meetings/${meetingId}/workspace`,
+    );
+    if (workspace) await meetingDocumentSession.load(meetingId, workspace);
+    else meetingDocumentSession.discard(meetingId);
+  } catch {
+    meetingDocumentSession.discard(meetingId);
+  }
+};
+
+const initialMeetingTopicText = async (
+  meetingId: string,
+  input: MeetingTopicAddition,
+): Promise<string> => {
+  if (!input.topic) return '';
+  const person = input.topic?.type === 'person';
+  if (input.topic.type === 'recurring') return input.topic.description ?? '';
+
+  const suggestion = input.topic as Partial<MeetingSuggestion>;
+  let priorAppearance = input.sourceAppearance ?? suggestion.previousAppearance;
+  if (suggestion.isNew === undefined && !priorAppearance) {
+    priorAppearance = (await api.topicAppearances(
+      input.topicId,
+      { beforeMeetingId: meetingId },
+    ))[0];
+  }
+  const firstAppearance = suggestion.isNew ?? !priorAppearance;
+  if (firstAppearance) return input.topic.description ?? '';
+  if (person && priorAppearance) {
+    const priorWorkspace = await request<EncryptedWorkspace | null>(
+      `/api/meetings/${priorAppearance.meetingId}/workspace`,
+    );
+    if (priorWorkspace) {
+      const sessionId = `copy-forward:${priorAppearance.meetingId}`;
+      await meetingDocumentSession.load(sessionId, priorWorkspace);
+      return meetingDocumentSession.hydrateFragments(sessionId, [{
+        id: priorAppearance.id,
+        person: true,
+      }]).appearances.get(priorAppearance.id)?.personNote ?? '';
+    }
+  }
+  return '';
 };
 
 type EncryptedDashboardTopicSummary = Omit<DashboardTopicSummary, 'name'> & EncryptedTopicLabel;
@@ -604,7 +697,18 @@ const unprotectMeeting = async (response: EncryptedMeetingResponse): Promise<Mee
   };
   if (!response.workspace) return meeting;
   try {
-    await meetingDocumentSession.load(response.id, response.workspace);
+    const provider = meetingCollaboration.get(response.id);
+    if (provider) {
+      try {
+        await provider.synchronize();
+      } catch {
+        // Keep the attached local document visible while its live provider reports the failure.
+      }
+      await Promise.all((response.workspace.priorDocuments ?? []).map((prior) =>
+        meetingDocumentSession.load(`prior:${prior.documentId}`, prior)));
+    } else {
+      await meetingDocumentSession.load(response.id, response.workspace);
+    }
     const fragments = meetingDocumentSession.hydrateFragments(
       response.id,
       (response.agenda ?? []).map((item) => ({
@@ -625,11 +729,51 @@ const unprotectMeeting = async (response: EncryptedMeetingResponse): Promise<Mee
       const meetingMinutes = values.meetingMinutes === null
         ? null
         : { id: item.id, text: values.meetingMinutes, version: 0 };
+      const priorWorkspace = item.previousAppearance
+        ? response.workspace?.priorDocuments?.find((prior) =>
+            prior.meetingId === item.previousAppearance?.meetingId)
+        : undefined;
+      const priorValues = item.previousAppearance && priorWorkspace
+        ? meetingDocumentSession.hydrateFragments(
+            `prior:${priorWorkspace.documentId}`,
+            [{
+              id: item.previousAppearance.appearanceId,
+              person: item.topic?.type === 'person',
+            }],
+          ).appearances.get(item.previousAppearance.appearanceId)
+        : undefined;
+      const previousAppearance = item.previousAppearance
+        ? {
+            ...item.previousAppearance,
+            preparationContext: priorValues?.preparationContext == null
+              ? null
+              : {
+                  id: item.previousAppearance.appearanceId,
+                  text: priorValues.preparationContext,
+                  version: 0,
+                },
+            personNote: priorValues?.personNote == null
+              ? null
+              : {
+                  id: item.previousAppearance.appearanceId,
+                  text: priorValues.personNote,
+                  version: 0,
+                },
+            meetingMinutes: priorValues?.meetingMinutes == null
+              ? null
+              : {
+                  id: item.previousAppearance.appearanceId,
+                  text: priorValues.meetingMinutes,
+                  version: 0,
+                },
+          }
+        : null;
       return {
         ...item,
         preparationContext,
         personNote,
         meetingMinutes,
+        previousAppearance,
       };
     });
   } catch {
@@ -882,32 +1026,34 @@ export const api = {
       }));
     }
     if (meeting.workspace && meeting.status !== 'completed' && scalarSession.isUnlocked()) {
-      await meetingCollaboration.start(
-        id,
-        () => request<CollaborationTicket>(`/api/meetings/${id}/collaboration-ticket`, { method: 'POST' }),
-        (path) => {
-          const url = new URL(`${apiBaseUrl}${path}`, window.location.origin);
-          url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
-          return new WebSocket(url);
-        },
-        () => api.compactMeetingWorkspace(id, [
-          'meeting/general-notes',
-          'meeting/opening-input',
-          ...(meeting.agenda ?? []).flatMap((item) => item.topic?.type === 'person'
-            ? [meetingFragmentId('personNote', item.id)]
-            : [
-                meetingFragmentId('preparationContext', item.id),
-                meetingFragmentId('meetingMinutes', item.id),
-              ]),
-        ]),
-        async () => {
-          const workspace = await request<EncryptedWorkspace | null>(
-            `/api/meetings/${id}/workspace`,
-          );
-          if (!workspace) throw new Error('MEETING_WORKSPACE_UNAVAILABLE');
-          return meetingDocumentSession.merge(id, workspace, MEETING_COLLABORATION_ORIGIN);
-        },
-      );
+      if (!meetingCollaboration.get(id)) {
+        await meetingCollaboration.start(
+          id,
+          () => request<CollaborationTicket>(`/api/meetings/${id}/collaboration-ticket`, { method: 'POST' }),
+          (path) => {
+            const url = new URL(`${apiBaseUrl}${path}`, window.location.origin);
+            url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
+            return new WebSocket(url);
+          },
+          () => api.compactMeetingWorkspace(id, [
+            'meeting/general-notes',
+            'meeting/opening-input',
+            ...(meeting.agenda ?? []).flatMap((item) => item.topic?.type === 'person'
+              ? [meetingFragmentId('personNote', item.id)]
+              : [
+                  meetingFragmentId('preparationContext', item.id),
+                  meetingFragmentId('meetingMinutes', item.id),
+                ]),
+          ]),
+          async () => {
+            const workspace = await request<EncryptedWorkspace | null>(
+              `/api/meetings/${id}/workspace`,
+            );
+            if (!workspace) throw new Error('MEETING_WORKSPACE_UNAVAILABLE');
+            return meetingDocumentSession.merge(id, workspace, MEETING_COLLABORATION_ORIGIN);
+          },
+        );
+      }
       meeting.collaboration = { available: true };
     }
     return meeting;
@@ -979,34 +1125,23 @@ export const api = {
         appearanceId ? { 'X-ElderFlow-Appearance-Id': appearanceId } : {},
       );
     } catch (error) {
-      try {
-        const workspace = await request<EncryptedWorkspace | null>(`/api/meetings/${id}/workspace`);
-        if (workspace) await meetingDocumentSession.load(id, workspace);
-        else meetingDocumentSession.discard(id);
-      } catch {
-        meetingDocumentSession.discard(id);
-      }
+      await recoverMeetingWorkspace(id);
       throw error;
     }
   },
   compactMeetingWorkspace: async (id: string, fragments: import('../e2ee/meeting-document-codec').StableMeetingFragment[]) => {
     const snapshot = await meetingDocumentSession.createCompaction(id, fragments);
-    try {
-      await requestWithBinaryBody(
-        `/api/meetings/${id}/workspace/compact`,
-        base64UrlToBytes(snapshot.snapshotEnvelope),
-        { 'X-ElderFlow-Snapshot-Id': snapshot.snapshotId },
-      );
-      await meetingDocumentSession.acceptCompaction(
-        id,
-        snapshot.snapshotId,
-        snapshot.snapshotEnvelope,
-        MEETING_COLLABORATION_ORIGIN,
-      );
-    } catch (error) {
-      await meetingCollaboration.get(id)?.synchronize();
-      throw error;
-    }
+    await requestWithBinaryBody(
+      `/api/meetings/${id}/workspace/compact`,
+      base64UrlToBytes(snapshot.snapshotEnvelope),
+      { 'X-ElderFlow-Snapshot-Id': snapshot.snapshotId },
+    );
+    await meetingDocumentSession.acceptCompaction(
+      id,
+      snapshot.snapshotId,
+      snapshot.snapshotEnvelope,
+      MEETING_COLLABORATION_ORIGIN,
+    );
   },
   completeMeeting: async (id: string) => {
     const response = await request<EncryptedMeetingResponse>(`/api/meetings/${id}/complete`, { method: 'POST' });
@@ -1015,47 +1150,25 @@ export const api = {
     await reconcileAllRecurringTopics();
     return meeting;
   },
-  meetingSuggestions: async (id: string, options?: { future?: boolean }) => Promise.all(
-    (await request<EncryptedTopicResponse[]>(`/api/meetings/${id}/suggestions${query({
+  meetingSuggestions: async (id: string, options?: { future?: boolean }): Promise<MeetingSuggestion[]> => Promise.all(
+    (await request<Array<EncryptedTopicResponse & Pick<MeetingSuggestion, 'isNew' | 'previousSectionId' | 'previousAppearance'>>>(`/api/meetings/${id}/suggestions${query({
       future: options?.future ? true : undefined,
-    })}`)).map((topic) => unprotectTopic(topic)),
+    })}`)).map(async (topic) => ({
+      ...await unprotectTopic(topic),
+      isNew: topic.isNew,
+      previousSectionId: topic.previousSectionId,
+      previousAppearance: topic.previousAppearance,
+    } as MeetingSuggestion)),
   ),
   addParticipant: (meetingId: string, input: { userId: string; attendanceStatus: string }) => request<MeetingParticipant>(`/api/meetings/${meetingId}/participants`, { method: 'POST', body: JSON.stringify(input) }),
   removeParticipant: (meetingId: string, userId: string) => request<void>(`/api/meetings/${meetingId}/participants/${userId}`, { method: 'DELETE' }),
   addMeetingTopic: async (
     meetingId: string,
-    input: {
-      topicId: string;
-      sectionId: string;
-      position?: number;
-      topic?: Topic;
-      source?: 'manual' | 'recurrence';
-      sourceAppearance?: { id: string; meetingId: string } | null;
-    },
+    input: MeetingTopicAddition,
   ) => {
     const appearanceId = crypto.randomUUID();
     const person = input.topic?.type === 'person';
-    let initialText = input.topic?.type === 'recurring' ? input.topic.description ?? '' : '';
-    if (person || input.topic?.type === 'recurring') {
-      const priorAppearance = input.sourceAppearance
-        ?? (await api.topicAppearances(input.topicId, { beforeMeetingId: meetingId }))[0];
-      if (priorAppearance) {
-        const priorWorkspace = await request<EncryptedWorkspace | null>(
-          `/api/meetings/${priorAppearance.meetingId}/workspace`,
-        );
-        if (priorWorkspace) {
-          const sessionId = `copy-forward:${priorAppearance.meetingId}`;
-          await meetingDocumentSession.load(sessionId, priorWorkspace);
-          const priorValues = meetingDocumentSession.hydrateFragments(sessionId, [{
-            id: priorAppearance.id,
-            person,
-          }]).appearances.get(priorAppearance.id);
-          initialText = person
-            ? priorValues?.personNote ?? ''
-            : priorValues?.preparationContext ?? '';
-        }
-      }
-    }
+    const initialText = await initialMeetingTopicText(meetingId, input);
     const initialUpdateEnvelope = await meetingDocumentSession.createFragmentUpdate(
       meetingId,
       meetingFragmentId(person ? 'personNote' : 'preparationContext', appearanceId),
@@ -1079,15 +1192,62 @@ export const api = {
         }),
       );
     } catch (error) {
-      try {
-        const workspace = await request<EncryptedWorkspace | null>(
-          `/api/meetings/${meetingId}/workspace`,
-        );
-        if (workspace) await meetingDocumentSession.load(meetingId, workspace);
-        else meetingDocumentSession.discard(meetingId);
-      } catch {
-        meetingDocumentSession.discard(meetingId);
-      }
+      await recoverMeetingWorkspace(meetingId);
+      throw error;
+    }
+  },
+  addMeetingTopics: async (
+    meetingId: string,
+    inputs: MeetingTopicAddition[],
+  ): Promise<MeetingTopic[]> => {
+    if (!inputs.length) return [];
+    const prepared: Array<{
+      input: MeetingTopicAddition;
+      id: string;
+      mutationId: string;
+      initialText: string;
+    }> = [];
+    for (const input of inputs) {
+      prepared.push({
+        input,
+        id: crypto.randomUUID(),
+        mutationId: crypto.randomUUID(),
+        initialText: await initialMeetingTopicText(meetingId, input),
+      });
+    }
+    const initialUpdateEnvelope = await meetingDocumentSession.createFragmentsUpdate(
+      meetingId,
+      prepared.map(({ id, input, initialText }) => ({
+        fragment: meetingFragmentId(
+          input.topic?.type === 'person' ? 'personNote' : 'preparationContext',
+          id,
+        ),
+        value: initialText,
+      })),
+      MEETING_COLLABORATION_ORIGIN,
+    );
+    try {
+      return await requestWithBinaryBody<MeetingTopic[]>(
+        `/api/meetings/${meetingId}/topics/batch`,
+        encodeMeetingTopicsMutation(
+          initialUpdateEnvelope,
+          prepared.map(({ input, id, mutationId }) => ({
+            id,
+            mutationId,
+            topicId: input.topicId,
+            sectionId: input.sectionId,
+            source: input.source,
+            position: input.position,
+            plannedDuration: input.topic?.type === 'person'
+              || input.topic?.type === 'new_membership'
+              ? null
+              : undefined,
+            sourceAppearanceId: input.sourceAppearance?.id,
+          })),
+        ),
+      );
+    } catch (error) {
+      await recoverMeetingWorkspace(meetingId);
       throw error;
     }
   },

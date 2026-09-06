@@ -1,5 +1,9 @@
 import { Encoder } from "cbor-x";
-import { decodeMeetingCreateBody, decodeMeetingTopicBody } from "./meeting-create-binary";
+import {
+  decodeMeetingCreateBody,
+  decodeMeetingTopicBody,
+  decodeMeetingTopicsBody,
+} from "./meeting-create-binary";
 
 const encoder = new Encoder({
   mapsAsObjects: false,
@@ -55,6 +59,54 @@ describe("binary Meeting create body", () => {
       source: "recurrence",
       position: 2,
       initialUpdateEnvelope: "BQY",
+    });
+  });
+
+  it("decodes several agenda appearances sharing one encrypted document update", () => {
+    const body = Buffer.from(encoder.encode([
+      Uint8Array.from([7, 8]),
+      [
+        [
+          "00000000-0000-4000-8000-000000000001",
+          "00000000-0000-4000-8000-000000000002",
+          "00000000-0000-4000-8000-000000000003",
+          "00000000-0000-4000-8000-000000000004",
+          null,
+          false,
+          null,
+          false,
+          null,
+          false,
+          null,
+          false,
+        ],
+        [
+          "00000000-0000-4000-8000-000000000005",
+          "00000000-0000-4000-8000-000000000006",
+          "00000000-0000-4000-8000-000000000007",
+          "00000000-0000-4000-8000-000000000008",
+          "manual",
+          true,
+          2,
+          true,
+          null,
+          false,
+          null,
+          false,
+        ],
+      ],
+    ]));
+
+    expect(decodeMeetingTopicsBody(body)).toMatchObject({
+      initialUpdateEnvelope: "Bwg",
+      items: [
+        { topicId: "00000000-0000-4000-8000-000000000003" },
+        {
+          topicId: "00000000-0000-4000-8000-000000000007",
+          source: "manual",
+          position: 2,
+        },
+      ],
     });
   });
 });

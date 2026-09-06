@@ -112,6 +112,19 @@ describe("PersonTopicNote", () => {
     expect(wrapper.text()).toContain("Initial note");
   });
 
+  it("uses block-safe rich-text markup beside the completed Person label", () => {
+    const completedItem = item();
+    completedItem.personNote.text = "<p>First line</p><p>Second line</p>";
+    const wrapper = mountNote(
+      { item: completedItem, readOnly: true, save: async () => completedItem },
+      { label: '<a href="/topics/topic">Alex:</a>' },
+    );
+
+    expect(wrapper.get(".read-only-note").element.tagName).toBe("DIV");
+    expect(wrapper.get(".read-only-content").findAll(":scope > p")).toHaveLength(2);
+    expect(wrapper.get(".read-only-label").text()).toBe("Alex:");
+  });
+
   it("binds the Person note to its isolated collaborative fragment", async () => {
     const wrapper = mountNote(
       { item: item(), readOnly: false, save: async () => item() },

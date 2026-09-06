@@ -1,6 +1,6 @@
 import { BadRequestException, PipeTransform } from "@nestjs/common";
-import { MeetingDocumentUpdateDto, MeetingDto, MeetingTopicDto } from "./dto/meeting.dto";
-import { decodeMeetingCreateBody, decodeMeetingTopicBody } from "./meeting-create-binary";
+import { MeetingDocumentUpdateDto, MeetingDto, MeetingTopicDto, MeetingTopicsDto } from "./dto/meeting.dto";
+import { decodeMeetingCreateBody, decodeMeetingTopicBody, decodeMeetingTopicsBody } from "./meeting-create-binary";
 
 export class MeetingCreateBinaryPipe implements PipeTransform<unknown, MeetingDto> {
   transform(value: unknown): MeetingDto {
@@ -29,6 +29,13 @@ export class MeetingTopicBinaryPipe implements PipeTransform<unknown, MeetingTop
   transform(value: unknown): MeetingTopicDto {
     if (!Buffer.isBuffer(value)) return invalid();
     return decodeMeetingTopicBody(value);
+  }
+}
+
+export class MeetingTopicsBinaryPipe implements PipeTransform<unknown, MeetingTopicsDto> {
+  transform(value: unknown): MeetingTopicsDto {
+    if (!Buffer.isBuffer(value)) return invalid();
+    return decodeMeetingTopicsBody(value);
   }
 }
 

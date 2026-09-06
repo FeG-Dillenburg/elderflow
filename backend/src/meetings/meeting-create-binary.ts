@@ -1,6 +1,6 @@
 import { BadRequestException } from "@nestjs/common";
 import { Decoder, Encoder } from "cbor-x";
-import { MeetingDto, MeetingTopicDto } from "./dto/meeting.dto";
+import { MeetingDto, MeetingTopicDto, MeetingTopicsDto } from "./dto/meeting.dto";
 
 const decoder = new Decoder({ mapsAsObjects: false, useRecords: false });
 const encoder = new Encoder({
@@ -79,6 +79,50 @@ export function decodeMeetingTopicBody(body: Buffer): MeetingTopicDto {
     ...(value[10] ? { plannedDuration: value[9] } : {}),
     ...(value[12] ? { sourceAppearanceId: value[11] } : {}),
   } as MeetingTopicDto;
+}
+
+export function decodeMeetingTopicsBody(body: Buffer): MeetingTopicsDto {
+  const value = decodeCanonicalArray(body, 4_200_000);
+  if (value.length !== 2
+    || !(value[0] instanceof Uint8Array)
+    || !Array.isArray(value[1])
+    || value[1].length === 0
+    || value[1].length > 100) {
+    invalid();
+  }
+  return {
+    initialUpdateEnvelope: Buffer.from(value[0]).toString("base64url"),
+    items: value[1].map((item) => decodeMeetingTopicBatchItem(item)),
+  };
+}
+
+function decodeMeetingTopicBatchItem(value: unknown): Omit<MeetingTopicDto, "initialUpdateEnvelope"> {
+  if (!Array.isArray(value)
+    || value.length !== 12
+    || !isUuid(value[0])
+    || !isUuid(value[1])
+    || !isUuid(value[2])
+    || !isUuid(value[3])
+    || ![null, "manual", "recurrence"].includes(value[4] as null | string)
+    || typeof value[5] !== "boolean"
+    || !isNullablePositiveInteger(value[6])
+    || typeof value[7] !== "boolean"
+    || !isNullablePositiveInteger(value[8])
+    || typeof value[9] !== "boolean"
+    || !isNullableUuid(value[10])
+    || typeof value[11] !== "boolean") {
+    invalid();
+  }
+  return {
+    id: value[0],
+    mutationId: value[1],
+    topicId: value[2],
+    sectionId: value[3],
+    ...(value[5] ? { source: value[4] } : {}),
+    ...(value[7] ? { position: value[6] } : {}),
+    ...(value[9] ? { plannedDuration: value[8] } : {}),
+    ...(value[11] ? { sourceAppearanceId: value[10] } : {}),
+  } as Omit<MeetingTopicDto, "initialUpdateEnvelope">;
 }
 
 function decodeCanonicalArray(body: Buffer, limit: number): unknown[] {

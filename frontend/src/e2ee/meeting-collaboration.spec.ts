@@ -102,6 +102,121 @@ describe("EncryptedMeetingCollaborationProvider", () => {
     document.destroy();
   });
 
+  it("is not ready for Meeting completion until queued updates are acknowledged", async () => {
+    const document = new Y.Doc();
+    const socket = new FakeSocket();
+    let finishEncryption!: (pending: {
+      envelope: string;
+      activeSnapshotId: string;
+      authorClock: number;
+    }) => void;
+    vi.spyOn(meetingDocumentSession, "createPendingDocumentUpdate")
+      .mockReturnValue(new Promise((resolve) => {
+        finishEncryption = resolve;
+      }));
+    vi.spyOn(meetingDocumentSession, "encryptAwareness").mockResolvedValue("awareness");
+    vi.spyOn(meetingDocumentSession, "acknowledge").mockImplementation(() => undefined);
+    const provider = new EncryptedMeetingCollaborationProvider(
+      "meeting",
+      document,
+      async () => ({ ticket: "ticket", documentId: "document", websocketPath: "/socket" }),
+      () => socket as unknown as WebSocket,
+    );
+    await provider.connect();
+    socket.open();
+    socket.receive({ type: "authenticated" });
+    await settle();
+
+    document.getText("field").insert(0, "not yet saved");
+    const readiness = (provider as unknown as {
+      readyForCompletion: () => Promise<boolean>;
+    }).readyForCompletion();
+    finishEncryption({
+      envelope: "pending-envelope",
+      activeSnapshotId: "snapshot",
+      authorClock: 1,
+    });
+
+    await expect(readiness).resolves.toBe(false);
+    socket.receive({
+      type: "acknowledged",
+      envelope: "pending-envelope",
+      clientEpochId: "epoch",
+      authorClock: "1",
+      serverSequence: "1",
+    });
+    await settle();
+    await expect((provider as unknown as {
+      readyForCompletion: () => Promise<boolean>;
+    }).readyForCompletion()).resolves.toBe(true);
+
+    provider.destroy();
+    document.destroy();
+  });
+
+  it("finishes automatic compaction before encrypting the next local edit", async () => {
+    const document = new Y.Doc();
+    const socket = new FakeSocket();
+    const encrypt = vi.spyOn(meetingDocumentSession, "createPendingDocumentUpdate")
+      .mockResolvedValueOnce({
+        envelope: "before-compaction",
+        activeSnapshotId: "old-snapshot",
+        authorClock: 100,
+      })
+      .mockResolvedValueOnce({
+        envelope: "after-compaction",
+        activeSnapshotId: "new-snapshot",
+        authorClock: 101,
+      });
+    vi.spyOn(meetingDocumentSession, "encryptAwareness").mockResolvedValue("awareness");
+    vi.spyOn(meetingDocumentSession, "acknowledge").mockImplementation(() => undefined);
+    let finishCompaction!: () => void;
+    let markCompactionStarted!: () => void;
+    const compactionStarted = new Promise<void>((resolve) => {
+      markCompactionStarted = resolve;
+    });
+    const compaction = new Promise<void>((resolve) => {
+      finishCompaction = resolve;
+    });
+    const provider = new EncryptedMeetingCollaborationProvider(
+      "meeting",
+      document,
+      async () => ({ ticket: "ticket", documentId: "document", websocketPath: "/socket" }),
+      () => socket as unknown as WebSocket,
+      async () => {
+        markCompactionStarted();
+        await compaction;
+      },
+    );
+    await provider.connect();
+    socket.open();
+    socket.receive({ type: "authenticated" });
+    await settle();
+
+    document.getText("field").insert(0, "a");
+    await settle();
+    socket.receive({
+      type: "acknowledged",
+      envelope: "before-compaction",
+      clientEpochId: "epoch",
+      authorClock: "100",
+      serverSequence: "100",
+    });
+    await compactionStarted;
+    document.getText("field").insert(1, "b");
+    await settle();
+
+    expect(encrypt).toHaveBeenCalledTimes(1);
+    finishCompaction();
+    await settle();
+    expect(encrypt).toHaveBeenCalledTimes(2);
+    expect(socket.sent.map((value) => JSON.parse(value)))
+      .toContainEqual({ type: "update", envelope: "after-compaction" });
+
+    provider.destroy();
+    document.destroy();
+  });
+
   it("reseals each pending delta after compaction instead of encoding the whole document", async () => {
     const document = new Y.Doc();
     document.getText("large-existing-field").insert(0, "x".repeat(1_100_000));
@@ -148,6 +263,69 @@ describe("EncryptedMeetingCollaborationProvider", () => {
       .map((value) => JSON.parse(value) as { type: string; envelope?: string })
       .filter((frame) => frame.type === "update");
     expect(updateFrames).toEqual([{ type: "update", envelope: "new-envelope-1" }]);
+
+    provider.destroy();
+    document.destroy();
+  });
+
+  it("reseals a pending edit after the server rejects its stale snapshot context", async () => {
+    const document = new Y.Doc();
+    const socket = new FakeSocket();
+    const encrypt = vi.spyOn(meetingDocumentSession, "createPendingDocumentUpdate")
+      .mockResolvedValueOnce({
+        envelope: "old-snapshot-envelope",
+        activeSnapshotId: "old-snapshot",
+        authorClock: 1,
+      })
+      .mockResolvedValueOnce({
+        envelope: "current-snapshot-envelope",
+        activeSnapshotId: "current-snapshot",
+        authorClock: 2,
+      });
+    vi.spyOn(meetingDocumentSession, "decryptPendingDocumentUpdate")
+      .mockResolvedValue(new Uint8Array([1, 2, 3]));
+    vi.spyOn(meetingDocumentSession, "encryptAwareness").mockResolvedValue("awareness");
+    vi.spyOn(meetingDocumentSession, "acknowledge").mockImplementation(() => undefined);
+    const resync = vi.fn().mockResolvedValue({ parentChanged: false });
+    const provider = new EncryptedMeetingCollaborationProvider(
+      "meeting",
+      document,
+      async () => ({ ticket: "ticket", documentId: "document", websocketPath: "/socket" }),
+      () => socket as unknown as WebSocket,
+      undefined,
+      resync,
+    );
+    await provider.connect();
+    socket.open();
+    socket.receive({ type: "authenticated" });
+    await settle();
+
+    document.getText("field").insert(0, "not yet saved");
+    await settle();
+    expect(socket.sent.map((value) => JSON.parse(value)))
+      .toContainEqual({ type: "update", envelope: "old-snapshot-envelope" });
+
+    socket.receive({
+      type: "rejected",
+      code: "E2EE_ENVELOPE_CONTEXT_INVALID",
+    });
+    await settle();
+
+    expect(resync).toHaveBeenCalledTimes(2);
+    expect(encrypt).toHaveBeenCalledTimes(2);
+    expect(socket.sent.map((value) => JSON.parse(value)))
+      .toContainEqual({ type: "update", envelope: "current-snapshot-envelope" });
+    expect(provider.status).toBe("pending");
+
+    socket.receive({
+      type: "acknowledged",
+      envelope: "current-snapshot-envelope",
+      clientEpochId: "epoch",
+      authorClock: "2",
+      serverSequence: "101",
+    });
+    await settle();
+    expect(provider.status).toBe("online");
 
     provider.destroy();
     document.destroy();
@@ -244,6 +422,52 @@ describe("EncryptedMeetingCollaborationProvider", () => {
     await settle();
 
     expect(encrypt).not.toHaveBeenCalled();
+    provider.destroy();
+    document.destroy();
+  });
+
+  it("reconnects after a failed explicit synchronization", async () => {
+    const document = new Y.Doc();
+    const sockets = [new FakeSocket(), new FakeSocket()];
+    let socketIndex = 0;
+    let synchronization = 0;
+    vi.spyOn(meetingDocumentSession, "encryptAwareness").mockResolvedValue("awareness");
+    const provider = new EncryptedMeetingCollaborationProvider(
+      "meeting",
+      document,
+      async () => ({ ticket: "ticket", documentId: "document", websocketPath: "/socket" }),
+      () => sockets[socketIndex++] as unknown as WebSocket,
+      undefined,
+      async () => {
+        synchronization += 1;
+        if (synchronization === 2) throw new Error("Network unavailable");
+        return { parentChanged: false };
+      },
+    );
+    await provider.connect();
+    sockets[0].open();
+    sockets[0].receive({ type: "authenticated" });
+    await settle();
+    expect(provider.status).toBe("online");
+    vi.spyOn(window, "setTimeout").mockImplementation((handler: TimerHandler) => {
+      queueMicrotask(() => (handler as () => void)());
+      return 1 as any;
+    });
+
+    await expect(provider.synchronize()).rejects.toThrow("Network unavailable");
+
+    expect(provider.status).toBe("connecting");
+    expect(sockets[0].readyState).toBe(WebSocket.CLOSED);
+    for (let index = 0; index < 10 && socketIndex < 2; index += 1) {
+      await Promise.resolve();
+    }
+    expect(socketIndex).toBe(2);
+    sockets[1].open();
+    sockets[1].receive({ type: "authenticated" });
+    for (let index = 0; index < 10 && provider.status !== "online"; index += 1) {
+      await Promise.resolve();
+    }
+    expect(provider.status).toBe("online");
     provider.destroy();
     document.destroy();
   });
@@ -405,6 +629,83 @@ describe("EncryptedMeetingCollaborationProvider", () => {
     expect(restored.hydrateFragments(meetingId, [{ id: appearanceId, person: false }])
       .appearances.get(appearanceId)?.preparationContext).toBe("Saved context");
     restored.lock();
+  });
+
+  it("keeps a pending collaboration counter reserved while adding a Topic after resync", async () => {
+    await sodium.ready;
+    const signing = sodium.crypto_sign_seed_keypair(new Uint8Array(32).fill(16), "uint8array");
+    const meetingId = "00000000-0000-4000-8000-000000000401";
+    const keys = {
+      organizationId: "00000000-0000-4000-8000-000000000402",
+      ockId: "00000000-0000-4000-8000-000000000403",
+      clientEpochId: "00000000-0000-4000-8000-000000000404",
+      noncePrefix: new Uint8Array(16).fill(17),
+      contentKey: new Uint8Array(32).fill(18),
+      signingPrivateKey: signing.privateKey,
+    };
+    meetingDocumentSession.unlock(keys);
+    const initial = await meetingDocumentSession.createInitial(meetingId);
+    const workspace = {
+      documentId: initial.documentId,
+      activeSnapshotId: initial.snapshotId,
+      currentServerSequence: "0",
+      snapshot: {
+        id: initial.snapshotId,
+        clientEpochId: keys.clientEpochId,
+        snapshotClock: "1",
+        coveredAuthorClocks: [],
+        signingPublicKey: bytesToBase64Url(signing.publicKey),
+        envelope: initial.snapshotEnvelope,
+      },
+      updates: [],
+    };
+    const socket = new FakeSocket();
+    const provider = new EncryptedMeetingCollaborationProvider(
+      meetingId,
+      meetingDocumentSession.document(meetingId),
+      async () => ({ ticket: "ticket", documentId: initial.documentId, websocketPath: "/socket" }),
+      () => socket as unknown as WebSocket,
+      undefined,
+      () => meetingDocumentSession.merge(
+        meetingId,
+        workspace,
+        MEETING_COLLABORATION_ORIGIN,
+      ),
+    );
+    const fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      headers: new Headers(),
+      json: vi.fn().mockResolvedValue({ id: "appearance" }),
+    } as unknown as Response);
+    vi.stubGlobal("fetch", fetch);
+    await provider.connect();
+    socket.open();
+    socket.receive({ type: "authenticated" });
+    await settle();
+
+    provider.document.getText("field").insert(0, "pending edit");
+    await settle();
+    await provider.synchronize();
+    await api.addMeetingTopic(meetingId, {
+      topicId: "00000000-0000-4000-8000-000000000405",
+      sectionId: "00000000-0000-4000-8000-000000000406",
+    });
+
+    const pendingFrame = socket.sent
+      .map((value) => JSON.parse(value) as { type: string; envelope?: string })
+      .find((frame) => frame.type === "update");
+    const pendingEnvelope = new Decoder({ mapsAsObjects: false, useRecords: false })
+      .decode(base64UrlToBytes(pendingFrame!.envelope!)) as unknown[];
+    const mutation = new Decoder({ mapsAsObjects: false, useRecords: false })
+      .decode(fetch.mock.calls[0]?.[1]?.body as Uint8Array) as unknown[];
+    const additionEnvelope = new Decoder({ mapsAsObjects: false, useRecords: false })
+      .decode(mutation[4] as Uint8Array) as unknown[];
+
+    expect((pendingEnvelope[3] as unknown[])[6]).toBe(1);
+    expect((additionEnvelope[3] as unknown[])[6]).toBe(2);
+
+    provider.destroy();
   });
 
   it("does not send an awareness envelope after the provider is replaced", async () => {

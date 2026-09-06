@@ -68,6 +68,11 @@ export class MeetingTopicDto {
   @IsOptional() @IsInt() @Min(1) plannedDuration?: number | null;
 }
 
+export interface MeetingTopicsDto {
+  initialUpdateEnvelope: string;
+  items: Array<Omit<MeetingTopicDto, "initialUpdateEnvelope">>;
+}
+
 export class MeetingDocumentUpdateDto {
   @IsString() @IsNotEmpty() envelope: string;
   @IsOptional() @IsUUID() appearanceId?: string;

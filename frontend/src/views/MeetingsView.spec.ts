@@ -24,6 +24,9 @@ describe("MeetingsView", () => {
     push.mockReset();
     vi.spyOn(api, "meetings").mockResolvedValue([]);
     vi.spyOn(api, "userDirectory").mockResolvedValue([]);
+    vi.spyOn(api, "sections").mockResolvedValue([]);
+    vi.spyOn(api, "meetingSuggestions").mockResolvedValue([]);
+    vi.spyOn(api, "addMeetingTopics").mockResolvedValue([]);
   });
   const view = async () => {
     const wrapper = mount(MeetingsView, { shallow: true, global: { stubs } });
@@ -50,6 +53,54 @@ describe("MeetingsView", () => {
       }),
     );
     expect(push).toHaveBeenCalledWith("/meetings/meeting-1/prepare");
+  });
+  it("automatically adds every open or deferred Person and New membership Topic", async () => {
+    const wrapper = await view();
+    const vm: any = wrapper.vm;
+    vi.spyOn(api, "createMeeting").mockResolvedValue({ id: "meeting-1" } as any);
+    vi.mocked(api.sections).mockResolvedValue([
+      { id: "fallback", name: "Fallback", position: 1, isDefault: true },
+    ]);
+    vi.mocked(api.meetingSuggestions)
+      .mockResolvedValueOnce([
+        {
+          id: "person",
+          type: "person",
+          status: "open",
+          previousSectionId: "previous",
+          defaultSectionId: null,
+        },
+        {
+          id: "generic",
+          type: "generic",
+          status: "open",
+          previousSectionId: null,
+          defaultSectionId: "fallback",
+        },
+      ] as any)
+      .mockResolvedValueOnce([
+        {
+          id: "membership",
+          type: "new_membership",
+          status: "deferred",
+          previousSectionId: null,
+          defaultSectionId: "fallback",
+        },
+      ] as any);
+    vm.form.date = new Date(2026, 6, 15);
+
+    await vm.create();
+
+    expect(api.meetingSuggestions).toHaveBeenNthCalledWith(1, "meeting-1");
+    expect(api.meetingSuggestions).toHaveBeenNthCalledWith(
+      2,
+      "meeting-1",
+      { future: true },
+    );
+    expect(api.addMeetingTopics).toHaveBeenCalledWith("meeting-1", [
+      expect.objectContaining({ topicId: "person", sectionId: "previous" }),
+      expect.objectContaining({ topicId: "membership", sectionId: "fallback" }),
+    ]);
   });
   it("restores flags after load/create failure", async () => {
     vi.spyOn(api, "meetings").mockRejectedValueOnce(new Error("Load failed"));

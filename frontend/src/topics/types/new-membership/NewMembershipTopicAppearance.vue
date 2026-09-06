@@ -214,6 +214,7 @@ const saveCurrentMinutes = (text: string | null) =>
         </small>
       </div>
       <div class="note-field">
+        <slot name="before-meeting-texts" />
         <PairedMeetingTexts
           :item="item"
           :mode="meetingTextMode ?? (completed ? 'completed' : 'preparation')"

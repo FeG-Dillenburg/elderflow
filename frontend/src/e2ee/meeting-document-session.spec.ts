@@ -138,6 +138,59 @@ describe("MeetingDocumentSession", () => {
       .toBe("");
   });
 
+  it("initializes several appearance fragments in one encrypted update", async () => {
+    await sodium.ready;
+    const signing = sodium.crypto_sign_seed_keypair(new Uint8Array(32).fill(7), "uint8array");
+    const meetingId = "00000000-0000-4000-8000-000000000221";
+    const clientEpochId = "00000000-0000-4000-8000-000000000222";
+    session.unlock({
+      organizationId: "00000000-0000-4000-8000-000000000223",
+      ockId: "00000000-0000-4000-8000-000000000224",
+      clientEpochId,
+      noncePrefix: new Uint8Array(16).fill(4),
+      contentKey: new Uint8Array(32).fill(5),
+      signingPrivateKey: signing.privateKey,
+    });
+    const initial = await session.createInitial(meetingId);
+    const firstId = "00000000-0000-4000-8000-000000000225";
+    const secondId = "00000000-0000-4000-8000-000000000226";
+
+    const update = await session.createFragmentsUpdate(meetingId, [
+      {
+        fragment: `appearance/${firstId}/preparation-context`,
+        value: "First context",
+      },
+      {
+        fragment: `appearance/${secondId}/preparation-context`,
+        value: "Second context",
+      },
+    ]);
+    await session.load(meetingId, {
+      documentId: initial.documentId,
+      activeSnapshotId: initial.snapshotId,
+      currentServerSequence: "1",
+      snapshot: {
+        id: initial.snapshotId,
+        clientEpochId,
+        signingPublicKey: bytesToBase64Url(signing.publicKey),
+        envelope: initial.snapshotEnvelope,
+      },
+      updates: [{
+        clientEpochId,
+        authorClock: "1",
+        signingPublicKey: bytesToBase64Url(signing.publicKey),
+        envelope: update,
+      }],
+    });
+
+    const appearances = session.hydrateFragments(meetingId, [
+      { id: firstId, person: false },
+      { id: secondId, person: false },
+    ]).appearances;
+    expect(appearances.get(firstId)?.preparationContext).toBe("First context");
+    expect(appearances.get(secondId)?.preparationContext).toBe("Second context");
+  });
+
   it("restores saved general and opening notes after reconstructing the workspace", async () => {
     await sodium.ready;
     const signing = sodium.crypto_sign_seed_keypair(new Uint8Array(32).fill(7), "uint8array");

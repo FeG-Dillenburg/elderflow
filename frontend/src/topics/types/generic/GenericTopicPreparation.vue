@@ -4,6 +4,7 @@ import type { MeetingTopic, Topic } from "../../../api/domain";
 import { useI18n } from "vue-i18n";
 import { formatDate } from "../../../i18n";
 import PairedMeetingTexts from "../../components/PairedMeetingTexts.vue";
+import MeetingPreparationContext from "../../components/MeetingPreparationContext.vue";
 
 defineOptions({ inheritAttrs: false });
 defineProps<{
@@ -30,6 +31,7 @@ const { t } = useI18n();
         · {{ formatDate(`${topic.followUpDate}T12:00:00`) }}
       </template>
     </small>
+    <MeetingPreparationContext v-if="item" :item="item" />
     <PairedMeetingTexts
       v-if="item && savePreparationContext && saveMinutes"
       :item="item"

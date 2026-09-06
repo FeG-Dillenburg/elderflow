@@ -22,6 +22,7 @@ import {
   toLocalDate,
   type AgendaSection,
   type Meeting,
+  type MeetingSuggestion,
   type MeetingTopic,
   type Topic,
   type TopicInput,
@@ -56,8 +57,8 @@ const meeting = ref<Meeting | null>(null);
 const readOnly = computed(() => meeting.value?.status === "completed");
 const discardedAfterReload = ref(false);
 const sections = ref<AgendaSection[]>([]);
-const suggestions = ref<Topic[]>([]);
-const futureSuggestions = ref<Topic[]>([]);
+const suggestions = ref<MeetingSuggestion[]>([]);
+const futureSuggestions = ref<MeetingSuggestion[]>([]);
 const showFutureTopics = ref(false);
 const futureTopicsLoading = ref(false);
 const users = ref<User[]>([]);
@@ -70,6 +71,7 @@ const startVisible = ref(false);
 const starting = ref(false);
 const newVisible = ref(false);
 const selectedSections = reactive<Record<string, string>>({});
+const selectedTopicIds = ref<string[]>([]);
 const detailsReadOnly = computed(() => meeting.value?.status === "in_progress");
 const detailsForm = reactive({
   title: "",
@@ -81,6 +83,16 @@ const detailsForm = reactive({
   generalNotes: "",
   openingInput: "",
 });
+
+const initialiseSelectedSection = (
+  topic: MeetingSuggestion,
+  availableSections: AgendaSection[] = sections.value,
+) => {
+  const sectionId = topic.previousSectionId
+    || topic.defaultSectionId
+    || availableSections[0]?.id;
+  if (sectionId) selectedSections[topic.id] = sectionId;
+};
 const statusOptions = computed(() =>
   ["planned", "in_progress"].map((value) => ({
     value,
@@ -147,6 +159,9 @@ const load = async () => {
     suggestions.value = loadedSuggestions;
     futureSuggestions.value = loadedFutureSuggestions;
     users.value = loadedUsers;
+    for (const topic of [...loadedSuggestions, ...loadedFutureSuggestions]) {
+      initialiseSelectedSection(topic, loadedSections);
+    }
     initialiseGroups();
   } catch (cause) {
     error.value =
@@ -165,9 +180,11 @@ const toggleFutureTopics = async () => {
   futureTopicsLoading.value = true;
   error.value = "";
   try {
-    futureSuggestions.value = await api.meetingSuggestions(id, {
+    const loadedFutureSuggestions = await api.meetingSuggestions(id, {
       future: true,
     });
+    futureSuggestions.value = loadedFutureSuggestions;
+    for (const topic of loadedFutureSuggestions) initialiseSelectedSection(topic);
     showFutureTopics.value = true;
   } catch (cause) {
     error.value = cause instanceof Error
@@ -197,12 +214,14 @@ const applyNormalization = () => {
 };
 
 const withReload = async (action: () => Promise<unknown>) => {
-  if (pending.value) return;
+  if (pending.value) return false;
   pending.value = true;
   error.value = "";
+  let succeeded = true;
   try {
     await action();
   } catch (cause) {
+    succeeded = false;
     console.error("Meeting preparation operation failed", cause);
     error.value =
       cause instanceof Error
@@ -212,6 +231,7 @@ const withReload = async (action: () => Promise<unknown>) => {
     await load();
     pending.value = false;
   }
+  return succeeded;
 };
 
 const persistOrder = async () => {
@@ -252,15 +272,31 @@ const onAgendaChange = async (
   if (event.moved || event.added) await persistOrder();
 };
 
-const add = async (topic: Topic) => {
-  const sectionId =
-    selectedSections[topic.id] ||
-    topic.defaultSectionId ||
-    sections.value[0]?.id;
-  if (!sectionId) return;
-  await withReload(() =>
-    api.addMeetingTopic(id, { topicId: topic.id, sectionId, topic }),
-  );
+const selectedTopics = computed(() => visibleSuggestionLists.value
+  .flat()
+  .filter((topic) => selectedTopicIds.value.includes(topic.id)));
+
+const isSelected = (topic: Topic) => selectedTopicIds.value.includes(topic.id);
+
+const toggleSelected = (topic: Topic) => {
+  selectedTopicIds.value = isSelected(topic)
+    ? selectedTopicIds.value.filter((id) => id !== topic.id)
+    : [...selectedTopicIds.value, topic.id];
+};
+
+const sectionFor = (topic: Topic & Partial<MeetingSuggestion>) => selectedSections[topic.id]
+  || topic.previousSectionId
+  || topic.defaultSectionId
+  || sections.value[0]?.id;
+
+const addSelected = async () => {
+  const additions = selectedTopics.value.flatMap((topic) => {
+    const sectionId = sectionFor(topic);
+    return sectionId ? [{ topicId: topic.id, sectionId, topic }] : [];
+  });
+  if (!additions.length) return;
+  const succeeded = await withReload(() => api.addMeetingTopics(id, additions));
+  if (succeeded) selectedTopicIds.value = [];
 };
 
 const remove = async (item: MeetingTopic) => {
@@ -589,6 +625,12 @@ onMounted(() => {
                         show-type
                       />
                     </div>
+                    <Tag
+                      v-if="topic.isNew"
+                      class="new-topic-tag"
+                      :value="t('meetingPreparation.newTopic')"
+                      severity="danger"
+                    />
                   </div>
                   <Select
                     v-model="selectedSections[topic.id]"
@@ -601,11 +643,14 @@ onMounted(() => {
                     option-value="id"
                   />
                   <Button
-                    icon="pi pi-plus"
-                    :label="t('meetingPreparation.addToAgenda')"
+                    :icon="isSelected(topic) ? 'pi pi-minus' : 'pi pi-plus'"
+                    :label="isSelected(topic)
+                      ? t('meetingPreparation.removeFromPreselection')
+                      : t('meetingPreparation.markForAgenda')"
                     outlined
                     :disabled="pending"
-                    @click="add(topic)"
+                    :severity="isSelected(topic) ? 'secondary' : undefined"
+                    @click="toggleSelected(topic)"
                   />
                 </article>
               </template>
@@ -630,6 +675,17 @@ onMounted(() => {
               @click="toggleFutureTopics"
             />
           </template>
+          <Button
+            v-if="selectedTopics.length"
+            class="add-selected-topics"
+            icon="pi pi-check"
+            :label="t('meetingPreparation.addSelectedToAgenda', {
+              count: selectedTopics.length,
+            })"
+            :disabled="pending"
+            :loading="pending"
+            @click="addSelected"
+          />
         </aside>
       </div>
     </template>
