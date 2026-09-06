@@ -55,7 +55,8 @@ const canControlInProgressMeeting = computed(() => {
     canManage.value &&
       userId &&
       meeting.value?.status === "in_progress" &&
-      (userId === meeting.value.meetingLeaderId ||
+      (auth.state.user?.role === "superadmin" ||
+        userId === meeting.value.meetingLeaderId ||
         userId === meeting.value.minuteTakerId),
   );
 });

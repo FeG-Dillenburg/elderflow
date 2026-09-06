@@ -69,11 +69,15 @@ export class MeetingsService {
           "Only an in-progress Meeting can be completed",
         );
       }
-      if (user.id !== meeting.meetingLeaderId && user.id !== meeting.minuteTakerId) {
+      if (
+        user.role !== "superadmin" &&
+        user.id !== meeting.meetingLeaderId &&
+        user.id !== meeting.minuteTakerId
+      ) {
         throw codedHttpException(
           HttpStatus.FORBIDDEN,
           "MEETING_COMPLETION_FORBIDDEN",
-          "Only the Meeting leader or Minute taker can complete this Meeting",
+          "Only a Superadmin, the Meeting leader, or the Minute taker can complete this Meeting",
         );
       }
       const appearances = await manager.find(MeetingTopic, {

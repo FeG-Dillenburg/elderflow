@@ -58,6 +58,55 @@ describe("MeetingsService encrypted transaction boundaries", () => {
     documents.appendUpdate.mockResolvedValue({ update: { id: "update" }, duplicate: false });
   });
 
+  it("allows a Superadmin to complete an in-progress Meeting without being assigned", async () => {
+    const meeting = {
+      id: "meeting",
+      status: "in_progress",
+      meetingLeaderId: "leader",
+      minuteTakerId: "minute-taker",
+    };
+    const document = {
+      meetingId: "meeting",
+      currentServerSequence: "7",
+      completedServerSequence: null,
+    };
+    manager.findOne.mockResolvedValue(meeting);
+    manager.findOneByOrFail.mockResolvedValue(document);
+    manager.find.mockResolvedValue([]);
+
+    await expect(service.complete("meeting", {
+      id: "superadmin",
+      role: "superadmin",
+    } as never)).resolves.toEqual(expect.objectContaining({
+      id: "meeting",
+      status: "completed",
+    }));
+
+    expect(document.completedServerSequence).toBe("7");
+    expect(meeting).toEqual(expect.objectContaining({
+      meetingLeaderId: "leader",
+      minuteTakerId: "minute-taker",
+    }));
+  });
+
+  it("does not allow another unassigned role to complete an in-progress Meeting", async () => {
+    manager.findOne.mockResolvedValue({
+      id: "meeting",
+      status: "in_progress",
+      meetingLeaderId: "leader",
+      minuteTakerId: "minute-taker",
+    });
+
+    await expect(service.complete("meeting", {
+      id: "unassigned-admin",
+      role: "admin",
+    } as never)).rejects.toThrow(
+      "Only a Superadmin, the Meeting leader, or the Minute taker can complete this Meeting",
+    );
+
+    expect(manager.find).not.toHaveBeenCalled();
+  });
+
   it("does not persist appearance structure when the initial opaque update fails", async () => {
     documents.appendUpdate.mockRejectedValueOnce(new Error("invalid update"));
 

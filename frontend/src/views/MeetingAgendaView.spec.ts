@@ -433,6 +433,21 @@ describe("MeetingAgendaView", () => {
     expect(wrapper.text()).toContain("Finish meeting");
   });
 
+  it("shows the Finish meeting action to an unassigned Superadmin", async () => {
+    const activeMeeting = structuredClone(meeting);
+    activeMeeting.status = "in_progress";
+    activeMeeting.meetingLeaderId = "leader";
+    activeMeeting.minuteTakerId = "minute-taker";
+    const superadmin = authenticatedUser("unassigned-superadmin");
+    superadmin.role = "superadmin";
+    auth.setUser(superadmin);
+    vi.spyOn(api, "meeting").mockResolvedValueOnce(activeMeeting);
+
+    const wrapper = await view();
+
+    expect(wrapper.text()).toContain("Finish meeting");
+  });
+
   it("keeps completion unavailable to unrelated users and cancellation leaves the Meeting unchanged", async () => {
     const activeMeeting = structuredClone(meeting);
     activeMeeting.status = "in_progress";
