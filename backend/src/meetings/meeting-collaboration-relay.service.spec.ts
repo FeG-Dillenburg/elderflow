@@ -5,9 +5,14 @@ import { E2eeClientEpoch } from "../e2ee/e2ee-client-epoch.entity";
 import { E2eeKeyState } from "../e2ee/e2ee-key-state.entity";
 import { User } from "../users/user.entity";
 import { MeetingCollaborationRelayService } from "./meeting-collaboration-relay.service";
+import { MeetingCompactionCoordinator } from "./meeting-compaction-coordinator";
+import { MeetingDocument } from "./meeting-document.entity";
+import { MeetingDocumentSnapshot } from "./meeting-document-snapshot.entity";
+import { meetingCollaborationEvents } from "./meeting-collaboration-events";
 import { Meeting } from "./meeting.entity";
 
 interface FakeSocket {
+  connectionId: string;
   collaboration: {
     meetingId: string;
     documentId: string;
@@ -34,14 +39,29 @@ describe("MeetingCollaborationRelayService", () => {
   const meetings = {
     appendWorkspaceUpdate: jest.fn(),
   };
+  const compactions = new MeetingCompactionCoordinator();
   const service = new MeetingCollaborationRelayService(
     { httpAdapter: {} } as never,
     {} as never,
     meetings as never,
     dataSource as never,
+    compactions,
   );
+  const relayCompactionRelease = (service as unknown as {
+    compactionReleased: (event: object) => void;
+  }).compactionReleased;
+
+  beforeAll(() => {
+    meetingCollaborationEvents.on("compaction-released", relayCompactionRelease);
+  });
+
+  afterAll(() => {
+    compactions.abort("document");
+    meetingCollaborationEvents.off("compaction-released", relayCompactionRelease);
+  });
 
   const socket = (): FakeSocket => ({
+    connectionId: crypto.randomUUID(),
     collaboration: { meetingId: "meeting", documentId: "document", user: { ...user } },
     readyState: WebSocket.OPEN,
     send: jest.fn(),
@@ -56,6 +76,7 @@ describe("MeetingCollaborationRelayService", () => {
   };
 
   beforeEach(() => {
+    compactions.abort("document");
     jest.clearAllMocks();
     repositories.clear();
     repositories.set(User, {
@@ -70,6 +91,19 @@ describe("MeetingCollaborationRelayService", () => {
       findOneBy: jest.fn(),
       findOneByOrFail: jest.fn().mockResolvedValue({ signingPublicKey: Buffer.alloc(32, 4) }),
     });
+    repositories.set(MeetingDocument, {
+      findOneBy: jest.fn().mockResolvedValue({
+        id: "document",
+        meetingId: "meeting",
+        activeSnapshotId: "snapshot",
+        currentServerSequence: "100",
+      }),
+      findOneByOrFail: jest.fn(),
+    });
+    repositories.set(MeetingDocumentSnapshot, {
+      findOneBy: jest.fn().mockResolvedValue({ id: "snapshot", coveredServerSequence: "0" }),
+      findOneByOrFail: jest.fn(),
+    });
     meetings.appendWorkspaceUpdate.mockResolvedValue({
       updateId: "update",
       clientEpochId: "epoch",
@@ -77,6 +111,184 @@ describe("MeetingCollaborationRelayService", () => {
       serverSequence: "1",
     });
     (service as unknown as { rooms: Map<string, Set<FakeSocket>> }).rooms.clear();
+  });
+
+  it("pauses two clients and designates the requester after both have drained", async () => {
+    const requester = socket();
+    const peer = socket();
+    (service as unknown as { rooms: Map<string, Set<FakeSocket>> }).rooms.set(
+      "document",
+      new Set([requester, peer]),
+    );
+
+    await invokeMessage(requester, {
+      type: "request-compaction",
+      triggerServerSequence: "100",
+    });
+
+    const requesterBarrier = JSON.parse(
+      requester.send.mock.calls[requester.send.mock.calls.length - 1]?.[0],
+    );
+    const peerBarrier = JSON.parse(peer.send.mock.calls[peer.send.mock.calls.length - 1]?.[0]);
+    expect(requesterBarrier).toMatchObject({ type: "compaction-barrier" });
+    expect(peerBarrier).toEqual(requesterBarrier);
+
+    await invokeMessage(requester, {
+      type: "compaction-drained",
+      barrierId: requesterBarrier.barrierId,
+    });
+    expect(requester.send).not.toHaveBeenCalledWith(expect.stringContaining('"type":"compaction-ready"'));
+
+    await invokeMessage(peer, {
+      type: "compaction-drained",
+      barrierId: requesterBarrier.barrierId,
+    });
+    expect(requester.send).toHaveBeenCalledWith(JSON.stringify({
+      type: "compaction-ready",
+      barrierId: requesterBarrier.barrierId,
+      serverSequence: "100",
+    }));
+    expect(peer.send).not.toHaveBeenCalledWith(expect.stringContaining('"type":"compaction-ready"'));
+
+    await invokeMessage(peer, {
+      type: "compaction-drained",
+      barrierId: requesterBarrier.barrierId,
+    });
+    expect(requester.send.mock.calls.filter(([frame]) =>
+      frame.includes('"type":"compaction-ready"'))).toHaveLength(1);
+  });
+
+  it("does not open a barrier while an external document write is in flight", async () => {
+    const requester = socket();
+    (service as unknown as { rooms: Map<string, Set<FakeSocket>> }).rooms.set(
+      "document",
+      new Set([requester]),
+    );
+    expect(compactions.beginExternalUpdate("meeting")).toBe(true);
+
+    await invokeMessage(requester, {
+      type: "request-compaction",
+      triggerServerSequence: "100",
+    });
+
+    expect(requester.send).toHaveBeenCalledWith(JSON.stringify({
+      type: "rejected",
+      code: "E2EE_COMPACTION_IN_PROGRESS",
+    }));
+    expect(compactions.current("document")).toBeNull();
+    compactions.endExternalUpdate("meeting");
+  });
+
+  it("releases every paused client when a compaction barrier times out", async () => {
+    jest.useFakeTimers();
+    const requester = socket();
+    const peer = socket();
+    (service as unknown as { rooms: Map<string, Set<FakeSocket>> }).rooms.set(
+      "document",
+      new Set([requester, peer]),
+    );
+    await invokeMessage(requester, {
+      type: "request-compaction",
+      triggerServerSequence: "100",
+    });
+    const barrier = JSON.parse(requester.send.mock.calls[requester.send.mock.calls.length - 1]?.[0]);
+
+    jest.advanceTimersByTime(10_000);
+
+    const released = JSON.stringify({
+      type: "compaction-released",
+      barrierId: barrier.barrierId,
+      outcome: "aborted",
+    });
+    expect(requester.send).toHaveBeenCalledWith(released);
+    expect(peer.send).toHaveBeenCalledWith(released);
+    jest.useRealTimers();
+  });
+
+  it("aborts and releases a barrier when a participating client disconnects", async () => {
+    const requester = socket();
+    const peer = socket();
+    (service as unknown as { rooms: Map<string, Set<FakeSocket>> }).rooms.set(
+      "document",
+      new Set([requester, peer]),
+    );
+    await invokeMessage(requester, {
+      type: "request-compaction",
+      triggerServerSequence: "100",
+    });
+    const barrier = JSON.parse(requester.send.mock.calls[requester.send.mock.calls.length - 1]?.[0]);
+
+    (service as unknown as { remove: (client: FakeSocket) => void }).remove(peer);
+
+    expect(requester.send).toHaveBeenCalledWith(JSON.stringify({
+      type: "compaction-released",
+      barrierId: barrier.barrierId,
+      outcome: "aborted",
+    }));
+  });
+
+  it("aborts and releases a barrier when the designated client reports failure", async () => {
+    const requester = socket();
+    const peer = socket();
+    (service as unknown as { rooms: Map<string, Set<FakeSocket>> }).rooms.set(
+      "document",
+      new Set([requester, peer]),
+    );
+    await invokeMessage(requester, {
+      type: "request-compaction",
+      triggerServerSequence: "100",
+    });
+    const barrier = JSON.parse(requester.send.mock.calls[requester.send.mock.calls.length - 1]?.[0]);
+
+    await invokeMessage(requester, {
+      type: "compaction-failed",
+      barrierId: barrier.barrierId,
+    });
+
+    const released = JSON.stringify({
+      type: "compaction-released",
+      barrierId: barrier.barrierId,
+      outcome: "aborted",
+    });
+    expect(requester.send).toHaveBeenCalledWith(released);
+    expect(peer.send).toHaveBeenCalledWith(released);
+  });
+
+  it("ignores client failure after the authoritative database commit has claimed the barrier", async () => {
+    const requester = socket();
+    const peer = socket();
+    (service as unknown as { rooms: Map<string, Set<FakeSocket>> }).rooms.set(
+      "document",
+      new Set([requester, peer]),
+    );
+    await invokeMessage(requester, {
+      type: "request-compaction",
+      triggerServerSequence: "100",
+    });
+    const barrier = JSON.parse(
+      requester.send.mock.calls[requester.send.mock.calls.length - 1]?.[0],
+    );
+    compactions.acknowledge("document", barrier.barrierId, requester.connectionId);
+    compactions.acknowledge("document", barrier.barrierId, peer.connectionId);
+    compactions.ready("document", barrier.barrierId, "100");
+    compactions.claim("meeting", barrier.barrierId, "user");
+    requester.send.mockClear();
+    peer.send.mockClear();
+
+    await invokeMessage(requester, {
+      type: "compaction-failed",
+      barrierId: barrier.barrierId,
+    });
+
+    expect(compactions.current("document")?.barrierId).toBe(barrier.barrierId);
+    expect(requester.send).not.toHaveBeenCalledWith(expect.stringContaining('"outcome":"aborted"'));
+    expect(peer.send).not.toHaveBeenCalledWith(expect.stringContaining('"outcome":"aborted"'));
+    compactions.complete("meeting", barrier.barrierId);
+    expect(requester.send).toHaveBeenCalledWith(JSON.stringify({
+      type: "compaction-released",
+      barrierId: barrier.barrierId,
+      outcome: "compacted",
+    }));
   });
 
   it("acknowledges an accepted opaque update and broadcasts it to another client", async () => {
@@ -95,6 +307,7 @@ describe("MeetingCollaborationRelayService", () => {
       envelope,
       expect.objectContaining({ id: "user" }),
       undefined,
+      "collaboration",
     );
     expect(sender.send).toHaveBeenCalledWith(expect.stringContaining('"type":"acknowledged"'));
     expect(peer.send).toHaveBeenCalledWith(expect.stringContaining('"type":"update"'));
@@ -130,7 +343,7 @@ describe("MeetingCollaborationRelayService", () => {
     expect(client.close).toHaveBeenCalledWith(4403, code);
   });
 
-  it("fans compaction and completion state changes out to every Meeting client", () => {
+  it("fans Meeting completion out to every Meeting client", () => {
     jest.useFakeTimers();
     const first = socket();
     const second = socket();
@@ -139,13 +352,8 @@ describe("MeetingCollaborationRelayService", () => {
       new Set([first, second]),
     );
     const relay = service as unknown as {
-      meetingCompacted: (event: { meetingId: string }) => void;
       meetingCompleted: (event: { meetingId: string }) => void;
     };
-
-    relay.meetingCompacted({ meetingId: "meeting" });
-    expect(first.send).toHaveBeenCalledWith(JSON.stringify({ type: "parent-changed" }));
-    expect(second.send).toHaveBeenCalledWith(JSON.stringify({ type: "parent-changed" }));
 
     relay.meetingCompleted({ meetingId: "meeting" });
     jest.advanceTimersByTime(250);

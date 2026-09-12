@@ -31,7 +31,14 @@ onBeforeUnmount(() => {
 
 <template>
   <p v-if="provider" class="collaboration-status" :class="status" role="status" aria-live="polite">
-    <i class="pi" :class="status === 'online' ? 'pi-wifi' : status === 'pending' ? 'pi-clock' : 'pi-exclamation-triangle'" />
+    <i
+      class="pi"
+      :class="status === 'online'
+        ? 'pi-wifi'
+        : ['pending', 'paused', 'resynchronizing'].includes(status)
+          ? 'pi-clock'
+          : 'pi-exclamation-triangle'"
+    />
     {{ t(`e2ee.collaboration.${status}`) }}
   </p>
 </template>

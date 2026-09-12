@@ -4,6 +4,7 @@ import { DataSource } from "typeorm";
 import type { Server as HttpServer, IncomingMessage } from "node:http";
 import type { Duplex } from "node:stream";
 import { WebSocket, WebSocketServer, type RawData } from "ws";
+import { randomUUID } from "node:crypto";
 import { E2eeClientEpoch } from "../e2ee/e2ee-client-epoch.entity";
 import { E2eeKeyState } from "../e2ee/e2ee-key-state.entity";
 import { meetingAwarenessClientEpochId, validateMeetingAwarenessEnvelope } from "../e2ee/meeting-document-envelope-validator";
@@ -11,15 +12,19 @@ import sodium from "libsodium-wrappers-sumo";
 import { isE2eeKeyOperator } from "../e2ee/e2ee-role-policy";
 import { User } from "../users/user.entity";
 import { Meeting } from "./meeting.entity";
+import { MeetingDocument } from "./meeting-document.entity";
+import { MeetingDocumentSnapshot } from "./meeting-document-snapshot.entity";
+import { MeetingCompactionCoordinator } from "./meeting-compaction-coordinator";
 import { MeetingCollaborationTicketService, type ConsumedCollaborationTicket } from "./meeting-collaboration-ticket.service";
 import { MeetingsService } from "./meetings.service";
 import {
   meetingCollaborationEvents,
-  type MeetingCompactedEvent,
+  type MeetingCompactionReleasedEvent,
   type MeetingCompletedEvent,
 } from "./meeting-collaboration-events";
 
 type Client = WebSocket & {
+  connectionId?: string;
   collaboration?: ConsumedCollaborationTicket;
   reauthorization?: ReturnType<typeof setInterval>;
 };
@@ -37,6 +42,7 @@ export class MeetingCollaborationRelayService implements OnApplicationBootstrap,
     private readonly tickets: MeetingCollaborationTicketService,
     private readonly meetings: MeetingsService,
     private readonly dataSource: DataSource,
+    private readonly compactions: MeetingCompactionCoordinator,
   ) {}
 
   onApplicationBootstrap(): void {
@@ -45,13 +51,13 @@ export class MeetingCollaborationRelayService implements OnApplicationBootstrap,
     httpServer.on("upgrade", this.upgrade);
     this.server.on("connection", (socket: Client) => this.connected(socket));
     meetingCollaborationEvents.on("completed", this.meetingCompleted);
-    meetingCollaborationEvents.on("compacted", this.meetingCompacted);
+    meetingCollaborationEvents.on("compaction-released", this.compactionReleased);
   }
 
   onApplicationShutdown(): void {
     this.httpServer?.off("upgrade", this.upgrade);
     meetingCollaborationEvents.off("completed", this.meetingCompleted);
-    meetingCollaborationEvents.off("compacted", this.meetingCompacted);
+    meetingCollaborationEvents.off("compaction-released", this.compactionReleased);
     for (const room of this.rooms.values()) for (const socket of room) socket.close(1012);
     this.server.close();
   }
@@ -65,6 +71,7 @@ export class MeetingCollaborationRelayService implements OnApplicationBootstrap,
   };
 
   private connected(socket: Client): void {
+    socket.connectionId = randomUUID();
     const timeout = setTimeout(() => socket.close(4401, "E2EE_COLLABORATION_AUTH_REQUIRED"), 5_000);
     socket.once("message", async (data, binary) => {
       try {
@@ -78,7 +85,16 @@ export class MeetingCollaborationRelayService implements OnApplicationBootstrap,
         const room = this.rooms.get(frame.documentId) ?? new Set<Client>();
         room.add(socket);
         this.rooms.set(frame.documentId, room);
-        socket.send(JSON.stringify({ type: "authenticated", documentId: frame.documentId }));
+        const barrier = this.compactions.join(frame.documentId, socket.connectionId!);
+        socket.send(JSON.stringify({
+          type: "authenticated",
+          documentId: frame.documentId,
+          compactionBarrierId: barrier?.barrierId ?? null,
+        }));
+        if (barrier) socket.send(JSON.stringify({
+          type: "compaction-barrier",
+          barrierId: barrier.barrierId,
+        }));
         socket.reauthorization = setInterval(() => void this.reauthorize(socket), 10_000);
         socket.on("message", (payload, isBinary) => void this.message(socket, payload, isBinary));
         socket.on("close", () => this.remove(socket));
@@ -96,6 +112,19 @@ export class MeetingCollaborationRelayService implements OnApplicationBootstrap,
         throw new Error("E2EE_COLLABORATION_FRAME_INVALID");
       }
       const frame = JSON.parse(encoded) as Record<string, unknown>;
+      if (frame.type === "request-compaction") {
+        await this.requestCompaction(socket, frame.triggerServerSequence);
+        return;
+      }
+      if (frame.type === "compaction-drained") {
+        await this.compactionDrained(socket, frame.barrierId);
+        return;
+      }
+      if (frame.type === "compaction-failed") {
+        if (typeof frame.barrierId !== "string") throw new Error("E2EE_COLLABORATION_FRAME_INVALID");
+        this.compactions.abort(socket.collaboration.documentId, frame.barrierId);
+        return;
+      }
       if (frame.type === "awareness") {
         await this.assertConnectionActive(socket.collaboration);
         const envelope = this.opaqueEnvelope(frame.envelope, 5_000);
@@ -109,12 +138,17 @@ export class MeetingCollaborationRelayService implements OnApplicationBootstrap,
       }
       if (frame.type !== "update") throw new Error("E2EE_COLLABORATION_FRAME_INVALID");
       await this.assertConnectionActive(socket.collaboration);
+      if (!socket.connectionId || !this.compactions.prepareUpdate(
+        socket.collaboration.documentId,
+        socket.connectionId,
+      )) throw new Error("E2EE_COMPACTION_IN_PROGRESS");
       const envelope = this.opaqueEnvelope(frame.envelope, 1_050_000);
       const result = await this.meetings.appendWorkspaceUpdate(
         socket.collaboration.meetingId,
         envelope,
         socket.collaboration.user,
         typeof frame.appearanceId === "string" ? frame.appearanceId : undefined,
+        "collaboration",
       );
       const update = await this.dataSource.getRepository(E2eeClientEpoch).findOneByOrFail({
         id: result.clientEpochId,
@@ -150,6 +184,7 @@ export class MeetingCollaborationRelayService implements OnApplicationBootstrap,
     if (socket.reauthorization) clearInterval(socket.reauthorization);
     const documentId = socket.collaboration?.documentId;
     if (!documentId) return;
+    if (socket.connectionId) this.compactions.disconnected(documentId, socket.connectionId);
     const room = this.rooms.get(documentId);
     room?.delete(socket);
     if (room?.size === 0) this.rooms.delete(documentId);
@@ -182,16 +217,97 @@ export class MeetingCollaborationRelayService implements OnApplicationBootstrap,
     }, 250);
   };
 
-  private readonly meetingCompacted = (event: MeetingCompactedEvent): void => {
-    for (const room of this.rooms.values()) {
-      for (const socket of room) {
-        if (socket.collaboration?.meetingId === event.meetingId
-          && socket.readyState === WebSocket.OPEN) {
-          socket.send(JSON.stringify({ type: "parent-changed" }));
-        }
-      }
+  private readonly compactionReleased = (event: MeetingCompactionReleasedEvent): void => {
+    const encoded = JSON.stringify({
+      type: "compaction-released",
+      barrierId: event.barrierId,
+      outcome: event.outcome,
+    });
+    for (const client of this.rooms.get(event.documentId) ?? []) {
+      if (client.readyState === WebSocket.OPEN) client.send(encoded);
     }
   };
+
+  private async requestCompaction(socket: Client, value: unknown): Promise<void> {
+    if (!socket.collaboration || !socket.connectionId || typeof value !== "string"
+      || !/^[1-9][0-9]*$/.test(value) || BigInt(value) % 100n !== 0n) {
+      throw new Error("E2EE_COLLABORATION_FRAME_INVALID");
+    }
+    await this.assertConnectionActive(socket.collaboration);
+    const existing = this.compactions.current(socket.collaboration.documentId);
+    if (existing) {
+      socket.send(JSON.stringify({
+        type: "compaction-barrier",
+        barrierId: existing.barrierId,
+      }));
+      return;
+    }
+    const document = await this.dataSource.getRepository(MeetingDocument).findOneBy({
+      id: socket.collaboration.documentId,
+      meetingId: socket.collaboration.meetingId,
+    });
+    const snapshot = document?.activeSnapshotId
+      ? await this.dataSource.getRepository(MeetingDocumentSnapshot).findOneBy({
+        id: document.activeSnapshotId,
+        documentId: document.id,
+      })
+      : null;
+    if (!document || !snapshot || BigInt(document.currentServerSequence) < BigInt(value)
+      || BigInt(snapshot.coveredServerSequence) >= BigInt(value)) {
+      socket.send(JSON.stringify({ type: "rejected", code: "E2EE_COMPACTION_NOT_REQUIRED" }));
+      return;
+    }
+    const clients = [...(this.rooms.get(document.id) ?? [])]
+      .filter((client) => client.connectionId && client.readyState === WebSocket.OPEN);
+    const barrier = this.compactions.open({
+      meetingId: socket.collaboration.meetingId,
+      documentId: document.id,
+      compactorConnectionId: socket.connectionId,
+      compactorUserId: socket.collaboration.user.id,
+      participantIds: clients.map((client) => client.connectionId!),
+    });
+    if (!barrier) {
+      socket.send(JSON.stringify({ type: "rejected", code: "E2EE_COMPACTION_IN_PROGRESS" }));
+      return;
+    }
+    const encoded = JSON.stringify({
+      type: "compaction-barrier",
+      barrierId: barrier.barrierId,
+    });
+    for (const client of clients) client.send(encoded);
+  }
+
+  private async compactionDrained(socket: Client, value: unknown): Promise<void> {
+    if (!socket.collaboration || !socket.connectionId || typeof value !== "string") {
+      throw new Error("E2EE_COLLABORATION_FRAME_INVALID");
+    }
+    const allDrained = this.compactions.acknowledge(
+      socket.collaboration.documentId,
+      value,
+      socket.connectionId,
+    );
+    if (!allDrained) return;
+    const document = await this.dataSource.getRepository(MeetingDocument).findOneBy({
+      id: socket.collaboration.documentId,
+    });
+    if (!document) {
+      this.compactions.abort(socket.collaboration.documentId, value);
+      return;
+    }
+    const ready = this.compactions.ready(document.id, value, document.currentServerSequence);
+    if (!ready) return;
+    const compactor = [...(this.rooms.get(document.id) ?? [])]
+      .find((client) => client.connectionId === ready.compactorConnectionId);
+    if (!compactor || compactor.readyState !== WebSocket.OPEN) {
+      this.compactions.abort(document.id, value);
+      return;
+    }
+    compactor.send(JSON.stringify({
+      type: "compaction-ready",
+      barrierId: ready.barrierId,
+      serverSequence: ready.serverSequence,
+    }));
+  }
 
   private opaqueEnvelope(value: unknown, maximum: number): string {
     if (typeof value !== "string") throw new Error("E2EE_COLLABORATION_FRAME_INVALID");

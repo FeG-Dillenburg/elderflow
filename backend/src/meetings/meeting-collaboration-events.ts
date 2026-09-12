@@ -6,6 +6,10 @@ export interface MeetingCompletedEvent {
   meetingId: string;
 }
 
-export interface MeetingCompactedEvent {
+export interface MeetingCompactionReleasedEvent {
   meetingId: string;
+  documentId: string;
+  barrierId: string;
+  participantIds: string[];
+  outcome: "compacted" | "aborted";
 }

@@ -90,13 +90,17 @@ describe("EncryptedMeetingCollaborationProvider", () => {
       envelope: "envelope-1",
       clientEpochId: "epoch",
       authorClock: "1",
-      serverSequence: "1",
+      serverSequence: "100",
     });
     await settle();
     expect(updates()).toEqual([
       { type: "update", envelope: "envelope-1" },
       { type: "update", envelope: "envelope-2" },
     ]);
+    expect(socket.sent.map((value) => JSON.parse(value))).toContainEqual({
+      type: "request-compaction",
+      triggerServerSequence: "100",
+    });
 
     provider.destroy();
     document.destroy();
@@ -154,7 +158,7 @@ describe("EncryptedMeetingCollaborationProvider", () => {
     document.destroy();
   });
 
-  it("finishes automatic compaction before encrypting the next local edit", async () => {
+  it("keeps new edits as plaintext until a coordinated compaction is released", async () => {
     const document = new Y.Doc();
     const socket = new FakeSocket();
     const encrypt = vi.spyOn(meetingDocumentSession, "createPendingDocumentUpdate")
@@ -170,23 +174,28 @@ describe("EncryptedMeetingCollaborationProvider", () => {
       });
     vi.spyOn(meetingDocumentSession, "encryptAwareness").mockResolvedValue("awareness");
     vi.spyOn(meetingDocumentSession, "acknowledge").mockImplementation(() => undefined);
-    let finishCompaction!: () => void;
-    let markCompactionStarted!: () => void;
-    const compactionStarted = new Promise<void>((resolve) => {
-      markCompactionStarted = resolve;
+    let stableState: Uint8Array | undefined;
+    const compact = vi.fn().mockImplementation(async (
+      _barrierId: string,
+      _serverSequence: string,
+      state: Uint8Array,
+    ) => {
+      stableState = Uint8Array.from(state);
     });
-    const compaction = new Promise<void>((resolve) => {
-      finishCompaction = resolve;
+    const resync = vi.fn().mockImplementation(async () => {
+      const canonical = new Y.Doc();
+      canonical.getText("field").insert(0, "a");
+      const canonicalState = Y.encodeStateAsUpdateV2(canonical);
+      canonical.destroy();
+      return { parentChanged: true, canonicalState };
     });
     const provider = new EncryptedMeetingCollaborationProvider(
       "meeting",
       document,
       async () => ({ ticket: "ticket", documentId: "document", websocketPath: "/socket" }),
       () => socket as unknown as WebSocket,
-      async () => {
-        markCompactionStarted();
-        await compaction;
-      },
+      compact,
+      resync,
     );
     await provider.connect();
     socket.open();
@@ -202,19 +211,141 @@ describe("EncryptedMeetingCollaborationProvider", () => {
       authorClock: "100",
       serverSequence: "100",
     });
-    await compactionStarted;
+    await settle();
+    expect(socket.sent.map((value) => JSON.parse(value))).toContainEqual({
+      type: "request-compaction",
+      triggerServerSequence: "100",
+    });
+    socket.receive({ type: "compaction-barrier", barrierId: "barrier" });
+    await settle();
     document.getText("field").insert(1, "b");
     await settle();
 
     expect(encrypt).toHaveBeenCalledTimes(1);
-    finishCompaction();
+    expect(provider.status).toBe("paused");
+    await expect(provider.readyForCompletion()).resolves.toBe(false);
+    expect(socket.sent.map((value) => JSON.parse(value))).toContainEqual({
+      type: "compaction-drained",
+      barrierId: "barrier",
+    });
+
+    socket.receive({
+      type: "compaction-ready",
+      barrierId: "barrier",
+      serverSequence: "100",
+    });
     await settle();
+    expect(compact).toHaveBeenCalledWith("barrier", "100", expect.any(Uint8Array));
+    const stableDocument = new Y.Doc();
+    Y.applyUpdateV2(stableDocument, stableState!);
+    expect(stableDocument.getText("field").toString()).toBe("a");
+    stableDocument.destroy();
+    expect(encrypt).toHaveBeenCalledTimes(1);
+
+    socket.receive({
+      type: "compaction-released",
+      barrierId: "barrier",
+      outcome: "compacted",
+    });
+    await settle();
+    expect(resync).toHaveBeenCalled();
     expect(encrypt).toHaveBeenCalledTimes(2);
     expect(socket.sent.map((value) => JSON.parse(value)))
       .toContainEqual({ type: "update", envelope: "after-compaction" });
 
     provider.destroy();
     document.destroy();
+  });
+
+  it("preserves edits from two providers across the same compaction barrier", async () => {
+    const documentA = new Y.Doc();
+    const documentB = new Y.Doc();
+    const socketA = new FakeSocket();
+    const socketB = new FakeSocket();
+    let encryption = 0;
+    const encrypt = vi.spyOn(meetingDocumentSession, "createPendingDocumentUpdate")
+      .mockImplementation(async () => {
+        encryption += 1;
+        return {
+          envelope: `envelope-${encryption}`,
+          activeSnapshotId: encryption === 1 ? "old-snapshot" : "new-snapshot",
+          authorClock: encryption,
+        };
+      });
+    vi.spyOn(meetingDocumentSession, "encryptAwareness").mockResolvedValue("awareness");
+    vi.spyOn(meetingDocumentSession, "acknowledge").mockImplementation(() => undefined);
+    const compact = vi.fn().mockResolvedValue(undefined);
+    const providers = [
+      new EncryptedMeetingCollaborationProvider(
+        "meeting",
+        documentA,
+        async () => ({ ticket: "ticket-a", documentId: "document", websocketPath: "/socket" }),
+        () => socketA as unknown as WebSocket,
+        compact,
+        async () => ({ parentChanged: true }),
+      ),
+      new EncryptedMeetingCollaborationProvider(
+        "meeting",
+        documentB,
+        async () => ({ ticket: "ticket-b", documentId: "document", websocketPath: "/socket" }),
+        () => socketB as unknown as WebSocket,
+        undefined,
+        async () => ({ parentChanged: true }),
+      ),
+    ];
+    await Promise.all(providers.map((provider) => provider.connect()));
+    for (const socket of [socketA, socketB]) {
+      socket.open();
+      socket.receive({ type: "authenticated" });
+    }
+    await settle();
+
+    documentA.getText("field").insert(0, "before");
+    await settle();
+    socketA.receive({
+      type: "acknowledged",
+      envelope: "envelope-1",
+      clientEpochId: "epoch-a",
+      authorClock: "1",
+      serverSequence: "100",
+    });
+    for (const socket of [socketA, socketB]) {
+      socket.receive({ type: "compaction-barrier", barrierId: "barrier" });
+    }
+    await settle();
+    documentA.getText("field").insert(6, "-from-a");
+    documentB.getText("field").insert(0, "from-b");
+    await settle();
+    expect(encrypt).toHaveBeenCalledTimes(1);
+
+    socketA.receive({
+      type: "compaction-ready",
+      barrierId: "barrier",
+      serverSequence: "100",
+    });
+    await settle();
+    expect(compact).toHaveBeenCalledWith("barrier", "100", expect.any(Uint8Array));
+    for (const socket of [socketA, socketB]) {
+      socket.receive({
+        type: "compaction-released",
+        barrierId: "barrier",
+        outcome: "compacted",
+      });
+    }
+    await settle();
+
+    expect(encrypt).toHaveBeenCalledTimes(3);
+    expect(socketA.sent.map((frame) => JSON.parse(frame))).toContainEqual({
+      type: "update",
+      envelope: "envelope-2",
+    });
+    expect(socketB.sent.map((frame) => JSON.parse(frame))).toContainEqual({
+      type: "update",
+      envelope: "envelope-3",
+    });
+    for (const provider of providers) provider.destroy();
+    documentA.destroy();
+    documentB.destroy();
   });
 
   it("reseals each pending delta after compaction instead of encoding the whole document", async () => {
@@ -268,7 +399,7 @@ describe("EncryptedMeetingCollaborationProvider", () => {
     document.destroy();
   });
 
-  it("reseals a pending edit after the server rejects its stale snapshot context", async () => {
+  it("rotates the client epoch before resealing a rejected stale-snapshot edit", async () => {
     const document = new Y.Doc();
     const socket = new FakeSocket();
     const encrypt = vi.spyOn(meetingDocumentSession, "createPendingDocumentUpdate")
@@ -287,6 +418,7 @@ describe("EncryptedMeetingCollaborationProvider", () => {
     vi.spyOn(meetingDocumentSession, "encryptAwareness").mockResolvedValue("awareness");
     vi.spyOn(meetingDocumentSession, "acknowledge").mockImplementation(() => undefined);
     const resync = vi.fn().mockResolvedValue({ parentChanged: false });
+    const rotateClientEpoch = vi.fn().mockResolvedValue(undefined);
     const provider = new EncryptedMeetingCollaborationProvider(
       "meeting",
       document,
@@ -294,6 +426,7 @@ describe("EncryptedMeetingCollaborationProvider", () => {
       () => socket as unknown as WebSocket,
       undefined,
       resync,
+      rotateClientEpoch,
     );
     await provider.connect();
     socket.open();
@@ -312,6 +445,7 @@ describe("EncryptedMeetingCollaborationProvider", () => {
     await settle();
 
     expect(resync).toHaveBeenCalledTimes(2);
+    expect(rotateClientEpoch).toHaveBeenCalledOnce();
     expect(encrypt).toHaveBeenCalledTimes(2);
     expect(socket.sent.map((value) => JSON.parse(value)))
       .toContainEqual({ type: "update", envelope: "current-snapshot-envelope" });
@@ -468,6 +602,57 @@ describe("EncryptedMeetingCollaborationProvider", () => {
       await Promise.resolve();
     }
     expect(provider.status).toBe("online");
+    provider.destroy();
+    document.destroy();
+  });
+
+  it("resumes plaintext edits after reconnecting from an aborted barrier", async () => {
+    const document = new Y.Doc();
+    const sockets = [new FakeSocket(), new FakeSocket()];
+    let socketIndex = 0;
+    const encrypt = vi.spyOn(meetingDocumentSession, "createPendingDocumentUpdate")
+      .mockResolvedValue({
+        envelope: "resumed-envelope",
+        activeSnapshotId: "unchanged-snapshot",
+        authorClock: 1,
+      });
+    vi.spyOn(meetingDocumentSession, "encryptAwareness").mockResolvedValue("awareness");
+    const provider = new EncryptedMeetingCollaborationProvider(
+      "meeting",
+      document,
+      async () => ({ ticket: "ticket", documentId: "document", websocketPath: "/socket" }),
+      () => sockets[socketIndex++] as unknown as WebSocket,
+      undefined,
+      async () => ({ parentChanged: false }),
+    );
+    await provider.connect();
+    sockets[0].open();
+    sockets[0].receive({ type: "authenticated", compactionBarrierId: null });
+    await settle();
+    sockets[0].receive({ type: "compaction-barrier", barrierId: "aborted-barrier" });
+    document.getText("field").insert(0, "kept while disconnected");
+    await settle();
+    expect(encrypt).not.toHaveBeenCalled();
+    expect((provider as unknown as { pausedPlaintext: Uint8Array[] }).pausedPlaintext)
+      .toHaveLength(1);
+    vi.spyOn(window, "setTimeout").mockImplementation((handler: TimerHandler) => {
+      queueMicrotask(() => (handler as () => void)());
+      return 1 as any;
+    });
+
+    sockets[0].close();
+    for (let index = 0; index < 50 && socketIndex < 2; index += 1) await Promise.resolve();
+    expect(socketIndex).toBe(2);
+    sockets[1].open();
+    sockets[1].receive({ type: "authenticated", compactionBarrierId: null });
+    for (let index = 0; index < 20; index += 1) await Promise.resolve();
+
+    expect((provider as unknown as { barrierId: string | null }).barrierId).toBeNull();
+    expect(encrypt).toHaveBeenCalledOnce();
+    expect(sockets[1].sent.map((frame) => JSON.parse(frame))).toContainEqual({
+      type: "update",
+      envelope: "resumed-envelope",
+    });
     provider.destroy();
     document.destroy();
   });
@@ -794,6 +979,7 @@ describe("EncryptedMeetingCollaborationProvider", () => {
       .mockResolvedValue(new Uint8Array([1, 2, 3]));
     vi.spyOn(meetingDocumentSession, "encryptAwareness").mockResolvedValue("awareness");
     const resync = vi.fn().mockResolvedValue({ parentChanged: false });
+    const rotateClientEpoch = vi.fn().mockResolvedValue(undefined);
     const provider = new EncryptedMeetingCollaborationProvider(
       "meeting",
       document,
@@ -801,6 +987,7 @@ describe("EncryptedMeetingCollaborationProvider", () => {
       () => socket as unknown as WebSocket,
       undefined,
       resync,
+      rotateClientEpoch,
     );
     await provider.connect();
     socket.open();

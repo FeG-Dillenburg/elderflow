@@ -1035,22 +1035,41 @@ export const api = {
             url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
             return new WebSocket(url);
           },
-          () => api.compactMeetingWorkspace(id, [
-            'meeting/general-notes',
-            'meeting/opening-input',
-            ...(meeting.agenda ?? []).flatMap((item) => item.topic?.type === 'person'
-              ? [meetingFragmentId('personNote', item.id)]
-              : [
-                  meetingFragmentId('preparationContext', item.id),
-                  meetingFragmentId('meetingMinutes', item.id),
-                ]),
-          ]),
+          (barrierId, serverSequence, stableDocumentState) => api.compactMeetingWorkspace(
+            id,
+            barrierId,
+            serverSequence,
+            stableDocumentState,
+            [
+              'meeting/general-notes',
+              'meeting/opening-input',
+              ...(meeting.agenda ?? []).flatMap((item) => item.topic?.type === 'person'
+                ? [meetingFragmentId('personNote', item.id)]
+                : [
+                    meetingFragmentId('preparationContext', item.id),
+                    meetingFragmentId('meetingMinutes', item.id),
+                  ]),
+            ],
+          ),
           async () => {
             const workspace = await request<EncryptedWorkspace | null>(
               `/api/meetings/${id}/workspace`,
             );
             if (!workspace) throw new Error('MEETING_WORKSPACE_UNAVAILABLE');
-            return meetingDocumentSession.merge(id, workspace, MEETING_COLLABORATION_ORIGIN);
+            const canonicalState = await meetingDocumentSession.canonicalDocumentState(workspace);
+            try {
+              return {
+                ...await meetingDocumentSession.merge(
+                  id,
+                  workspace,
+                  MEETING_COLLABORATION_ORIGIN,
+                ),
+                canonicalState,
+              };
+            } catch (error) {
+              canonicalState.fill(0);
+              throw error;
+            }
           },
         );
       }
@@ -1129,12 +1148,26 @@ export const api = {
       throw error;
     }
   },
-  compactMeetingWorkspace: async (id: string, fragments: import('../e2ee/meeting-document-codec').StableMeetingFragment[]) => {
-    const snapshot = await meetingDocumentSession.createCompaction(id, fragments);
+  compactMeetingWorkspace: async (
+    id: string,
+    barrierId: string,
+    serverSequence: string,
+    stableDocumentState: Uint8Array,
+    fragments: import('../e2ee/meeting-document-codec').StableMeetingFragment[],
+  ) => {
+    const snapshot = await meetingDocumentSession.createCompaction(
+      id,
+      fragments,
+      Number(serverSequence),
+      stableDocumentState,
+    );
     await requestWithBinaryBody(
       `/api/meetings/${id}/workspace/compact`,
       base64UrlToBytes(snapshot.snapshotEnvelope),
-      { 'X-ElderFlow-Snapshot-Id': snapshot.snapshotId },
+      {
+        'X-ElderFlow-Snapshot-Id': snapshot.snapshotId,
+        'X-ElderFlow-Compaction-Barrier-Id': barrierId,
+      },
     );
     await meetingDocumentSession.acceptCompaction(
       id,

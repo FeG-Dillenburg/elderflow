@@ -117,13 +117,23 @@ export class MeetingsController {
   compactWorkspace(
     @Param("id", ParseUUIDPipe) id: string,
     @Headers("x-elderflow-snapshot-id") snapshotId: string,
+    @Headers("x-elderflow-compaction-barrier-id") barrierId: string,
     @Body(new MeetingSnapshotBinaryPipe()) input: unknown,
     @CurrentUser() user: User,
   ) {
     if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(snapshotId ?? "")) {
       throw new BadRequestException({ code: "E2EE_BINARY_BODY_INVALID", message: "Invalid snapshot identifier" });
     }
-    return this.service.compactWorkspace(id, snapshotId, (input as MeetingDocumentUpdateDto).envelope, user);
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(barrierId ?? "")) {
+      throw new BadRequestException({ code: "E2EE_COMPACTION_BARRIER_INVALID", message: "Invalid compaction barrier identifier" });
+    }
+    return this.service.compactWorkspace(
+      id,
+      snapshotId,
+      (input as MeetingDocumentUpdateDto).envelope,
+      barrierId,
+      user,
+    );
   }
 
   @Get(":id/suggestions")

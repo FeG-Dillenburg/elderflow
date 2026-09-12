@@ -6,6 +6,7 @@ import { MeetingUser } from '../src/meetings/meeting-user.entity';
 import { Meeting } from '../src/meetings/meeting.entity';
 import { MeetingSnapshotRegistry } from '../src/meetings/meeting-snapshot-contributor';
 import { MeetingsService } from '../src/meetings/meetings.service';
+import { MeetingCompactionCoordinator } from '../src/meetings/meeting-compaction-coordinator';
 import { Task } from '../src/tasks/task.entity';
 import { TopicUpdate } from '../src/topics/topic-update.entity';
 import { Topic } from '../src/topics/topic.entity';
@@ -62,6 +63,7 @@ describeWithPostgres('Meeting completion with PostgreSQL (integration)', () => {
       new RecurrenceService(),
       new E2eeScalarService(),
       new MeetingDocumentService(),
+      new MeetingCompactionCoordinator(),
     );
   });
 

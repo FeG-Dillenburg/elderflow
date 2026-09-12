@@ -37,6 +37,7 @@ import { lockedMutableMeeting } from "./meeting-mutation-boundary";
 import { meetingResponse } from "./meeting-response";
 import { Meeting } from "./meeting.entity";
 import { meetingCollaborationEvents } from "./meeting-collaboration-events";
+import { MeetingCompactionCoordinator } from "./meeting-compaction-coordinator";
 
 @Injectable()
 export class MeetingsService {
@@ -53,6 +54,7 @@ export class MeetingsService {
     private readonly recurrence: RecurrenceService,
     private readonly scalars: E2eeScalarService,
     private readonly documents: MeetingDocumentService,
+    private readonly compactions: MeetingCompactionCoordinator,
   ) {}
 
   async complete(id: string, user: User) {
@@ -108,6 +110,7 @@ export class MeetingsService {
     meetingCollaborationEvents.emit("completed", {
       meetingId: id,
     });
+    this.compactions.abortMeeting(id);
     return response;
   }
 
@@ -268,31 +271,38 @@ export class MeetingsService {
     envelope: string,
     user: User,
     appearanceId?: string,
+    source: "external" | "collaboration" = "external",
   ) {
-    return this.dataSource.transaction(async (manager) => {
-      const result = await this.documents.appendUpdate(manager, user, meetingId, envelope);
-      if (appearanceId) {
-        const appearance = await manager.findOneBy(MeetingTopic, { id: appearanceId, meetingId });
-        if (!appearance) {
-          throw codedHttpException(
-            HttpStatus.NOT_FOUND,
-            "AGENDA_TOPIC_NOT_FOUND",
-            "Agenda topic not found",
-          );
+    this.documents.assertContentUser(user);
+    if (source === "external") this.beginExternalDocumentWrite(meetingId);
+    try {
+      return await this.dataSource.transaction(async (manager) => {
+        const result = await this.documents.appendUpdate(manager, user, meetingId, envelope);
+        if (appearanceId) {
+          const appearance = await manager.findOneBy(MeetingTopic, { id: appearanceId, meetingId });
+          if (!appearance) {
+            throw codedHttpException(
+              HttpStatus.NOT_FOUND,
+              "AGENDA_TOPIC_NOT_FOUND",
+              "Agenda topic not found",
+            );
+          }
+          if (!appearance.contentEditedAt) {
+            appearance.contentEditedAt = new Date();
+            await manager.save(MeetingTopic, appearance);
+          }
         }
-        if (!appearance.contentEditedAt) {
-          appearance.contentEditedAt = new Date();
-          await manager.save(MeetingTopic, appearance);
-        }
-      }
-      return {
-        status: result.duplicate ? "duplicate" : "accepted",
-        updateId: result.update.id,
-        clientEpochId: result.update.clientEpochId,
-        authorClock: result.update.authorClock,
-        serverSequence: result.update.serverSequence,
-      };
-    });
+        return {
+          status: result.duplicate ? "duplicate" : "accepted",
+          updateId: result.update.id,
+          clientEpochId: result.update.clientEpochId,
+          authorClock: result.update.authorClock,
+          serverSequence: result.update.serverSequence,
+        };
+      });
+    } finally {
+      if (source === "external") this.compactions.endExternalUpdate(meetingId);
+    }
   }
 
   async workspace(meetingId: string, user: User) {
@@ -302,11 +312,35 @@ export class MeetingsService {
     return this.documents.bootstrap(this.meetings.manager, user, meetingId);
   }
 
-  async compactWorkspace(meetingId: string, snapshotId: string, envelope: string, user: User) {
-    const result = await this.dataSource.transaction((manager) =>
-      this.documents.compact(manager, user, meetingId, snapshotId, envelope));
-    meetingCollaborationEvents.emit("compacted", { meetingId });
-    return result;
+  async compactWorkspace(
+    meetingId: string,
+    snapshotId: string,
+    envelope: string,
+    barrierId: string,
+    user: User,
+  ) {
+    const expectedServerSequence = this.compactions.claim(meetingId, barrierId, user.id);
+    try {
+      const result = await this.dataSource.transaction(async (manager) => {
+        await manager.query("SET LOCAL lock_timeout = '5s'");
+        await manager.query("SET LOCAL statement_timeout = '5s'");
+        const compacted = await this.documents.compact(
+          manager,
+          user,
+          meetingId,
+          snapshotId,
+          envelope,
+          expectedServerSequence,
+        );
+        this.compactions.assertClaim(meetingId, barrierId);
+        return compacted;
+      });
+      this.compactions.complete(meetingId, barrierId);
+      return result;
+    } catch (error) {
+      this.compactions.fail(meetingId, barrierId);
+      throw error;
+    }
   }
 
   async addParticipant(meetingId: string, input: MeetingParticipantDto): Promise<MeetingUser> {
@@ -328,28 +362,38 @@ export class MeetingsService {
 
   async addTopic(meetingId: string, input: MeetingTopicDto, user: User): Promise<MeetingTopic> {
     this.documents.assertContentUser(user);
-    return this.dataSource.transaction(async (manager) =>
-      (await this.addTopicWithinTransaction(manager, meetingId, input, user)).appearance);
+    this.beginExternalDocumentWrite(meetingId);
+    try {
+      return await this.dataSource.transaction(async (manager) =>
+        (await this.addTopicWithinTransaction(manager, meetingId, input, user)).appearance);
+    } finally {
+      this.compactions.endExternalUpdate(meetingId);
+    }
   }
 
   async addTopics(meetingId: string, input: MeetingTopicsDto, user: User): Promise<MeetingTopic[]> {
     this.documents.assertContentUser(user);
-    return this.dataSource.transaction(async (manager) => {
-      const appearances: MeetingTopic[] = [];
-      let documentUpdate: Awaited<ReturnType<MeetingDocumentService["appendUpdate"]>> | undefined;
-      for (const item of input.items) {
-        const result = await this.addTopicWithinTransaction(
-          manager,
-          meetingId,
-          { ...item, initialUpdateEnvelope: input.initialUpdateEnvelope },
-          user,
-          documentUpdate,
-        );
-        appearances.push(result.appearance);
-        documentUpdate = result.documentUpdate;
-      }
-      return appearances;
-    });
+    this.beginExternalDocumentWrite(meetingId);
+    try {
+      return await this.dataSource.transaction(async (manager) => {
+        const appearances: MeetingTopic[] = [];
+        let documentUpdate: Awaited<ReturnType<MeetingDocumentService["appendUpdate"]>> | undefined;
+        for (const item of input.items) {
+          const result = await this.addTopicWithinTransaction(
+            manager,
+            meetingId,
+            { ...item, initialUpdateEnvelope: input.initialUpdateEnvelope },
+            user,
+            documentUpdate,
+          );
+          appearances.push(result.appearance);
+          documentUpdate = result.documentUpdate;
+        }
+        return appearances;
+      });
+    } finally {
+      this.compactions.endExternalUpdate(meetingId);
+    }
   }
 
   private async addTopicWithinTransaction(
@@ -663,6 +707,15 @@ export class MeetingsService {
             : null,
         };
       });
+  }
+
+  private beginExternalDocumentWrite(meetingId: string): void {
+    if (this.compactions.beginExternalUpdate(meetingId)) return;
+    throw codedHttpException(
+      HttpStatus.CONFLICT,
+      "E2EE_COMPACTION_IN_PROGRESS",
+      "Meeting compaction is committing",
+    );
   }
 
   private meetingTopicRequestFingerprint(input: MeetingTopicDto): Buffer {
