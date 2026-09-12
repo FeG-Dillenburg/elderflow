@@ -110,6 +110,109 @@ jobs:
           path: ci-reports/backend-e2e
           if-no-files-found: warn
 
+  collaboration-e2e:
+    name: Meeting collaboration e2e (live backend)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: elderflow
+          POSTGRES_USER: elderflow
+          POSTGRES_PASSWORD: elderflow
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U elderflow -d elderflow"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 20
+    env:
+      NODE_ENV: development
+      PORT: 3000
+      DATABASE_URL: postgresql://elderflow:elderflow@localhost:5432/elderflow
+      DEV_USER_EMAIL: evidence@example.com
+      AUTH_SESSION_SECRET: ci-collaboration-evidence-session-secret
+      VITE_E2EE_EVIDENCE_API_URL: http://127.0.0.1:3000
+      E2EE_EVIDENCE_API_URL: http://127.0.0.1:3000
+      E2EE_EVIDENCE_PHASE: create
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.26.1
+          run_install: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @elderflow/backend build
+      - name: Start Elderflow backend
+        shell: bash
+        run: |
+          report_directory="$GITHUB_WORKSPACE/ci-reports/meeting-collaboration-e2e"
+          mkdir -p "$report_directory"
+          backend_log="$report_directory/backend.log"
+          node backend/dist/main.js > "$backend_log" 2>&1 &
+          backend_pid=$!
+          echo "COLLABORATION_E2E_BACKEND_PID=$backend_pid" >> "$GITHUB_ENV"
+
+          ready=false
+          for _ in $(seq 1 60); do
+            if curl --fail --silent http://127.0.0.1:3000/health >/dev/null; then
+              ready=true
+              break
+            fi
+            if ! kill -0 "$backend_pid" 2>/dev/null; then
+              cat "$backend_log"
+              exit 1
+            fi
+            sleep 1
+          done
+          if [ "$ready" != true ]; then
+            cat "$backend_log"
+            exit 1
+          fi
+
+          setup_password="$(sed -n 's/.*Initial setup password: \([A-Za-z0-9_-]\{32\}\).*/\1/p' "$backend_log" | tail -n 1)"
+          if [ -z "$setup_password" ]; then
+            cat "$backend_log"
+            exit 1
+          fi
+          echo "E2EE_EVIDENCE_SETUP_PASSWORD=$setup_password" >> "$GITHUB_ENV"
+      - name: Initialize encrypted evidence fixture
+        run: >-
+          pnpm --filter @elderflow/frontend exec vitest run
+          src/e2ee/topic-slice-running-instance.spec.ts
+      - name: Run live two-client compaction test
+        shell: bash
+        run: |
+          report_directory="$GITHUB_WORKSPACE/ci-reports/meeting-collaboration-e2e"
+          set +e
+          pnpm --filter @elderflow/frontend exec vitest run \
+            src/e2ee/e2ee-release-running-instance.spec.ts \
+            --reporter=json \
+            --outputFile="$report_directory/test-results.json"
+          test_exit=$?
+          set -e
+          printf '{"exitCode":%s}\n' "$test_exit" > "$report_directory/status.json"
+          exit "$test_exit"
+      - name: Stop Elderflow backend
+        if: always()
+        shell: bash
+        run: |
+          if [ -n "${COLLABORATION_E2E_BACKEND_PID:-}" ]; then
+            kill "$COLLABORATION_E2E_BACKEND_PID" 2>/dev/null || true
+          fi
+      - name: Upload backend log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-report-meeting-collaboration-e2e
+          path: ci-reports/meeting-collaboration-e2e
+          if-no-files-found: warn
+
   syntax:
     name: Syntax and build (${{ matrix.workspace }})
     runs-on: ubuntu-latest
@@ -149,7 +252,7 @@ jobs:
   publish-badges:
     name: Publish badges
     if: ${{ always() && github.event_name == 'push' && github.ref == 'refs/heads/main' }}
-    needs: [tests, e2e, syntax, badge-tooling]
+    needs: [tests, e2e, collaboration-e2e, syntax, badge-tooling]
     runs-on: ubuntu-latest
     permissions:
       contents: write

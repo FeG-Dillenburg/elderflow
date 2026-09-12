@@ -34,14 +34,26 @@ test('uploads machine-readable reports even when a test suite fails', () => {
   assert.match(workflow, /--coverage\.reporter=json-summary/);
   assert.match(workflow, /name: ci-report-\$\{\{ matrix\.workspace \}\}-unit/);
   assert.match(workflow, /name: ci-report-backend-e2e/);
-  assert.equal(workflow.match(/uses: actions\/upload-artifact@v4/g)?.length, 2);
-  assert.equal(workflow.match(/if: always\(\)/g)?.length, 2);
+  assert.match(workflow, /name: ci-report-meeting-collaboration-e2e/);
+  assert.equal(workflow.match(/uses: actions\/upload-artifact@v4/g)?.length, 3);
+  assert.equal(workflow.match(/if: always\(\)/g)?.length, 4);
+});
+
+test('runs live two-client Meeting compaction against PostgreSQL', () => {
+  assert.match(workflow, /collaboration-e2e:[\s\S]*?image: postgres:16-alpine/);
+  assert.match(workflow, /collaboration-e2e:[\s\S]*?node backend\/dist\/main\.js/);
+  assert.match(workflow, /collaboration-e2e:[\s\S]*?topic-slice-running-instance\.spec\.ts/);
+  assert.match(workflow, /collaboration-e2e:[\s\S]*?e2ee-release-running-instance\.spec\.ts/);
+  assert.match(workflow, /collaboration-e2e:[\s\S]*?E2EE_EVIDENCE_SETUP_PASSWORD/);
 });
 
 test('runs badge transformation tests and semantic workflow validation in CI', () => {
   assert.match(workflow, /badge-tooling:[\s\S]*?run: pnpm run test:ci-badges/);
   assert.match(workflow, /badge-tooling:[\s\S]*?uses: docker:\/\/rhysd\/actionlint:1\.7\.7/);
-  assert.match(workflow, /publish-badges:[\s\S]*?needs: \[tests, e2e, syntax, badge-tooling\]/);
+  assert.match(
+    workflow,
+    /publish-badges:[\s\S]*?needs: \[tests, e2e, collaboration-e2e, syntax, badge-tooling\]/,
+  );
 });
 
 test('README links all six main-push badges to CI diagnostics', () => {
