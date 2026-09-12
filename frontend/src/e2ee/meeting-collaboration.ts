@@ -29,11 +29,14 @@ export class EncryptedMeetingCollaborationProvider extends EventTarget {
   private pending: PendingEncryptedMeetingUpdate[] = [];
   private sent = new Set<string>();
   private encryption = Promise.resolve();
+  private incoming = Promise.resolve();
   private stopped = false;
   private authenticated = false;
   private compacting = false;
+  private compactionTriggerSequence: string | null = null;
   private barrierId: string | null = null;
   private barrierDrained = false;
+  private barrierDocument: Y.Doc | null = null;
   private pausedPlaintext: Uint8Array[] = [];
   private awarenessGeneration = 0;
 
@@ -42,8 +45,15 @@ export class EncryptedMeetingCollaborationProvider extends EventTarget {
     readonly document: Y.Doc,
     private readonly ticket: () => Promise<CollaborationTicket>,
     private readonly socketFactory: (path: string) => WebSocket,
-    private readonly compact?: (barrierId: string, serverSequence: string) => Promise<void>,
-    private readonly resync?: () => Promise<{ parentChanged: boolean }>,
+    private readonly compact?: (
+      barrierId: string,
+      serverSequence: string,
+      stableDocumentState: Uint8Array,
+    ) => Promise<void>,
+    private readonly resync?: () => Promise<{
+      parentChanged: boolean;
+      canonicalState?: Uint8Array;
+    }>,
     private readonly rotateClientEpoch?: () => Promise<void>,
   ) {
     super();
@@ -73,7 +83,7 @@ export class EncryptedMeetingCollaborationProvider extends EventTarget {
       documentId: credentials.documentId,
     })));
     socket.addEventListener("message", (event) => {
-      void this.message(String(event.data)).catch((error: unknown) => {
+      this.incoming = this.incoming.then(() => this.message(String(event.data))).catch((error: unknown) => {
         if ((error as Error)?.message === "E2EE_MEETING_DOCUMENT_CONTEXT_INVALID") {
           void this.synchronize().catch(() => this.setStatus("rejected"));
         } else this.setStatus("rejected");
@@ -185,8 +195,7 @@ export class EncryptedMeetingCollaborationProvider extends EventTarget {
       );
       this.flush();
       this.acknowledgeBarrierWhenDrained();
-      if (!this.barrierId && !this.pending.length
-        && Number(frame.serverSequence) % 100 === 0 && !this.compacting) {
+      if (!this.barrierId && Number(frame.serverSequence) % 100 === 0 && !this.compacting) {
         this.requestCompaction(frame.serverSequence);
       }
       return;
@@ -203,8 +212,16 @@ export class EncryptedMeetingCollaborationProvider extends EventTarget {
         this.meetingId,
         update,
         MEETING_COLLABORATION_ORIGIN,
+        this.barrierDocument ?? undefined,
       );
-      if (result === "gap") await this.synchronize();
+      if (result === "gap") {
+        if (this.barrierId && this.socket?.readyState === WebSocket.OPEN) {
+          this.socket.send(JSON.stringify({
+            type: "compaction-failed",
+            barrierId: this.barrierId,
+          }));
+        } else await this.synchronize();
+      }
       return;
     }
     if (frame.type === "awareness") {
@@ -237,8 +254,19 @@ export class EncryptedMeetingCollaborationProvider extends EventTarget {
       return;
     }
     if (frame.type === "rejected") {
+      if (frame.code === "E2EE_COMPACTION_IN_PROGRESS") {
+        this.compacting = false;
+        const trigger = this.compactionTriggerSequence;
+        window.setTimeout(() => {
+          if (trigger && !this.stopped && this.authenticated && !this.barrierId && !this.compacting) {
+            this.requestCompaction(trigger);
+          }
+        }, 500);
+        return;
+      }
       if (frame.code === "E2EE_COMPACTION_NOT_REQUIRED") {
         this.compacting = false;
+        this.compactionTriggerSequence = null;
         return;
       }
       if ([
@@ -295,7 +323,18 @@ export class EncryptedMeetingCollaborationProvider extends EventTarget {
   async synchronize(rebasePending = false): Promise<void> {
     try {
       await this.enqueue(async () => {
-        const { parentChanged } = await this.resync?.() ?? { parentChanged: false };
+        const { parentChanged, canonicalState } = await this.resync?.() ?? { parentChanged: false };
+        if (canonicalState) {
+          try {
+            if (this.barrierId) {
+              this.barrierDocument?.destroy();
+              this.barrierDocument = new Y.Doc();
+              Y.applyUpdateV2(this.barrierDocument, canonicalState);
+            }
+          } finally {
+            canonicalState.fill(0);
+          }
+        }
         if ((parentChanged || rebasePending) && this.pending.length) await this.rebasePending();
       });
     } catch (error) {
@@ -325,6 +364,7 @@ export class EncryptedMeetingCollaborationProvider extends EventTarget {
 
   private requestCompaction(serverSequence: string): void {
     this.compacting = true;
+    this.compactionTriggerSequence = serverSequence;
     this.socket?.send(JSON.stringify({
       type: "request-compaction",
       triggerServerSequence: serverSequence,
@@ -335,6 +375,8 @@ export class EncryptedMeetingCollaborationProvider extends EventTarget {
     if (!barrierId || this.barrierId) return;
     this.barrierId = barrierId;
     this.barrierDrained = false;
+    this.barrierDocument = new Y.Doc();
+    Y.applyUpdateV2(this.barrierDocument, Y.encodeStateAsUpdateV2(this.document));
     this.setStatus("paused");
     const queued = this.encryption;
     void queued.then(() => this.acknowledgeBarrierWhenDrained());
@@ -359,7 +401,13 @@ export class EncryptedMeetingCollaborationProvider extends EventTarget {
       this.setStatus("resynchronizing");
       await this.synchronize();
       this.setStatus("paused");
-      await this.compact?.(barrierId, serverSequence);
+      if (!this.barrierDocument) throw new Error("E2EE_COMPACTION_BARRIER_INVALID");
+      const stableDocumentState = Y.encodeStateAsUpdateV2(this.barrierDocument);
+      try {
+        await this.compact?.(barrierId, serverSequence, stableDocumentState);
+      } finally {
+        stableDocumentState.fill(0);
+      }
     } catch {
       if (this.socket?.readyState === WebSocket.OPEN) {
         this.socket.send(JSON.stringify({ type: "compaction-failed", barrierId }));
@@ -377,7 +425,10 @@ export class EncryptedMeetingCollaborationProvider extends EventTarget {
     this.pausedPlaintext = [];
     this.barrierId = null;
     this.barrierDrained = false;
+    this.barrierDocument?.destroy();
+    this.barrierDocument = null;
     this.compacting = false;
+    this.compactionTriggerSequence = null;
     if (!plaintext.length) {
       this.flush();
       return;
@@ -466,6 +517,8 @@ export class EncryptedMeetingCollaborationProvider extends EventTarget {
     this.sent.clear();
     for (const update of this.pausedPlaintext) update.fill(0);
     this.pausedPlaintext = [];
+    this.barrierDocument?.destroy();
+    this.barrierDocument = null;
   }
 
   private setStatus(status: CollaborationStatus): void {
@@ -492,8 +545,12 @@ export const meetingCollaboration = {
     meetingId: string,
     ticket: () => Promise<CollaborationTicket>,
     socketFactory: (path: string) => WebSocket,
-    compact?: (barrierId: string, serverSequence: string) => Promise<void>,
-    resync?: () => Promise<{ parentChanged: boolean }>,
+    compact?: (
+      barrierId: string,
+      serverSequence: string,
+      stableDocumentState: Uint8Array,
+    ) => Promise<void>,
+    resync?: () => Promise<{ parentChanged: boolean; canonicalState?: Uint8Array }>,
   ) => {
     providers.get(meetingId)?.destroy();
     const provider = new EncryptedMeetingCollaborationProvider(

@@ -148,6 +148,7 @@ export class MeetingCollaborationRelayService implements OnApplicationBootstrap,
         envelope,
         socket.collaboration.user,
         typeof frame.appearanceId === "string" ? frame.appearanceId : undefined,
+        "collaboration",
       );
       const update = await this.dataSource.getRepository(E2eeClientEpoch).findOneByOrFail({
         id: result.clientEpochId,
@@ -265,6 +266,10 @@ export class MeetingCollaborationRelayService implements OnApplicationBootstrap,
       compactorUserId: socket.collaboration.user.id,
       participantIds: clients.map((client) => client.connectionId!),
     });
+    if (!barrier) {
+      socket.send(JSON.stringify({ type: "rejected", code: "E2EE_COMPACTION_IN_PROGRESS" }));
+      return;
+    }
     const encoded = JSON.stringify({
       type: "compaction-barrier",
       barrierId: barrier.barrierId,

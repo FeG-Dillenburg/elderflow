@@ -64,6 +64,8 @@ export interface PendingEncryptedMeetingUpdate {
   envelope: string;
   activeSnapshotId: string;
   authorClock: number;
+  clientEpochId?: string;
+  signingPublicKey?: string;
 }
 
 export class MeetingDocumentSession {
@@ -244,6 +246,41 @@ export class MeetingDocumentSession {
     return { parentChanged };
   }
 
+  async canonicalDocumentState(workspace: EncryptedWorkspace): Promise<Uint8Array> {
+    const keys = this.requiredKeys();
+    const document = new Y.Doc();
+    try {
+      const snapshotOckId = workspace.snapshot.ockId ?? keys.ockId;
+      await applyEncryptedMeetingSnapshot(document, {
+        organizationId: keys.organizationId,
+        documentId: workspace.documentId,
+        snapshotId: workspace.snapshot.id,
+        ockId: snapshotOckId,
+        clientEpochId: workspace.snapshot.clientEpochId,
+        contentKey: this.contentKeyFor(snapshotOckId),
+        signingPublicKey: base64UrlToBytes(workspace.snapshot.signingPublicKey),
+        envelope: base64UrlToBytes(workspace.snapshot.envelope),
+      });
+      for (const update of workspace.updates) {
+        const updateOckId = update.ockId ?? keys.ockId;
+        await applyEncryptedMeetingUpdate(document, {
+          organizationId: keys.organizationId,
+          documentId: workspace.documentId,
+          activeSnapshotId: workspace.activeSnapshotId,
+          ockId: updateOckId,
+          clientEpochId: update.clientEpochId,
+          authorClock: Number(update.authorClock),
+          contentKey: this.contentKeyFor(updateOckId),
+          signingPublicKey: base64UrlToBytes(update.signingPublicKey),
+          envelope: base64UrlToBytes(update.envelope),
+        });
+      }
+      return Y.encodeStateAsUpdateV2(document);
+    } finally {
+      document.destroy();
+    }
+  }
+
   hydrateFragments(meetingId: string, appearanceIds: Array<{ id: string; person: boolean }>) {
     const loaded = this.requiredDocument(meetingId);
     return {
@@ -304,26 +341,39 @@ export class MeetingDocumentSession {
     const keys = this.requiredKeys();
     const loaded = this.requiredDocument(meetingId);
     loaded.authorClock += 1;
+    const authorClock = loaded.authorClock;
+    const operation = {
+      organizationId: keys.organizationId,
+      ockId: keys.ockId,
+      clientEpochId: keys.clientEpochId,
+      noncePrefix: Uint8Array.from(keys.noncePrefix),
+      contentKey: Uint8Array.from(keys.contentKey),
+      signingPrivateKey: Uint8Array.from(keys.signingPrivateKey),
+      documentId: loaded.documentId,
+      activeSnapshotId: loaded.activeSnapshotId,
+    };
     try {
       return {
         envelope: bytesToBase64Url(await createEncryptedMeetingUpdate({
-          organizationId: keys.organizationId,
-          documentId: loaded.documentId,
-          activeSnapshotId: loaded.activeSnapshotId,
-          ockId: keys.ockId,
-          clientEpochId: keys.clientEpochId,
-          authorClock: loaded.authorClock,
-          noncePrefix: keys.noncePrefix,
-          contentKey: keys.contentKey,
-          signingPrivateKey: keys.signingPrivateKey,
+          ...operation,
+          authorClock,
           update,
         })),
-        activeSnapshotId: loaded.activeSnapshotId,
-        authorClock: loaded.authorClock,
+        activeSnapshotId: operation.activeSnapshotId,
+        authorClock,
+        clientEpochId: operation.clientEpochId,
+        signingPublicKey: bytesToBase64Url(
+          sodium.crypto_sign_ed25519_sk_to_pk(operation.signingPrivateKey),
+        ),
       };
     } catch (error) {
-      loaded.authorClock -= 1;
+      if (this.keys?.clientEpochId === operation.clientEpochId
+        && loaded.authorClock === authorClock) loaded.authorClock -= 1;
       throw error;
+    } finally {
+      sodium.memzero(operation.noncePrefix);
+      sodium.memzero(operation.contentKey);
+      sodium.memzero(operation.signingPrivateKey);
     }
   }
 
@@ -338,10 +388,12 @@ export class MeetingDocumentSession {
         documentId: loaded.documentId,
         activeSnapshotId: pending.activeSnapshotId,
         ockId: keys.ockId,
-        clientEpochId: keys.clientEpochId,
+        clientEpochId: pending.clientEpochId ?? keys.clientEpochId,
         authorClock: pending.authorClock,
         contentKey: keys.contentKey,
-        signingPublicKey: sodium.crypto_sign_ed25519_sk_to_pk(keys.signingPrivateKey),
+        signingPublicKey: pending.signingPublicKey
+          ? base64UrlToBytes(pending.signingPublicKey)
+          : sodium.crypto_sign_ed25519_sk_to_pk(keys.signingPrivateKey),
         envelope: base64UrlToBytes(pending.envelope),
       });
   }
@@ -356,7 +408,7 @@ export class MeetingDocumentSession {
     signingPublicKey: string;
     envelope: string;
     serverSequence?: string;
-  }, origin: unknown): Promise<"applied" | "duplicate" | "gap"> {
+  }, origin: unknown, mirror?: Y.Doc): Promise<"applied" | "duplicate" | "gap"> {
     const keys = this.requiredKeys();
     const loaded = this.requiredDocument(meetingId);
     if (input.serverSequence) {
@@ -364,7 +416,7 @@ export class MeetingDocumentSession {
       if (sequence <= loaded.currentServerSequence) return "duplicate";
       if (sequence !== loaded.currentServerSequence + 1) return "gap";
     }
-    await applyEncryptedMeetingUpdate(loaded.document, {
+    const context = {
       organizationId: keys.organizationId,
       documentId: loaded.documentId,
       activeSnapshotId: loaded.activeSnapshotId,
@@ -375,7 +427,9 @@ export class MeetingDocumentSession {
       signingPublicKey: base64UrlToBytes(input.signingPublicKey),
       envelope: base64UrlToBytes(input.envelope),
       origin,
-    });
+    };
+    await applyEncryptedMeetingUpdate(loaded.document, context);
+    if (mirror) await applyEncryptedMeetingUpdate(mirror, context);
     loaded.authorClocks.set(input.clientEpochId, Number(input.authorClock));
     if (input.serverSequence) loaded.currentServerSequence = Number(input.serverSequence);
     return "applied";
@@ -391,6 +445,7 @@ export class MeetingDocumentSession {
     meetingId: string,
     fragments: StableMeetingFragment[],
     expectedServerSequence?: number,
+    stableDocumentState?: Uint8Array,
   ) {
     const keys = this.requiredKeys();
     const loaded = this.requiredDocument(meetingId);
@@ -404,7 +459,9 @@ export class MeetingDocumentSession {
       "SHA-256",
       Uint8Array.from(loaded.activeSnapshotEnvelope).buffer,
     ));
-    const document = this.compactionDocument(loaded.document, fragments);
+    const stableDocument = stableDocumentState ? new Y.Doc() : null;
+    if (stableDocument && stableDocumentState) Y.applyUpdateV2(stableDocument, stableDocumentState);
+    const document = this.compactionDocument(stableDocument ?? loaded.document, fragments);
     try {
       const envelope = await createEncryptedMeetingSnapshot({
         organizationId: keys.organizationId,
@@ -425,6 +482,7 @@ export class MeetingDocumentSession {
       return { snapshotId, snapshotEnvelope: bytesToBase64Url(envelope) };
     } finally {
       document.destroy();
+      stableDocument?.destroy();
     }
   }
 

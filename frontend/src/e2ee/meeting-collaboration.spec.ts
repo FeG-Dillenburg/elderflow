@@ -90,13 +90,17 @@ describe("EncryptedMeetingCollaborationProvider", () => {
       envelope: "envelope-1",
       clientEpochId: "epoch",
       authorClock: "1",
-      serverSequence: "1",
+      serverSequence: "100",
     });
     await settle();
     expect(updates()).toEqual([
       { type: "update", envelope: "envelope-1" },
       { type: "update", envelope: "envelope-2" },
     ]);
+    expect(socket.sent.map((value) => JSON.parse(value))).toContainEqual({
+      type: "request-compaction",
+      triggerServerSequence: "100",
+    });
 
     provider.destroy();
     document.destroy();
@@ -170,8 +174,21 @@ describe("EncryptedMeetingCollaborationProvider", () => {
       });
     vi.spyOn(meetingDocumentSession, "encryptAwareness").mockResolvedValue("awareness");
     vi.spyOn(meetingDocumentSession, "acknowledge").mockImplementation(() => undefined);
-    const compact = vi.fn().mockResolvedValue(undefined);
-    const resync = vi.fn().mockResolvedValue({ parentChanged: true });
+    let stableState: Uint8Array | undefined;
+    const compact = vi.fn().mockImplementation(async (
+      _barrierId: string,
+      _serverSequence: string,
+      state: Uint8Array,
+    ) => {
+      stableState = Uint8Array.from(state);
+    });
+    const resync = vi.fn().mockImplementation(async () => {
+      const canonical = new Y.Doc();
+      canonical.getText("field").insert(0, "a");
+      const canonicalState = Y.encodeStateAsUpdateV2(canonical);
+      canonical.destroy();
+      return { parentChanged: true, canonicalState };
+    });
     const provider = new EncryptedMeetingCollaborationProvider(
       "meeting",
       document,
@@ -194,11 +211,13 @@ describe("EncryptedMeetingCollaborationProvider", () => {
       authorClock: "100",
       serverSequence: "100",
     });
+    await settle();
     expect(socket.sent.map((value) => JSON.parse(value))).toContainEqual({
       type: "request-compaction",
       triggerServerSequence: "100",
     });
     socket.receive({ type: "compaction-barrier", barrierId: "barrier" });
+    await settle();
     document.getText("field").insert(1, "b");
     await settle();
 
@@ -216,7 +235,11 @@ describe("EncryptedMeetingCollaborationProvider", () => {
       serverSequence: "100",
     });
     await settle();
-    expect(compact).toHaveBeenCalledWith("barrier", "100");
+    expect(compact).toHaveBeenCalledWith("barrier", "100", expect.any(Uint8Array));
+    const stableDocument = new Y.Doc();
+    Y.applyUpdateV2(stableDocument, stableState!);
+    expect(stableDocument.getText("field").toString()).toBe("a");
+    stableDocument.destroy();
     expect(encrypt).toHaveBeenCalledTimes(1);
 
     socket.receive({
@@ -289,6 +312,7 @@ describe("EncryptedMeetingCollaborationProvider", () => {
     for (const socket of [socketA, socketB]) {
       socket.receive({ type: "compaction-barrier", barrierId: "barrier" });
     }
+    await settle();
     documentA.getText("field").insert(6, "-from-a");
     documentB.getText("field").insert(0, "from-b");
     await settle();
@@ -300,7 +324,7 @@ describe("EncryptedMeetingCollaborationProvider", () => {
       serverSequence: "100",
     });
     await settle();
-    expect(compact).toHaveBeenCalledWith("barrier", "100");
+    expect(compact).toHaveBeenCalledWith("barrier", "100", expect.any(Uint8Array));
     for (const socket of [socketA, socketB]) {
       socket.receive({
         type: "compaction-released",

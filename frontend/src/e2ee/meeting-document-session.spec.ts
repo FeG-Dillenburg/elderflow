@@ -1,7 +1,9 @@
 import { Decoder } from "cbor-x";
 import sodium from "libsodium-wrappers-sumo";
+import * as Y from "yjs";
 import { afterEach, describe, expect, it } from "vitest";
 import { MeetingDocumentSession } from "./meeting-document-session";
+import { readMeetingFragment } from "./meeting-document-codec";
 import { base64UrlToBytes, bytesToBase64Url } from "./protocol";
 
 const decoder = new Decoder({ mapsAsObjects: false, useRecords: false });
@@ -93,6 +95,115 @@ describe("MeetingDocumentSession", () => {
     ));
     expect(header[6]).toBe(1);
     expect([...header[7].subarray(0, 16)]).toEqual([...new Uint8Array(16).fill(14)]);
+  });
+
+  it("decrypts a pending update after another provider rotates the shared client epoch", async () => {
+    await sodium.ready;
+    const firstSigning = sodium.crypto_sign_seed_keypair(new Uint8Array(32).fill(20), "uint8array");
+    const secondSigning = sodium.crypto_sign_seed_keypair(new Uint8Array(32).fill(21), "uint8array");
+    const meetingId = "00000000-0000-4000-8000-000000000281";
+    session.unlock({
+      organizationId: "00000000-0000-4000-8000-000000000282",
+      ockId: "00000000-0000-4000-8000-000000000283",
+      clientEpochId: "00000000-0000-4000-8000-000000000284",
+      noncePrefix: new Uint8Array(16).fill(22),
+      contentKey: new Uint8Array(32).fill(23),
+      signingPrivateKey: firstSigning.privateKey,
+    });
+    await session.createInitial(meetingId);
+    const source = new Y.Doc();
+    let plaintext = new Uint8Array();
+    source.on("updateV2", (update) => {
+      plaintext = Uint8Array.from(update);
+    });
+    source.getText("field").insert(0, "preserved");
+    const pendingEncryption = session.createPendingDocumentUpdate(meetingId, plaintext);
+    session.rotateClientEpoch({
+      clientEpochId: "00000000-0000-4000-8000-000000000285",
+      noncePrefix: new Uint8Array(16).fill(24),
+      signingPrivateKey: secondSigning.privateKey,
+    });
+
+    const pending = await pendingEncryption;
+    const decrypted = await session.decryptPendingDocumentUpdate(meetingId, pending);
+    const restored = new Y.Doc();
+    Y.applyUpdateV2(restored, decrypted);
+    expect(restored.getText("field").toString()).toBe("preserved");
+    decrypted.fill(0);
+    source.destroy();
+    restored.destroy();
+  });
+
+  it("does not roll a new epoch clock back when an old in-flight encryption fails", async () => {
+    await sodium.ready;
+    const firstSigning = sodium.crypto_sign_seed_keypair(new Uint8Array(32).fill(28), "uint8array");
+    const secondSigning = sodium.crypto_sign_seed_keypair(new Uint8Array(32).fill(29), "uint8array");
+    const meetingId = "00000000-0000-4000-8000-000000000286";
+    session.unlock({
+      organizationId: "00000000-0000-4000-8000-000000000287",
+      ockId: "00000000-0000-4000-8000-000000000288",
+      clientEpochId: "00000000-0000-4000-8000-000000000289",
+      noncePrefix: new Uint8Array(16).fill(30),
+      contentKey: new Uint8Array(32).fill(31),
+      signingPrivateKey: firstSigning.privateKey,
+    });
+    await session.createInitial(meetingId);
+    (session as unknown as { keys: { signingPrivateKey: Uint8Array } }).keys.signingPrivateKey =
+      new Uint8Array(1);
+    const failedOldEpoch = session.createPendingDocumentUpdate(meetingId, new Uint8Array([1]));
+
+    session.rotateClientEpoch({
+      clientEpochId: "00000000-0000-4000-8000-000000000290",
+      noncePrefix: new Uint8Array(16).fill(32),
+      signingPrivateKey: secondSigning.privateKey,
+    });
+    const firstNewEpoch = session.createPendingDocumentUpdate(meetingId, new Uint8Array([2]));
+
+    await expect(failedOldEpoch).rejects.toThrow();
+    await expect(firstNewEpoch).resolves.toMatchObject({ authorClock: 1 });
+    const secondNewEpoch = await session.createPendingDocumentUpdate(
+      meetingId,
+      new Uint8Array([3]),
+    );
+    expect(secondNewEpoch.authorClock).toBe(2);
+  });
+
+  it("rebuilds canonical state from the server workspace without local unsent edits", async () => {
+    await sodium.ready;
+    const signing = sodium.crypto_sign_seed_keypair(new Uint8Array(32).fill(25), "uint8array");
+    const meetingId = "00000000-0000-4000-8000-000000000291";
+    const clientEpochId = "00000000-0000-4000-8000-000000000292";
+    session.unlock({
+      organizationId: "00000000-0000-4000-8000-000000000293",
+      ockId: "00000000-0000-4000-8000-000000000294",
+      clientEpochId,
+      noncePrefix: new Uint8Array(16).fill(26),
+      contentKey: new Uint8Array(32).fill(27),
+      signingPrivateKey: signing.privateKey,
+    });
+    const initial = await session.createInitial(meetingId);
+    const workspace = {
+      documentId: initial.documentId,
+      activeSnapshotId: initial.snapshotId,
+      currentServerSequence: "0",
+      snapshot: {
+        id: initial.snapshotId,
+        clientEpochId,
+        snapshotClock: "1",
+        coveredAuthorClocks: [],
+        signingPublicKey: bytesToBase64Url(signing.publicKey),
+        envelope: initial.snapshotEnvelope,
+      },
+      updates: [],
+    };
+    await session.createFragmentUpdate(meetingId, "meeting/general-notes", "unsent");
+
+    const canonicalState = await session.canonicalDocumentState(workspace);
+    const canonical = new Y.Doc();
+    Y.applyUpdateV2(canonical, canonicalState);
+    expect(readMeetingFragment(canonical, "meeting/general-notes")).toBe("");
+    canonicalState.fill(0);
+    canonical.destroy();
   });
 
   it("continues the awareness clock when the same workspace is reloaded", async () => {

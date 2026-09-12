@@ -158,6 +158,27 @@ describe("MeetingCollaborationRelayService", () => {
       frame.includes('"type":"compaction-ready"'))).toHaveLength(1);
   });
 
+  it("does not open a barrier while an external document write is in flight", async () => {
+    const requester = socket();
+    (service as unknown as { rooms: Map<string, Set<FakeSocket>> }).rooms.set(
+      "document",
+      new Set([requester]),
+    );
+    expect(compactions.beginExternalUpdate("meeting")).toBe(true);
+
+    await invokeMessage(requester, {
+      type: "request-compaction",
+      triggerServerSequence: "100",
+    });
+
+    expect(requester.send).toHaveBeenCalledWith(JSON.stringify({
+      type: "rejected",
+      code: "E2EE_COMPACTION_IN_PROGRESS",
+    }));
+    expect(compactions.current("document")).toBeNull();
+    compactions.endExternalUpdate("meeting");
+  });
+
   it("releases every paused client when a compaction barrier times out", async () => {
     jest.useFakeTimers();
     const requester = socket();
@@ -233,6 +254,43 @@ describe("MeetingCollaborationRelayService", () => {
     expect(peer.send).toHaveBeenCalledWith(released);
   });
 
+  it("ignores client failure after the authoritative database commit has claimed the barrier", async () => {
+    const requester = socket();
+    const peer = socket();
+    (service as unknown as { rooms: Map<string, Set<FakeSocket>> }).rooms.set(
+      "document",
+      new Set([requester, peer]),
+    );
+    await invokeMessage(requester, {
+      type: "request-compaction",
+      triggerServerSequence: "100",
+    });
+    const barrier = JSON.parse(
+      requester.send.mock.calls[requester.send.mock.calls.length - 1]?.[0],
+    );
+    compactions.acknowledge("document", barrier.barrierId, requester.connectionId);
+    compactions.acknowledge("document", barrier.barrierId, peer.connectionId);
+    compactions.ready("document", barrier.barrierId, "100");
+    compactions.claim("meeting", barrier.barrierId, "user");
+    requester.send.mockClear();
+    peer.send.mockClear();
+
+    await invokeMessage(requester, {
+      type: "compaction-failed",
+      barrierId: barrier.barrierId,
+    });
+
+    expect(compactions.current("document")?.barrierId).toBe(barrier.barrierId);
+    expect(requester.send).not.toHaveBeenCalledWith(expect.stringContaining('"outcome":"aborted"'));
+    expect(peer.send).not.toHaveBeenCalledWith(expect.stringContaining('"outcome":"aborted"'));
+    compactions.complete("meeting", barrier.barrierId);
+    expect(requester.send).toHaveBeenCalledWith(JSON.stringify({
+      type: "compaction-released",
+      barrierId: barrier.barrierId,
+      outcome: "compacted",
+    }));
+  });
+
   it("acknowledges an accepted opaque update and broadcasts it to another client", async () => {
     const sender = socket();
     const peer = socket();
@@ -249,6 +307,7 @@ describe("MeetingCollaborationRelayService", () => {
       envelope,
       expect.objectContaining({ id: "user" }),
       undefined,
+      "collaboration",
     );
     expect(sender.send).toHaveBeenCalledWith(expect.stringContaining('"type":"acknowledged"'));
     expect(peer.send).toHaveBeenCalledWith(expect.stringContaining('"type":"update"'));

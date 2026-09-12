@@ -127,12 +127,17 @@ export const protectedText = {
     const signing = sodium.crypto_sign_keypair('uint8array');
     const noncePrefix = crypto.getRandomValues(new Uint8Array(16));
     const newEpochId = crypto.randomUUID();
+    let registered = false;
     try {
       await api.registerE2eeClientEpoch({
         id: newEpochId,
         noncePrefix: bytesToBase64Url(noncePrefix),
         signingPublicKey: bytesToBase64Url(signing.publicKey),
       });
+      registered = true;
+      if (state.status !== 'unlocked' || !session.isUnlocked()) {
+        throw new Error('E2EE_PROTECTED_TEXT_LOCKED');
+      }
       unlockEpochIds.add(newEpochId);
       meetingDocumentSession.rotateClientEpoch({
         clientEpochId: newEpochId,
@@ -141,6 +146,10 @@ export const protectedText = {
       });
       session.rotateClientEpoch(signing.privateKey, noncePrefix);
     } catch (error) {
+      if (registered) {
+        unlockEpochIds.delete(newEpochId);
+        await api.revokeE2eeClientEpoch(newEpochId).catch(() => undefined);
+      }
       sodium.memzero(signing.privateKey);
       sodium.memzero(noncePrefix);
       throw error;

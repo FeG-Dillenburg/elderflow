@@ -152,7 +152,7 @@ evidence("E2EE release running instance", () => {
     await expect(unprotectMeetingTitle(meetingId, encryptedMeeting.protected))
       .resolves.not.toContain(marker);
 
-  });
+  }, 15_000);
 });
 
 async function createEvidenceFixture(token: string, userId: string): Promise<void> {

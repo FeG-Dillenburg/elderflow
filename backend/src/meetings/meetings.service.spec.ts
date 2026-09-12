@@ -17,8 +17,11 @@ describe("MeetingsService encrypted transaction boundaries", () => {
   const compactions = {
     abortMeeting: jest.fn(),
     claim: jest.fn(),
+    assertClaim: jest.fn(),
     complete: jest.fn(),
     fail: jest.fn(),
+    beginExternalUpdate: jest.fn().mockReturnValue(true),
+    endExternalUpdate: jest.fn(),
   };
   const manager = {
     findOne: jest.fn(),
@@ -30,6 +33,7 @@ describe("MeetingsService encrypted transaction boundaries", () => {
     save: jest.fn(async (_entity: unknown, input?: unknown) => input ?? _entity),
     remove: jest.fn(),
     delete: jest.fn(),
+    query: jest.fn(),
   };
   const dataSource = {
     transaction: jest.fn(async (work: (value: typeof manager) => unknown) => work(manager)),
@@ -66,6 +70,7 @@ describe("MeetingsService encrypted transaction boundaries", () => {
     documents.appendUpdate.mockResolvedValue({ update: { id: "update" }, duplicate: false });
     documents.compact.mockResolvedValue({ status: "compacted" });
     compactions.claim.mockReturnValue("100");
+    compactions.beginExternalUpdate.mockReturnValue(true);
   });
 
   it("commits a snapshot only for the exact sequence released by the compaction barrier", async () => {
@@ -78,6 +83,8 @@ describe("MeetingsService encrypted transaction boundaries", () => {
     )).resolves.toEqual({ status: "compacted" });
 
     expect(compactions.claim).toHaveBeenCalledWith("meeting", "barrier", "user");
+    expect(manager.query).toHaveBeenNthCalledWith(1, "SET LOCAL lock_timeout = '5s'");
+    expect(manager.query).toHaveBeenNthCalledWith(2, "SET LOCAL statement_timeout = '5s'");
     expect(documents.compact).toHaveBeenCalledWith(
       manager,
       user,
@@ -102,6 +109,19 @@ describe("MeetingsService encrypted transaction boundaries", () => {
 
     expect(compactions.fail).toHaveBeenCalledWith("meeting", "barrier");
     expect(compactions.complete).not.toHaveBeenCalled();
+  });
+
+  it("rejects an external document write while a compaction commit is in progress", async () => {
+    compactions.beginExternalUpdate.mockReturnValueOnce(false);
+
+    await expect(service.appendWorkspaceUpdate(
+      "meeting",
+      "opaque",
+      user,
+    )).rejects.toThrow("Meeting compaction is committing");
+
+    expect(documents.assertContentUser).toHaveBeenCalledWith(user);
+    expect(dataSource.transaction).not.toHaveBeenCalled();
   });
 
   it("allows a Superadmin to complete an in-progress Meeting without being assigned", async () => {
@@ -335,6 +355,8 @@ describe("MeetingsService encrypted transaction boundaries", () => {
     }, user);
 
     expect(dataSource.transaction).toHaveBeenCalledTimes(1);
+    expect(compactions.beginExternalUpdate).toHaveBeenCalledWith("meeting");
+    expect(compactions.endExternalUpdate).toHaveBeenCalledWith("meeting");
     expect(documents.appendUpdate).toHaveBeenCalledTimes(1);
     expect(documents.appendUpdate).toHaveBeenCalledWith(
       manager,

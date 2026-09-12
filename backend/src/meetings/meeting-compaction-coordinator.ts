@@ -35,6 +35,7 @@ export interface ReadyCompactionBarrier {
 @Injectable()
 export class MeetingCompactionCoordinator {
   private readonly barriers = new Map<string, CompactionBarrier>();
+  private readonly externalWriters = new Map<string, number>();
   private readonly timeoutMs = 5_000;
 
   open(input: {
@@ -43,7 +44,8 @@ export class MeetingCompactionCoordinator {
     compactorConnectionId: string;
     compactorUserId: string;
     participantIds: string[];
-  }): OpenCompactionBarrier {
+  }): OpenCompactionBarrier | null {
+    if ((this.externalWriters.get(input.meetingId) ?? 0) > 0) return null;
     const existing = this.barriers.get(input.documentId);
     if (existing) {
       return {
@@ -115,6 +117,17 @@ export class MeetingCompactionCoordinator {
     return barrier.serverSequence;
   }
 
+  assertClaim(meetingId: string, barrierId: string): void {
+    const barrier = [...this.barriers.values()].find((candidate) => candidate.id === barrierId);
+    if (!barrier || barrier.meetingId !== meetingId || barrier.phase !== "committing") {
+      throw codedHttpException(
+        HttpStatus.CONFLICT,
+        "E2EE_COMPACTION_BARRIER_INVALID",
+        "Meeting compaction barrier expired before commit",
+      );
+    }
+  }
+
   complete(meetingId: string, barrierId: string): void {
     const barrier = [...this.barriers.values()].find((candidate) => candidate.id === barrierId);
     if (!barrier || barrier.meetingId !== meetingId) return;
@@ -129,13 +142,13 @@ export class MeetingCompactionCoordinator {
 
   abort(documentId: string, barrierId?: string): void {
     const barrier = this.barriers.get(documentId);
-    if (!barrier || (barrierId && barrier.id !== barrierId)) return;
+    if (!barrier || barrier.phase === "committing" || (barrierId && barrier.id !== barrierId)) return;
     this.release(barrier, "aborted");
   }
 
   abortMeeting(meetingId: string): void {
     const barrier = [...this.barriers.values()].find((candidate) => candidate.meetingId === meetingId);
-    if (barrier) this.release(barrier, "aborted");
+    if (barrier && barrier.phase !== "committing") this.release(barrier, "aborted");
   }
 
   disconnected(documentId: string, participantId: string): void {
@@ -151,6 +164,20 @@ export class MeetingCompactionCoordinator {
     if (barrier.phase === "committing") return false;
     if (barrier.drained.has(participantId)) this.release(barrier, "aborted");
     return true;
+  }
+
+  beginExternalUpdate(meetingId: string): boolean {
+    const barrier = [...this.barriers.values()].find((candidate) => candidate.meetingId === meetingId);
+    if (barrier?.phase === "committing") return false;
+    if (barrier) this.release(barrier, "aborted");
+    this.externalWriters.set(meetingId, (this.externalWriters.get(meetingId) ?? 0) + 1);
+    return true;
+  }
+
+  endExternalUpdate(meetingId: string): void {
+    const writers = this.externalWriters.get(meetingId) ?? 0;
+    if (writers <= 1) this.externalWriters.delete(meetingId);
+    else this.externalWriters.set(meetingId, writers - 1);
   }
 
   current(documentId: string): OpenCompactionBarrier | null {
