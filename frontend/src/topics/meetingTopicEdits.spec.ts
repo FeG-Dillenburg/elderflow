@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { api, type MeetingTopic } from "../api/domain";
 import {
   saveMeetingMinutes,
@@ -21,6 +21,11 @@ const item = (): MeetingTopic => ({
 });
 
 describe("semantic Meeting text saves", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.clearAllMocks();
+  });
+
   it("sends the current preparation version and advances local state from the response", async () => {
     const appearance = item();
     vi.spyOn(api, "updateMeetingPreparationContext").mockResolvedValue({
