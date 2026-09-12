@@ -57,6 +57,44 @@ describe("MeetingDocumentSession", () => {
     expect((decoded[3] as unknown[])[6]).toBe(2);
   });
 
+  it("starts a fresh author clock after rotating to a newly registered client epoch", async () => {
+    await sodium.ready;
+    const firstSigning = sodium.crypto_sign_seed_keypair(new Uint8Array(32).fill(10), "uint8array");
+    const secondSigning = sodium.crypto_sign_seed_keypair(new Uint8Array(32).fill(11), "uint8array");
+    const meetingId = "00000000-0000-4000-8000-000000000271";
+    const firstEpochId = "00000000-0000-4000-8000-000000000272";
+    const secondEpochId = "00000000-0000-4000-8000-000000000273";
+    session.unlock({
+      organizationId: "00000000-0000-4000-8000-000000000274",
+      ockId: "00000000-0000-4000-8000-000000000275",
+      clientEpochId: firstEpochId,
+      noncePrefix: new Uint8Array(16).fill(12),
+      contentKey: new Uint8Array(32).fill(13),
+      signingPrivateKey: firstSigning.privateKey,
+    });
+    await session.createInitial(meetingId);
+    await session.createFragmentUpdate(meetingId, "meeting/general-notes", "old epoch");
+
+    session.rotateClientEpoch({
+      clientEpochId: secondEpochId,
+      noncePrefix: new Uint8Array(16).fill(14),
+      signingPrivateKey: secondSigning.privateKey,
+    });
+    const envelope = await session.createFragmentUpdate(
+      meetingId,
+      "meeting/general-notes",
+      "fresh epoch",
+    );
+    const decoded = decoder.decode(base64UrlToBytes(envelope)) as unknown[];
+    const header = decoded[3] as Uint8Array[];
+
+    expect(bytesToBase64Url(header[5])).toBe(bytesToBase64Url(
+      Uint8Array.from(secondEpochId.replaceAll("-", "").match(/../g)!, (byte) => Number.parseInt(byte, 16)),
+    ));
+    expect(header[6]).toBe(1);
+    expect([...header[7].subarray(0, 16)]).toEqual([...new Uint8Array(16).fill(14)]);
+  });
+
   it("continues the awareness clock when the same workspace is reloaded", async () => {
     await sodium.ready;
     const signing = sodium.crypto_sign_seed_keypair(new Uint8Array(32).fill(3), "uint8array");

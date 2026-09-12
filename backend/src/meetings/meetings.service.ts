@@ -37,6 +37,7 @@ import { lockedMutableMeeting } from "./meeting-mutation-boundary";
 import { meetingResponse } from "./meeting-response";
 import { Meeting } from "./meeting.entity";
 import { meetingCollaborationEvents } from "./meeting-collaboration-events";
+import { MeetingCompactionCoordinator } from "./meeting-compaction-coordinator";
 
 @Injectable()
 export class MeetingsService {
@@ -53,6 +54,7 @@ export class MeetingsService {
     private readonly recurrence: RecurrenceService,
     private readonly scalars: E2eeScalarService,
     private readonly documents: MeetingDocumentService,
+    private readonly compactions: MeetingCompactionCoordinator,
   ) {}
 
   async complete(id: string, user: User) {
@@ -108,6 +110,7 @@ export class MeetingsService {
     meetingCollaborationEvents.emit("completed", {
       meetingId: id,
     });
+    this.compactions.abortMeeting(id);
     return response;
   }
 
@@ -302,11 +305,29 @@ export class MeetingsService {
     return this.documents.bootstrap(this.meetings.manager, user, meetingId);
   }
 
-  async compactWorkspace(meetingId: string, snapshotId: string, envelope: string, user: User) {
-    const result = await this.dataSource.transaction((manager) =>
-      this.documents.compact(manager, user, meetingId, snapshotId, envelope));
-    meetingCollaborationEvents.emit("compacted", { meetingId });
-    return result;
+  async compactWorkspace(
+    meetingId: string,
+    snapshotId: string,
+    envelope: string,
+    barrierId: string,
+    user: User,
+  ) {
+    const expectedServerSequence = this.compactions.claim(meetingId, barrierId, user.id);
+    try {
+      const result = await this.dataSource.transaction((manager) => this.documents.compact(
+        manager,
+        user,
+        meetingId,
+        snapshotId,
+        envelope,
+        expectedServerSequence,
+      ));
+      this.compactions.complete(meetingId, barrierId);
+      return result;
+    } catch (error) {
+      this.compactions.fail(meetingId, barrierId);
+      throw error;
+    }
   }
 
   async addParticipant(meetingId: string, input: MeetingParticipantDto): Promise<MeetingUser> {

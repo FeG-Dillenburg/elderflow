@@ -40,4 +40,26 @@ describe('Protected-text unlock session', () => {
     expect(onLock).toHaveBeenCalledWith('explicit');
     expect(onLock).not.toHaveBeenCalledWith(expect.objectContaining({ key: expect.anything() }));
   });
+
+  it('replaces and clears client-epoch signing material during recovery', () => {
+    const session = new UnlockSession();
+    const oldSigningKey = new Uint8Array([1, 2, 3]);
+    const oldNoncePrefix = new Uint8Array([4, 5, 6]);
+    const newSigningKey = new Uint8Array([7, 8, 9]);
+    const newNoncePrefix = new Uint8Array([10, 11, 12]);
+    session.unlock({
+      organizationRootKey: new Uint8Array(32),
+      contentKey: new Uint8Array(32),
+      signingPrivateKey: oldSigningKey,
+      noncePrefix: oldNoncePrefix,
+    });
+
+    session.rotateClientEpoch(newSigningKey, newNoncePrefix);
+
+    expect([...oldSigningKey]).toEqual([0, 0, 0]);
+    expect([...oldNoncePrefix]).toEqual([0, 0, 0]);
+    session.lock('explicit');
+    expect([...newSigningKey]).toEqual([0, 0, 0]);
+    expect([...newNoncePrefix]).toEqual([0, 0, 0]);
+  });
 });

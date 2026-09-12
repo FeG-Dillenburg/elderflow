@@ -206,6 +206,7 @@ export class MeetingDocumentService {
     meetingId: string,
     snapshotId: string,
     encodedEnvelope: string,
+    expectedServerSequence?: string,
   ) {
     this.assertContentUser(user);
     const meeting = await manager.findOne(Meeting, {
@@ -250,6 +251,8 @@ export class MeetingDocumentService {
     if (metadata.parentSnapshotId !== document.activeSnapshotId
       || !expectedHash.equals(metadata.parentEnvelopeHash)
       || BigInt(metadata.coveredServerSequence) !== BigInt(document.currentServerSequence)
+      || (expectedServerSequence !== undefined
+        && BigInt(metadata.coveredServerSequence) !== BigInt(expectedServerSequence))
       || JSON.stringify(suppliedClocks.map(([id, clock]) => [id, String(clock)]))
         !== JSON.stringify(expectedClocks.map(([id, clock]) => [id, String(clock)]))) {
       throw codedHttpException(HttpStatus.CONFLICT, "E2EE_SNAPSHOT_PARENT_INVALID", "Meeting snapshot parent is stale");

@@ -1035,7 +1035,7 @@ export const api = {
             url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
             return new WebSocket(url);
           },
-          () => api.compactMeetingWorkspace(id, [
+          (barrierId, serverSequence) => api.compactMeetingWorkspace(id, barrierId, serverSequence, [
             'meeting/general-notes',
             'meeting/opening-input',
             ...(meeting.agenda ?? []).flatMap((item) => item.topic?.type === 'person'
@@ -1129,12 +1129,24 @@ export const api = {
       throw error;
     }
   },
-  compactMeetingWorkspace: async (id: string, fragments: import('../e2ee/meeting-document-codec').StableMeetingFragment[]) => {
-    const snapshot = await meetingDocumentSession.createCompaction(id, fragments);
+  compactMeetingWorkspace: async (
+    id: string,
+    barrierId: string,
+    serverSequence: string,
+    fragments: import('../e2ee/meeting-document-codec').StableMeetingFragment[],
+  ) => {
+    const snapshot = await meetingDocumentSession.createCompaction(
+      id,
+      fragments,
+      Number(serverSequence),
+    );
     await requestWithBinaryBody(
       `/api/meetings/${id}/workspace/compact`,
       base64UrlToBytes(snapshot.snapshotEnvelope),
-      { 'X-ElderFlow-Snapshot-Id': snapshot.snapshotId },
+      {
+        'X-ElderFlow-Snapshot-Id': snapshot.snapshotId,
+        'X-ElderFlow-Compaction-Barrier-Id': barrierId,
+      },
     );
     await meetingDocumentSession.acceptCompaction(
       id,

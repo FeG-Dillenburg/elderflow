@@ -23,6 +23,7 @@ import { E2eeScalarService } from '../src/e2ee/e2ee-scalar.service';
 import { MeetingDocumentService } from '../src/meetings/meeting-document.service';
 import { MeetingDocument } from '../src/meetings/meeting-document.entity';
 import { MeetingCollaborationTicketService } from '../src/meetings/meeting-collaboration-ticket.service';
+import { MeetingCompactionCoordinator } from '../src/meetings/meeting-compaction-coordinator';
 import { E2EE_MEDIA_TYPE, isE2eeMediaType } from '../src/e2ee/e2ee-protocol';
 
 const MEETING_ID = '00000000-0000-4000-8000-000000000001';
@@ -116,6 +117,7 @@ describe('Meeting completion lifecycle (e2e)', () => {
       controllers: [MeetingsController, TopicsController],
       providers: [
         MeetingSnapshotRegistry,
+        MeetingCompactionCoordinator,
         MeetingsService,
         TopicsService,
         { provide: MeetingCollaborationTicketService, useValue: { mint: jest.fn() } },

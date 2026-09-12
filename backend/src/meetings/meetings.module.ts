@@ -22,6 +22,7 @@ import { MeetingDocumentService } from './meeting-document.service';
 import { MeetingCollaborationTicket } from './meeting-collaboration-ticket.entity';
 import { MeetingCollaborationTicketService } from './meeting-collaboration-ticket.service';
 import { MeetingCollaborationRelayService } from './meeting-collaboration-relay.service';
+import { MeetingCompactionCoordinator } from './meeting-compaction-coordinator';
 
 @Module({
   imports: [
@@ -50,6 +51,7 @@ import { MeetingCollaborationRelayService } from './meeting-collaboration-relay.
     NewMembershipSnapshotContributor,
     MeetingsService,
     MeetingCollaborationTicketService,
+    MeetingCompactionCoordinator,
     MeetingCollaborationRelayService,
   ],
   exports: [MeetingSnapshotRegistry, MeetingsService],

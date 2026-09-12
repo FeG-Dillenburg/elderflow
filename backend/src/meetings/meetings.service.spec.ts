@@ -11,8 +11,15 @@ describe("MeetingsService encrypted transaction boundaries", () => {
     appendUpdate: jest.fn(),
     bootstrap: jest.fn(),
     storedUpdateMatches: jest.fn(),
+    compact: jest.fn(),
   };
   const scalars = { validateWrite: jest.fn() };
+  const compactions = {
+    abortMeeting: jest.fn(),
+    claim: jest.fn(),
+    complete: jest.fn(),
+    fail: jest.fn(),
+  };
   const manager = {
     findOne: jest.fn(),
     findOneBy: jest.fn(),
@@ -41,6 +48,7 @@ describe("MeetingsService encrypted transaction boundaries", () => {
     { validate: jest.fn() } as never,
     scalars as never,
     documents as never,
+    compactions as never,
   );
   const user = { id: "user", role: "admin" } as never;
 
@@ -56,6 +64,44 @@ describe("MeetingsService encrypted transaction boundaries", () => {
     });
     manager.find.mockResolvedValue([]);
     documents.appendUpdate.mockResolvedValue({ update: { id: "update" }, duplicate: false });
+    documents.compact.mockResolvedValue({ status: "compacted" });
+    compactions.claim.mockReturnValue("100");
+  });
+
+  it("commits a snapshot only for the exact sequence released by the compaction barrier", async () => {
+    await expect(service.compactWorkspace(
+      "meeting",
+      "snapshot",
+      "opaque",
+      "barrier",
+      user,
+    )).resolves.toEqual({ status: "compacted" });
+
+    expect(compactions.claim).toHaveBeenCalledWith("meeting", "barrier", "user");
+    expect(documents.compact).toHaveBeenCalledWith(
+      manager,
+      user,
+      "meeting",
+      "snapshot",
+      "opaque",
+      "100",
+    );
+    expect(compactions.complete).toHaveBeenCalledWith("meeting", "barrier");
+  });
+
+  it("releases the compaction barrier when snapshot validation fails", async () => {
+    documents.compact.mockRejectedValueOnce(new Error("stale snapshot"));
+
+    await expect(service.compactWorkspace(
+      "meeting",
+      "snapshot",
+      "opaque",
+      "barrier",
+      user,
+    )).rejects.toThrow("stale snapshot");
+
+    expect(compactions.fail).toHaveBeenCalledWith("meeting", "barrier");
+    expect(compactions.complete).not.toHaveBeenCalled();
   });
 
   it("allows a Superadmin to complete an in-progress Meeting without being assigned", async () => {

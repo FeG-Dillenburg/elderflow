@@ -5,7 +5,15 @@ import {
   type PendingEncryptedMeetingUpdate,
 } from "./meeting-document-session";
 
-export type CollaborationStatus = "connecting" | "online" | "offline" | "pending" | "rejected" | "discarded";
+export type CollaborationStatus =
+  | "connecting"
+  | "online"
+  | "offline"
+  | "pending"
+  | "paused"
+  | "resynchronizing"
+  | "rejected"
+  | "discarded";
 export interface CollaborationTicket {
   ticket: string;
   documentId: string;
@@ -24,6 +32,9 @@ export class EncryptedMeetingCollaborationProvider extends EventTarget {
   private stopped = false;
   private authenticated = false;
   private compacting = false;
+  private barrierId: string | null = null;
+  private barrierDrained = false;
+  private pausedPlaintext: Uint8Array[] = [];
   private awarenessGeneration = 0;
 
   constructor(
@@ -31,8 +42,9 @@ export class EncryptedMeetingCollaborationProvider extends EventTarget {
     readonly document: Y.Doc,
     private readonly ticket: () => Promise<CollaborationTicket>,
     private readonly socketFactory: (path: string) => WebSocket,
-    private readonly compact?: () => Promise<void>,
+    private readonly compact?: (barrierId: string, serverSequence: string) => Promise<void>,
     private readonly resync?: () => Promise<{ parentChanged: boolean }>,
+    private readonly rotateClientEpoch?: () => Promise<void>,
   ) {
     super();
     this.awareness = new Awareness(document);
@@ -84,7 +96,21 @@ export class EncryptedMeetingCollaborationProvider extends EventTarget {
   private readonly localUpdate = (update: Uint8Array, origin: unknown): void => {
     if (origin === MEETING_COLLABORATION_ORIGIN || this.stopped) return;
     const copy = Uint8Array.from(update);
+    if (this.barrierId) {
+      this.pausedPlaintext.push(copy);
+      this.setStatus("paused");
+      return;
+    }
+    this.encryptLocalUpdate(copy);
+  };
+
+  private encryptLocalUpdate(copy: Uint8Array): void {
     void this.enqueue(async () => {
+      if (this.barrierId) {
+        this.pausedPlaintext.push(copy);
+        this.setStatus("paused");
+        return;
+      }
       try {
         const pending = await meetingDocumentSession.createPendingDocumentUpdate(this.meetingId, copy);
         copy.fill(0);
@@ -99,8 +125,8 @@ export class EncryptedMeetingCollaborationProvider extends EventTarget {
       }
     }).catch(() => {
       if (!this.stopped) this.setStatus("rejected");
-    });
-  };
+    }).finally(() => this.acknowledgeBarrierWhenDrained());
+  }
 
   private readonly localAwareness = async (
     change: { added: number[]; updated: number[]; removed: number[] },
@@ -134,6 +160,9 @@ export class EncryptedMeetingCollaborationProvider extends EventTarget {
     if (frame.type === "authenticated") {
       await this.synchronize();
       this.authenticated = true;
+      if (this.barrierId && frame.compactionBarrierId !== this.barrierId) {
+        await this.releaseCompactionBarrier(this.barrierId, false);
+      }
       this.setStatus(this.pending.length ? "pending" : "online");
       this.flush();
       const clients = [...this.awareness.getStates().keys()];
@@ -155,8 +184,10 @@ export class EncryptedMeetingCollaborationProvider extends EventTarget {
         frame.serverSequence,
       );
       this.flush();
-      if (!this.pending.length && Number(frame.serverSequence) % 100 === 0 && !this.compacting) {
-        this.scheduleCompaction();
+      this.acknowledgeBarrierWhenDrained();
+      if (!this.barrierId && !this.pending.length
+        && Number(frame.serverSequence) % 100 === 0 && !this.compacting) {
+        this.requestCompaction(frame.serverSequence);
       }
       return;
     }
@@ -193,19 +224,34 @@ export class EncryptedMeetingCollaborationProvider extends EventTarget {
       await this.synchronize();
       return;
     }
+    if (frame.type === "compaction-barrier") {
+      this.startCompactionBarrier(frame.barrierId);
+      return;
+    }
+    if (frame.type === "compaction-ready") {
+      await this.createCoordinatedCompaction(frame.barrierId, frame.serverSequence);
+      return;
+    }
+    if (frame.type === "compaction-released") {
+      await this.releaseCompactionBarrier(frame.barrierId, frame.outcome === "compacted");
+      return;
+    }
     if (frame.type === "rejected") {
+      if (frame.code === "E2EE_COMPACTION_NOT_REQUIRED") {
+        this.compacting = false;
+        return;
+      }
       if ([
         "MEETING_COMPLETED_IMMUTABLE",
         "E2EE_CLIENT_EPOCH_INVALID",
         "E2EE_PROTECTED_CIPHERTEXT_FORBIDDEN",
       ].includes(frame.code)) {
         this.reloadCanonical();
-      } else if (["E2EE_SNAPSHOT_PARENT_INVALID", "E2EE_ENVELOPE_CONTEXT_INVALID"].includes(frame.code)) {
+      } else if (frame.code === "E2EE_SNAPSHOT_PARENT_INVALID") {
         this.setStatus("connecting");
         await this.synchronize(true);
-      } else if (frame.code === "E2EE_AUTHOR_CLOCK_GAP") {
-        this.setStatus("connecting");
-        await this.synchronize(true);
+      } else if (["E2EE_ENVELOPE_CONTEXT_INVALID", "E2EE_AUTHOR_CLOCK_GAP"].includes(frame.code)) {
+        await this.recoverPendingWithFreshEpoch();
       } else if (frame.code === "E2EE_AWARENESS_REPLAY") {
         return;
       } else this.setStatus("rejected");
@@ -222,15 +268,16 @@ export class EncryptedMeetingCollaborationProvider extends EventTarget {
       this.socket.send(JSON.stringify({ type: "update", envelope: pending.envelope }));
       this.sent.add(pending.envelope);
     }
-    this.setStatus(this.pending.length ? "pending" : "online");
+    this.setStatus(this.barrierId ? "paused" : this.pending.length ? "pending" : "online");
   }
 
   private closed(): void {
     this.authenticated = false;
+    this.compacting = false;
     this.sent.clear();
     this.socket = null;
     if (this.stopped || this.status === "discarded") return;
-    this.setStatus(this.pending.length ? "pending" : "offline");
+    this.setStatus(this.pending.length || this.pausedPlaintext.length ? "pending" : "offline");
     this.reconnect();
   }
 
@@ -271,24 +318,72 @@ export class EncryptedMeetingCollaborationProvider extends EventTarget {
     return !this.stopped
       && this.status === "online"
       && this.pending.length === 0
-      && this.sent.size === 0;
+      && this.sent.size === 0
+      && !this.barrierId
+      && this.pausedPlaintext.length === 0;
   }
 
-  private scheduleCompaction(): void {
+  private requestCompaction(serverSequence: string): void {
     this.compacting = true;
-    void this.enqueue(async () => {
-      if (this.stopped || this.pending.length) return;
-      await this.compact?.();
-    }).catch(async () => {
-      if (this.stopped) return;
-      try {
-        await this.synchronize();
-      } catch {
-        this.setStatus("rejected");
+    this.socket?.send(JSON.stringify({
+      type: "request-compaction",
+      triggerServerSequence: serverSequence,
+    }));
+  }
+
+  private startCompactionBarrier(barrierId: string): void {
+    if (!barrierId || this.barrierId) return;
+    this.barrierId = barrierId;
+    this.barrierDrained = false;
+    this.setStatus("paused");
+    const queued = this.encryption;
+    void queued.then(() => this.acknowledgeBarrierWhenDrained());
+  }
+
+  private acknowledgeBarrierWhenDrained(): void {
+    if (!this.barrierId || this.barrierDrained || this.pending.length || this.sent.size
+      || !this.authenticated || this.socket?.readyState !== WebSocket.OPEN) return;
+    this.barrierDrained = true;
+    this.socket.send(JSON.stringify({
+      type: "compaction-drained",
+      barrierId: this.barrierId,
+    }));
+  }
+
+  private async createCoordinatedCompaction(
+    barrierId: string,
+    serverSequence: string,
+  ): Promise<void> {
+    if (this.barrierId !== barrierId || !this.barrierDrained) return;
+    try {
+      this.setStatus("resynchronizing");
+      await this.synchronize();
+      this.setStatus("paused");
+      await this.compact?.(barrierId, serverSequence);
+    } catch {
+      if (this.socket?.readyState === WebSocket.OPEN) {
+        this.socket.send(JSON.stringify({ type: "compaction-failed", barrierId }));
       }
-    }).finally(() => {
-      this.compacting = false;
-    });
+    }
+  }
+
+  private async releaseCompactionBarrier(barrierId: string, compacted: boolean): Promise<void> {
+    if (this.barrierId !== barrierId) return;
+    if (compacted) {
+      this.setStatus("resynchronizing");
+      await this.synchronize();
+    }
+    const plaintext = this.pausedPlaintext;
+    this.pausedPlaintext = [];
+    this.barrierId = null;
+    this.barrierDrained = false;
+    this.compacting = false;
+    if (!plaintext.length) {
+      this.flush();
+      return;
+    }
+    this.setStatus("pending");
+    for (const update of plaintext) this.encryptLocalUpdate(update);
   }
 
   private async rebasePending(): Promise<void> {
@@ -314,6 +409,39 @@ export class EncryptedMeetingCollaborationProvider extends EventTarget {
     this.flush();
   }
 
+  private async recoverPendingWithFreshEpoch(): Promise<void> {
+    const rotateClientEpoch = this.rotateClientEpoch;
+    if (!rotateClientEpoch) {
+      this.setStatus("rejected");
+      return;
+    }
+    this.setStatus("resynchronizing");
+    await this.enqueue(async () => {
+      const plaintext: Uint8Array[] = [];
+      try {
+        for (const pending of this.pending) {
+          plaintext.push(await meetingDocumentSession.decryptPendingDocumentUpdate(
+            this.meetingId,
+            pending,
+          ));
+        }
+        await this.resync?.();
+        await rotateClientEpoch();
+        this.pending = [];
+        this.sent.clear();
+        for (const update of plaintext) {
+          this.pending.push(await meetingDocumentSession.createPendingDocumentUpdate(
+            this.meetingId,
+            update,
+          ));
+        }
+        this.flush();
+      } finally {
+        for (const update of plaintext) update.fill(0);
+      }
+    });
+  }
+
   private isTerminalAccessError(error: unknown): boolean {
     return [
       "AUTH_SESSION_REVOKED",
@@ -336,6 +464,8 @@ export class EncryptedMeetingCollaborationProvider extends EventTarget {
   private clearPending(): void {
     this.pending = [];
     this.sent.clear();
+    for (const update of this.pausedPlaintext) update.fill(0);
+    this.pausedPlaintext = [];
   }
 
   private setStatus(status: CollaborationStatus): void {
@@ -352,13 +482,17 @@ export class EncryptedMeetingCollaborationProvider extends EventTarget {
 }
 
 const providers = new Map<string, EncryptedMeetingCollaborationProvider>();
+let rotateClientEpoch: (() => Promise<void>) | undefined;
 export const meetingCollaboration = {
+  setEpochRotator: (rotator: () => Promise<void>) => {
+    rotateClientEpoch = rotator;
+  },
   get: (meetingId: string) => providers.get(meetingId),
   start: async (
     meetingId: string,
     ticket: () => Promise<CollaborationTicket>,
     socketFactory: (path: string) => WebSocket,
-    compact?: () => Promise<void>,
+    compact?: (barrierId: string, serverSequence: string) => Promise<void>,
     resync?: () => Promise<{ parentChanged: boolean }>,
   ) => {
     providers.get(meetingId)?.destroy();
@@ -369,6 +503,7 @@ export const meetingCollaboration = {
       socketFactory,
       compact,
       resync,
+      rotateClientEpoch,
     );
     providers.set(meetingId, provider);
     window.dispatchEvent(new CustomEvent("elderflow:meeting-collaboration-started", {

@@ -84,6 +84,23 @@ export class MeetingDocumentSession {
     };
   }
 
+  rotateClientEpoch(keys: Pick<
+    DocumentSessionKeys,
+    "clientEpochId" | "noncePrefix" | "signingPrivateKey"
+  >): void {
+    const current = this.requiredKeys();
+    sodium.memzero(current.noncePrefix);
+    sodium.memzero(current.signingPrivateKey);
+    current.clientEpochId = keys.clientEpochId;
+    current.noncePrefix = Uint8Array.from(keys.noncePrefix);
+    current.signingPrivateKey = Uint8Array.from(keys.signingPrivateKey);
+    for (const document of this.documents.values()) {
+      document.authorClock = document.authorClocks.get(keys.clientEpochId) ?? 0;
+      document.awarenessClock = 0;
+      document.snapshotClock = 0;
+    }
+  }
+
   async createInitial(meetingId: string) {
     const keys = this.requiredKeys();
     const documentId = crypto.randomUUID();
@@ -370,9 +387,17 @@ export class MeetingDocumentSession {
     loaded.currentServerSequence = Number(serverSequence);
   }
 
-  async createCompaction(meetingId: string, fragments: StableMeetingFragment[]) {
+  async createCompaction(
+    meetingId: string,
+    fragments: StableMeetingFragment[],
+    expectedServerSequence?: number,
+  ) {
     const keys = this.requiredKeys();
     const loaded = this.requiredDocument(meetingId);
+    if (expectedServerSequence !== undefined
+      && loaded.currentServerSequence !== expectedServerSequence) {
+      throw new Error("E2EE_COMPACTION_SEQUENCE_INVALID");
+    }
     const snapshotId = crypto.randomUUID();
     loaded.snapshotClock += 1;
     const parentEnvelopeHash = new Uint8Array(await crypto.subtle.digest(

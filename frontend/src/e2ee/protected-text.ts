@@ -16,7 +16,7 @@ const state = reactive({
   error: false,
 });
 let keyState: PublicKeyState | null = null;
-let epochId: string | null = null;
+const unlockEpochIds = new Set<string>();
 let abortController: AbortController | null = null;
 let activeUserId: string | null = null;
 let authorizationPoll: ReturnType<typeof setInterval> | null = null;
@@ -84,7 +84,7 @@ export const protectedText = {
         keys.historicalContentKeys.forEach((key) => sodium.memzero(key));
         throw error;
       }
-      epochId = newEpochId;
+      unlockEpochIds.add(newEpochId);
       session.unlock({
         ...keys,
         historicalContentKeys: [...keys.historicalContentKeys.values()],
@@ -119,6 +119,33 @@ export const protectedText = {
       abortController = null;
     }
   },
+  async rotateClientEpoch(): Promise<void> {
+    if (!keyState || state.status !== 'unlocked' || !session.isUnlocked()) {
+      throw new Error('E2EE_PROTECTED_TEXT_LOCKED');
+    }
+    await sodium.ready;
+    const signing = sodium.crypto_sign_keypair('uint8array');
+    const noncePrefix = crypto.getRandomValues(new Uint8Array(16));
+    const newEpochId = crypto.randomUUID();
+    try {
+      await api.registerE2eeClientEpoch({
+        id: newEpochId,
+        noncePrefix: bytesToBase64Url(noncePrefix),
+        signingPublicKey: bytesToBase64Url(signing.publicKey),
+      });
+      unlockEpochIds.add(newEpochId);
+      meetingDocumentSession.rotateClientEpoch({
+        clientEpochId: newEpochId,
+        noncePrefix,
+        signingPrivateKey: signing.privateKey,
+      });
+      session.rotateClientEpoch(signing.privateKey, noncePrefix);
+    } catch (error) {
+      sodium.memzero(signing.privateKey);
+      sodium.memzero(noncePrefix);
+      throw error;
+    }
+  },
   lock(reason: LockReason = 'explicit', coordinate = true): void {
     void recoverySession.abort();
     abortController?.abort();
@@ -140,7 +167,6 @@ function finishLock(): void {
   state.status = 'locked';
   state.promptVisible = false;
   state.error = false;
-  epochId = null;
 }
 
 function startAuthorizationPolling(): void {
@@ -156,12 +182,17 @@ function startAuthorizationPolling(): void {
 }
 
 function handleSessionLock(reason: LockReason): void {
-  const revokedEpoch = epochId;
+  const revokedEpochs = [...unlockEpochIds];
+  unlockEpochIds.clear();
   void recoverySession.abort();
   finishLock();
-  if (revokedEpoch) void api.revokeE2eeClientEpoch(revokedEpoch).catch(() => undefined);
+  for (const revokedEpoch of revokedEpochs) {
+    void api.revokeE2eeClientEpoch(revokedEpoch).catch(() => undefined);
+  }
   if (reason !== 'remote') coordinateLock();
 }
+
+meetingCollaboration.setEpochRotator(() => protectedText.rotateClientEpoch());
 
 function coordinateLock(): void {
   if (activeUserId) channel?.postMessage({ type: 'lock', userId: activeUserId });

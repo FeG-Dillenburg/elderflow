@@ -41,6 +41,14 @@ export class UnlockSession {
     return this.keys !== null;
   }
 
+  rotateClientEpoch(signingPrivateKey: Uint8Array, noncePrefix: Uint8Array): void {
+    if (!this.keys) throw new Error('E2EE_PROTECTED_TEXT_LOCKED');
+    if (this.keys.signingPrivateKey) sodium.memzero(this.keys.signingPrivateKey);
+    if (this.keys.noncePrefix) sodium.memzero(this.keys.noncePrefix);
+    this.keys.signingPrivateKey = signingPrivateKey;
+    this.keys.noncePrefix = noncePrefix;
+  }
+
   recordTrustedForegroundActivity(): void {
     if (!this.keys || (typeof document !== 'undefined' && document.visibilityState !== 'visible')) return;
     this.resetInactivityTimer();

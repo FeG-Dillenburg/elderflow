@@ -21,7 +21,7 @@ import {
   MeetingDocumentSession,
   type EncryptedWorkspace,
 } from "./meeting-document-session";
-import { meetingFragmentId } from "./meeting-document-codec";
+import { meetingFragmentId, replaceMeetingFragment } from "./meeting-document-codec";
 import { bytesToBase64Url, E2EE_MEDIA_TYPE } from "./protocol";
 import { scalarSession } from "./scalar-session";
 
@@ -117,7 +117,7 @@ evidence("E2EE release running instance", () => {
     await client.session.load(meetingId, workspace);
 
     const fragments = client.session.hydrateFragments(meetingId, [{ id: appearanceId, person: false }]);
-    expect(fragments.generalNotes).toBe("EF54_COLLAB_7QX9_A_RECONNECTED");
+    expect(fragments.generalNotes).toBe("EF54_COLLAB_7QX9_B_AFTER_COMPACTION");
     expect(fragments.openingInput).toBe("EF54_COLLAB_7QX9_OFFLINE_B");
     expect(fragments.appearances.get(appearanceId)?.preparationContext)
       .toBe("EF54_COLLAB_7QX9_B");
@@ -328,6 +328,100 @@ async function createEvidenceFixture(token: string, userId: string): Promise<voi
   expect(fragmentsA.appearances.get(appearanceId)?.preparationContext)
     .toBe("EF54_COLLAB_7QX9_B");
 
+  for (let sequence = 6; sequence <= 100; sequence += 1) {
+    const envelope = await clientA.session.createFragmentUpdate(
+      meetingId,
+      "meeting/general-notes",
+      `EF54_COLLAB_7QX9_COMPACTION_${sequence}`,
+    );
+    socketA.send({ type: "update", envelope });
+    const [acknowledged, remote] = await Promise.all([
+      socketA.next("acknowledged"),
+      reconnectedB.next("update"),
+    ]);
+    expect(acknowledged.serverSequence).toBe(String(sequence));
+    clientA.session.acknowledge(
+      meetingId,
+      acknowledged.clientEpochId,
+      acknowledged.authorClock,
+      acknowledged.serverSequence,
+    );
+    await clientB.session.applyRemoteUpdate(meetingId, remoteFrame(remote), "remote");
+  }
+
+  socketA.send({ type: "request-compaction", triggerServerSequence: "100" });
+  const [barrierA, barrierB] = await Promise.all([
+    socketA.next("compaction-barrier"),
+    reconnectedB.next("compaction-barrier"),
+  ]);
+  expect(barrierB.barrierId).toBe(barrierA.barrierId);
+  const pausedDelta = replaceMeetingFragment(
+    clientB.session.document(meetingId),
+    "meeting/general-notes",
+    "EF54_COLLAB_7QX9_B_AFTER_COMPACTION",
+  );
+  socketA.send({ type: "compaction-drained", barrierId: barrierA.barrierId });
+  reconnectedB.send({ type: "compaction-drained", barrierId: barrierA.barrierId });
+  const ready = await socketA.next("compaction-ready");
+  expect(ready).toMatchObject({
+    barrierId: barrierA.barrierId,
+    serverSequence: "100",
+  });
+  const snapshot = await clientA.session.createCompaction(meetingId, [
+    "meeting/general-notes",
+    "meeting/opening-input",
+    meetingFragmentId("preparationContext", appearanceId),
+    meetingFragmentId("meetingMinutes", appearanceId),
+  ], 100);
+  await binaryRequest(
+    `/api/meetings/${meetingId}/workspace/compact`,
+    token,
+    base64UrlToBytes(snapshot.snapshotEnvelope),
+    {
+      "X-ElderFlow-Snapshot-Id": snapshot.snapshotId,
+      "X-ElderFlow-Compaction-Barrier-Id": barrierA.barrierId,
+    },
+  );
+  const [releasedA, releasedB] = await Promise.all([
+    socketA.next("compaction-released"),
+    reconnectedB.next("compaction-released"),
+  ]);
+  expect(releasedA.outcome).toBe("compacted");
+  expect(releasedB).toEqual(releasedA);
+
+  const compactedWorkspace = await jsonRequest<EncryptedWorkspace>(
+    `/api/meetings/${meetingId}/workspace`,
+    token,
+  );
+  expect(compactedWorkspace.currentServerSequence).toBe("100");
+  expect(compactedWorkspace.snapshot.coveredAuthorClocks).toEqual(expect.any(Array));
+  expect(compactedWorkspace.updates).toEqual([]);
+  await Promise.all([
+    clientA.session.merge(meetingId, compactedWorkspace, "compaction"),
+    clientB.session.merge(meetingId, compactedWorkspace, "compaction"),
+  ]);
+  const afterCompactionEnvelope = await clientB.session.createPendingDocumentUpdate(
+    meetingId,
+    pausedDelta,
+  );
+  pausedDelta.fill(0);
+  reconnectedB.send({ type: "update", envelope: afterCompactionEnvelope.envelope });
+  const afterCompactionAck = await reconnectedB.next("acknowledged");
+  expect(afterCompactionAck.serverSequence).toBe("101");
+  const afterCompactionRemote = await nextUpdateAtSequence(socketA, "101");
+  await clientA.session.applyRemoteUpdate(
+    meetingId,
+    remoteFrame(afterCompactionRemote),
+    "remote",
+  );
+  const persistedAfterCompaction = await jsonRequest<EncryptedWorkspace>(
+    `/api/meetings/${meetingId}/workspace`,
+    token,
+  );
+  await clientA.session.load(meetingId, persistedAfterCompaction);
+  expect(clientA.session.hydrateFragments(meetingId, []).generalNotes)
+    .toBe("EF54_COLLAB_7QX9_B_AFTER_COMPACTION");
+
   const rawMeeting = await fetch(`${evidenceApiUrl}/api/meetings/${meetingId}`, {
     headers: authorization(token),
   });
@@ -464,7 +558,7 @@ async function runRootRotationCeremony(
       meetingId,
       [{ id: appearanceId, person: false }],
     )).toMatchObject({
-      generalNotes: "EF54_COLLAB_7QX9_A_RECONNECTED",
+      generalNotes: "EF54_COLLAB_7QX9_B_AFTER_COMPACTION",
       openingInput: "EF54_COLLAB_7QX9_OFFLINE_B",
     });
     expect(JSON.stringify(workspace)).toBe(completedWorkspace);
@@ -569,15 +663,31 @@ type UpdateFrame = UpdateFrameBase & { type: "update" };
 type AcknowledgedFrame = UpdateFrameBase & { type: "acknowledged" };
 type RejectedFrame = { type: "rejected"; code: string };
 type ParentChangedFrame = { type: "parent-changed" };
+type CompactionBarrierFrame = { type: "compaction-barrier"; barrierId: string };
+type CompactionReadyFrame = {
+  type: "compaction-ready";
+  barrierId: string;
+  serverSequence: string;
+};
+type CompactionReleasedFrame = {
+  type: "compaction-released";
+  barrierId: string;
+  outcome: "compacted" | "aborted";
+};
 type ServerFrame =
   | AuthenticatedFrame
   | UpdateFrame
   | AcknowledgedFrame
   | RejectedFrame
-  | ParentChangedFrame;
+  | ParentChangedFrame
+  | CompactionBarrierFrame
+  | CompactionReadyFrame
+  | CompactionReleasedFrame;
 type ClientFrame =
   | { type: "authenticate"; ticket: string; documentId: string }
-  | { type: "update"; envelope: string };
+  | { type: "update"; envelope: string }
+  | { type: "request-compaction"; triggerServerSequence: string }
+  | { type: "compaction-drained"; barrierId: string };
 
 class SocketEvidence {
   readonly frames: ServerFrame[] = [];
@@ -647,6 +757,27 @@ function parseServerFrame(encoded: string): ServerFrame {
   }
   const frame = value as Record<string, unknown>;
   if (frame.type === "parent-changed") return { type: "parent-changed" };
+  if (frame.type === "compaction-barrier") {
+    return { type: "compaction-barrier", barrierId: requiredString(frame, "barrierId") };
+  }
+  if (frame.type === "compaction-ready") {
+    return {
+      type: "compaction-ready",
+      barrierId: requiredString(frame, "barrierId"),
+      serverSequence: requiredString(frame, "serverSequence"),
+    };
+  }
+  if (frame.type === "compaction-released") {
+    const outcome = requiredString(frame, "outcome");
+    if (outcome !== "compacted" && outcome !== "aborted") {
+      throw new Error("Invalid compaction release outcome");
+    }
+    return {
+      type: "compaction-released",
+      barrierId: requiredString(frame, "barrierId"),
+      outcome,
+    };
+  }
   if (frame.type === "authenticated") {
     return { type: "authenticated", documentId: requiredString(frame, "documentId") };
   }
@@ -717,17 +848,33 @@ async function rawRequest(path: string, token: string): Promise<string> {
   return text;
 }
 
-async function binaryRequest(path: string, token: string, body: Uint8Array): Promise<unknown> {
+async function binaryRequest(
+  path: string,
+  token: string,
+  body: Uint8Array,
+  headers: Record<string, string> = {},
+): Promise<unknown> {
   const response = await fetch(`${evidenceApiUrl}${path}`, {
     method: "POST",
     headers: {
       ...authorization(token),
       "Content-Type": E2EE_MEDIA_TYPE,
+      ...headers,
     },
     body: Uint8Array.from(body).buffer as ArrayBuffer,
   });
   if (!response.ok) throw new Error(`${path}: ${response.status} ${await response.text()}`);
   return response.json();
+}
+
+async function nextUpdateAtSequence(
+  socket: SocketEvidence,
+  sequence: string,
+): Promise<UpdateFrame> {
+  while (true) {
+    const update = await socket.next("update");
+    if (update.serverSequence === sequence) return update;
+  }
 }
 
 async function jsonRequest<T = unknown>(

@@ -8,6 +8,7 @@ describe("MeetingsController encrypted workspace boundary", () => {
     findAll: jest.fn(),
     findOne: jest.fn(),
     appendWorkspaceUpdate: jest.fn(),
+    compactWorkspace: jest.fn(),
     addTopic: jest.fn(),
     addTopics: jest.fn(),
   };
@@ -82,5 +83,27 @@ describe("MeetingsController encrypted workspace boundary", () => {
     await controller.collaborationTicket("meeting", user);
 
     expect(collaborationTickets.mint).toHaveBeenCalledWith("meeting", user);
+  });
+
+  it("binds a snapshot proposal to its server-issued compaction barrier", async () => {
+    const meetingId = "00000000-0000-4000-8000-000000000001";
+    const snapshotId = "00000000-0000-4000-8000-000000000002";
+    const barrierId = "00000000-0000-4000-8000-000000000003";
+
+    await controller.compactWorkspace(
+      meetingId,
+      snapshotId,
+      barrierId,
+      { envelope: "opaque-snapshot" },
+      user,
+    );
+
+    expect(service.compactWorkspace).toHaveBeenCalledWith(
+      meetingId,
+      snapshotId,
+      "opaque-snapshot",
+      barrierId,
+      user,
+    );
   });
 });

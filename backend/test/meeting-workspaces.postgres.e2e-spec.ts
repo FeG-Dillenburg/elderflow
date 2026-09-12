@@ -17,6 +17,7 @@ import { MeetingTopic } from '../src/meetings/meeting-topic.entity';
 import { MeetingUser } from '../src/meetings/meeting-user.entity';
 import { Meeting } from '../src/meetings/meeting.entity';
 import { MeetingsService } from '../src/meetings/meetings.service';
+import { MeetingCompactionCoordinator } from '../src/meetings/meeting-compaction-coordinator';
 import { RecurrenceService } from '../src/recurrence/recurrence.service';
 import { SkippedRecurrence } from '../src/recurrence/skipped-recurrence.entity';
 import { Task } from '../src/tasks/task.entity';
@@ -192,6 +193,7 @@ describeWithPostgres('Encrypted Meeting workspaces with PostgreSQL', () => {
       new RecurrenceService(),
       new E2eeScalarService(),
       new MeetingDocumentService(),
+      new MeetingCompactionCoordinator(),
     );
   });
 
