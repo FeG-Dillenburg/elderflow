@@ -8,8 +8,12 @@ ElderFlow supports the preparation, execution, and follow-up of leadership meeti
 A scheduled leadership gathering with an agenda, assigned responsibilities, attendance, and minutes.
 _Avoid_: Gathering, appointment; Treffen, Besprechung
 
+**Meeting workspace (Sitzungsarbeitsbereich)**:
+The working context for one Meeting, combining its coherent Agenda representation, Collaborative text, synchronization state, and collaborator presence while the Meeting is being prepared or conducted, or presenting the same content without editing or live collaboration when a Completed Meeting is reviewed.
+_Avoid_: Meeting, Agenda, unlock session; Sitzung, Tagesordnung, Entsperrsitzung
+
 **Completed Meeting (Abgeschlossene Sitzung)**:
-A Meeting whose details, agenda composition and order, participants, Meeting topic notes, type-specific values, and Minutes entries are immutable. Reopening or correcting a Completed Meeting is a separate workflow that ElderFlow does not currently support.
+A Meeting whose details, agenda composition and order, participants, Meeting topic notes, type-specific values, and Minutes entries are immutable. Before completion, pending Collaborative text changes from currently connected Content users must settle into one stable Meeting record. Reopening or correcting a Completed Meeting is a separate workflow that ElderFlow does not currently support.
 _Avoid_: Archived Meeting, read-only view; Archivierte Sitzung, schreibgeschuetzte Ansicht
 
 **Topic (Thema)**:
