@@ -173,6 +173,12 @@ describe("Meeting workspace contract", () => {
     expect(workspace.state.phase).toBe("temporarily_offline");
     expect(workspace.state.pendingChanges).toBe(true);
     expect(workspace.state.collaborators[0]?.name).toBe("Daria Muster");
+    expect(workspace.text({ kind: "general_notes" }).editable).toBe(true);
+
+    collaboration.phase = "syncing";
+    notify?.("state");
+
+    expect(workspace.text({ kind: "general_notes" }).editable).toBe(true);
 
     loaded = meeting({ generalNotes: "Remote edit" });
     notify?.("document");

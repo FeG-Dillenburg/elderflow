@@ -85,6 +85,12 @@ const freeze = <T>(value: T): DeepReadonly<T> => {
 const appearanceFor = (meeting: DeepReadonly<Meeting>, appearanceId: string) =>
   meeting.agenda?.find((appearance) => appearance.id === appearanceId);
 
+const editablePhases: readonly MeetingWorkspacePhase[] = [
+  "ready",
+  "syncing",
+  "temporarily_offline",
+];
+
 const compatibleAppearance = (
   meeting: DeepReadonly<Meeting>,
   target: Extract<MeetingTextTarget, { appearanceId: string }>,
@@ -184,7 +190,7 @@ export const createMeetingWorkspace = (
       return freeze({
         target,
         value: value ?? "",
-        editable: state.phase === "ready" && current.status !== "completed",
+        editable: editablePhases.includes(state.phase) && current.status !== "completed",
       });
     },
     async updateText(target, value) {

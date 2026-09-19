@@ -163,6 +163,7 @@ describe("MeetingAgendaView", () => {
   };
   it("loads meeting data, shows errors, and sanitizes rich text", async () => {
     const wrapper = await view();
+    expect(wrapper.find("meeting-workspace-status-stub").exists()).toBe(true);
     expect(workspaceLoad).toHaveBeenCalledWith("meeting-1");
     expect(wrapper.text()).toContain("Council");
     expect(wrapper.find(".section-duration").text()).toBe("10 min.");

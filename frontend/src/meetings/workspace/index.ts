@@ -17,4 +17,5 @@ export {
   type MeetingRouteContext,
 } from "./vue";
 export { default as MeetingCollaborativeTextEditor } from "./MeetingCollaborativeTextEditor.vue";
+export { default as MeetingWorkspaceStatus } from "./MeetingWorkspaceStatus.vue";
 export type { MeetingRouteOperations } from "./production-adapter";

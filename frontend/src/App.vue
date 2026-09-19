@@ -73,6 +73,9 @@ const hasSettingsNavigation = computed(() =>
   settingsNavigation.value.length > 0 || protectedText.isEligible(auth.state.user),
 );
 const isSetupRoute = computed(() => router.currentRoute.value.name === "setup");
+const isMeetingRoute = computed(() =>
+  ["meeting", "meeting-prepare"].includes(String(router.currentRoute.value.name)),
+);
 const protectedRouteKey = computed(
   () => `${router.currentRoute.value.fullPath}:${protectedText.state.status}`,
 );
@@ -157,9 +160,10 @@ function toggleProtectedText(): void {
     </aside>
     <main class="main-content">
       <div
-        v-if="protectedText.isEligible(auth.state.user)"
+        v-if="isMeetingRoute || protectedText.isEligible(auth.state.user)"
         class="meeting-status-bar"
       >
+        <div id="meeting-workspace-status" class="workspace-status-slot" />
         <div
           v-if="protectedText.isEligible(auth.state.user)"
           class="protected-text-status"
@@ -391,6 +395,11 @@ nav {
 
 .meeting-status-bar :deep(.collaboration-status) {
   margin: 0;
+}
+
+.workspace-status-slot {
+  grid-column: 1 / span 2;
+  min-width: 0;
 }
 
 .protected-text-status {

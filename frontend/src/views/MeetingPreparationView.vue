@@ -37,6 +37,7 @@ import { topicUsesPlannedDuration } from "../topics/topicTypeRegistry";
 import { toTopicInput } from "../topics/types/new-membership/topicInput";
 import {
   MeetingCollaborativeTextEditor,
+  MeetingWorkspaceStatus,
   useMeetingRoute,
 } from "../meetings/workspace";
 
@@ -438,6 +439,7 @@ onMounted(() => {
 
 <template>
   <section class="page">
+    <MeetingWorkspaceStatus />
     <Message v-if="discardedAfterReload" severity="warn">
       {{ t("e2ee.collaboration.discarded") }}
     </Message>

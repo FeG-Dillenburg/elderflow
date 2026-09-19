@@ -34,6 +34,7 @@ import {
 import { protectedText } from "../e2ee/protected-text";
 import {
   MeetingCollaborativeTextEditor,
+  MeetingWorkspaceStatus,
   useMeetingRoute,
 } from "../meetings/workspace";
 import { useI18n } from "vue-i18n";
@@ -284,6 +285,7 @@ onMounted(async () => {
 </script>
 <template>
   <section class="agenda-page">
+    <MeetingWorkspaceStatus />
     <Message v-if="discardedAfterReload" severity="warn">
       {{ t("e2ee.collaboration.discarded") }}
     </Message>
