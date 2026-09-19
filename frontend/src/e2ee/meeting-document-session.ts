@@ -318,6 +318,16 @@ export class MeetingDocumentSession {
     return this.createDocumentUpdate(meetingId, update);
   }
 
+  updateFragment(
+    meetingId: string,
+    fragment: StableMeetingFragment,
+    value: string,
+    origin?: unknown,
+  ): void {
+    this.requiredKeys();
+    replaceMeetingFragment(this.requiredDocument(meetingId).document, fragment, value, origin);
+  }
+
   async createFragmentsUpdate(
     meetingId: string,
     fragments: Array<{ fragment: StableMeetingFragment; value: string }>,

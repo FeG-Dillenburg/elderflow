@@ -9,7 +9,6 @@ import InputText from "primevue/inputtext";
 import Message from "primevue/message";
 import Select from "primevue/select";
 import Tag from "primevue/tag";
-import RichTextEditor from "../components/RichTextEditor.vue";
 import { sanitizeRichText } from "../components/sanitize-rich-text";
 import TopicTypeRenderer from "../topics/TopicTypeRenderer.vue";
 import {
@@ -17,10 +16,7 @@ import {
   topicUsesPlannedDuration,
 } from "../topics/topicTypeRegistry";
 import {
-  saveMeetingMinutes,
-  saveMeetingPreparationContext,
   saveMeetingTopicField,
-  savePersonMeetingNote,
 } from "../topics/meetingTopicEdits";
 import { auth } from "../auth/auth";
 import { assignableUsers } from "../auth/roles";
@@ -36,7 +32,10 @@ import {
   type User,
 } from "../api/domain";
 import { protectedText } from "../e2ee/protected-text";
-import { meetingCollaboration } from "../e2ee/meeting-collaboration";
+import {
+  MeetingCollaborativeTextEditor,
+  useMeetingRoute,
+} from "../meetings/workspace";
 import { useI18n } from "vue-i18n";
 import { dateInputFormat, formatDate, formatTime } from "../i18n";
 
@@ -69,6 +68,8 @@ const { t } = useI18n();
 
 const route = useRoute();
 const id = route.params.id as string;
+const { workspace, operations, opened } = useMeetingRoute(id);
+let initialWorkspaceOpen: Promise<void> | null = opened;
 const meeting = ref<Meeting | null>(null),
   sections = ref<AgendaSection[]>([]),
   users = ref<User[]>([]),
@@ -108,12 +109,16 @@ const attendanceOptions = computed(() =>
 const load = async () => {
   loading.value = true;
   try {
-    const [loadedMeeting, loadedSections, loadedUsers] = await Promise.all([
-      api.meeting(id),
+    const workspaceLoad = initialWorkspaceOpen ?? workspace.refresh();
+    initialWorkspaceOpen = null;
+    const [, loadedSections, loadedUsers] = await Promise.all([
+      workspaceLoad,
       api.sections(),
       api.userDirectory(),
     ]);
-    meeting.value = loadedMeeting;
+    meeting.value = workspace.state.meeting
+      ? structuredClone(workspace.state.meeting) as Meeting
+      : null;
     sections.value = loadedSections;
     users.value = assignableUsers(loadedUsers);
   } catch (e) {
@@ -148,16 +153,16 @@ const recent = (item: MeetingTopic) => {
 };
 const addParticipant = async () => {
   if (!participant.userId) return;
-  await api.addParticipant(id, {
+  await operations.addParticipant({
     userId: participant.userId,
     attendanceStatus: participant.attendanceStatus,
   });
   participantVisible.value = false;
-  await load();
+  meeting.value = structuredClone(workspace.state.meeting) as Meeting;
 };
 const removeParticipant = async (userId: string) => {
-  await api.removeParticipant(id, userId);
-  await load();
+  await operations.removeParticipant(userId);
+  meeting.value = structuredClone(workspace.state.meeting) as Meeting;
 };
 const setTopicStatus = async (item: MeetingTopic, status: string) => {
   error.value = "";
@@ -175,13 +180,13 @@ const setTopicStatus = async (item: MeetingTopic, status: string) => {
     };
     const deferred = status === "deferred" ? true : wasDeferred ? false : undefined;
     if (deferred === undefined) {
-      await api.updateMeetingTopic(id, appearance);
+      await operations.updateAppearance(appearance);
     } else {
-      await api.updateMeetingTopic(id, appearance, { deferred });
+      await operations.updateAppearance(appearance, { deferred });
     }
     if (item.topic) item.topic.status = status;
     item.status = appearanceStatus;
-    await load();
+    meeting.value = structuredClone(workspace.state.meeting) as Meeting;
   } catch {
     error.value = t("meetingAgenda.topicStatusFailed");
   }
@@ -202,10 +207,10 @@ const move = async (
   current.position = other.position;
   other.position = position;
   await Promise.all([
-    api.updateMeetingTopic(id, current),
-    api.updateMeetingTopic(id, other),
+    operations.updateAppearance(current),
+    operations.updateAppearance(other),
   ]);
-  await load();
+  meeting.value = structuredClone(workspace.state.meeting) as Meeting;
 };
 const safe = sanitizeRichText;
 const hasRichText = (html: string | null | undefined) =>
@@ -236,7 +241,7 @@ const openEdit = () => {
 };
 const saveMeeting = async () => {
   if (!meeting.value || !editForm.date || !editForm.beginTime) return;
-  await api.updateMeeting(id, {
+  await operations.updateMeeting({
     date: toLocalDate(editForm.date)!,
     beginTime: toLocalTime(editForm.beginTime),
     status: editForm.status,
@@ -249,24 +254,21 @@ const saveMeeting = async () => {
     } : {}),
   });
   editVisible.value = false;
-  await load();
+  meeting.value = structuredClone(workspace.state.meeting) as Meeting;
 };
 const finishMeeting = async () => {
   if (finishing.value || !meeting.value) return;
   finishing.value = true;
   finishError.value = "";
   try {
-    const provider = meetingCollaboration.get(id);
-    if (provider && !(await provider.readyForCompletion())) {
-      finishError.value = t("meetingAgenda.finishPendingChanges");
-      return;
-    }
-    meeting.value = await api.completeMeeting(id);
+    await workspace.complete();
+    meeting.value = structuredClone(workspace.state.meeting) as Meeting;
     finishVisible.value = false;
-    await load();
   } catch (e) {
-    finishError.value =
-      e instanceof Error ? e.message : t("meetingAgenda.finishFailed");
+    finishError.value = e instanceof Error
+      && e.message === "MEETING_WORKSPACE_PENDING_CHANGES"
+      ? t("meetingAgenda.finishPendingChanges")
+      : e instanceof Error ? e.message : t("meetingAgenda.finishFailed");
   } finally {
     finishing.value = false;
   }
@@ -287,12 +289,6 @@ onMounted(async () => {
     </Message>
     <Message v-if="error" severity="error">{{ error }}</Message>
     <template v-if="meeting">
-      <Message
-        v-if="meeting.collaboration && !meeting.collaboration.available"
-        severity="info"
-      >
-        {{ t("e2ee.collaborationUnavailable") }}
-      </Message>
       <header class="meeting-header">
         <div>
           <p class="eyebrow">{{ t("meetingAgenda.eyebrow") }}</p>
@@ -409,11 +405,8 @@ onMounted(async () => {
                 :completed="isCompleted"
                 :meeting-status="meeting.status"
                 :users="users"
-                :save-field="saveMeetingTopicField(id, item)"
+                :save-field="saveMeetingTopicField(operations, item)"
                 :recent-updates="recent(item)"
-                :save-note="savePersonMeetingNote(id, item)"
-                :save-preparation-context="saveMeetingPreparationContext(id, item)"
-                :save-minutes="saveMeetingMinutes(id, item)"
                 :toggle-deferred="() => toggleDeferred(item)"
                 :mark-done="() => toggleDone(item)"
               />
@@ -615,24 +608,22 @@ onMounted(async () => {
           </div>
           <label>
             <span>{{ t("meetingAgenda.opening") }}</span>
-            <RichTextEditor
+            <MeetingCollaborativeTextEditor
               v-model="editForm.openingInput"
+              :target="{ kind: 'opening_input' }"
               height="100px"
               :placeholder="t('meetingAgenda.opening')"
               :readonly="!canEditProtected"
-              :meeting-id="id"
-              fragment="meeting/opening-input"
             />
           </label>
           <label>
             <span>{{ t("meetingAgenda.generalNotes") }}</span>
-            <RichTextEditor
+            <MeetingCollaborativeTextEditor
               v-model="editForm.generalNotes"
+              :target="{ kind: 'general_notes' }"
               height="100px"
               :placeholder="t('meetingAgenda.generalNotes')"
               :readonly="!canEditProtected"
-              :meeting-id="id"
-              fragment="meeting/general-notes"
             />
           </label>
         </section>

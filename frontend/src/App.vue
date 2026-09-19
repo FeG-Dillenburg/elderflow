@@ -7,8 +7,6 @@ import { roleLabel } from "./auth/roles";
 import router from "./router";
 import { useI18n } from "vue-i18n";
 import UnlockDialog from "./e2ee/UnlockDialog.vue";
-import MeetingCollaborationStatus from "./e2ee/MeetingCollaborationStatus.vue";
-import MeetingCollaborationPresence from "./e2ee/MeetingCollaborationPresence.vue";
 import { protectedText } from "./e2ee/protected-text";
 
 const { t } = useI18n();
@@ -78,14 +76,6 @@ const isSetupRoute = computed(() => router.currentRoute.value.name === "setup");
 const protectedRouteKey = computed(
   () => `${router.currentRoute.value.fullPath}:${protectedText.state.status}`,
 );
-const collaborationMeetingId = computed(() => {
-  const route = router.currentRoute.value;
-  return ["meeting", "meeting-prepare"].includes(String(route.name))
-    && typeof route.params.id === "string"
-    ? route.params.id
-    : null;
-});
-
 async function logout(): Promise<void> {
   auth.logout();
   await router.push("/login");
@@ -167,17 +157,9 @@ function toggleProtectedText(): void {
     </aside>
     <main class="main-content">
       <div
-        v-if="collaborationMeetingId || protectedText.isEligible(auth.state.user)"
+        v-if="protectedText.isEligible(auth.state.user)"
         class="meeting-status-bar"
       >
-        <MeetingCollaborationStatus
-          v-if="collaborationMeetingId"
-          :meeting-id="collaborationMeetingId"
-        />
-        <MeetingCollaborationPresence
-          v-if="collaborationMeetingId"
-          :meeting-id="collaborationMeetingId"
-        />
         <div
           v-if="protectedText.isEligible(auth.state.user)"
           class="protected-text-status"

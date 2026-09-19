@@ -1,12 +1,6 @@
 import { mount } from "@vue/test-utils";
-import { Awareness, applyAwarenessUpdate, encodeAwarenessUpdate } from "y-protocols/awareness";
-import * as Y from "yjs";
 import { nextTick } from "vue";
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { auth } from "../auth/auth";
-import { createCollaboratorPresentation } from "../e2ee/collaborator-presentation";
-import { meetingCollaboration } from "../e2ee/meeting-collaboration";
-import { meetingFragmentId } from "../e2ee/meeting-document-codec";
+import { describe, expect, it } from "vitest";
 import RichTextEditor from "./RichTextEditor.vue";
 
 const editorMounted = async () => {
@@ -16,11 +10,6 @@ const editorMounted = async () => {
 };
 
 describe("RichTextEditor", () => {
-  afterEach(() => {
-    auth.completeInitialization(null);
-    vi.restoreAllMocks();
-  });
-
   it("offers every approved rich-text command with accessible labels", async () => {
     const wrapper = mount(RichTextEditor, {
       props: {
@@ -61,20 +50,8 @@ describe("RichTextEditor", () => {
     expect(editor.getHTML()).not.toContain("<strong>New topic text</strong>");
   });
 
-  it("does not retain bold formatting in a newly focused collaborative editor", async () => {
-    const document = new Y.Doc();
-    const awareness = new Awareness(document);
-    vi.spyOn(meetingCollaboration, "get").mockReturnValue({
-      meetingId: "meeting",
-      document,
-      awareness,
-    } as any);
-    const wrapper = mount(RichTextEditor, {
-      props: {
-        meetingId: "meeting",
-        fragment: meetingFragmentId("meetingMinutes", "appearance"),
-      },
-    });
+  it("does not retain bold formatting in a newly focused editor", async () => {
+    const wrapper = mount(RichTextEditor);
     await editorMounted();
 
     const editor = (wrapper.vm as any).editor;
@@ -84,8 +61,6 @@ describe("RichTextEditor", () => {
     expect(editor.getHTML()).not.toContain("<strong>Meeting opening</strong>");
 
     wrapper.unmount();
-    awareness.destroy();
-    document.destroy();
   });
 
   it("clears a stale bold mark before typing into an empty editor", async () => {
@@ -120,61 +95,9 @@ describe("RichTextEditor", () => {
       .toContain("--editor-first-line-indent: 120px");
   });
 
-  it("shows live document collaborators with their initials and colors", async () => {
-    const document = new Y.Doc();
-    const awareness = new Awareness(document);
-    const remoteDocument = new Y.Doc();
-    const remoteAwareness = new Awareness(remoteDocument);
-    vi.spyOn(meetingCollaboration, "get").mockReturnValue({
-      meetingId: "meeting",
-      document,
-      awareness,
-    } as any);
-    auth.completeInitialization({
-      id: "daniel",
-      firstName: "Daniel",
-      lastName: "Haas",
-    } as any);
-    const wrapper = mount(RichTextEditor, {
-      props: {
-        meetingId: "meeting",
-        fragment: meetingFragmentId("meetingMinutes", "appearance"),
-      },
-    });
+  it("stays unaware of Meeting collaboration and presence", async () => {
+    const wrapper = mount(RichTextEditor);
     await editorMounted();
-
-    const daria = createCollaboratorPresentation({
-      id: "daria",
-      firstName: "Daria",
-      lastName: "Muster",
-    });
-    remoteAwareness.setLocalStateField("user", daria);
-    remoteAwareness.setLocalStateField("cursor", { anchor: 1, head: 1 });
-    applyAwarenessUpdate(
-      awareness,
-      encodeAwarenessUpdate(remoteAwareness, [remoteDocument.clientID]),
-      "test",
-    );
-    await nextTick();
-
-    expect(wrapper.findAll('[role="listitem"]')).toHaveLength(1);
-    expect(wrapper.find('[aria-label="Daria Muster is collaborating live"]').text()).toBe("DM");
-
-    await wrapper.get('[contenteditable="true"]').trigger("focus");
-    await nextTick();
-
-    expect(wrapper.findAll('[role="listitem"]')).toHaveLength(2);
-    expect(wrapper.find('[aria-label="Daniel Haas is collaborating live"]').text()).toBe("DH");
-
-    await wrapper.get('[contenteditable="true"]').trigger("blur");
-    await nextTick();
-
-    expect(wrapper.findAll('[role="listitem"]')).toHaveLength(1);
-
-    wrapper.unmount();
-    awareness.destroy();
-    remoteAwareness.destroy();
-    document.destroy();
-    remoteDocument.destroy();
+    expect(wrapper.find('[role="list"]').exists()).toBe(false);
   });
 });

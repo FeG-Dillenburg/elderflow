@@ -5,21 +5,21 @@ import { useI18n } from "vue-i18n";
 import type { MeetingTopic } from "../../api/domain";
 import { useMeetingTopicNoteAutosave } from "../useMeetingTopicNoteAutosave";
 import MeetingTextEditor from "./MeetingTextEditor.vue";
-import { meetingFragmentId } from "../../e2ee/meeting-document-codec";
 import { sanitizeRichText } from "../../components/sanitize-rich-text";
-import { meetingCollaboration } from "../../e2ee/meeting-collaboration";
+import { tryUseMeetingWorkspace } from "../../meetings/workspace";
 
 const props = withDefaults(defineProps<{
   item: MeetingTopic;
   mode: "preparation" | "active" | "completed";
   canWriteMinutes?: boolean;
-  savePreparation: (text: string | null) => Promise<unknown>;
-  saveMinutes: (text: string | null) => Promise<unknown>;
+  savePreparation?: (text: string | null) => Promise<unknown>;
+  saveMinutes?: (text: string | null) => Promise<unknown>;
 }>(), {
   canWriteMinutes: false,
 });
 
 const { t } = useI18n();
+const workspace = tryUseMeetingWorkspace();
 const safe = sanitizeRichText;
 const plainText = (html: string | null | undefined): string =>
   DOMPurify.sanitize(html ?? "", { ALLOWED_TAGS: [] })
@@ -31,23 +31,24 @@ const normalize = (html: string): string | null => {
 
 const preparation = useMeetingTopicNoteAutosave({
   source: () => props.item.preparationContext?.text,
-  save: props.savePreparation,
+  save: (text) => props.savePreparation?.(text) ?? Promise.resolve(),
   saveFailedMessage: () => t("meetingTexts.preparationSaveFailed"),
   normalize,
 });
 const minutes = useMeetingTopicNoteAutosave({
   source: () => props.item.meetingMinutes?.text,
-  save: props.saveMinutes,
+  save: (text) => props.saveMinutes?.(text) ?? Promise.resolve(),
   saveFailedMessage: () => t("meetingTexts.minutesSaveFailed"),
   normalize,
 });
 
 watch(preparation.localNote, () => {
-  if (!meetingCollaboration.get(props.item.meetingId)) preparation.scheduleSave();
+  if (!workspace) preparation.scheduleSave();
 });
 watch(minutes.localNote, () => {
-  if (!meetingCollaboration.get(props.item.meetingId)) minutes.scheduleSave();
+  if (!workspace) minutes.scheduleSave();
 });
+
 const hasPreparation = computed(() => Boolean(plainText(preparation.localNote.value)));
 </script>
 
@@ -66,8 +67,7 @@ const hasPreparation = computed(() => Boolean(plainText(preparation.localNote.va
           :description="t('meetingTexts.preparationDescription')"
           :state="preparation.state.value"
           :error="preparation.error.value"
-          :meeting-id="item.meetingId"
-          :fragment="meetingFragmentId('preparationContext', item.id)"
+          :target="{ kind: 'preparation_context', appearanceId: item.id }"
           @save="preparation.save"
         />
       </template>
@@ -91,8 +91,7 @@ const hasPreparation = computed(() => Boolean(plainText(preparation.localNote.va
           :description="t('meetingTexts.minutesDescription')"
           :state="minutes.state.value"
           :error="minutes.error.value"
-          :meeting-id="item.meetingId"
-          :fragment="meetingFragmentId('meetingMinutes', item.id)"
+          :target="{ kind: 'meeting_minutes_text', appearanceId: item.id }"
           @save="minutes.save"
         />
       </template>

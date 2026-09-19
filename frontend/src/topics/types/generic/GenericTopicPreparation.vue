@@ -33,7 +33,7 @@ const { t } = useI18n();
     </small>
     <MeetingPreparationContext v-if="item" :item="item" />
     <PairedMeetingTexts
-      v-if="item && savePreparationContext && saveMinutes"
+      v-if="item"
       :item="item"
       :mode="readOnly || (meetingStatus && meetingStatus !== 'planned')
         ? 'completed'

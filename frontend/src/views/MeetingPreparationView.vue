@@ -12,7 +12,6 @@ import InputText from "primevue/inputtext";
 import Message from "primevue/message";
 import Select from "primevue/select";
 import Tag from "primevue/tag";
-import RichTextEditor from "../components/RichTextEditor.vue";
 import TopicTypeRenderer from "../topics/TopicTypeRenderer.vue";
 import TopicTypeRadioGroup from "../topics/components/TopicTypeRadioGroup.vue";
 import {
@@ -32,13 +31,14 @@ import { dateInputFormat, formatDate } from "../i18n";
 import { topicNameTranslationKey } from "../topics/topicTypes";
 import { assignableUsers } from "../auth/roles";
 import {
-  saveMeetingMinutes,
-  saveMeetingPreparationContext,
   saveMeetingTopicField,
-  savePersonMeetingNote,
 } from "../topics/meetingTopicEdits";
 import { topicUsesPlannedDuration } from "../topics/topicTypeRegistry";
 import { toTopicInput } from "../topics/types/new-membership/topicInput";
+import {
+  MeetingCollaborativeTextEditor,
+  useMeetingRoute,
+} from "../meetings/workspace";
 
 interface AgendaGroup {
   section: AgendaSection;
@@ -53,6 +53,8 @@ const route = useRoute();
 const router = useRouter();
 const { t } = useI18n();
 const id = route.params.id as string;
+const { workspace, operations, opened } = useMeetingRoute(id);
+let initialWorkspaceOpen: Promise<void> | null = opened;
 const meeting = ref<Meeting | null>(null);
 const readOnly = computed(() => meeting.value?.status === "completed");
 const discardedAfterReload = ref(false);
@@ -139,14 +141,14 @@ const initialiseGroups = () => {
 const load = async () => {
   try {
     const [
-      loadedMeeting,
+      _workspaceLoaded,
       loadedSections,
       loadedSuggestions,
       loadedUsers,
       loadedFutureSuggestions,
     ] =
       await Promise.all([
-        api.meeting(id),
+        initialWorkspaceOpen ?? workspace.refresh(),
         api.sections(),
         api.meetingSuggestions(id),
         api.userDirectory(),
@@ -154,7 +156,10 @@ const load = async () => {
           ? api.meetingSuggestions(id, { future: true })
           : Promise.resolve([]),
       ]);
-    meeting.value = loadedMeeting;
+    initialWorkspaceOpen = null;
+    meeting.value = workspace.state.meeting
+      ? structuredClone(workspace.state.meeting) as Meeting
+      : null;
     sections.value = loadedSections;
     suggestions.value = loadedSuggestions;
     futureSuggestions.value = loadedFutureSuggestions;
@@ -228,7 +233,12 @@ const withReload = async (action: () => Promise<unknown>) => {
         ? cause.message
         : t("meetingPreparation.saveFailed");
   } finally {
-    await load();
+    meeting.value = workspace.state.meeting
+      ? structuredClone(workspace.state.meeting) as Meeting
+      : null;
+    const currentSuggestions = await api.meetingSuggestions(id).catch(() => null);
+    if (currentSuggestions) suggestions.value = currentSuggestions;
+    initialiseGroups();
     pending.value = false;
   }
   return succeeded;
@@ -236,7 +246,7 @@ const withReload = async (action: () => Promise<unknown>) => {
 
 const persistOrder = async () => {
   applyNormalization();
-  await withReload(() => api.reorderMeetingTopics(id, normalize()));
+  await withReload(() => operations.reorderAgenda(normalize()));
 };
 
 const isSuggestionClone = (
@@ -260,7 +270,7 @@ const onAgendaChange = async (
     const [temporary] = group.items.splice(event.added.newIndex, 1);
     if (!temporary) return;
     await withReload(() =>
-      api.addMeetingTopic(id, {
+      operations.addTopic({
         topicId: temporary.id,
         sectionId: group.section.id,
         position: event.added!.newIndex + 1,
@@ -295,12 +305,12 @@ const addSelected = async () => {
     return sectionId ? [{ topicId: topic.id, sectionId, topic }] : [];
   });
   if (!additions.length) return;
-  const succeeded = await withReload(() => api.addMeetingTopics(id, additions));
+  const succeeded = await withReload(() => operations.addTopics(additions));
   if (succeeded) selectedTopicIds.value = [];
 };
 
 const remove = async (item: MeetingTopic) => {
-  await withReload(() => api.removeMeetingTopic(id, item.id));
+  await withReload(() => operations.removeTopic(item.id));
 };
 
 const saveDuration = async (item: MeetingTopic, duration: number | null) => {
@@ -316,7 +326,7 @@ const saveDuration = async (item: MeetingTopic, duration: number | null) => {
     .catch(() => undefined)
     .then(async () => {
       try {
-        await api.updateMeetingTopic(id, {
+        await operations.updateAppearance({
           ...item,
           plannedDuration: normalizedDuration,
         });
@@ -355,7 +365,7 @@ const createAndAdd = async () => {
     }));
     const sectionId = form.defaultSectionId || sections.value[0]?.id;
     if (sectionId)
-      await api.addMeetingTopic(id, { topicId: topic.id, sectionId, topic });
+      await operations.addTopic({ topicId: topic.id, sectionId, topic });
   });
   newVisible.value = false;
 };
@@ -364,7 +374,7 @@ const startMeeting = async () => {
   if (starting.value || !meeting.value) return;
   starting.value = true;
   try {
-    await api.updateMeeting(id, { status: "in_progress" });
+    await operations.updateMeeting({ status: "in_progress" });
     startVisible.value = false;
     await router.push(`/meetings/${id}`);
   } catch (cause) {
@@ -402,7 +412,7 @@ const saveDetails = async () => {
   if (!meeting.value || !detailsForm.date || !detailsForm.beginTime) return;
   const date = detailsForm.date;
   const beginTime = detailsForm.beginTime;
-  await withReload(() => api.updateMeeting(id, {
+  await withReload(() => operations.updateMeeting({
     date: toLocalDate(date)!,
     beginTime: toLocalTime(beginTime),
     status: detailsForm.status,
@@ -433,12 +443,6 @@ onMounted(() => {
     </Message>
     <Message v-if="error" severity="error">{{ error }}</Message>
     <template v-if="meeting">
-      <Message
-        v-if="meeting.collaboration && !meeting.collaboration.available"
-        severity="info"
-      >
-        {{ t("e2ee.collaborationUnavailable") }}
-      </Message>
       <header class="page-header">
         <div>
           <p class="eyebrow">{{ t("meetingPreparation.eyebrow") }}</p>
@@ -518,10 +522,7 @@ onMounted(() => {
                       :read-only="readOnly"
                       :meeting-status="meeting.status"
                       :users="responsibleUserOptions"
-                      :save-field="saveMeetingTopicField(id, item)"
-                      :save-note="savePersonMeetingNote(id, item)"
-                      :save-preparation-context="saveMeetingPreparationContext(id, item)"
-                      :save-minutes="saveMeetingMinutes(id, item)"
+                      :save-field="saveMeetingTopicField(operations, item)"
                     />
                     <small v-if="item.topic?.followUpDate">
                       {{ t("topics.followUp") }}
@@ -770,24 +771,22 @@ onMounted(() => {
         </div>
         <label>
           <span>{{ t('meetingAgenda.opening') }}</span>
-          <RichTextEditor
+          <MeetingCollaborativeTextEditor
             v-model="detailsForm.openingInput"
+            :target="{ kind: 'opening_input' }"
             height="100px"
             :placeholder="t('meetingAgenda.opening')"
             :readonly="detailsReadOnly"
-            :meeting-id="id"
-            fragment="meeting/opening-input"
           />
         </label>
         <label>
           <span>{{ t('meetingAgenda.generalNotes') }}</span>
-          <RichTextEditor
+          <MeetingCollaborativeTextEditor
             v-model="detailsForm.generalNotes"
+            :target="{ kind: 'general_notes' }"
             height="100px"
             :placeholder="t('meetingAgenda.generalNotes')"
             :readonly="detailsReadOnly"
-            :meeting-id="id"
-            fragment="meeting/general-notes"
           />
         </label>
       </form>
