@@ -367,12 +367,14 @@ export const createMeetingWorkspace = (
         });
       } catch (error) {
         if (currentGeneration === generation) {
-          if (committed) fail(error);
+          if (collaboration?.failure === "completed") workspace.forceClose("completed");
+          else if (committed) fail(error);
           else publish({ ...state, phase: collaboration?.phase ?? previousPhase, pendingChanges: pending() });
         }
         throw error;
       } finally {
         completing = false;
+        if (currentGeneration === generation) publish({ ...state });
       }
     },
     async close(options = {}) {

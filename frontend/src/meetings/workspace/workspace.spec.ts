@@ -86,6 +86,27 @@ describe("Meeting workspace contract", () => {
     await workspace.close({ discard: true });
   });
 
+  it("zeroizes a terminally completed workspace even if the completion response is lost", async () => {
+    const { backend, collaboration } = setup(meeting({ status: "in_progress" }));
+    let notify!: () => void;
+    collaboration.subscribe = (listener) => { notify = listener; return () => undefined; };
+    backend.dispose = vi.fn();
+    backend.revokeAccess = vi.fn();
+    vi.mocked(backend.complete).mockImplementation(async () => {
+      Object.assign(collaboration, { failure: "completed", phase: "unavailable" });
+      notify();
+      throw new TypeError("connection lost");
+    });
+    const workspace = createMeetingWorkspace("meeting-1", backend);
+    await workspace.open();
+    await expect(workspace.complete()).rejects.toThrow("connection lost");
+    expect(workspace.state.phase).toBe("closed");
+    expect(workspace.state.meeting).toBeNull();
+    expect(workspace.state.notice).toBe("completed_elsewhere");
+    expect(backend.dispose).toHaveBeenCalledWith("meeting-1");
+    expect(backend.revokeAccess).toHaveBeenCalled();
+  });
+
   it("allows a locked authorized requester to complete without a local provider", async () => {
     const { backend } = setup(meeting({ status: "in_progress" }), false);
     const workspace = createMeetingWorkspace("meeting-1", backend);

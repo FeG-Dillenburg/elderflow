@@ -150,6 +150,32 @@ describe("EncryptedMeetingCollaborationProvider", () => {
     document.destroy();
   });
 
+  it("discards rejected memory-only changes when a late client finds the Meeting completed", async () => {
+    const document = new Y.Doc();
+    const socket = new FakeSocket();
+    vi.spyOn(meetingDocumentSession, "encryptAwareness").mockResolvedValue("awareness");
+    vi.spyOn(meetingDocumentSession, "createPendingDocumentUpdate")
+      .mockResolvedValue({ envelope: "late-change", activeSnapshotId: "snapshot", authorClock: 1 });
+    const discard = vi.spyOn(meetingDocumentSession, "discard").mockImplementation(() => document.destroy());
+    const provider = new EncryptedMeetingCollaborationProvider("meeting", document,
+      async () => ({ ticket: "ticket", documentId: "document", websocketPath: "/socket" }),
+      () => socket as unknown as WebSocket, undefined, async () => ({ parentChanged: false }));
+    document.getText("field").insert(0, "memory-only edit");
+    await settle();
+    expect(provider.hasPendingChanges()).toBe(true);
+    await provider.connect();
+    socket.open();
+    socket.receive({ type: "authenticated" });
+    await settle();
+    socket.receive({ type: "rejected", code: "MEETING_COMPLETED_IMMUTABLE" });
+    await settle();
+    expect(provider.status).toBe("discarded");
+    expect(provider.terminalCode).toBe("MEETING_COMPLETED_IMMUTABLE");
+    expect(provider.hasPendingChanges()).toBe(false);
+    expect(provider.isConnected()).toBe(false);
+    expect(discard).toHaveBeenCalledWith("meeting");
+  });
+
   it("sends only one encrypted update at a time and advances after acknowledgement", async () => {
     const document = new Y.Doc();
     const socket = new FakeSocket();
