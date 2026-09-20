@@ -178,9 +178,6 @@ const iconForPhase: Record<MeetingWorkspacePhase, string> = {
 .workspace-collaborators {
   display: flex;
   align-items: center;
-}
-
-.workspace-collaborators :deep(.collaborator-avatar) + :deep(.collaborator-avatar) {
-  margin-left: -0.45rem;
+  gap: 0.35rem;
 }
 </style>

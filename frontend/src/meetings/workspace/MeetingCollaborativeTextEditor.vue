@@ -183,6 +183,10 @@ onBeforeUnmount(() => editor?.value?.destroy());
   margin-left: auto;
 }
 
+.live-collaborators :deep(.collaborator-avatar + .collaborator-avatar) {
+  margin-inline-start: -0.45rem;
+}
+
 :deep(.collaboration-carets__caret) {
   display: inline-block;
   position: relative;
