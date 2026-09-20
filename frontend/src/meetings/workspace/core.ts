@@ -33,7 +33,7 @@ export interface MeetingWorkspaceCollaborator {
 export interface MeetingWorkspaceState {
   readonly phase: MeetingWorkspacePhase;
   readonly closing?: boolean;
-  readonly notice?: "forced_close" | "access_changed" | "integrity_failure";
+  readonly notice?: "forced_close" | "security_closed" | "access_changed" | "integrity_failure";
   readonly meeting: DeepReadonly<Meeting> | null;
   readonly pendingChanges: boolean;
   readonly syncActivity: number;
@@ -70,6 +70,7 @@ export interface MeetingWorkspace {
   complete(): Promise<void>;
   close(options?: { reason?: "navigation" | "lock" | "replacement"; discard?: boolean }): Promise<boolean>;
   cancelClose(): void;
+  dismissNotice(): void;
   forceClose(reason: string): void;
   subscribe(listener: (state: MeetingWorkspaceState) => void): () => void;
 }
@@ -83,7 +84,7 @@ type DeepReadonly<T> = T extends (...args: never[]) => unknown
       : T;
 
 let liveWorkspace: MeetingWorkspace | null = null;
-const notices = new Map<string, "forced_close" | "access_changed">();
+const notices = new Map<string, "forced_close" | "security_closed" | "access_changed">();
 
 const freeze = <T>(value: T): DeepReadonly<T> => {
   if (value && typeof value === "object" && !Object.isFrozen(value)) {
@@ -369,10 +370,18 @@ export const createMeetingWorkspace = (
       closing = false;
       publish({ ...state });
     },
+    dismissNotice() {
+      notices.delete(meetingId);
+      publish({ ...state, notice: undefined });
+    },
     forceClose(reason) {
       if (state.phase === "closed") return;
-      const notice = reason === "access" ? "access_changed" : "forced_close";
-      notices.set(meetingId, notice);
+      const notice = reason === "unmount" && !pending()
+        ? state.notice
+        : reason === "access"
+          ? "access_changed"
+          : pending() ? "forced_close" : "security_closed";
+      if (notice && notice !== "integrity_failure") notices.set(meetingId, notice);
       generation += 1;
       closing = true;
       localWrites = 0;

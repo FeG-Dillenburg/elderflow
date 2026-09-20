@@ -1,3 +1,6 @@
+import PrimeVue from "primevue/config";
+import { setLanguage } from "../../i18n";
+import { createMeetingWorkspace } from "./core";
 import { mount } from "@vue/test-utils";
 import { defineComponent, h, nextTick, reactive } from "vue";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -19,6 +22,41 @@ describe("MeetingWorkspaceStatus", () => {
   afterEach(() => {
     vi.useRealTimers();
     document.querySelector("#meeting-workspace-status")?.remove();
+  });
+
+  it.each([
+    ["en", "Dismiss notice"],
+    ["de", "Hinweis schließen"],
+  ] as const)("dismisses the notice with an accessible %s close button", async (language, label) => {
+    setLanguage(language);
+    const workspace = createMeetingWorkspace(`notice-${language}`, {
+      load: async () => ({ meeting: { ...meeting, id: `notice-${language}` }, unlocked: true, collaborative: false }),
+      complete: vi.fn(),
+    });
+    await workspace.open();
+    workspace.forceClose("logout");
+    await workspace.open();
+    const Harness = defineComponent({
+      setup() {
+        useMeetingRoute(workspace.meetingId);
+        return () => h(MeetingWorkspaceStatus);
+      },
+    });
+    const wrapper = mount(Harness, {
+      global: {
+        plugins: [PrimeVue],
+        stubs: { Teleport: true },
+        provide: {
+          [meetingRouteFactoryKey as symbol]: () => ({ workspace, opened: Promise.resolve(), operations: {} }),
+        },
+      },
+    });
+    const dismiss = wrapper.find(`button[aria-label="${label}"]`);
+    expect(dismiss.exists()).toBe(true);
+    await dismiss.trigger("click");
+    expect(workspace.state.notice).toBeUndefined();
+    expect(wrapper.find(".p-message").exists()).toBe(false);
+    wrapper.unmount();
   });
 
   it("steps the sync illustration, debounces the clock icon, then fades it", async () => {
@@ -48,6 +86,7 @@ describe("MeetingWorkspaceStatus", () => {
       complete: vi.fn(),
       close: vi.fn(),
       cancelClose: vi.fn(),
+      dismissNotice: vi.fn(),
       forceClose: vi.fn(),
       subscribe: vi.fn(() => () => undefined),
     };

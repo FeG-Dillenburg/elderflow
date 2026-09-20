@@ -40,6 +40,41 @@ afterEach(() => {
 });
 
 describe("Meeting workspace lifecycle", () => {
+  it("does not invent a security warning when a clean route remounts during unlock", async () => {
+    const { workspace, backend } = setup();
+    await workspace.open();
+    workspace.forceClose("unmount");
+    const reopened = createMeetingWorkspace(workspace.meetingId, backend);
+    owned.push(reopened);
+    await reopened.open();
+    expect(reopened.state.notice).toBeUndefined();
+  });
+
+  it("acknowledges a notice without changing content and does not repeat it on return", async () => {
+    const { workspace, backend, connection } = setup();
+    await workspace.open();
+    connection.pending = true;
+    workspace.forceClose("logout");
+    connection.pending = false;
+    const reopened = createMeetingWorkspace(workspace.meetingId, backend);
+    owned.push(reopened);
+    await reopened.open();
+    expect(reopened.state.notice).toBe("forced_close");
+    reopened.dismissNotice();
+    expect(reopened.state.notice).toBeUndefined();
+    expect(reopened.text({ kind: "general_notes" }).value).toBe("Trusted");
+    await reopened.close();
+    await reopened.open();
+    expect(reopened.state.notice).toBeUndefined();
+  });
+
+  it("does not claim changes were discarded after a clean security closure", async () => {
+    const { workspace } = setup();
+    await workspace.open();
+    workspace.forceClose("logout");
+    expect(workspace.state.notice).toBe("security_closed");
+  });
+
   it("closes acknowledged changes without waiting or prompting", async () => {
     const { workspace, backend } = setup();
     await workspace.open();

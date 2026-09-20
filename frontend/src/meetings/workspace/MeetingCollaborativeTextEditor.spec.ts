@@ -120,6 +120,7 @@ describe("MeetingCollaborativeTextEditor", () => {
       complete: vi.fn(),
       close: vi.fn(),
       cancelClose: vi.fn(),
+      dismissNotice: vi.fn(),
       forceClose: vi.fn(),
       subscribe: vi.fn(() => () => undefined),
     };

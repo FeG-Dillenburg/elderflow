@@ -46,6 +46,7 @@ export const useMeetingRoute = (meetingId: string): MeetingRouteContext => {
     complete: () => core.complete(),
     close: (options) => core.close(options),
     cancelClose: () => core.cancelClose(),
+    dismissNotice: () => core.dismissNotice(),
     forceClose: (reason) => core.forceClose(reason),
     subscribe: (listener) => core.subscribe(listener),
   };

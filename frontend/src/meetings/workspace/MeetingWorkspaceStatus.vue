@@ -74,7 +74,14 @@ const iconForPhase: Record<MeetingWorkspacePhase, string> = {
       />
     </template>
   </Dialog>
-  <Message v-if="workspace.state.notice" severity="warn">
+  <Message
+    v-if="workspace.state.notice"
+    :key="workspace.state.notice"
+    severity="warn"
+    closable
+    :close-button-props="{ 'aria-label': t('meetingWorkspace.dismissNotice') }"
+    @close="workspace.dismissNotice()"
+  >
     {{ t(`meetingWorkspace.notices.${workspace.state.notice}`) }}
   </Message>
   <Button

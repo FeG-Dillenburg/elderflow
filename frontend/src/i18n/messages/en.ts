@@ -78,12 +78,14 @@ export default {
   personTopic: { nameLabel: 'Person, couple, or group', descriptionLabel: 'Description', noteLabel: 'Meeting topic note', saving: 'Saving…', saved: 'Saved', retry: 'Retry', noteSaveFailed: 'Unable to save the Meeting topic note', noNote: 'No note recorded' },
   meetingTexts: { preparationContext: 'Preparation context', preparationDescription: 'Context prepared before the Meeting. Changes save automatically.', meetingMinutes: 'Meeting minutes', minutesDescription: 'Minutes recorded during the Meeting. Changes save automatically.', saving: 'Saving…', saved: 'Saved', retry: 'Retry', preparationSaveFailed: 'Unable to save preparation context', minutesSaveFailed: 'Unable to save Meeting minutes', noPreparationContext: 'No preparation context recorded', noMeetingMinutes: 'No Meeting minutes recorded' },
   meetingWorkspace: {
+    dismissNotice: "Dismiss notice",
     closeTitle: "Changes have not synchronized",
     closeDescription: "Stay and retry after reconnecting, or discard the pending changes held only in this tab. Discarding cannot be undone.",
     stay: "Stay and retry",
     discard: "Discard changes and continue",
     retry: "Reload trusted content",
     notices: {
+      security_closed: "Protected text was closed for security. All changes were already synchronized.",
       forced_close: "Protected text was closed for security. Unsynchronized changes in this tab were discarded.",
       access_changed: "Access to this Meeting changed. Protected text was closed and unsynchronized changes were discarded.",
       integrity_failure: "The Meeting content could not be verified. Editing is disabled. Reload to try again.",
