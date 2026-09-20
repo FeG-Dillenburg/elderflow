@@ -1,8 +1,9 @@
 import { flushPromises, mount } from "@vue/test-utils";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { api } from "../api/domain";
+import { createMeetingWorkspace, meetingRouteFactoryKey } from "../meetings/workspace";
+import { createMeetingRouteOperations } from "../meetings/workspace/production-adapter";
 import MeetingPreparationView from "./MeetingPreparationView.vue";
-import { savePersonMeetingNote } from "../topics/meetingTopicEdits";
 
 const { routerPush } = vi.hoisted(() => ({ routerPush: vi.fn() }));
 
@@ -51,12 +52,44 @@ const meeting: any = {
   ],
 };
 
+let workspaceMeeting: any;
+let workspaceLoadError: Error | null;
+const workspaceLoad = vi.fn(async (_meetingId: string) => ({
+  meeting: structuredClone(workspaceMeeting),
+  unlocked: false,
+  collaborative: false,
+}));
+
+const meetingRouteFactory = (meetingId: string) => {
+  const workspace = createMeetingWorkspace(meetingId, {
+    load: (id) => workspaceLoad(id),
+    complete: vi.fn(async () => ({ ...structuredClone(workspaceMeeting), status: "completed" })),
+    updateText: vi.fn().mockResolvedValue(undefined),
+  });
+  const opened = workspace.open();
+  return {
+    workspace,
+    opened,
+    operations: createMeetingRouteOperations(
+      meetingId,
+      () => workspace.refresh(),
+      (target, value) => workspace.updateText(target, value),
+    ),
+  };
+};
+
 describe("MeetingPreparationView", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     routerPush.mockReset();
     routerPush.mockResolvedValue(undefined);
-    vi.spyOn(api, "meeting").mockResolvedValue(structuredClone(meeting));
+    workspaceMeeting = structuredClone(meeting);
+    workspaceLoadError = null;
+    workspaceLoad.mockReset();
+    workspaceLoad.mockImplementation(async () => {
+      if (workspaceLoadError) throw workspaceLoadError;
+      return { meeting: structuredClone(workspaceMeeting), unlocked: false, collaborative: false };
+    });
     vi.spyOn(api, "sections").mockResolvedValue([
       { id: "first", name: "First", position: 1, isDefault: true },
       { id: "second", name: "Second", position: 2, isDefault: false },
@@ -74,7 +107,7 @@ describe("MeetingPreparationView", () => {
   const view = async () => {
     const wrapper = mount(MeetingPreparationView, {
       shallow: true,
-      global: { stubs },
+      global: { stubs, provide: { [meetingRouteFactoryKey as symbol]: meetingRouteFactory } },
     });
     await flushPromises();
     return wrapper;
@@ -87,10 +120,10 @@ describe("MeetingPreparationView", () => {
       "item-2",
     ]);
     expect(api.meetingSuggestions).toHaveBeenCalledWith("meeting-1");
-    vi.spyOn(api, "meeting").mockRejectedValueOnce(new Error("No meeting"));
+    workspaceLoadError = new Error("No meeting");
     const failed = mount(MeetingPreparationView, {
       shallow: true,
-      global: { stubs },
+      global: { stubs, provide: { [meetingRouteFactoryKey as symbol]: meetingRouteFactory } },
     });
     await flushPromises();
     expect((failed.vm as any).error).toBe("No meeting");
@@ -123,10 +156,10 @@ describe("MeetingPreparationView", () => {
     expect(vm.detailsReadOnly).toBe(false);
   });
   it("makes protected detail fields read-only after the Meeting starts", async () => {
-    vi.mocked(api.meeting).mockResolvedValueOnce({
+    workspaceMeeting = {
       ...structuredClone(meeting),
       status: "in_progress",
-    });
+    };
     const wrapper = await view();
     const vm: any = wrapper.vm;
 
@@ -193,7 +226,7 @@ describe("MeetingPreparationView", () => {
     const personMeeting = structuredClone(meeting);
     personMeeting.agenda[0].topic.type = "person";
     personMeeting.agenda[0].plannedDuration = 10;
-    vi.spyOn(api, "meeting").mockResolvedValueOnce(personMeeting);
+    workspaceMeeting = personMeeting;
 
     const wrapper = await view();
 
@@ -335,7 +368,7 @@ describe("MeetingPreparationView", () => {
     const recurringMeeting = structuredClone(meeting);
     recurringMeeting.agenda[0].source = "recurrence";
     recurringMeeting.agenda[0].topic.type = "recurring";
-    vi.spyOn(api, "meeting").mockResolvedValueOnce(recurringMeeting);
+    workspaceMeeting = recurringMeeting;
     const wrapper = await view();
     const item = (wrapper.vm as any).meeting.agenda[0];
 
@@ -380,7 +413,7 @@ describe("MeetingPreparationView", () => {
     const saveCalls = vi.mocked(api.updateMeetingTopic).mock.calls.length;
     await vm.saveDuration(item, null);
     expect(api.updateMeetingTopic).toHaveBeenCalledTimes(saveCalls);
-    expect(api.meeting).toHaveBeenCalledTimes(1);
+    expect(workspaceLoad).toHaveBeenCalledTimes(3);
     expect(vm.pending).toBe(false);
   });
   it("rolls back an optimistic duration when saving fails", async () => {
@@ -393,38 +426,11 @@ describe("MeetingPreparationView", () => {
     expect(vm.error).toBe("Duration save failed");
   });
 
-  it("reconciles a saved Person Meeting topic note without reloading the Meeting", async () => {
-    const wrapper = await view();
-    const vm: any = wrapper.vm;
-    const appearance = vm.grouped[1].items[0];
-    appearance.personNote = { id: appearance.id, text: null, version: 0 };
-    vi.spyOn(api, "updatePersonMeetingNote").mockResolvedValue({
-      preparationContext: null,
-      personNote: {
-        id: appearance.id,
-        text: "Saved context",
-        version: 1,
-      },
-      meetingMinutes: null,
-    });
-
-    const result = await savePersonMeetingNote("meeting-1", appearance)("Saved context");
-
-    expect(api.updatePersonMeetingNote).toHaveBeenCalledWith(
-      "meeting-1",
-      appearance.id,
-      { text: "Saved context", version: 0 },
-    );
-    expect(appearance.personNote?.text).toBe("Saved context");
-    expect(result.personNote?.text).toBe("Saved context");
-    expect(api.meeting).toHaveBeenCalledTimes(1);
-  });
-
   it("renders a completed Meeting without preparation controls", async () => {
-    vi.spyOn(api, "meeting").mockResolvedValueOnce({
+    workspaceMeeting = {
       ...structuredClone(meeting),
       status: "completed",
-    });
+    };
 
     const wrapper = await view();
 

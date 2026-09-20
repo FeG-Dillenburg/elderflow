@@ -18,7 +18,7 @@ const { t } = useI18n();
 <template>
   <div class="person-preparation">
     <PersonTopicNote
-      v-if="item && saveNote"
+      v-if="item"
       :item="item"
       :read-only="Boolean(readOnly)"
       :save="saveNote"

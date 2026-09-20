@@ -1,43 +1,50 @@
 <script setup lang="ts">
 import { useI18n } from "vue-i18n";
-import RichTextEditor from "../../components/RichTextEditor.vue";
-import type { StableMeetingFragment } from "../../e2ee/meeting-document-codec";
-import { meetingCollaboration } from "../../e2ee/meeting-collaboration";
+import {
+  MeetingCollaborativeTextEditor,
+  type MeetingTextTarget,
+} from "../../meetings/workspace";
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   modelValue: string;
   label: string;
   description: string;
   state: "idle" | "saving" | "saved" | "error";
   error: string;
-  meetingId?: string;
-  fragment?: StableMeetingFragment;
-}>();
+  target: MeetingTextTarget;
+  height?: string;
+  toolbar?: boolean;
+  compact?: boolean;
+  firstLineIndent?: string;
+  showFeedback?: boolean;
+}>(), {
+  toolbar: true,
+  showFeedback: true,
+});
 
 const emit = defineEmits<{
   "update:modelValue": [value: string];
   save: [];
 }>();
 const { t } = useI18n();
-const save = () => {
-  if (!props.meetingId || !meetingCollaboration.get(props.meetingId)) emit("save");
-};
 </script>
 
 <template>
-  <RichTextEditor
+  <MeetingCollaborativeTextEditor
     :model-value="modelValue"
     :placeholder="label"
     :aria-label="label"
     :aria-description="description"
-    :meeting-id="meetingId"
-    :fragment="fragment"
-    height="100px"
+    :target="target"
+    :height="height ?? '100px'"
+    :toolbar="toolbar"
+    :compact="compact"
+    :first-line-indent="firstLineIndent"
     @update:model-value="emit('update:modelValue', $event)"
-    @blur="save"
+    @fallback-save="emit('save')"
   />
   <span
-    v-if="state !== 'error'"
+    v-if="showFeedback !== false && state !== 'error'"
     class="save-feedback"
     role="status"
     aria-live="polite"
@@ -49,7 +56,7 @@ const save = () => {
       {{ t("meetingTexts.saved") }}
     </template>
   </span>
-  <span v-else class="save-feedback error" role="alert">
+  <span v-else-if="showFeedback !== false" class="save-feedback error" role="alert">
     {{ error }}
     <button type="button" @click="emit('save')">
       {{ t("meetingTexts.retry") }}

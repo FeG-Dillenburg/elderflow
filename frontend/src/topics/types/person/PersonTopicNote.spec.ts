@@ -133,9 +133,8 @@ describe("PersonTopicNote", () => {
     await flushPromises();
 
     expect(wrapper.get(".inline-label").text()).toBe("Alex:");
-    expect(wrapper.getComponent({ name: "RichTextEditor" }).props()).toMatchObject({
-      meetingId: "meeting",
-      fragment: "appearance/appearance/person-note",
+    expect(wrapper.getComponent({ name: "MeetingTextEditor" }).props()).toMatchObject({
+      target: { kind: "meeting_topic_note", appearanceId: "appearance" },
       toolbar: false,
       compact: true,
       height: "22px",

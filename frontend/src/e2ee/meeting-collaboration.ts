@@ -103,6 +103,10 @@ export class EncryptedMeetingCollaborationProvider extends EventTarget {
     this.socket = null;
   }
 
+  hasPendingChanges(): boolean {
+    return this.pending.length > 0 || this.pausedPlaintext.length > 0;
+  }
+
   private readonly localUpdate = (update: Uint8Array, origin: unknown): void => {
     if (origin === MEETING_COLLABORATION_ORIGIN || this.stopped) return;
     const copy = Uint8Array.from(update);

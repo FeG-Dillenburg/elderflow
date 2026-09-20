@@ -3,35 +3,35 @@ import type { MeetingTopic } from "../../../api/domain";
 import { nextTick, onBeforeUnmount, onMounted, ref, useSlots, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { useMeetingTopicNoteAutosave } from "../../useMeetingTopicNoteAutosave";
-import RichTextEditor from "../../../components/RichTextEditor.vue";
-import { meetingFragmentId } from "../../../e2ee/meeting-document-codec";
+import MeetingTextEditor from "../../components/MeetingTextEditor.vue";
 import { sanitizeRichText } from "../../../components/sanitize-rich-text";
-import { meetingCollaboration } from "../../../e2ee/meeting-collaboration";
+import { tryUseMeetingWorkspace } from "../../../meetings/workspace";
 
 const props = defineProps<{
   item: MeetingTopic;
   readOnly: boolean;
   label?: string;
-  save: (note: string | null) => Promise<MeetingTopic>;
+  save?: (note: string | null) => Promise<MeetingTopic>;
 }>();
 
 const { t } = useI18n();
 const slots = useSlots();
+const workspace = tryUseMeetingWorkspace();
 const inlineLabel = ref<HTMLElement>();
 const inlineLabelIndent = ref("0px");
 let labelObserver: ResizeObserver | undefined;
 const { localNote, saving, save, scheduleSave } =
   useMeetingTopicNoteAutosave({
     source: () => props.item.personNote?.text,
-    save: (note) => props.save(note),
+    save: (note) => props.save?.(note) ?? Promise.resolve(props.item),
     saveFailedMessage: () => t("personTopic.noteSaveFailed"),
   });
-watch(localNote, () => {
-  if (!meetingCollaboration.get(props.item.meetingId)) scheduleSave();
-});
 const safe = sanitizeRichText;
-const saveIfStandalone = () => {
-  if (!meetingCollaboration.get(props.item.meetingId)) void save();
+watch(localNote, () => {
+  if (!workspace) scheduleSave();
+});
+const saveFallback = () => {
+  if (!workspace) void save();
 };
 
 const measureInlineLabel = () => {
@@ -71,16 +71,19 @@ onBeforeUnmount(() => {
       <span v-if="$slots.label" ref="inlineLabel" class="inline-label">
         <slot name="label" />
       </span>
-      <RichTextEditor
+      <MeetingTextEditor
         v-model="localNote"
+        :label="label ?? t('personTopic.noteLabel')"
+        :description="label ?? t('personTopic.noteLabel')"
+        :state="saving ? 'saving' : 'idle'"
+        error=""
+        :target="{ kind: 'meeting_topic_note', appearanceId: item.id }"
         height="22px"
         :toolbar="false"
         :compact="true"
         :first-line-indent="inlineLabelIndent"
-        :aria-label="label ?? t('personTopic.noteLabel')"
-        :meeting-id="item.meetingId"
-        :fragment="meetingFragmentId('personNote', item.id)"
-        @blur="saveIfStandalone"
+        :show-feedback="false"
+        @save="saveFallback"
       />
     </span>
   </span>

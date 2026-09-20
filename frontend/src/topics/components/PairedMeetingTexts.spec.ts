@@ -1,5 +1,6 @@
 import { flushPromises, mount } from "@vue/test-utils";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import MeetingTextEditor from "./MeetingTextEditor.vue";
 import PairedMeetingTexts from "./PairedMeetingTexts.vue";
 
 const item = () => ({
@@ -26,6 +27,20 @@ const RichTextEditor = {
 describe("PairedMeetingTexts", () => {
   afterEach(() => {
     vi.useRealTimers();
+  });
+
+  it("shows the rich-text toolbar for non-Person Meeting text", () => {
+    const wrapper = mount(PairedMeetingTexts, {
+      props: {
+        item: item(),
+        mode: "preparation",
+        savePreparation: vi.fn(),
+        saveMinutes: vi.fn(),
+      },
+      global: { stubs: { RichTextEditor } },
+    });
+
+    expect(wrapper.getComponent(MeetingTextEditor).props("toolbar")).toBe(true);
   });
 
   it("edits only preparation context during preparation and saves on blur", async () => {

@@ -77,6 +77,19 @@ const de = {
   recurringTopic: { description: 'Beschreibung / Notizvorlage', firstDueDate: 'Erstes Fälligkeitsdatum', interval: 'Wiederholen alle', weeks: 'Wochen', months: 'Monate', defaultPosition: 'Standardposition', append: 'Am Abschnittsende anfügen', every: 'Alle {count} {unit}', nextDue: 'Nächste Fälligkeit: {date}', skip: 'Wiederholung überspringen', skipped: 'Übersprungene Wiederholung', restore: 'Wiederholung wiederherstellen' },
   personTopic: { nameLabel: 'Person, Paar oder Gruppe', descriptionLabel: 'Beschreibung', noteLabel: 'Sitzungsthemennotiz', saving: 'Wird gespeichert…', saved: 'Gespeichert', retry: 'Erneut versuchen', noteSaveFailed: 'Die Sitzungsthemennotiz konnte nicht gespeichert werden', noNote: 'Keine Notiz erfasst' },
   meetingTexts: { preparationContext: 'Vorbereitungskontext', preparationDescription: 'Vor der Sitzung vorbereiteter Kontext. Änderungen werden automatisch gespeichert.', meetingMinutes: 'Sitzungsprotokoll', minutesDescription: 'Während der Sitzung erfasstes Protokoll. Änderungen werden automatisch gespeichert.', saving: 'Wird gespeichert…', saved: 'Gespeichert', retry: 'Erneut versuchen', preparationSaveFailed: 'Der Vorbereitungskontext konnte nicht gespeichert werden', minutesSaveFailed: 'Das Sitzungsprotokoll konnte nicht gespeichert werden', noPreparationContext: 'Kein Vorbereitungskontext erfasst', noMeetingMinutes: 'Kein Sitzungsprotokoll erfasst' },
+  meetingWorkspace: {
+    phases: {
+      opening: 'Sitzungsarbeitsbereich wird geöffnet…',
+      locked: 'Geschützter Text gesperrt — zum Starten der Live-Zusammenarbeit entsperren',
+      ready: 'Live-Zusammenarbeit verbunden',
+      temporarily_offline: 'Offline — Änderungen werden nach der Wiederverbindung sicher übertragen',
+      syncing: 'Verschlüsselte Sitzungsänderungen werden synchronisiert…',
+      unavailable: 'Live-Zusammenarbeit ist nicht verfügbar',
+      closed: 'Sitzungsarbeitsbereich geschlossen',
+    },
+    pendingChanges: 'Verschlüsselte Änderungen stehen aus',
+    syncActivity: 'Verschlüsselte Sitzungsänderungen werden synchronisiert',
+  },
   newMembershipTopic: {
     nameLabel: 'Name', processStatus: 'Mitgliedschaftsprozessstatus', signal: 'Mitgliedschaftsstatus', statusText: 'Status Text', statusColor: 'Status-Farbe', responsible: 'Verantwortlich', godparents: 'Pate(n)', note: 'Notizen', description: 'Beschreibung (optional)', saving: 'Wird gespeichert…', saved: 'Gespeichert', retry: 'Erneut versuchen', saveFailed: 'Dieses Feld konnte nicht gespeichert werden', signalMeaning: 'Mitgliedschaftsstatus: {signal}', changeSignal: 'Status ändern. Aktueller Status: {signal}',
     signals: { new: 'Neu', in_progress: 'In Bearbeitung', nearly_finished: 'Fast abgeschlossen', attention: 'Achtung', paused: 'Pausiert' },

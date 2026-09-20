@@ -21,7 +21,7 @@ const preparationReadOnly = computed(() => Boolean(
 </script>
 
 <template>
-  <div v-if="item && saveField && savePreparationContext && saveMinutes">
+  <div v-if="item && saveField">
     <NewMembershipTopicAppearance
       :item="item"
       :can-edit="!preparationReadOnly"

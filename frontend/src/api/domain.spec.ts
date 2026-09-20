@@ -611,44 +611,6 @@ describe("domain API client", () => {
     );
     expect(fetch.mock.calls[0][1]?.body).toBeUndefined();
   });
-  it("writes preparation context through an opaque document update", async () => {
-    const fetch = vi.fn().mockResolvedValue(response({ agendaNote: "Context", noteVersion: 2 }));
-    vi.stubGlobal("fetch", fetch);
-    vi.spyOn(meetingDocumentSession, "createFragmentUpdate").mockResolvedValue("AQID");
-
-    await api.updateMeetingPreparationContext("meeting", "appearance", {
-      text: "Context",
-      version: 1,
-    });
-
-    expect(fetch).toHaveBeenCalledWith(
-      "/api/meetings/meeting/workspace/updates",
-      expect.objectContaining({
-        method: "POST",
-        body: expect.any(Uint8Array),
-        headers: expect.objectContaining({
-          "Content-Type": "application/vnd.elderflow.e2ee+cbor;v=1",
-          "X-ElderFlow-Appearance-Id": "appearance",
-        }),
-      }),
-    );
-  });
-  it("discards a locally mutated workspace when atomic-failure recovery also fails", async () => {
-    const mutationFailure = new Error("mutation failed");
-    const fetch = vi.fn()
-      .mockRejectedValueOnce(mutationFailure)
-      .mockRejectedValueOnce(new Error("recovery failed"));
-    vi.stubGlobal("fetch", fetch);
-    vi.spyOn(meetingDocumentSession, "createFragmentUpdate").mockResolvedValue("AQID");
-    const discard = vi.spyOn(meetingDocumentSession, "discard");
-
-    await expect(api.updateMeetingPreparationContext("meeting", "appearance", {
-      text: "Context",
-      version: 1,
-    })).rejects.toBe(mutationFailure);
-
-    expect(discard).toHaveBeenCalledWith("meeting");
-  });
   it("writes one or more inline Topic fields through the narrow patch endpoint", async () => {
     const fetch = vi.fn().mockResolvedValue(response({
       id: "topic",

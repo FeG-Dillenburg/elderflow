@@ -3,9 +3,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { api, type AuthUser } from "../api/domain";
 import { auth } from "../auth/auth";
 import { protectedText } from "../e2ee/protected-text";
-import { meetingCollaboration } from "../e2ee/meeting-collaboration";
+import { createMeetingWorkspace, meetingRouteFactoryKey } from "../meetings/workspace";
+import { createMeetingRouteOperations } from "../meetings/workspace/production-adapter";
 import MeetingAgendaView from "./MeetingAgendaView.vue";
-import { savePersonMeetingNote } from "../topics/meetingTopicEdits";
 
 vi.mock("vue-router", () => ({
   RouterLink: { template: "<a><slot /></a>" },
@@ -76,12 +76,55 @@ const meeting: any = {
   ],
 };
 
+let workspaceMeeting: any;
+let workspaceLoadError: Error | null;
+const workspaceLoad = vi.fn(async (_meetingId: string) => ({
+  meeting: structuredClone(workspaceMeeting),
+  unlocked: protectedText.state.status === "unlocked",
+  collaborative: false,
+}));
+
+const meetingRouteFactory = (meetingId: string) => {
+  const workspace = createMeetingWorkspace(meetingId, {
+    load: (id) => workspaceLoad(id),
+    complete: async (id) => {
+      const completed = await api.completeMeeting(id);
+      workspaceMeeting = structuredClone(completed);
+      return completed;
+    },
+    updateText: vi.fn(async (_id, target, value) => {
+      if (target.kind === "general_notes") workspaceMeeting.generalNotes = value;
+      else if (target.kind === "opening_input") workspaceMeeting.openingInput = value;
+    }),
+  });
+  const opened = workspace.open();
+  return {
+    workspace,
+    opened,
+    operations: createMeetingRouteOperations(
+      meetingId,
+      () => workspace.refresh(),
+      (target, value) => workspace.updateText(target, value),
+    ),
+  };
+};
+
 describe("MeetingAgendaView", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     auth.completeInitialization(null);
     protectedText.state.status = "locked";
-    vi.spyOn(api, "meeting").mockResolvedValue(structuredClone(meeting));
+    workspaceMeeting = structuredClone(meeting);
+    workspaceLoadError = null;
+    workspaceLoad.mockReset();
+    workspaceLoad.mockImplementation(async () => {
+      if (workspaceLoadError) throw workspaceLoadError;
+      return {
+        meeting: structuredClone(workspaceMeeting),
+        unlocked: protectedText.state.status === "unlocked",
+        collaborative: false,
+      };
+    });
     vi.spyOn(api, "sections").mockResolvedValue([
       { id: "section-1", name: "Main", position: 1, isDefault: true },
     ]);
@@ -113,22 +156,23 @@ describe("MeetingAgendaView", () => {
   const view = async () => {
     const wrapper = mount(MeetingAgendaView, {
       shallow: true,
-      global: { stubs },
+      global: { stubs, provide: { [meetingRouteFactoryKey as symbol]: meetingRouteFactory } },
     });
     await flushPromises();
     return wrapper;
   };
   it("loads meeting data, shows errors, and sanitizes rich text", async () => {
     const wrapper = await view();
-    expect(api.meeting).toHaveBeenCalledWith("meeting-1");
+    expect(wrapper.find("meeting-workspace-status-stub").exists()).toBe(true);
+    expect(workspaceLoad).toHaveBeenCalledWith("meeting-1");
     expect(wrapper.text()).toContain("Council");
     expect(wrapper.find(".section-duration").text()).toBe("10 min.");
     expect(wrapper.html()).not.toContain("onerror=");
     expect(wrapper.html()).not.toContain("<script");
-    vi.spyOn(api, "meeting").mockRejectedValueOnce(new Error("Unavailable"));
+    workspaceLoadError = new Error("Unavailable");
     const errorView = mount(MeetingAgendaView, {
       shallow: true,
-      global: { stubs },
+      global: { stubs, provide: { [meetingRouteFactoryKey as symbol]: meetingRouteFactory } },
     });
     await flushPromises();
     expect(errorView.text()).toContain("Unavailable");
@@ -136,7 +180,7 @@ describe("MeetingAgendaView", () => {
   it("treats script-only rich text as empty after sanitization", async () => {
     const unsafeMeeting = structuredClone(meeting);
     unsafeMeeting.generalNotes = "<script>alert(1)</script>";
-    vi.spyOn(api, "meeting").mockResolvedValueOnce(unsafeMeeting);
+    workspaceMeeting = unsafeMeeting;
 
     const wrapper = await view();
 
@@ -169,7 +213,7 @@ describe("MeetingAgendaView", () => {
       { id: "other-update", date: "2026-07-14T12:00:00Z" },
       { id: "old-update", date: "2025-01-01T12:00:00Z" },
     ];
-    vi.spyOn(api, "meeting").mockResolvedValueOnce(completedMeeting);
+    workspaceMeeting = completedMeeting;
 
     const wrapper = await view();
     const vm: any = wrapper.vm;
@@ -188,7 +232,7 @@ describe("MeetingAgendaView", () => {
       text: "Recorded note",
       version: 0,
     };
-    vi.spyOn(api, "meeting").mockResolvedValueOnce(completedMeeting);
+    workspaceMeeting = completedMeeting;
 
     const wrapper = await view();
     const renderer = wrapper.getComponent({ name: "TopicTypeRenderer" });
@@ -298,13 +342,14 @@ describe("MeetingAgendaView", () => {
       openingInput: "",
     };
     protectedText.state.status = "unlocked";
-    vi.spyOn(api, "meeting").mockImplementation(async () => structuredClone(stored));
+    workspaceMeeting = stored;
     vi.spyOn(api, "updateMeeting").mockImplementation(async (_id, input) => {
       Object.assign(stored, input);
       return structuredClone(stored);
     });
     const wrapper = await view();
     const vm: any = wrapper.vm;
+    const updateText = vi.spyOn(vm.workspace, "updateText");
     vm.openEdit();
     vm.editForm.generalNotes = "<p>General note</p>";
     vm.editForm.openingInput = "<p>Opening note</p>";
@@ -312,42 +357,18 @@ describe("MeetingAgendaView", () => {
     await vm.saveMeeting();
     vm.openEdit();
 
-    expect(api.updateMeeting).toHaveBeenCalledWith("meeting-1", expect.objectContaining({
-      generalNotes: "<p>General note</p>",
-      openingInput: "<p>Opening note</p>",
-    }));
+    expect(updateText).toHaveBeenCalledWith(
+      { kind: "general_notes" },
+      "<p>General note</p>",
+    );
+    expect(updateText).toHaveBeenCalledWith(
+      { kind: "opening_input" },
+      "<p>Opening note</p>",
+    );
     expect(vm.editForm.generalNotes).toBe("<p>General note</p>");
     expect(vm.editForm.openingInput).toBe("<p>Opening note</p>");
   });
 
-  it("reconciles a saved Person note without reloading or overwriting other agenda state", async () => {
-    const personMeeting = structuredClone(meeting);
-    personMeeting.agenda[0].topic.type = "person";
-    vi.spyOn(api, "meeting").mockResolvedValueOnce(personMeeting);
-    const wrapper = await view();
-    const vm: any = wrapper.vm;
-    const appearance = vm.meeting.agenda[0];
-    appearance.personNote = { id: appearance.id, text: null, version: 0 };
-    vi.spyOn(api, "updatePersonMeetingNote").mockResolvedValue({
-      preparationContext: null,
-      personNote: {
-        id: appearance.id,
-        text: "Saved note",
-        version: 1,
-      },
-      meetingMinutes: null,
-    });
-
-    await savePersonMeetingNote("meeting-1", appearance)("Saved note");
-
-    expect(api.updatePersonMeetingNote).toHaveBeenCalledWith(
-      "meeting-1",
-      "item-1",
-      { text: "Saved note", version: 0 },
-    );
-    expect(appearance.personNote?.text).toBe("Saved note");
-    expect(api.meeting).toHaveBeenCalledTimes(1);
-  });
   it("reports a localized Topic status failure without updating the Meeting appearance", async () => {
     const wrapper = await view();
     const vm: any = wrapper.vm;
@@ -364,7 +385,7 @@ describe("MeetingAgendaView", () => {
     const personMeeting = structuredClone(meeting);
     personMeeting.agenda[0].topic.type = "person";
     personMeeting.agenda[0].plannedDuration = 10;
-    vi.spyOn(api, "meeting").mockResolvedValueOnce(personMeeting);
+    workspaceMeeting = personMeeting;
 
     const wrapper = await view();
 
@@ -389,11 +410,12 @@ describe("MeetingAgendaView", () => {
     activeMeeting.agenda.push(membershipItem);
     auth.setUser(authenticatedUser("content-manager"));
     protectedText.state.status = "unlocked";
-    vi.spyOn(api, "meeting").mockResolvedValueOnce(activeMeeting);
+    workspaceMeeting = activeMeeting;
 
     const wrapper = mount(MeetingAgendaView, {
       shallow: false,
       global: {
+        provide: { [meetingRouteFactoryKey as symbol]: meetingRouteFactory },
         stubs: {
           ...stubs,
           TopicTypeRenderer: false,
@@ -426,7 +448,7 @@ describe("MeetingAgendaView", () => {
     activeMeeting.meetingLeaderId = "leader";
     activeMeeting.minuteTakerId = "minute-taker";
     auth.setUser(authenticatedUser(userId));
-    vi.spyOn(api, "meeting").mockResolvedValueOnce(activeMeeting);
+    workspaceMeeting = activeMeeting;
 
     const wrapper = await view();
 
@@ -441,7 +463,7 @@ describe("MeetingAgendaView", () => {
     const superadmin = authenticatedUser("unassigned-superadmin");
     superadmin.role = "superadmin";
     auth.setUser(superadmin);
-    vi.spyOn(api, "meeting").mockResolvedValueOnce(activeMeeting);
+    workspaceMeeting = activeMeeting;
 
     const wrapper = await view();
 
@@ -453,14 +475,14 @@ describe("MeetingAgendaView", () => {
     activeMeeting.status = "in_progress";
     activeMeeting.meetingLeaderId = "leader";
     auth.setUser(authenticatedUser("unrelated"));
-    vi.spyOn(api, "meeting").mockResolvedValueOnce(activeMeeting);
+    workspaceMeeting = activeMeeting;
     vi.spyOn(api, "completeMeeting").mockResolvedValue({} as any);
 
     const unauthorized = await view();
     expect(unauthorized.text()).not.toContain("Finish meeting");
 
     auth.setUser(authenticatedUser("leader"));
-    vi.spyOn(api, "meeting").mockResolvedValueOnce(activeMeeting);
+    workspaceMeeting = activeMeeting;
     const authorized = await view();
     const vm: any = authorized.vm;
     vm.finishVisible = true;
@@ -479,7 +501,7 @@ describe("MeetingAgendaView", () => {
     const viewer = authenticatedUser("leader");
     viewer.permissions.meetings = "view";
     auth.setUser(viewer);
-    vi.spyOn(api, "meeting").mockResolvedValueOnce(activeMeeting);
+    workspaceMeeting = activeMeeting;
 
     const wrapper = await view();
 
@@ -491,20 +513,18 @@ describe("MeetingAgendaView", () => {
     activeMeeting.status = "in_progress";
     activeMeeting.meetingLeaderId = "leader";
     auth.setUser(authenticatedUser("leader"));
-    vi.spyOn(api, "meeting").mockResolvedValueOnce(activeMeeting);
+    workspaceMeeting = activeMeeting;
     const complete = vi.spyOn(api, "completeMeeting");
-    const readyForCompletion = vi.fn().mockResolvedValue(false);
-    vi.spyOn(meetingCollaboration, "get").mockReturnValue({
-      readyForCompletion,
-    } as unknown as ReturnType<typeof meetingCollaboration.get>);
 
     const wrapper = await view();
     const vm: any = wrapper.vm;
+    const completeWorkspace = vi.spyOn(vm.workspace, "complete")
+      .mockRejectedValue(new Error("MEETING_WORKSPACE_PENDING_CHANGES"));
     vm.finishVisible = true;
     await vm.finishMeeting();
     await flushPromises();
 
-    expect(readyForCompletion).toHaveBeenCalledOnce();
+    expect(completeWorkspace).toHaveBeenCalledOnce();
     expect(complete).not.toHaveBeenCalled();
     expect(wrapper.text()).toContain(
       "Encrypted Meeting changes have not finished saving. Wait for live collaboration to connect, then try again.",
@@ -518,9 +538,7 @@ describe("MeetingAgendaView", () => {
     const completedMeeting = structuredClone(activeMeeting);
     completedMeeting.status = "completed";
     auth.setUser(authenticatedUser("leader"));
-    vi.spyOn(api, "meeting")
-      .mockResolvedValueOnce(activeMeeting)
-      .mockResolvedValueOnce(completedMeeting);
+    workspaceMeeting = activeMeeting;
     const complete = vi.spyOn(api, "completeMeeting");
     let rejectCompletion!: (reason: Error) => void;
     complete.mockReturnValueOnce(new Promise((_resolve, reject) => {

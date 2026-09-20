@@ -9,7 +9,7 @@ defineOptions({ inheritAttrs: false });
 defineProps<{
   item: MeetingTopic;
   canEdit: boolean;
-  saveNote: (note: string | null) => Promise<MeetingTopic>;
+  saveNote?: (note: string | null) => Promise<MeetingTopic>;
   markDone?: () => Promise<void>;
 }>();
 

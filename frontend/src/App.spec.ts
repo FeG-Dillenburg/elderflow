@@ -91,6 +91,7 @@ describe('App', () => {
     expect(control.find('.pi-lock').exists()).toBe(true);
     expect(control.text()).toBe('locked');
     expect(control.attributes('aria-label')).toBe('Unlock Protected text');
+    expect(wrapper.get('#meeting-workspace-status').classes()).toContain('workspace-status-slot');
     expect(wrapper.get('.protected-text-status').element).toBe(
       wrapper.get('.meeting-status-bar').element.lastElementChild,
     );
