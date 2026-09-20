@@ -86,6 +86,7 @@ const iconForPhase: Record<MeetingWorkspacePhase, string> = {
   </Message>
   <Button
     v-if="phase === 'unavailable'"
+    class="workspace-retry"
     :label="t('meetingWorkspace.retry')"
     @click="workspace.open().catch(() => undefined)"
   />
@@ -126,6 +127,10 @@ const iconForPhase: Record<MeetingWorkspacePhase, string> = {
 </template>
 
 <style scoped>
+.workspace-retry {
+  margin-block: 0.75rem;
+}
+
 .meeting-workspace-status {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
