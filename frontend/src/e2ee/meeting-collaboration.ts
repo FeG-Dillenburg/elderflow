@@ -38,6 +38,9 @@ export class EncryptedMeetingCollaborationProvider extends EventTarget {
   private initialConnectionPending = true;
   private compacting = false;
   private compactionTriggerSequence: string | null = null;
+  terminalCode: string | null = null;
+  private barrierIntention: "compaction" | "completion" = "compaction";
+  private synchronizing = 0;
   private barrierId: string | null = null;
   private barrierDrained = false;
   private barrierDocument: Y.Doc | null = null;
@@ -75,7 +78,7 @@ export class EncryptedMeetingCollaborationProvider extends EventTarget {
       credentials = await this.ticket();
     } catch (error) {
       if (this.isTerminalAccessError(error)) {
-        this.reloadCanonical();
+        this.reloadCanonical((error as { code?: string; message?: string }).code ?? (error as Error).message);
         return;
       }
       this.setStatus("offline");
@@ -118,6 +121,10 @@ export class EncryptedMeetingCollaborationProvider extends EventTarget {
     this.socket?.close();
   };
 
+  isEditingPaused(): boolean {
+    return this.barrierIntention === "completion" && this.barrierId !== null;
+  }
+
   isConnected(): boolean {
     return !this.stopped && this.authenticated && this.socket?.readyState === WebSocket.OPEN;
   }
@@ -135,6 +142,9 @@ export class EncryptedMeetingCollaborationProvider extends EventTarget {
     const copy = Uint8Array.from(update);
     if (this.barrierId) {
       this.pausedPlaintext.push(copy);
+      if (this.barrierIntention === "completion") {
+        this.socket?.send(JSON.stringify({ type: "completion-failed", barrierId: this.barrierId }));
+      }
       this.setStatus("paused");
       return;
     }
@@ -146,7 +156,7 @@ export class EncryptedMeetingCollaborationProvider extends EventTarget {
     this.setStatus("pending");
     void this.enqueue(async () => {
       if (this.stopped) return;
-      if (this.barrierId) {
+      if (this.barrierId && this.barrierIntention === "compaction") {
         this.pausedPlaintext.push(copy);
         this.setStatus("paused");
         return;
@@ -279,6 +289,25 @@ export class EncryptedMeetingCollaborationProvider extends EventTarget {
       await this.synchronize();
       return;
     }
+    if (frame.type === "completion-barrier") {
+      this.startCompactionBarrier(frame.barrierId, "completion");
+      return;
+    }
+    if (frame.type === "completion-sequence") {
+      if (this.barrierId !== frame.barrierId || !this.barrierDrained) return;
+      await this.synchronize();
+      if (this.stopped || this.hasPendingChanges() || this.synchronizing
+        || meetingDocumentSession.serverSequence(this.meetingId) !== frame.serverSequence) return;
+      this.socket?.send(JSON.stringify({ type: "completion-confirmed", barrierId: frame.barrierId,
+        serverSequence: frame.serverSequence }));
+      return;
+    }
+    if (frame.type === "completion-released") {
+      if (this.barrierId !== frame.barrierId) return;
+      if (frame.outcome === "completed") this.reloadCanonical("MEETING_COMPLETED_IMMUTABLE");
+      else await this.releaseCompactionBarrier(frame.barrierId, false);
+      return;
+    }
     if (frame.type === "compaction-barrier") {
       this.startCompactionBarrier(frame.barrierId);
       return;
@@ -312,7 +341,7 @@ export class EncryptedMeetingCollaborationProvider extends EventTarget {
         "E2EE_CLIENT_EPOCH_INVALID",
         "E2EE_PROTECTED_CIPHERTEXT_FORBIDDEN",
       ].includes(frame.code)) {
-        this.reloadCanonical();
+        this.reloadCanonical(frame.code);
       } else if (frame.code === "E2EE_SNAPSHOT_PARENT_INVALID") {
         this.setStatus("connecting");
         await this.synchronize(true);
@@ -327,7 +356,7 @@ export class EncryptedMeetingCollaborationProvider extends EventTarget {
   private handleFailure(error: unknown): void {
     if (this.stopped) return;
     if (this.isTerminalAccessError(error)) {
-      this.reloadCanonical();
+      this.reloadCanonical((error as { code?: string; message?: string }).code ?? (error as Error).message);
     } else if (classifyMeetingFailure(error) === "recoverable") {
       this.setStatus("offline");
       this.socket?.close();
@@ -360,7 +389,7 @@ export class EncryptedMeetingCollaborationProvider extends EventTarget {
   private reconnect(): void {
     this.reconnectTimer = setTimeout(() => void this.connect().catch((error: unknown) => {
       if (this.isTerminalAccessError(error)) {
-        this.reloadCanonical();
+        this.reloadCanonical((error as { code?: string; message?: string }).code ?? (error as Error).message);
         return;
       }
       this.setStatus("offline");
@@ -369,6 +398,7 @@ export class EncryptedMeetingCollaborationProvider extends EventTarget {
   }
 
   async synchronize(rebasePending = false): Promise<void> {
+    this.synchronizing += 1;
     try {
       await this.enqueue(async () => {
         const { parentChanged, canonicalState } = await this.resync?.() ?? { parentChanged: false };
@@ -393,6 +423,9 @@ export class EncryptedMeetingCollaborationProvider extends EventTarget {
         this.setStatus("offline");
       }
       throw error;
+    } finally {
+      this.synchronizing -= 1;
+      this.acknowledgeBarrierWhenDrained();
     }
   }
 
@@ -420,9 +453,10 @@ export class EncryptedMeetingCollaborationProvider extends EventTarget {
     }));
   }
 
-  private startCompactionBarrier(barrierId: string): void {
+  private startCompactionBarrier(barrierId: string, intention: "compaction" | "completion" = "compaction"): void {
     if (!barrierId || this.barrierId) return;
     this.barrierId = barrierId;
+    this.barrierIntention = intention;
     this.barrierDrained = false;
     this.barrierDocument = new Y.Doc();
     Y.applyUpdateV2(this.barrierDocument, Y.encodeStateAsUpdateV2(this.document));
@@ -432,11 +466,12 @@ export class EncryptedMeetingCollaborationProvider extends EventTarget {
   }
 
   private acknowledgeBarrierWhenDrained(): void {
-    if (!this.barrierId || this.barrierDrained || this.encrypting.size || this.pending.length || this.sent.size
+    if (!this.barrierId || this.barrierDrained || this.synchronizing || this.encrypting.size || this.pending.length || this.sent.size
+      || (this.barrierIntention === "completion" && this.pausedPlaintext.length > 0)
       || !this.authenticated || this.socket?.readyState !== WebSocket.OPEN) return;
     this.barrierDrained = true;
     this.socket.send(JSON.stringify({
-      type: "compaction-drained",
+      type: `${this.barrierIntention}-drained`,
       barrierId: this.barrierId,
     }));
   }
@@ -546,7 +581,8 @@ export class EncryptedMeetingCollaborationProvider extends EventTarget {
     return classifyMeetingFailure(error) === "access";
   }
 
-  private reloadCanonical(): void {
+  private reloadCanonical(code?: string): void {
+    this.terminalCode = code ?? null;
     this.clearPending();
     meetingDocumentSession.discard(this.meetingId);
     this.setStatus("discarded");

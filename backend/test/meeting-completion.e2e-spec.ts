@@ -77,7 +77,8 @@ describe('Meeting completion lifecycle (e2e)', () => {
           return null;
         }),
         find: jest.fn(async (entity: any) => entity === MeetingTopic ? draft.appearances : []),
-        findOneBy: jest.fn(),
+        query: jest.fn(),
+        findOneBy: jest.fn().mockResolvedValue({ id: USER_ID, role: "user" }),
         findOneByOrFail: jest.fn(async (entity: any) => entity === MeetingDocument
           ? {
               id: '00000000-0000-4000-8000-000000000006',
@@ -103,6 +104,7 @@ describe('Meeting completion lifecycle (e2e)', () => {
     }),
   };
   const repository = {
+    manager: { findOneByOrFail: jest.fn().mockResolvedValue({ currentServerSequence: "3" }) },
     find: jest.fn(),
     findOne: jest.fn(),
     findOneBy: jest.fn(),

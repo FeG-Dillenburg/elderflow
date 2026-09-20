@@ -52,12 +52,16 @@ export class MeetingCollaborationRelayService implements OnApplicationBootstrap,
     this.server.on("connection", (socket: Client) => this.connected(socket));
     meetingCollaborationEvents.on("completed", this.meetingCompleted);
     meetingCollaborationEvents.on("compaction-released", this.compactionReleased);
+    meetingCollaborationEvents.on("completion-barrier", this.completionBarrier);
+    meetingCollaborationEvents.on("completion-sequence", this.completionSequence);
   }
 
   onApplicationShutdown(): void {
     this.httpServer?.off("upgrade", this.upgrade);
     meetingCollaborationEvents.off("completed", this.meetingCompleted);
     meetingCollaborationEvents.off("compaction-released", this.compactionReleased);
+    meetingCollaborationEvents.off("completion-barrier", this.completionBarrier);
+    meetingCollaborationEvents.off("completion-sequence", this.completionSequence);
     for (const room of this.rooms.values()) for (const socket of room) socket.close(1012);
     this.server.close();
   }
@@ -92,7 +96,7 @@ export class MeetingCollaborationRelayService implements OnApplicationBootstrap,
           compactionBarrierId: barrier?.barrierId ?? null,
         }));
         if (barrier) socket.send(JSON.stringify({
-          type: "compaction-barrier",
+          type: `${barrier.intention}-barrier`,
           barrierId: barrier.barrierId,
         }));
         socket.reauthorization = setInterval(() => void this.reauthorize(socket), 10_000);
@@ -116,11 +120,23 @@ export class MeetingCollaborationRelayService implements OnApplicationBootstrap,
         await this.requestCompaction(socket, frame.triggerServerSequence);
         return;
       }
+      if (frame.type === "completion-drained" || frame.type === "completion-confirmed") {
+        if (typeof frame.barrierId !== "string" || !socket.connectionId) {
+          throw new Error("E2EE_COLLABORATION_FRAME_INVALID");
+        }
+        if (frame.type === "completion-drained") {
+          await this.compactions.completionDrained(socket.collaboration.documentId, frame.barrierId, socket.connectionId);
+        } else if (typeof frame.serverSequence === "string") {
+          this.compactions.confirmCompletion(socket.collaboration.documentId, frame.barrierId,
+            socket.connectionId, frame.serverSequence);
+        }
+        return;
+      }
       if (frame.type === "compaction-drained") {
         await this.compactionDrained(socket, frame.barrierId);
         return;
       }
-      if (frame.type === "compaction-failed") {
+      if (frame.type === "compaction-failed" || frame.type === "completion-failed") {
         if (typeof frame.barrierId !== "string") throw new Error("E2EE_COLLABORATION_FRAME_INVALID");
         this.compactions.abort(socket.collaboration.documentId, frame.barrierId);
         return;
@@ -219,7 +235,7 @@ export class MeetingCollaborationRelayService implements OnApplicationBootstrap,
 
   private readonly compactionReleased = (event: MeetingCompactionReleasedEvent): void => {
     const encoded = JSON.stringify({
-      type: "compaction-released",
+      type: event.intention === "completion" ? "completion-released" : "compaction-released",
       barrierId: event.barrierId,
       outcome: event.outcome,
     });
@@ -227,6 +243,24 @@ export class MeetingCollaborationRelayService implements OnApplicationBootstrap,
       if (client.readyState === WebSocket.OPEN) client.send(encoded);
     }
   };
+
+  private readonly completionBarrier = (event: { documentId: string; barrierId: string }): void => {
+    this.broadcastCompletion(event.documentId, { type: "completion-barrier", barrierId: event.barrierId });
+  };
+
+  private readonly completionSequence = (event: {
+    documentId: string; barrierId: string; serverSequence: string;
+  }): void => {
+    this.broadcastCompletion(event.documentId, { type: "completion-sequence",
+      barrierId: event.barrierId, serverSequence: event.serverSequence });
+  };
+
+  private broadcastCompletion(documentId: string, frame: object): void {
+    const encoded = JSON.stringify(frame);
+    for (const client of this.rooms.get(documentId) ?? []) {
+      if (client.readyState === WebSocket.OPEN) client.send(encoded);
+    }
+  }
 
   private async requestCompaction(socket: Client, value: unknown): Promise<void> {
     if (!socket.collaboration || !socket.connectionId || typeof value !== "string"
@@ -237,7 +271,7 @@ export class MeetingCollaborationRelayService implements OnApplicationBootstrap,
     const existing = this.compactions.current(socket.collaboration.documentId);
     if (existing) {
       socket.send(JSON.stringify({
-        type: "compaction-barrier",
+        type: `${existing.intention}-barrier`,
         barrierId: existing.barrierId,
       }));
       return;
@@ -271,7 +305,7 @@ export class MeetingCollaborationRelayService implements OnApplicationBootstrap,
       return;
     }
     const encoded = JSON.stringify({
-      type: "compaction-barrier",
+      type: `${barrier.intention}-barrier`,
       barrierId: barrier.barrierId,
     });
     for (const client of clients) client.send(encoded);

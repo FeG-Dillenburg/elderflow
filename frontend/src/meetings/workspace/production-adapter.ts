@@ -39,7 +39,11 @@ const collaborationFor = (meetingId: string): MeetingWorkspaceCollaboration => {
     get phase() {
       return phaseFor(provider.status, provider.isConnected(), provider.isInitialConnectionPending()) as MeetingWorkspaceCollaboration["phase"];
     },
+    get editingPaused() {
+      return provider.isEditingPaused();
+    },
     get failure() {
+      if (provider.terminalCode === "MEETING_COMPLETED_IMMUTABLE") return "completed";
       return provider.status === "discarded" ? "access" : provider.status === "rejected" ? "integrity" : undefined;
     },
     get pending() {
@@ -51,7 +55,7 @@ const collaborationFor = (meetingId: string): MeetingWorkspaceCollaboration => {
     subscribe(listener) {
       const stateChanged = () => {
         listener("state");
-        if (provider.status === "discarded") protectedText.lock("authorization-loss");
+        if (provider.status === "discarded" && provider.terminalCode !== "MEETING_COMPLETED_IMMUTABLE") protectedText.lock("authorization-loss");
       };
       provider.addEventListener("status", stateChanged);
       const presenceChanged = () => listener("presence");
@@ -66,11 +70,6 @@ const collaborationFor = (meetingId: string): MeetingWorkspaceCollaboration => {
     },
     close() {
       meetingCollaboration.stop(meetingId);
-    },
-    async complete() {
-      if (!(await provider.readyForCompletion())) {
-        throw new Error("MEETING_WORKSPACE_PENDING_CHANGES");
-      }
     },
   };
 };

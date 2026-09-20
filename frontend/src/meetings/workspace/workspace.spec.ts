@@ -51,7 +51,6 @@ const setup = (result: Meeting = meeting(), unlocked = true) => {
     pending: false,
     collaborators: [],
     close: vi.fn(),
-    complete: vi.fn().mockResolvedValue(undefined),
   };
   const backend: MeetingWorkspaceBackend = {
     load: vi.fn().mockResolvedValue({ meeting: result, unlocked }),
@@ -59,10 +58,45 @@ const setup = (result: Meeting = meeting(), unlocked = true) => {
     complete: vi.fn().mockResolvedValue(meeting({ status: "completed" })),
     updateText: vi.fn().mockResolvedValue(undefined),
   };
+  vi.mocked(backend.load).mockImplementation(async () => ({
+    meeting: vi.mocked(backend.complete).mock.calls.length ? { ...result, status: "completed" } : result, unlocked,
+  }));
   return { backend, collaboration };
 };
 
 describe("Meeting workspace contract", () => {
+  it("coordinates completion while syncing, blocks duplicates, and resumes on a retryable abort", async () => {
+    const { backend, collaboration } = setup(meeting({ status: "in_progress" }));
+    Object.assign(collaboration, { pending: true });
+    let reject!: (error: Error) => void;
+    vi.mocked(backend.complete).mockImplementation(() => new Promise((_resolve, fail) => { reject = fail; }));
+    const workspace = createMeetingWorkspace("meeting-1", backend);
+    await workspace.open();
+    const completing = workspace.complete();
+    const aborted = expect(completing).rejects.toThrow("MEETING_COMPLETION_RETRY");
+    expect(workspace.state.phase).toBe("syncing");
+    expect(workspace.text({ kind: "general_notes" }).editable).toBe(false);
+    await workspace.complete();
+    expect(backend.complete).toHaveBeenCalledTimes(1);
+    reject(new Error("MEETING_COMPLETION_RETRY"));
+    await aborted;
+    expect(workspace.state.meeting?.status).toBe("in_progress");
+    expect(workspace.state.pendingChanges).toBe(true);
+    expect(workspace.text({ kind: "general_notes" }).editable).toBe(true);
+    await workspace.close({ discard: true });
+  });
+
+  it("allows a locked authorized requester to complete without a local provider", async () => {
+    const { backend } = setup(meeting({ status: "in_progress" }), false);
+    const workspace = createMeetingWorkspace("meeting-1", backend);
+    await workspace.open();
+    await workspace.complete();
+    expect(backend.complete).toHaveBeenCalledWith("meeting-1");
+    expect(backend.connect).not.toHaveBeenCalled();
+    expect(workspace.state.meeting?.status).toBe("completed");
+    expect(workspace.text({ kind: "general_notes" }).editable).toBe(false);
+  });
+
   it("blocks voluntary close with pending changes and closes after acknowledgement", async () => {
     vi.useFakeTimers();
     const { backend, collaboration } = setup();
@@ -203,8 +237,7 @@ describe("Meeting workspace contract", () => {
         return () => undefined;
       }),
       close: vi.fn(),
-      complete: vi.fn().mockResolvedValue(undefined),
-    };
+      };
     const backend: MeetingWorkspaceBackend = {
       load: vi.fn(async () => ({ meeting: loaded, unlocked: true })),
       connect: vi.fn(async () => collaboration),

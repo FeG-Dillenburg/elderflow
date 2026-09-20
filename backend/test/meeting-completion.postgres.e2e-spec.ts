@@ -29,6 +29,7 @@ describeWithPostgres('Meeting completion with PostgreSQL (integration)', () => {
   let database: DataSource;
   let service: MeetingsService;
   let snapshots: MeetingSnapshotRegistry;
+  const coordinator = new MeetingCompactionCoordinator();
   let leader: User;
   let meeting: Meeting;
   let appearance: MeetingTopic;
@@ -63,7 +64,7 @@ describeWithPostgres('Meeting completion with PostgreSQL (integration)', () => {
       new RecurrenceService(),
       new E2eeScalarService(),
       new MeetingDocumentService(),
-      new MeetingCompactionCoordinator(),
+      coordinator,
     );
   });
 
@@ -170,6 +171,9 @@ describeWithPostgres('Meeting completion with PostgreSQL (integration)', () => {
     jest.spyOn(snapshots, 'apply').mockRejectedValueOnce(new Error('snapshot failed'));
 
     await expect(service.complete(meeting.id, leader)).rejects.toThrow('snapshot failed');
+    expect(coordinator.current('00000000-0000-4000-8000-000000000099')).toBeNull();
+    expect(coordinator.beginExternalUpdate(meeting.id)).toBe(true);
+    coordinator.endExternalUpdate(meeting.id);
 
     await expect(database.getRepository(Meeting).findOneByOrFail({ id: meeting.id }))
       .resolves.toMatchObject({ status: 'in_progress' });
@@ -178,6 +182,29 @@ describeWithPostgres('Meeting completion with PostgreSQL (integration)', () => {
         topicNameSnapshotEnvelope: null,
         responsibleUserDisplayNameSnapshot: null,
       });
+  });
+
+  it.each([
+    ['authorization', 'MEETING_COMPLETION_FORBIDDEN'],
+    ['status', 'MEETING_COMPLETION_INVALID_STATUS'],
+    ['session', 'MEETING_COMPLETION_FORBIDDEN'],
+  ])('revalidates %s after draining and releases the failed claim', async (change, code) => {
+    const documentId = '00000000-0000-4000-8000-000000000099';
+    coordinator.join(documentId, 'client');
+    const completion = service.complete(meeting.id, leader);
+    const rejected = expect(completion).rejects.toMatchObject({ response: expect.objectContaining({ code }) });
+    while (!coordinator.current(documentId)) await new Promise((resolve) => setTimeout(resolve, 5));
+    const barrierId = coordinator.current(documentId)!.barrierId;
+    if (change === 'authorization') await database.getRepository(Meeting).update(meeting.id, { meetingLeaderId: null });
+    if (change === 'status') await database.getRepository(Meeting).update(meeting.id, { status: 'planned' });
+    if (change === 'session') await database.getRepository(User).increment({ id: leader.id }, 'sessionVersion', 1);
+    await coordinator.completionDrained(documentId, barrierId, 'client');
+    coordinator.confirmCompletion(documentId, barrierId, 'client', '0');
+    await rejected;
+    expect(coordinator.current(documentId)).toBeNull();
+    coordinator.disconnected(documentId, 'client');
+    await expect(database.getRepository(MeetingDocument).findOneByOrFail({ meetingId: meeting.id }))
+      .resolves.toMatchObject({ completedServerSequence: null });
   });
 
   it('persists historical snapshots once and rejects a stale completion', async () => {

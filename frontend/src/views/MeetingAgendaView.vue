@@ -248,7 +248,7 @@ const finishMeeting = async () => {
   finishError.value = "";
   try {
     await workspace.complete();
-      finishVisible.value = false;
+    finishVisible.value = false;
   } catch (e) {
     finishError.value = e instanceof Error
       && e.message === "MEETING_WORKSPACE_PENDING_CHANGES"
