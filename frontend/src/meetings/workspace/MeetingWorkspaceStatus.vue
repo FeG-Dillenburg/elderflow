@@ -62,7 +62,10 @@ const iconForPhase: Record<MeetingWorkspacePhase, string> = {
         </span>
       </p>
       <div class="workspace-status-detail">
-        <MeetingWorkspaceSyncActivity :activity="syncActivity" />
+        <MeetingWorkspaceSyncActivity
+          :activity="syncActivity"
+          :suppressed="phase === 'temporarily_offline'"
+        />
         <div
           v-if="collaborators.length"
           class="workspace-collaborators"

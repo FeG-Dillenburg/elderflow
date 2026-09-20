@@ -94,6 +94,16 @@ describe("MeetingWorkspaceStatus", () => {
     expect(target.querySelector(".workspace-phase .pi-wifi")).not.toBeNull();
     expect(target.querySelector(".workspace-phase .pi-clock")).toBeNull();
 
+    state.phase = "temporarily_offline";
+    state.syncActivity += 1;
+    await nextTick();
+    await nextTick();
+    expect(firstStep?.classList.contains("is-visible")).toBe(false);
+
+    state.phase = "ready";
+    await nextTick();
+    expect(firstStep?.classList.contains("is-visible")).toBe(false);
+
     state.phase = "syncing";
     state.syncActivity += 1;
     await nextTick();

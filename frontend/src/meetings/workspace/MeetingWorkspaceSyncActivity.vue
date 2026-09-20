@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, ref, watch } from "vue";
 
 const props = defineProps<{
   activity: number;
+  suppressed?: boolean;
 }>();
 
 const stepDegrees = 32;
@@ -23,9 +24,17 @@ const clearTimers = () => {
   removalTimer = undefined;
 };
 
+watch(() => props.suppressed, (suppressed) => {
+  if (!suppressed) return;
+  clearTimers();
+  visible.value = false;
+  fading.value = false;
+});
+
 watch(() => props.activity, (activity) => {
   const steps = Math.max(1, activity - previousActivity);
   previousActivity = activity;
+  if (props.suppressed) return;
   rotation.value += steps * stepDegrees;
   clearTimers();
   visible.value = true;
