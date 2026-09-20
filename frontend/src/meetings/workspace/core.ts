@@ -92,6 +92,17 @@ const editablePhases: readonly MeetingWorkspacePhase[] = [
   "temporarily_offline",
 ];
 
+const retainCompletedCollaborativeText = (
+  current: DeepReadonly<Meeting>,
+  completed: Meeting,
+): Meeting => ({
+  ...(current as Meeting),
+  ...completed,
+  generalNotes: current.generalNotes,
+  openingInput: current.openingInput,
+  agenda: current.agenda as Meeting["agenda"],
+});
+
 const compatibleAppearance = (
   meeting: DeepReadonly<Meeting>,
   target: Extract<MeetingTextTarget, { appearanceId: string }>,
@@ -229,6 +240,8 @@ export const createMeetingWorkspace = (
     },
     async complete() {
       if (collaboration) await collaboration.complete();
+      const current = state.meeting;
+      if (!current) throw new Error("MEETING_WORKSPACE_UNAVAILABLE");
       const completed = await backend.complete(meetingId);
       await collaboration?.close();
       unsubscribeCollaboration?.();
@@ -236,7 +249,7 @@ export const createMeetingWorkspace = (
       collaboration = null;
       publish({
         phase: "ready",
-        meeting: completed,
+        meeting: retainCompletedCollaborativeText(current, completed),
         pendingChanges: false,
         syncActivity,
         collaborators: [],

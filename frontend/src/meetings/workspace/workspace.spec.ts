@@ -108,6 +108,39 @@ describe("Meeting workspace contract", () => {
     expect(backend.connect).not.toHaveBeenCalled();
   });
 
+  it("retains Collaborative text immediately after completing the Meeting", async () => {
+    const { backend } = setup();
+    const completed = meeting({
+      status: "completed",
+      generalNotes: "",
+      openingInput: "",
+    });
+    completed.agenda![0].preparationContext!.text = "";
+    completed.agenda![0].meetingMinutes!.text = "";
+    completed.agenda![1].personNote!.text = "";
+    vi.mocked(backend.complete).mockResolvedValue(completed);
+    const workspace = createMeetingWorkspace("meeting-1", backend);
+    await workspace.open();
+
+    await workspace.complete();
+
+    expect(workspace.text({ kind: "general_notes" }).value).toBe("General");
+    expect(workspace.text({ kind: "opening_input" }).value).toBe("Opening");
+    expect(workspace.text({
+      kind: "preparation_context",
+      appearanceId: "generic-appearance",
+    }).value).toBe("Prepare");
+    expect(workspace.text({
+      kind: "meeting_minutes_text",
+      appearanceId: "generic-appearance",
+    }).value).toBe("Minutes");
+    expect(workspace.text({
+      kind: "meeting_topic_note",
+      appearanceId: "person-appearance",
+    }).value).toBe("Person note");
+    expect(workspace.text({ kind: "general_notes" }).editable).toBe(false);
+  });
+
   it("rejects incompatible or foreign text targets", async () => {
     const { backend } = setup();
     const workspace = createMeetingWorkspace("meeting-1", backend);
