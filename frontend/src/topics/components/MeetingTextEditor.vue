@@ -18,6 +18,7 @@ const props = withDefaults(defineProps<{
   firstLineIndent?: string;
   showFeedback?: boolean;
 }>(), {
+  toolbar: true,
   showFeedback: true,
 });
 
