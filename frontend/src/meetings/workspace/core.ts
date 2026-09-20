@@ -41,7 +41,7 @@ export interface MeetingWorkspaceState {
 }
 
 export interface MeetingWorkspaceCollaboration {
-  readonly phase: "ready" | "temporarily_offline" | "syncing" | "unavailable";
+  readonly phase: "opening" | "ready" | "temporarily_offline" | "syncing" | "unavailable";
   readonly pending: boolean;
   readonly failure?: "access" | "integrity";
   readonly collaborators: readonly MeetingWorkspaceCollaborator[];
@@ -98,6 +98,7 @@ const appearanceFor = (meeting: DeepReadonly<Meeting>, appearanceId: string) =>
   meeting.agenda?.find((appearance) => appearance.id === appearanceId);
 
 const editablePhases: readonly MeetingWorkspacePhase[] = [
+  "opening",
   "ready",
   "syncing",
   "temporarily_offline",

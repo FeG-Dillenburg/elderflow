@@ -97,3 +97,41 @@ it.each(["reconnecting", "encrypting", "browser-disconnect"])("keeps the offline
     documentModel.destroy();
   }
 });
+
+it.each(["authenticated", "disconnect"])("keeps the initial handshake in opening until %s", async (outcome) => {
+  vi.useFakeTimers();
+  const documentModel = new Y.Doc();
+  const socket = new Socket();
+  const provider = new EncryptedMeetingCollaborationProvider(
+    "initial-status", documentModel,
+    async () => ({ ticket: "ticket", documentId: "document", websocketPath: "/socket" }),
+    () => socket as unknown as WebSocket,
+  );
+  provider.awareness.setLocalState(null);
+  vi.spyOn(meetingCollaboration, "get").mockReturnValue(provider);
+  const workspace = createMeetingWorkspace("initial-status", {
+    load: async () => ({ meeting: { id: "initial-status", status: "planned" } as Meeting, unlocked: true }),
+    connect: productionMeetingWorkspaceBackend.connect,
+    complete: vi.fn(),
+  });
+  try {
+    await provider.connect();
+    await workspace.open();
+    expect(workspace.state.phase).toBe("opening");
+    if (outcome === "authenticated") {
+      socket.dispatchEvent(new MessageEvent("message", { data: JSON.stringify({ type: "authenticated" }) }));
+      await flushPromises();
+      expect(workspace.state.phase).toBe("ready");
+    } else {
+      socket.close();
+      await flushPromises();
+      expect(workspace.state.phase).toBe("temporarily_offline");
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(workspace.state.phase).toBe("temporarily_offline");
+    }
+  } finally {
+    workspace.forceClose("unmount");
+    provider.destroy();
+    documentModel.destroy();
+  }
+});

@@ -19,8 +19,9 @@ import type {
 } from "./core";
 import { startMeetingCollaboration, updateMeetingText } from "./infrastructure";
 
-const phaseFor = (status: CollaborationStatus, connected: boolean): MeetingWorkspacePhase => {
+const phaseFor = (status: CollaborationStatus, connected: boolean, initialConnectionPending: boolean): MeetingWorkspacePhase => {
   if (status === "rejected" || status === "discarded") return "unavailable";
+  if (!connected && initialConnectionPending) return "opening";
   if (status === "offline" || !connected) return "temporarily_offline";
   if (status === "connecting" || status === "pending" || status === "paused"
     || status === "resynchronizing") return "syncing";
@@ -36,7 +37,7 @@ const collaborationFor = (meetingId: string): MeetingWorkspaceCollaboration => {
       : []);
   return {
     get phase() {
-      return phaseFor(provider.status, provider.isConnected()) as MeetingWorkspaceCollaboration["phase"];
+      return phaseFor(provider.status, provider.isConnected(), provider.isInitialConnectionPending()) as MeetingWorkspaceCollaboration["phase"];
     },
     get failure() {
       return provider.status === "discarded" ? "access" : provider.status === "rejected" ? "integrity" : undefined;

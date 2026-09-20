@@ -35,6 +35,7 @@ export class EncryptedMeetingCollaborationProvider extends EventTarget {
   private incoming = Promise.resolve();
   private stopped = false;
   private authenticated = false;
+  private initialConnectionPending = true;
   private compacting = false;
   private compactionTriggerSequence: string | null = null;
   private barrierId: string | null = null;
@@ -121,6 +122,10 @@ export class EncryptedMeetingCollaborationProvider extends EventTarget {
     return !this.stopped && this.authenticated && this.socket?.readyState === WebSocket.OPEN;
   }
 
+  isInitialConnectionPending(): boolean {
+    return !this.stopped && this.initialConnectionPending;
+  }
+
   hasPendingChanges(): boolean {
     return this.encrypting.size > 0 || this.pending.length > 0 || this.sent.size > 0 || this.pausedPlaintext.length > 0;
   }
@@ -202,6 +207,7 @@ export class EncryptedMeetingCollaborationProvider extends EventTarget {
     if (frame.type === "authenticated") {
       await this.synchronize();
       this.authenticated = true;
+      this.initialConnectionPending = false;
       if (this.barrierId && frame.compactionBarrierId !== this.barrierId) {
         await this.releaseCompactionBarrier(this.barrierId, false);
       }
@@ -559,6 +565,9 @@ export class EncryptedMeetingCollaborationProvider extends EventTarget {
 
   private setStatus(status: CollaborationStatus): void {
     if (this.stopped || this.status === status) return;
+    if (status === "offline" || status === "rejected" || status === "discarded") {
+      this.initialConnectionPending = false;
+    }
     this.status = status;
     this.dispatchEvent(new CustomEvent("status", { detail: status }));
   }
