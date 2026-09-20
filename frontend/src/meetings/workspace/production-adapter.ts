@@ -19,11 +19,11 @@ import type {
 } from "./core";
 import { startMeetingCollaboration, updateMeetingText } from "./infrastructure";
 
-const phaseFor = (status: CollaborationStatus): MeetingWorkspacePhase => {
-  if (status === "offline") return "temporarily_offline";
+const phaseFor = (status: CollaborationStatus, connected: boolean): MeetingWorkspacePhase => {
+  if (status === "rejected" || status === "discarded") return "unavailable";
+  if (status === "offline" || !connected) return "temporarily_offline";
   if (status === "connecting" || status === "pending" || status === "paused"
     || status === "resynchronizing") return "syncing";
-  if (status === "rejected" || status === "discarded") return "unavailable";
   return "ready";
 };
 
@@ -36,7 +36,7 @@ const collaborationFor = (meetingId: string): MeetingWorkspaceCollaboration => {
       : []);
   return {
     get phase() {
-      return phaseFor(provider.status) as MeetingWorkspaceCollaboration["phase"];
+      return phaseFor(provider.status, provider.isConnected()) as MeetingWorkspaceCollaboration["phase"];
     },
     get failure() {
       return provider.status === "discarded" ? "access" : provider.status === "rejected" ? "integrity" : undefined;

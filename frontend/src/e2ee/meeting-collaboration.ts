@@ -63,6 +63,7 @@ export class EncryptedMeetingCollaborationProvider extends EventTarget {
     this.awareness = new Awareness(document);
     document.on("updateV2", this.localUpdate);
     this.awareness.on("update", this.localAwareness);
+    window.addEventListener("offline", this.offline);
   }
 
   async connect(): Promise<void> {
@@ -99,6 +100,7 @@ export class EncryptedMeetingCollaborationProvider extends EventTarget {
   destroy(): void {
     this.stopped = true;
     clearTimeout(this.reconnectTimer);
+    window.removeEventListener("offline", this.offline);
     for (const copy of this.encrypting) copy.fill(0);
     this.encrypting.clear();
     this.clearPending();
@@ -107,6 +109,16 @@ export class EncryptedMeetingCollaborationProvider extends EventTarget {
     this.awareness.destroy();
     this.socket?.close();
     this.socket = null;
+  }
+
+  private readonly offline = (): void => {
+    this.authenticated = false;
+    this.setStatus("offline");
+    this.socket?.close();
+  };
+
+  isConnected(): boolean {
+    return !this.stopped && this.authenticated && this.socket?.readyState === WebSocket.OPEN;
   }
 
   hasPendingChanges(): boolean {

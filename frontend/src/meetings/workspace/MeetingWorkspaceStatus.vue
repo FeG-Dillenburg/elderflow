@@ -135,6 +135,11 @@ const iconForPhase: Record<MeetingWorkspacePhase, string> = {
   font-size: 0.85rem;
 }
 
+.workspace-phase.phase-temporarily_offline {
+  color: #9a5800;
+  font-weight: 700;
+}
+
 .workspace-phase.phase-unavailable {
   color: #9f261f;
   font-weight: 700;
