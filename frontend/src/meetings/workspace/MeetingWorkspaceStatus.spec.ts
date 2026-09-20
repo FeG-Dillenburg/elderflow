@@ -100,6 +100,12 @@ describe("MeetingWorkspaceStatus", () => {
     await nextTick();
     expect(firstStep?.classList.contains("is-visible")).toBe(false);
 
+    state.phase = "unavailable";
+    state.syncActivity += 1;
+    await nextTick();
+    await nextTick();
+    expect(firstStep?.classList.contains("is-visible")).toBe(false);
+
     state.phase = "ready";
     await nextTick();
     expect(firstStep?.classList.contains("is-visible")).toBe(false);

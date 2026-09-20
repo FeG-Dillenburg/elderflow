@@ -13,6 +13,9 @@ const pendingChanges = computed(() => workspace.state.pendingChanges);
 const syncActivity = computed(() => workspace.state.syncActivity);
 const collaborators = computed(() => workspace.state.collaborators);
 const displayedPhase = computed(() => phase.value === "syncing" ? "ready" : phase.value);
+const syncActivitySuppressed = computed(() =>
+  phase.value !== "ready" && phase.value !== "syncing",
+);
 const iconPhase = ref<MeetingWorkspacePhase>(
   phase.value === "syncing" ? "ready" : phase.value,
 );
@@ -64,7 +67,7 @@ const iconForPhase: Record<MeetingWorkspacePhase, string> = {
       <div class="workspace-status-detail">
         <MeetingWorkspaceSyncActivity
           :activity="syncActivity"
-          :suppressed="phase === 'temporarily_offline'"
+          :suppressed="syncActivitySuppressed"
         />
         <div
           v-if="collaborators.length"
