@@ -113,6 +113,8 @@ describe("Meeting workspace contract", () => {
     const workspace = createMeetingWorkspace("meeting-1", backend);
     await workspace.open();
 
+    expect(workspace.state.syncActivity).toBe(0);
+
     expect(() => workspace.text({
       kind: "meeting_topic_note",
       appearanceId: "generic-appearance",
@@ -170,6 +172,7 @@ describe("Meeting workspace contract", () => {
     collaboration.pending = true;
     notify?.("state");
 
+    expect(workspace.state.syncActivity).toBe(1);
     expect(workspace.state.phase).toBe("temporarily_offline");
     expect(workspace.state.pendingChanges).toBe(true);
     expect(workspace.state.collaborators[0]?.name).toBe("Daria Muster");
@@ -178,10 +181,12 @@ describe("Meeting workspace contract", () => {
     collaboration.phase = "syncing";
     notify?.("state");
 
+    expect(workspace.state.syncActivity).toBe(2);
     expect(workspace.text({ kind: "general_notes" }).editable).toBe(true);
 
     loaded = meeting({ generalNotes: "Remote edit" });
     notify?.("document");
+    expect(workspace.state.syncActivity).toBe(3);
     await vi.waitFor(() => {
       expect(workspace.text({ kind: "general_notes" }).value).toBe("Remote edit");
     });

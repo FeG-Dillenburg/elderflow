@@ -46,12 +46,13 @@ const collaborationFor = (meetingId: string): MeetingWorkspaceCollaboration => {
     subscribe(listener) {
       const stateChanged = () => listener("state");
       provider.addEventListener("status", stateChanged);
-      provider.awareness.on("change", stateChanged);
+      const presenceChanged = () => listener("presence");
+      provider.awareness.on("change", presenceChanged);
       const documentChanged = () => listener("document");
       provider.document?.on("updateV2", documentChanged);
       return () => {
         provider.removeEventListener("status", stateChanged);
-        provider.awareness.off("change", stateChanged);
+        provider.awareness.off("change", presenceChanged);
         provider.document?.off("updateV2", documentChanged);
       };
     },

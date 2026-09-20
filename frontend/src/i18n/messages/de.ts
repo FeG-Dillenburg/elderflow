@@ -88,6 +88,7 @@ const de = {
       closed: 'Sitzungsarbeitsbereich geschlossen',
     },
     pendingChanges: 'Verschlüsselte Änderungen stehen aus',
+    syncActivity: 'Verschlüsselte Sitzungsänderungen werden synchronisiert',
   },
   newMembershipTopic: {
     nameLabel: 'Name', processStatus: 'Mitgliedschaftsprozessstatus', signal: 'Mitgliedschaftsstatus', statusText: 'Status Text', statusColor: 'Status-Farbe', responsible: 'Verantwortlich', godparents: 'Pate(n)', note: 'Notizen', description: 'Beschreibung (optional)', saving: 'Wird gespeichert…', saved: 'Gespeichert', retry: 'Erneut versuchen', saveFailed: 'Dieses Feld konnte nicht gespeichert werden', signalMeaning: 'Mitgliedschaftsstatus: {signal}', changeSignal: 'Status ändern. Aktueller Status: {signal}',

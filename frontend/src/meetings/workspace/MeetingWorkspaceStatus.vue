@@ -3,13 +3,16 @@ import { computed } from "vue";
 import { useI18n } from "vue-i18n";
 import CollaboratorAvatar from "../../components/CollaboratorAvatar.vue";
 import type { MeetingWorkspacePhase } from "./core";
+import MeetingWorkspaceSyncActivity from "./MeetingWorkspaceSyncActivity.vue";
 import { useMeetingWorkspace } from "./vue";
 
 const workspace = useMeetingWorkspace();
 const { t } = useI18n();
 const phase = computed(() => workspace.state.phase);
 const pendingChanges = computed(() => workspace.state.pendingChanges);
+const syncActivity = computed(() => workspace.state.syncActivity);
 const collaborators = computed(() => workspace.state.collaborators);
+const displayedPhase = computed(() => phase.value === "syncing" ? "ready" : phase.value);
 const iconForPhase: Record<MeetingWorkspacePhase, string> = {
   opening: "pi-clock",
   locked: "pi-lock",
@@ -31,22 +34,25 @@ const iconForPhase: Record<MeetingWorkspacePhase, string> = {
         aria-live="polite"
       >
         <i class="pi" :class="iconForPhase[phase]" aria-hidden="true" />
-        <span>{{ t(`meetingWorkspace.phases.${phase}`) }}</span>
-        <span v-if="pendingChanges" class="pending-changes">
-          · {{ t("meetingWorkspace.pendingChanges") }}
+        <span>{{ t(`meetingWorkspace.phases.${displayedPhase}`) }}</span>
+        <span v-if="pendingChanges" class="visually-hidden">
+          {{ t("meetingWorkspace.syncActivity") }}
         </span>
       </p>
-      <div
-        v-if="collaborators.length"
-        class="workspace-collaborators"
-        role="list"
-        :aria-label="t('editor.liveCollaborators')"
-      >
-        <CollaboratorAvatar
-          v-for="collaborator in collaborators"
-          :key="collaborator.id"
-          :collaborator="collaborator"
-        />
+      <div class="workspace-status-detail">
+        <MeetingWorkspaceSyncActivity :activity="syncActivity" />
+        <div
+          v-if="collaborators.length"
+          class="workspace-collaborators"
+          role="list"
+          :aria-label="t('editor.liveCollaborators')"
+        >
+          <CollaboratorAvatar
+            v-for="collaborator in collaborators"
+            :key="collaborator.id"
+            :collaborator="collaborator"
+          />
+        </div>
       </div>
     </div>
   </Teleport>
@@ -72,6 +78,24 @@ const iconForPhase: Record<MeetingWorkspacePhase, string> = {
 .workspace-phase.phase-unavailable {
   color: #9f261f;
   font-weight: 700;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.workspace-status-detail {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
 }
 
 .workspace-collaborators {

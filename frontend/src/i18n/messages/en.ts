@@ -88,6 +88,7 @@ export default {
       closed: 'Meeting workspace closed',
     },
     pendingChanges: 'Encrypted changes pending',
+    syncActivity: 'Synchronizing encrypted Meeting changes',
   },
   newMembershipTopic: {
     nameLabel: 'Name', processStatus: 'Membership process status', signal: 'Membership status', statusText: 'Status text', statusColor: 'Status color', responsible: 'Responsible', godparents: 'Godparent(s)', note: 'Note', description: 'Description (optional)', saving: 'Saving…', saved: 'Saved', retry: 'Retry', saveFailed: 'Unable to save this field', signalMeaning: 'Membership status: {signal}', changeSignal: 'Change status. Current status: {signal}',

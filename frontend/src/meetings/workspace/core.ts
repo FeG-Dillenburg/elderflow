@@ -33,6 +33,7 @@ export interface MeetingWorkspaceState {
   readonly phase: MeetingWorkspacePhase;
   readonly meeting: DeepReadonly<Meeting> | null;
   readonly pendingChanges: boolean;
+  readonly syncActivity: number;
   readonly collaborators: readonly MeetingWorkspaceCollaborator[];
 }
 
@@ -40,7 +41,7 @@ export interface MeetingWorkspaceCollaboration {
   readonly phase: "ready" | "temporarily_offline" | "syncing" | "unavailable";
   readonly pending: boolean;
   readonly collaborators: readonly MeetingWorkspaceCollaborator[];
-  subscribe?(listener: (change?: "state" | "document") => void): () => void;
+  subscribe?(listener: (change?: "state" | "document" | "presence") => void): () => void;
   close(): void | Promise<void>;
   complete(): Promise<void>;
 }
@@ -110,10 +111,12 @@ export const createMeetingWorkspace = (
 ): MeetingWorkspace => {
   let collaboration: MeetingWorkspaceCollaboration | null = null;
   let unsubscribeCollaboration: (() => void) | null = null;
+  let syncActivity = 0;
   let state: MeetingWorkspaceState = freeze({
     phase: "opening" as const,
     meeting: null,
     pendingChanges: false,
+    syncActivity,
     collaborators: [],
   });
   const listeners = new Set<(next: MeetingWorkspaceState) => void>();
@@ -130,9 +133,17 @@ export const createMeetingWorkspace = (
       && !completed && backend.connect && !collaboration) {
       collaboration = await backend.connect(meetingId);
       unsubscribeCollaboration = collaboration.subscribe?.((change) => {
+        if (change !== "presence") syncActivity += 1;
         if (change === "document") {
+          publish({ ...state, syncActivity });
           void load().catch(() => {
-            publish({ phase: "unavailable", meeting: null, pendingChanges: false, collaborators: [] });
+            publish({
+              phase: "unavailable",
+              meeting: null,
+              pendingChanges: false,
+              syncActivity,
+              collaborators: [],
+            });
           });
           return;
         }
@@ -141,6 +152,7 @@ export const createMeetingWorkspace = (
           phase: collaboration.phase,
           meeting: state.meeting as Meeting,
           pendingChanges: collaboration.pending,
+          syncActivity,
           collaborators: collaboration.collaborators,
         });
       }) ?? null;
@@ -149,6 +161,7 @@ export const createMeetingWorkspace = (
       phase: loaded.unlocked ? (collaboration?.phase ?? "ready") : "locked",
       meeting: loaded.meeting,
       pendingChanges: collaboration?.pending ?? false,
+      syncActivity,
       collaborators: collaboration?.collaborators ?? [],
     });
   };
@@ -163,11 +176,24 @@ export const createMeetingWorkspace = (
         await liveWorkspace.close({ reason: "replacement" });
       }
       liveWorkspace = workspace;
-      publish({ phase: "opening", meeting: null, pendingChanges: false, collaborators: [] });
+      syncActivity = 0;
+      publish({
+        phase: "opening",
+        meeting: null,
+        pendingChanges: false,
+        syncActivity,
+        collaborators: [],
+      });
       try {
         await load();
       } catch (error) {
-        publish({ phase: "unavailable", meeting: null, pendingChanges: false, collaborators: [] });
+        publish({
+          phase: "unavailable",
+          meeting: null,
+          pendingChanges: false,
+          syncActivity,
+          collaborators: [],
+        });
         throw error;
       }
     },
@@ -212,6 +238,7 @@ export const createMeetingWorkspace = (
         phase: "ready",
         meeting: completed,
         pendingChanges: false,
+        syncActivity,
         collaborators: [],
       });
     },
@@ -221,7 +248,13 @@ export const createMeetingWorkspace = (
       unsubscribeCollaboration = null;
       collaboration = null;
       if (liveWorkspace === workspace) liveWorkspace = null;
-      publish({ phase: "closed", meeting: null, pendingChanges: false, collaborators: [] });
+      publish({
+        phase: "closed",
+        meeting: null,
+        pendingChanges: false,
+        syncActivity,
+        collaborators: [],
+      });
     },
     subscribe(listener) {
       listeners.add(listener);

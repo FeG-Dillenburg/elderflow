@@ -1,5 +1,5 @@
 import { mount } from "@vue/test-utils";
-import { defineComponent, h, reactive } from "vue";
+import { defineComponent, h, nextTick, reactive } from "vue";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Meeting } from "../../api/domain";
 import MeetingWorkspaceStatus from "./MeetingWorkspaceStatus.vue";
@@ -11,17 +11,26 @@ const meeting = {
   status: "planned",
 } as Meeting;
 
-describe("MeetingWorkspaceStatus", () => {
-  afterEach(() => document.querySelector("#meeting-workspace-status")?.remove());
+type Mutable<T> = {
+  -readonly [Key in keyof T]: T[Key];
+};
 
-  it("presents the workspace phase, pending changes, and collaborators", () => {
+describe("MeetingWorkspaceStatus", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    document.querySelector("#meeting-workspace-status")?.remove();
+  });
+
+  it("steps the sync illustration without changing the connected text, then fades it", async () => {
+    vi.useFakeTimers();
     const target = document.createElement("div");
     target.id = "meeting-workspace-status";
     document.body.append(target);
-    const state = reactive<MeetingWorkspaceState>({
-      phase: "syncing",
+    const state: Mutable<MeetingWorkspaceState> = reactive({
+      phase: "ready",
       meeting,
-      pendingChanges: true,
+      pendingChanges: false,
+      syncActivity: 0,
       collaborators: [{
         id: "user-2",
         name: "Daria Muster",
@@ -58,8 +67,34 @@ describe("MeetingWorkspaceStatus", () => {
       },
     });
 
-    expect(target.textContent).toContain("Synchronizing encrypted Meeting changes");
-    expect(target.textContent).toContain("Encrypted changes pending");
+    expect(target.textContent).toContain("Live collaboration connected");
+    expect(target.querySelector(".workspace-sync-activity.is-visible")).toBeNull();
+
+    state.phase = "syncing";
+    state.pendingChanges = true;
+    state.syncActivity += 1;
+    await nextTick();
+    await nextTick();
+
+    const firstStep = target.querySelector<HTMLElement>(".workspace-sync-activity");
+    const visiblePhase = target.querySelector(".workspace-phase > span:not(.visually-hidden)");
+    expect(visiblePhase?.textContent).toContain("Live collaboration connected");
+    expect(visiblePhase?.textContent).not.toContain("Synchronizing encrypted Meeting changes");
+    expect(target.textContent).not.toContain("Encrypted changes pending");
+    expect(firstStep).not.toBeNull();
+    expect(firstStep?.classList.contains("is-visible")).toBe(true);
+    expect(firstStep?.style.getPropertyValue("--sync-rotation")).toBe("32deg");
+
+    state.syncActivity += 1;
+    await nextTick();
+    expect(firstStep?.style.getPropertyValue("--sync-rotation")).toBe("64deg");
+
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(firstStep?.classList.contains("is-visible")).toBe(true);
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(firstStep?.classList.contains("is-fading")).toBe(true);
+    await vi.advanceTimersByTimeAsync(400);
+    expect(firstStep?.classList.contains("is-visible")).toBe(false);
     expect(target.querySelector('[role="list"]')).not.toBeNull();
     expect(target.querySelector('[title="Daria Muster"]')).not.toBeNull();
     wrapper.unmount();
