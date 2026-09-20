@@ -54,6 +54,20 @@ const collaborator = computed(() => createCollaboratorPresentation(auth.state.us
     }
   : { id: "local", firstName: t("e2ee.collaborator"), lastName: "" }));
 
+const renderCollaborationCaret = (liveCollaborator: Record<string, unknown>): HTMLElement => {
+  const caret = window.document.createElement("span");
+  const marker = window.document.createElement("span");
+  const color = typeof liveCollaborator.color === "string"
+    && /^#[0-9a-f]{6}$/i.test(liveCollaborator.color)
+    ? liveCollaborator.color
+    : "#315a9b";
+  caret.classList.add("collaboration-carets__caret");
+  caret.style.setProperty("--collaborator-color", color);
+  marker.classList.add("collaboration-carets__marker");
+  caret.append(marker);
+  return caret;
+};
+
 if (binding && model.value
   && binding.provider.document.getXmlFragment(binding.field).length === 0) {
   const seed = new Y.Doc();
@@ -74,6 +88,7 @@ const editor = binding ? useEditor({
     CollaborationCaret.configure({
       provider: binding.provider,
       user: collaborator.value,
+      render: renderCollaborationCaret,
     }),
   ],
   editorProps: { attributes: {
@@ -156,5 +171,27 @@ onBeforeUnmount(() => editor?.value?.destroy());
   display: flex;
   align-items: center;
   margin-left: auto;
+}
+
+:deep(.collaboration-carets__caret) {
+  display: inline-block;
+  position: relative;
+  width: 0;
+  height: 1.25em;
+  margin-left: -1px;
+  border-left: 2px solid var(--collaborator-color);
+  vertical-align: text-bottom;
+  pointer-events: none;
+}
+
+:deep(.collaboration-carets__marker) {
+  position: absolute;
+  bottom: -0.22rem;
+  left: -0.25rem;
+  width: 0;
+  height: 0;
+  border-bottom: 0.3rem solid var(--collaborator-color);
+  border-right: 0.2rem solid transparent;
+  border-left: 0.2rem solid transparent;
 }
 </style>
