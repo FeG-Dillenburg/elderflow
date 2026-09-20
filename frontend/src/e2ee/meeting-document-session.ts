@@ -70,6 +70,7 @@ export interface PendingEncryptedMeetingUpdate {
 
 export class MeetingDocumentSession {
   private keys: DocumentSessionKeys | null = null;
+  private revision = 0;
   private documents = new Map<string, LoadedDocument>();
 
   unlock(keys: DocumentSessionKeys): void {
@@ -142,6 +143,7 @@ export class MeetingDocumentSession {
 
   async load(meetingId: string, workspace: EncryptedWorkspace): Promise<void> {
     const keys = this.requiredKeys();
+    const revision = this.revision;
     const snapshotOckId = workspace.snapshot.ockId ?? keys.ockId;
     const snapshotContentKey = this.contentKeyFor(snapshotOckId);
     const document = new Y.Doc();
@@ -168,6 +170,10 @@ export class MeetingDocumentSession {
         signingPublicKey: base64UrlToBytes(update.signingPublicKey),
         envelope: base64UrlToBytes(update.envelope),
       });
+    }
+    if (this.keys !== keys || revision !== this.revision) {
+      document.destroy();
+      throw new Error("E2EE_PROTECTED_TEXT_LOCKED");
     }
     const existing = this.documents.get(meetingId);
     const awarenessClock = existing?.documentId === workspace.documentId
@@ -554,6 +560,7 @@ export class MeetingDocumentSession {
   }
 
   lock(): void {
+    this.revision += 1;
     for (const loaded of this.documents.values()) loaded.document.destroy();
     this.documents.clear();
     if (this.keys) {
@@ -566,8 +573,15 @@ export class MeetingDocumentSession {
   }
 
   discard(meetingId: string): void {
+    this.revision += 1;
     this.documents.get(meetingId)?.document.destroy();
     this.documents.delete(meetingId);
+    for (const [id, loaded] of this.documents) {
+      if (id.startsWith("prior:")) {
+        loaded.document.destroy();
+        this.documents.delete(id);
+      }
+    }
   }
 
   private requiredKeys(): DocumentSessionKeys {

@@ -22,7 +22,7 @@ export const meetingEditorBinding = (
   target: MeetingTextTarget,
 ) => {
   if (!workspace.state.meeting) return null;
-  workspace.text(target);
+  if (!workspace.text(target).editable) return null;
   const provider = meetingCollaboration.get(workspace.meetingId);
   if (!provider?.document) return null;
   const fragment = fragmentForMeetingTextTarget(target);

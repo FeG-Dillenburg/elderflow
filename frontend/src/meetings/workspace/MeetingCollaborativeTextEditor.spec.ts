@@ -11,7 +11,6 @@ import { meetingCollaboration } from "../../e2ee/meeting-collaboration";
 import MeetingCollaborativeTextEditor from "./MeetingCollaborativeTextEditor.vue";
 import {
   createMeetingWorkspace,
-  type MeetingWorkspace,
   type MeetingWorkspaceCollaboration,
 } from "./core";
 import { meetingRouteFactoryKey, useMeetingRoute } from "./vue";
@@ -96,7 +95,7 @@ describe("MeetingCollaborativeTextEditor", () => {
     await workspace.close();
   });
 
-  it("renders a remote caret as a line with an upward marker", async () => {
+  it.each(["ready", "opening"] as const)("preserves collaborative editing when mounted during %s", async (phase) => {
     const document = new Y.Doc();
     const awareness = new Awareness(document);
     vi.spyOn(meetingCollaboration, "get").mockReturnValue({
@@ -104,23 +103,24 @@ describe("MeetingCollaborativeTextEditor", () => {
       document,
       awareness,
     } as never);
-    const workspace: MeetingWorkspace = {
-      meetingId: meeting.id,
-      state: {
-        phase: "ready",
-        meeting,
-        pendingChanges: false,
-        syncActivity: 0,
-        collaborators: [],
+    let notify: (() => void) | undefined;
+    const collaboration: MeetingWorkspaceCollaboration = {
+      phase,
+      pending: false,
+      collaborators: [],
+      subscribe(listener) {
+        notify = listener;
+        return () => undefined;
       },
-      open: vi.fn(),
-      refresh: vi.fn(),
-      text: vi.fn((target) => ({ target, value: "", editable: true })),
-      updateText: vi.fn(),
-      complete: vi.fn(),
       close: vi.fn(),
-      subscribe: vi.fn(() => () => undefined),
+      complete: vi.fn(),
     };
+    const workspace = createMeetingWorkspace(meeting.id, {
+      load: async () => ({ meeting, unlocked: true }),
+      connect: async () => collaboration,
+      complete: vi.fn(),
+    });
+    await workspace.open();
     const Harness = defineComponent({
       setup() {
         useMeetingRoute(meeting.id);
@@ -142,6 +142,11 @@ describe("MeetingCollaborativeTextEditor", () => {
     });
     await nextTick();
     const editor = wrapper.getComponent(RichTextEditorFrame).props("editor") as Editor;
+    expect(editor.isEditable).toBe(true);
+    Object.assign(collaboration, { phase: "ready" });
+    notify?.();
+    await nextTick();
+    expect(wrapper.getComponent(RichTextEditorFrame).props("editor")).toBe(editor);
     const caretExtension = editor.extensionManager.extensions
       .find((extension: { name: string }) => extension.name === "collaborationCaret");
     if (!caretExtension) throw new Error("Collaboration caret extension missing");
@@ -157,6 +162,7 @@ describe("MeetingCollaborativeTextEditor", () => {
     expect(caret.querySelector(".collaboration-carets__label")).toBeNull();
 
     wrapper.unmount();
+    workspace.forceClose("unmount");
     awareness.destroy();
     document.destroy();
   });

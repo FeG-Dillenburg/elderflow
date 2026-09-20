@@ -5,6 +5,9 @@ import {
   shallowRef,
   type InjectionKey,
 } from "vue";
+import { onBeforeRouteLeave, onBeforeRouteUpdate } from "vue-router";
+import { protectedText } from "../../e2ee/protected-text";
+import { createClosePrompt, closePromptKey } from "./close-prompt";
 import { createMeetingWorkspace, type MeetingWorkspace, type MeetingWorkspaceState } from "./core";
 import {
   createMeetingRouteOperations,
@@ -23,40 +26,48 @@ export interface MeetingRouteContext {
 export const meetingRouteFactoryKey: InjectionKey<(meetingId: string) => MeetingRouteContext> =
   Symbol("meeting-route-factory");
 
-export const useMeetingRoute = (meetingId: string): MeetingRouteContext => {
+export const useMeetingRoute = (
+  meetingId: string,
+  loadPresentation?: (opening: Promise<void>) => Promise<void>,
+): MeetingRouteContext => {
   const suppliedRoute = inject(meetingRouteFactoryKey, null)?.(meetingId);
-  if (suppliedRoute) {
-    provide(meetingWorkspaceKey, suppliedRoute.workspace);
-    return suppliedRoute;
-  }
-  const core = createMeetingWorkspace(meetingId, productionMeetingWorkspaceBackend);
+  const core = suppliedRoute?.workspace
+    ?? createMeetingWorkspace(meetingId, productionMeetingWorkspaceBackend);
   const state = shallowRef<MeetingWorkspaceState>(core.state);
   const unsubscribe = core.subscribe((next) => {
     state.value = next;
   });
+  // Defer presentation loading until the view has initialized its local state.
+  const openRoute = (opening: Promise<void>) => loadPresentation
+    ? Promise.resolve().then(() => loadPresentation(opening))
+    : opening;
   const workspace: MeetingWorkspace = {
     meetingId,
     get state() {
       return state.value;
     },
-    open: () => core.open(),
+    open: () => openRoute(core.open()),
     refresh: () => core.refresh(),
     text: (target) => core.text(target),
     updateText: (target, value) => core.updateText(target, value),
     complete: () => core.complete(),
     close: (options) => core.close(options),
+    cancelClose: () => core.cancelClose(),
+    dismissNotice: () => core.dismissNotice(),
+    forceClose: (reason) => core.forceClose(reason),
     subscribe: (listener) => core.subscribe(listener),
   };
   provide(meetingWorkspaceKey, workspace);
-  const opened = workspace.open();
-  const operations = createMeetingRouteOperations(
+  useLifecycle(workspace);
+  const opened = suppliedRoute ? openRoute(suppliedRoute.opened) : workspace.open();
+  const operations = suppliedRoute?.operations ?? createMeetingRouteOperations(
     meetingId,
     () => workspace.refresh(),
     (target, value) => workspace.updateText(target, value),
   );
   onBeforeUnmount(() => {
     unsubscribe();
-    void workspace.close({ reason: "navigation" });
+    if (workspace.state.phase !== "closed") workspace.forceClose("unmount");
   });
   return { workspace, operations, opened };
 };
@@ -69,3 +80,21 @@ export const useMeetingWorkspace = (): MeetingWorkspace => {
 
 export const tryUseMeetingWorkspace = (): MeetingWorkspace | null =>
   inject(meetingWorkspaceKey, null);
+
+function useLifecycle(workspace: MeetingWorkspace): void {
+  const prompt = createClosePrompt(workspace);
+  provide(closePromptKey, prompt);
+  onBeforeRouteLeave(() => prompt.close("navigation"));
+  onBeforeRouteUpdate((to, from) => to.fullPath === from.fullPath || prompt.close("replacement"));
+  const unbind = protectedText.bindWorkspaceLifecycle({
+    close: () => prompt.close("lock"),
+    forceClose: (reason) => {
+      workspace.forceClose(reason);
+      prompt.answer(false);
+    },
+  });
+  onBeforeUnmount(() => {
+    unbind();
+    prompt.answer(false);
+  });
+}

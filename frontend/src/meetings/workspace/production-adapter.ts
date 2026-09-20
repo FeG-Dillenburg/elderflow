@@ -10,6 +10,7 @@ import {
 } from "../../api/domain";
 import { isCollaboratorPresentation } from "../../e2ee/collaborator-presentation";
 import { meetingCollaboration, type CollaborationStatus } from "../../e2ee/meeting-collaboration";
+import { meetingDocumentSession } from "../../e2ee/meeting-document-session";
 import { protectedText } from "../../e2ee/protected-text";
 import type {
   MeetingWorkspaceBackend,
@@ -18,11 +19,12 @@ import type {
 } from "./core";
 import { startMeetingCollaboration, updateMeetingText } from "./infrastructure";
 
-const phaseFor = (status: CollaborationStatus): MeetingWorkspacePhase => {
-  if (status === "offline") return "temporarily_offline";
+const phaseFor = (status: CollaborationStatus, connected: boolean, initialConnectionPending: boolean): MeetingWorkspacePhase => {
+  if (status === "rejected" || status === "discarded") return "unavailable";
+  if (!connected && initialConnectionPending) return "opening";
+  if (status === "offline" || !connected) return "temporarily_offline";
   if (status === "connecting" || status === "pending" || status === "paused"
     || status === "resynchronizing") return "syncing";
-  if (status === "rejected" || status === "discarded") return "unavailable";
   return "ready";
 };
 
@@ -35,7 +37,10 @@ const collaborationFor = (meetingId: string): MeetingWorkspaceCollaboration => {
       : []);
   return {
     get phase() {
-      return phaseFor(provider.status) as MeetingWorkspaceCollaboration["phase"];
+      return phaseFor(provider.status, provider.isConnected(), provider.isInitialConnectionPending()) as MeetingWorkspaceCollaboration["phase"];
+    },
+    get failure() {
+      return provider.status === "discarded" ? "access" : provider.status === "rejected" ? "integrity" : undefined;
     },
     get pending() {
       return provider.hasPendingChanges?.() ?? false;
@@ -44,7 +49,10 @@ const collaborationFor = (meetingId: string): MeetingWorkspaceCollaboration => {
       return collaborators();
     },
     subscribe(listener) {
-      const stateChanged = () => listener("state");
+      const stateChanged = () => {
+        listener("state");
+        if (provider.status === "discarded") protectedText.lock("authorization-loss");
+      };
       provider.addEventListener("status", stateChanged);
       const presenceChanged = () => listener("presence");
       provider.awareness.on("change", presenceChanged);
@@ -68,17 +76,48 @@ const collaborationFor = (meetingId: string): MeetingWorkspaceCollaboration => {
 };
 
 export const productionMeetingWorkspaceBackend: MeetingWorkspaceBackend = {
-  async load(meetingId) {
-    const meeting = await api.meeting(meetingId, { strictWorkspace: true });
+  async load(meetingId, signal) {
+    const meeting = await api.meeting(meetingId, { strictWorkspace: true, signal });
+    signal?.throwIfAborted();
+    if (protectedText.state.status === "unlocked" && !meeting.workspace) {
+      throw new Error("MEETING_WORKSPACE_UNAVAILABLE");
+    }
     await startMeetingCollaboration(meeting);
+    signal?.throwIfAborted();
     return {
       meeting,
       unlocked: protectedText.state.status === "unlocked",
       collaborative: Boolean(meeting.workspace),
     };
   },
+  revokeAccess() {
+    protectedText.lock("authorization-loss");
+  },
+  dispose(meetingId) {
+    meetingCollaboration.stop(meetingId);
+    meetingDocumentSession.discard(meetingId);
+  },
+  readText(meeting) {
+    const fragments = meetingDocumentSession.hydrateFragments(meeting.id,
+      (meeting.agenda ?? []).map((item) => ({ id: item.id, person: item.topic?.type === "person" })));
+    return {
+      ...meeting,
+      generalNotes: fragments.generalNotes,
+      openingInput: fragments.openingInput,
+      agenda: meeting.agenda?.map((item) => {
+        const values = fragments.appearances.get(item.id)!;
+        return { ...item,
+          preparationContext: values.preparationContext === null ? null : { id: item.id, text: values.preparationContext, version: 0 },
+          personNote: values.personNote === null ? null : { id: item.id, text: values.personNote, version: 0 },
+          meetingMinutes: values.meetingMinutes === null ? null : { id: item.id, text: values.meetingMinutes, version: 0 },
+        };
+      }),
+    };
+  },
   async connect(meetingId) {
-    return collaborationFor(meetingId);
+    const collaboration = collaborationFor(meetingId);
+    if (collaboration.failure === "access") protectedText.lock("authorization-loss");
+    return collaboration;
   },
   complete: (meetingId) => api.completeMeeting(meetingId),
   async updateText(meetingId, target, value) {

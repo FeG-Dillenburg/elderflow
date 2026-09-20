@@ -44,7 +44,6 @@ const canManage = computed(
   () => !auth.state.user || auth.canManage("meetings"),
 );
 const isCompleted = computed(() => meeting.value?.status === "completed");
-const discardedAfterReload = ref(false);
 const canEdit = computed(() => canManage.value && !isCompleted.value);
 const canEditProtected = computed(
   () => canEdit.value && protectedText.state.status === "unlocked",
@@ -69,9 +68,8 @@ const { t } = useI18n();
 
 const route = useRoute();
 const id = route.params.id as string;
-const { workspace, operations, opened } = useMeetingRoute(id);
-let initialWorkspaceOpen: Promise<void> | null = opened;
-const meeting = ref<Meeting | null>(null),
+const { workspace, operations, opened } = useMeetingRoute(id, (opening) => load(opening));
+const meeting = computed(() => workspace.state.meeting as Meeting | null),
   sections = ref<AgendaSection[]>([]),
   users = ref<User[]>([]),
   loading = ref(true),
@@ -107,24 +105,20 @@ const attendanceOptions = computed(() =>
     label: t(`labels.${value}`),
   })),
 );
-const load = async () => {
+const load = async (opening: Promise<void>) => {
   loading.value = true;
+  error.value = "";
   try {
-    const workspaceLoad = initialWorkspaceOpen ?? workspace.refresh();
-    initialWorkspaceOpen = null;
     const [, loadedSections, loadedUsers] = await Promise.all([
-      workspaceLoad,
+      opening,
       api.sections(),
       api.userDirectory(),
     ]);
-    meeting.value = workspace.state.meeting
-      ? structuredClone(workspace.state.meeting) as Meeting
-      : null;
     sections.value = loadedSections;
     users.value = assignableUsers(loadedUsers);
   } catch (e) {
     error.value =
-      e instanceof Error ? e.message : t("meetingAgenda.loadFailed");
+      t("meetingAgenda.loadFailed");
   } finally {
     loading.value = false;
   }
@@ -159,17 +153,15 @@ const addParticipant = async () => {
     attendanceStatus: participant.attendanceStatus,
   });
   participantVisible.value = false;
-  meeting.value = structuredClone(workspace.state.meeting) as Meeting;
 };
 const removeParticipant = async (userId: string) => {
   await operations.removeParticipant(userId);
-  meeting.value = structuredClone(workspace.state.meeting) as Meeting;
 };
 const setTopicStatus = async (item: MeetingTopic, status: string) => {
   error.value = "";
   try {
     const wasDeferred = item.topic?.status === "deferred";
-    await api.updateTopic(item.topicId, { status });
+    await operations.updateTopic(item.topicId, { status });
     const appearanceStatus = status === "done"
       ? "done"
       : item.status === "done"
@@ -185,10 +177,7 @@ const setTopicStatus = async (item: MeetingTopic, status: string) => {
     } else {
       await operations.updateAppearance(appearance, { deferred });
     }
-    if (item.topic) item.topic.status = status;
-    item.status = appearanceStatus;
-    meeting.value = structuredClone(workspace.state.meeting) as Meeting;
-  } catch {
+    } catch {
     error.value = t("meetingAgenda.topicStatusFailed");
   }
 };
@@ -204,14 +193,11 @@ const move = async (
   const other = items[index + direction];
   if (!other) return;
   const current = items[index];
-  const position = current.position;
-  current.position = other.position;
-  other.position = position;
-  await Promise.all([
-    operations.updateAppearance(current),
-    operations.updateAppearance(other),
-  ]);
-  meeting.value = structuredClone(workspace.state.meeting) as Meeting;
+  await operations.reorderAgenda((meeting.value?.agenda ?? []).map((item) => ({
+    id: item.id,
+    sectionId: item.sectionId,
+    position: item.id === current.id ? other.position : item.id === other.id ? current.position : item.position,
+  })));
 };
 const safe = sanitizeRichText;
 const hasRichText = (html: string | null | undefined) =>
@@ -255,7 +241,6 @@ const saveMeeting = async () => {
     } : {}),
   });
   editVisible.value = false;
-  meeting.value = structuredClone(workspace.state.meeting) as Meeting;
 };
 const finishMeeting = async () => {
   if (finishing.value || !meeting.value) return;
@@ -263,8 +248,7 @@ const finishMeeting = async () => {
   finishError.value = "";
   try {
     await workspace.complete();
-    meeting.value = structuredClone(workspace.state.meeting) as Meeting;
-    finishVisible.value = false;
+      finishVisible.value = false;
   } catch (e) {
     finishError.value = e instanceof Error
       && e.message === "MEETING_WORKSPACE_PENDING_CHANGES"
@@ -275,20 +259,13 @@ const finishMeeting = async () => {
   }
 };
 onMounted(async () => {
-  if (window.sessionStorage.getItem("elderflow:discarded-collaboration") === id) {
-    discardedAfterReload.value = true;
-    window.sessionStorage.removeItem("elderflow:discarded-collaboration");
-  }
-  await load();
+  await opened;
   if (route.query?.edit === "true") openEdit();
 });
 </script>
 <template>
   <section class="agenda-page">
     <MeetingWorkspaceStatus />
-    <Message v-if="discardedAfterReload" severity="warn">
-      {{ t("e2ee.collaboration.discarded") }}
-    </Message>
     <Message v-if="error" severity="error">{{ error }}</Message>
     <template v-if="meeting">
       <header class="meeting-header">

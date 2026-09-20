@@ -37,7 +37,7 @@ describe("Meeting topic field saves", () => {
     });
     const appearanceUpdate = vi.spyOn(api, "updateMeetingTopicFields");
 
-    await saveMeetingTopicField(operations(), appearance)({
+    const saved = await saveMeetingTopicField(operations(), appearance)({
       membershipProcessStatus: "Current",
     });
 
@@ -45,7 +45,8 @@ describe("Meeting topic field saves", () => {
       membershipProcessStatus: "Current",
     });
     expect(appearanceUpdate).not.toHaveBeenCalled();
-    expect(appearance.topic?.membershipProcessStatus).toBe("Current");
+    expect(saved.membershipProcessStatus).toBe("Current");
+    expect(appearance.topic?.membershipProcessStatus).toBe("Earlier");
   });
 
   it("keeps structural inline fields on the Meeting mutation boundary", async () => {

@@ -40,8 +40,11 @@ const workspace = tryUseMeetingWorkspace();
 const { t } = useI18n();
 const collaborators = computed(() => workspace?.state.collaborators ?? []);
 const workspaceReadOnly = computed(() => {
-  if (!workspace?.state.meeting) return false;
-  return !workspace.text(props.target).editable;
+  if (!workspace) return false;
+  if (!workspace.state.meeting) return true;
+  try {
+    return !workspace.text(props.target).editable;
+  } catch { return true; }
 });
 const editorReadOnly = computed(() => props.readonly || workspaceReadOnly.value);
 const binding = workspace ? meetingEditorBinding(workspace, props.target) : null;
@@ -101,7 +104,14 @@ const editor = binding ? useEditor({
 }) : null;
 
 if (binding) binding.provider.awareness.setLocalStateField("user", collaborator.value);
-watch(editorReadOnly, (readonly) => editor?.value?.setEditable(!readonly));
+watch(editorReadOnly, (readonly) => editor?.value?.setEditable(!readonly), { flush: "sync" });
+watch(() => workspace?.state.meeting, (meeting) => {
+  if (!meeting || ("appearanceId" in props.target
+    && !meeting.agenda?.some((item) => item.id === (props.target as { appearanceId: string }).appearanceId))) {
+    editor?.value?.destroy();
+    model.value = "";
+  }
+}, { flush: "sync" });
 
 const save = async () => {
   if (editorReadOnly.value) return;
@@ -171,6 +181,10 @@ onBeforeUnmount(() => editor?.value?.destroy());
   display: flex;
   align-items: center;
   margin-left: auto;
+}
+
+.live-collaborators :deep(.collaborator-avatar + .collaborator-avatar) {
+  margin-inline-start: -0.45rem;
 }
 
 :deep(.collaboration-carets__caret) {

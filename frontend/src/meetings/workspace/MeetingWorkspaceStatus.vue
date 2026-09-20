@@ -1,12 +1,17 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from "vue";
+import { computed, inject, onBeforeUnmount, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
+import Dialog from "primevue/dialog";
+import Button from "primevue/button";
+import Message from "primevue/message";
+import { closePromptKey } from "./close-prompt";
 import CollaboratorAvatar from "../../components/CollaboratorAvatar.vue";
 import type { MeetingWorkspacePhase } from "./core";
 import MeetingWorkspaceSyncActivity from "./MeetingWorkspaceSyncActivity.vue";
 import { useMeetingWorkspace } from "./vue";
 
 const workspace = useMeetingWorkspace();
+const closePrompt = inject(closePromptKey, null);
 const { t } = useI18n();
 const phase = computed(() => workspace.state.phase);
 const pendingChanges = computed(() => workspace.state.pendingChanges);
@@ -50,6 +55,41 @@ const iconForPhase: Record<MeetingWorkspacePhase, string> = {
 </script>
 
 <template>
+  <Dialog
+    :visible="closePrompt?.visible.value ?? false"
+    modal
+    :closable="false"
+    :header="t('meetingWorkspace.closeTitle')"
+  >
+    <p>{{ t("meetingWorkspace.closeDescription") }}</p>
+    <template #footer>
+      <Button
+        :label="t('meetingWorkspace.stay')"
+        @click="closePrompt?.answer(false)"
+      />
+      <Button
+        severity="danger"
+        :label="t('meetingWorkspace.discard')"
+        @click="closePrompt?.answer(true)"
+      />
+    </template>
+  </Dialog>
+  <Message
+    v-if="workspace.state.notice"
+    :key="workspace.state.notice"
+    severity="warn"
+    closable
+    :close-button-props="{ 'aria-label': t('meetingWorkspace.dismissNotice') }"
+    @close="workspace.dismissNotice()"
+  >
+    {{ t(`meetingWorkspace.notices.${workspace.state.notice}`) }}
+  </Message>
+  <Button
+    v-if="phase === 'unavailable'"
+    class="workspace-retry"
+    :label="t('meetingWorkspace.retry')"
+    @click="workspace.open().catch(() => undefined)"
+  />
   <Teleport to="#meeting-workspace-status">
     <div class="meeting-workspace-status">
       <p
@@ -87,6 +127,10 @@ const iconForPhase: Record<MeetingWorkspacePhase, string> = {
 </template>
 
 <style scoped>
+.workspace-retry {
+  margin-block: 0.75rem;
+}
+
 .meeting-workspace-status {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -101,6 +145,11 @@ const iconForPhase: Record<MeetingWorkspacePhase, string> = {
   margin: 0;
   color: #526176;
   font-size: 0.85rem;
+}
+
+.workspace-phase.phase-temporarily_offline {
+  color: #9a5800;
+  font-weight: 700;
 }
 
 .workspace-phase.phase-unavailable {
@@ -129,9 +178,6 @@ const iconForPhase: Record<MeetingWorkspacePhase, string> = {
 .workspace-collaborators {
   display: flex;
   align-items: center;
-}
-
-.workspace-collaborators :deep(.collaborator-avatar) + :deep(.collaborator-avatar) {
-  margin-left: -0.45rem;
+  gap: 0.35rem;
 }
 </style>

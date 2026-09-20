@@ -1,13 +1,17 @@
-import { flushPromises, mount } from "@vue/test-utils";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { enableAutoUnmount, flushPromises, mount } from "@vue/test-utils";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { api } from "../api/domain";
 import { createMeetingWorkspace, meetingRouteFactoryKey } from "../meetings/workspace";
 import { createMeetingRouteOperations } from "../meetings/workspace/production-adapter";
 import MeetingPreparationView from "./MeetingPreparationView.vue";
 
+enableAutoUnmount(afterEach);
+
 const { routerPush } = vi.hoisted(() => ({ routerPush: vi.fn() }));
 
 vi.mock("vue-router", () => ({
+  onBeforeRouteLeave: vi.fn(),
+  onBeforeRouteUpdate: vi.fn(),
   RouterLink: { template: "<a><slot /></a>" },
   useRoute: () => ({ params: { id: "meeting-1" } }),
   useRouter: () => ({ push: routerPush }),
@@ -126,8 +130,34 @@ describe("MeetingPreparationView", () => {
       global: { stubs, provide: { [meetingRouteFactoryKey as symbol]: meetingRouteFactory } },
     });
     await flushPromises();
-    expect((failed.vm as any).error).toBe("No meeting");
+    expect((failed.vm as any).error).toBe("Unable to load meeting preparation");
   });
+  it("clears the initial load error and restores Agenda sections and suggestions after workspace retry", async () => {
+    workspaceLoadError = new TypeError("Offline");
+    vi.mocked(api.sections).mockRejectedValueOnce(new TypeError("Offline"));
+    const wrapper = await view();
+    const vm: any = wrapper.vm;
+    expect(vm.error).toBe("Unable to load meeting preparation");
+    workspaceLoadError = null;
+    await vm.workspace.open();
+    await flushPromises();
+    expect(vm.error).toBe("");
+    expect(vm.grouped[1].items.map((item: any) => item.id)).toEqual(["item-1", "item-2"]);
+    expect(vm.suggestions[0].name).toBe("Suggested");
+  });
+
+  it("keeps the load error if presentation data still cannot load on retry", async () => {
+    workspaceLoadError = new TypeError("Offline");
+    const wrapper = await view();
+    const vm: any = wrapper.vm;
+    workspaceLoadError = null;
+    vi.mocked(api.sections).mockRejectedValueOnce(new TypeError("Still unavailable"));
+    await vm.workspace.open();
+    await flushPromises();
+    expect(vm.error).toBe("Unable to load meeting preparation");
+    expect(vm.grouped).toEqual([]);
+  });
+
   it("keeps Topic status out of preparation and starts a planned Meeting after confirmation", async () => {
     const wrapper = await view();
     const vm: any = wrapper.vm;
@@ -381,12 +411,7 @@ describe("MeetingPreparationView", () => {
     await (wrapper.vm as any).remove(item);
 
     expect(api.removeMeetingTopic).toHaveBeenCalledWith("meeting-1", item.id);
-    expect(diagnostic).toHaveBeenCalledWith(
-      "Meeting preparation operation failed",
-      expect.objectContaining({
-        message: "A preserved recurring appearance conflicts with this change",
-      }),
-    );
+    expect(diagnostic).not.toHaveBeenCalled();
     expect((wrapper.vm as any).error).toBe(
       "A preserved recurring appearance conflicts with this change",
     );

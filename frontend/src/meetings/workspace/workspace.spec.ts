@@ -63,6 +63,24 @@ const setup = (result: Meeting = meeting(), unlocked = true) => {
 };
 
 describe("Meeting workspace contract", () => {
+  it("blocks voluntary close with pending changes and closes after acknowledgement", async () => {
+    vi.useFakeTimers();
+    const { backend, collaboration } = setup();
+    Object.assign(collaboration, { pending: true });
+    const workspace = createMeetingWorkspace("meeting-1", backend);
+    await workspace.open();
+    const closing = workspace.close({ reason: "navigation" });
+    expect(workspace.text({ kind: "general_notes" }).editable).toBe(false);
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(await closing).toBe(false);
+    expect(workspace.state.pendingChanges).toBe(true);
+    expect(workspace.state.phase).not.toBe("closed");
+    Object.assign(collaboration, { pending: false });
+    expect(await workspace.close()).toBe(true);
+    expect(workspace.state.meeting).toBeNull();
+    vi.useRealTimers();
+  });
+
   it("atomically publishes an unlocked Meeting and maps every valid domain text target", async () => {
     const { backend } = setup();
     const workspace = createMeetingWorkspace("meeting-1", backend);
@@ -223,6 +241,7 @@ describe("Meeting workspace contract", () => {
     await vi.waitFor(() => {
       expect(workspace.text({ kind: "general_notes" }).value).toBe("Remote edit");
     });
+    await workspace.close({ discard: true });
   });
 
   it("closes the previous live workspace before opening another one", async () => {

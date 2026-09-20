@@ -1,4 +1,5 @@
 import { reactive } from 'vue';
+import { classifyMeetingFailure } from './meeting-failure';
 import sodium from 'libsodium-wrappers-sumo';
 import { api, type AuthUser } from '../api/domain';
 import { unlockWithPassphrase, type PublicKeyState } from './crypto';
@@ -21,6 +22,10 @@ let abortController: AbortController | null = null;
 let activeUserId: string | null = null;
 let authorizationPoll: ReturnType<typeof setInterval> | null = null;
 const channel = typeof BroadcastChannel === 'undefined' ? null : new BroadcastChannel('elderflow.protected-text-lock');
+let workspaceLifecycle: {
+  close(): Promise<boolean>;
+  forceClose(reason: LockReason): void;
+} | null = null;
 const session = new UnlockSession({ onLock: handleSessionLock });
 
 channel?.addEventListener('message', ({ data }) => {
@@ -36,6 +41,10 @@ if (typeof window !== 'undefined') {
 
 export const protectedText = {
   state,
+  bindWorkspaceLifecycle(lifecycle: NonNullable<typeof workspaceLifecycle>): () => void {
+    workspaceLifecycle = lifecycle;
+    return () => { if (workspaceLifecycle === lifecycle) workspaceLifecycle = null; };
+  },
   isEligible(user: AuthUser | null): boolean {
     return isE2eeKeyOperator(user);
   },
@@ -62,10 +71,11 @@ export const protectedText = {
     if (!keyState) return;
     abortController?.abort();
     abortController = new AbortController();
+    const attempt = abortController;
     state.status = 'unlocking';
     state.error = false;
     try {
-      const keys = await unlockWithPassphrase(passphrase, keyState, abortController.signal);
+      const keys = await unlockWithPassphrase(passphrase, keyState, attempt.signal);
       await sodium.ready;
       const signing = sodium.crypto_sign_keypair('uint8array');
       const noncePrefix = crypto.getRandomValues(new Uint8Array(16));
@@ -76,6 +86,7 @@ export const protectedText = {
           noncePrefix: bytesToBase64Url(noncePrefix),
           signingPublicKey: bytesToBase64Url(signing.publicKey),
         });
+        attempt.signal.throwIfAborted();
       } catch (error) {
         sodium.memzero(signing.privateKey);
         sodium.memzero(noncePrefix);
@@ -116,7 +127,7 @@ export const protectedText = {
       state.status = 'locked';
       if (!(error instanceof DOMException && error.name === 'AbortError')) state.error = true;
     } finally {
-      abortController = null;
+      if (abortController === attempt) abortController = null;
     }
   },
   async rotateClientEpoch(): Promise<void> {
@@ -155,17 +166,27 @@ export const protectedText = {
       throw error;
     }
   },
-  lock(reason: LockReason = 'explicit', coordinate = true): void {
-    void recoverySession.abort();
-    abortController?.abort();
-    const wasUnlocked = session.isUnlocked();
-    session.lock(reason);
-    if (!wasUnlocked) {
-      finishLock();
-      if (coordinate) coordinateLock();
+  lock(reason: LockReason = 'explicit', coordinate = true): void | Promise<void> {
+    if (reason === 'explicit' && workspaceLifecycle) {
+      return workspaceLifecycle.close().then((allowed) => {
+        if (allowed) performLock(reason, coordinate);
+      });
     }
+    performLock(reason, coordinate);
   },
 };
+
+function performLock(reason: LockReason, coordinate: boolean): void {
+  void recoverySession.abort();
+  abortController?.abort();
+  const wasUnlocked = session.isUnlocked();
+  session.lock(reason);
+  if (!wasUnlocked) {
+    workspaceLifecycle?.forceClose(reason);
+    finishLock();
+    if (coordinate) coordinateLock();
+  }
+}
 
 function finishLock(): void {
   meetingCollaboration.stopAll();
@@ -186,11 +207,14 @@ function startAuthorizationPolling(): void {
       .then((metadata) => {
         if (keyState && metadata.generation !== keyState.generation) protectedText.lock('authorization-loss');
       })
-      .catch(() => protectedText.lock('authorization-loss'));
+      .catch((error: unknown) => {
+        if (classifyMeetingFailure(error) === 'access') protectedText.lock('authorization-loss');
+      });
   }, 30_000);
 }
 
 function handleSessionLock(reason: LockReason): void {
+  workspaceLifecycle?.forceClose(reason);
   const revokedEpochs = [...unlockEpochIds];
   unlockEpochIds.clear();
   void recoverySession.abort();
