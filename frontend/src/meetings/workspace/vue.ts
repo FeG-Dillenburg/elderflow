@@ -26,7 +26,10 @@ export interface MeetingRouteContext {
 export const meetingRouteFactoryKey: InjectionKey<(meetingId: string) => MeetingRouteContext> =
   Symbol("meeting-route-factory");
 
-export const useMeetingRoute = (meetingId: string): MeetingRouteContext => {
+export const useMeetingRoute = (
+  meetingId: string,
+  loadPresentation?: (opening: Promise<void>) => Promise<void>,
+): MeetingRouteContext => {
   const suppliedRoute = inject(meetingRouteFactoryKey, null)?.(meetingId);
   const core = suppliedRoute?.workspace
     ?? createMeetingWorkspace(meetingId, productionMeetingWorkspaceBackend);
@@ -34,12 +37,16 @@ export const useMeetingRoute = (meetingId: string): MeetingRouteContext => {
   const unsubscribe = core.subscribe((next) => {
     state.value = next;
   });
+  // Defer presentation loading until the view has initialized its local state.
+  const openRoute = (opening: Promise<void>) => loadPresentation
+    ? Promise.resolve().then(() => loadPresentation(opening))
+    : opening;
   const workspace: MeetingWorkspace = {
     meetingId,
     get state() {
       return state.value;
     },
-    open: () => core.open(),
+    open: () => openRoute(core.open()),
     refresh: () => core.refresh(),
     text: (target) => core.text(target),
     updateText: (target, value) => core.updateText(target, value),
@@ -52,7 +59,7 @@ export const useMeetingRoute = (meetingId: string): MeetingRouteContext => {
   };
   provide(meetingWorkspaceKey, workspace);
   useLifecycle(workspace);
-  const opened = suppliedRoute?.opened ?? workspace.open();
+  const opened = suppliedRoute ? openRoute(suppliedRoute.opened) : workspace.open();
   const operations = suppliedRoute?.operations ?? createMeetingRouteOperations(
     meetingId,
     () => workspace.refresh(),

@@ -1,5 +1,5 @@
 <script lang="ts" setup>
-import { onMounted, reactive, ref, watch } from "vue";
+import { reactive, ref, watch } from "vue";
 import { computed } from "vue";
 import { useI18n } from "vue-i18n";
 import { RouterLink, useRoute, useRouter } from "vue-router";
@@ -54,7 +54,7 @@ const route = useRoute();
 const router = useRouter();
 const { t } = useI18n();
 const id = route.params.id as string;
-const { workspace, operations, opened } = useMeetingRoute(id);
+const { workspace, operations } = useMeetingRoute(id, (opening) => load(opening));
 const meeting = computed(() => workspace.state.meeting as Meeting | null);
 const readOnly = computed(() => meeting.value?.status === "completed");
 const sections = ref<AgendaSection[]>([]);
@@ -137,7 +137,8 @@ const initialiseGroups = () => {
   }));
 };
 
-const load = async () => {
+const load = async (opening: Promise<void>) => {
+  error.value = "";
   try {
     const [
       _workspaceLoaded,
@@ -147,7 +148,7 @@ const load = async () => {
       loadedFutureSuggestions,
     ] =
       await Promise.all([
-        opened,
+        opening,
         api.sections(),
         api.meetingSuggestions(id),
         api.userDirectory(),
@@ -408,9 +409,6 @@ const saveDetails = async () => {
   detailsVisible.value = false;
 };
 
-onMounted(() => {
-  void load();
-});
 </script>
 
 <template>

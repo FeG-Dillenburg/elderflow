@@ -68,7 +68,7 @@ const { t } = useI18n();
 
 const route = useRoute();
 const id = route.params.id as string;
-const { workspace, operations, opened } = useMeetingRoute(id);
+const { workspace, operations, opened } = useMeetingRoute(id, (opening) => load(opening));
 const meeting = computed(() => workspace.state.meeting as Meeting | null),
   sections = ref<AgendaSection[]>([]),
   users = ref<User[]>([]),
@@ -105,11 +105,12 @@ const attendanceOptions = computed(() =>
     label: t(`labels.${value}`),
   })),
 );
-const load = async () => {
+const load = async (opening: Promise<void>) => {
   loading.value = true;
+  error.value = "";
   try {
     const [, loadedSections, loadedUsers] = await Promise.all([
-      opened,
+      opening,
       api.sections(),
       api.userDirectory(),
     ]);
@@ -258,7 +259,7 @@ const finishMeeting = async () => {
   }
 };
 onMounted(async () => {
-  await load();
+  await opened;
   if (route.query?.edit === "true") openEdit();
 });
 </script>

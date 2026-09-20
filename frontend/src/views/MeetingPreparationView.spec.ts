@@ -132,6 +132,32 @@ describe("MeetingPreparationView", () => {
     await flushPromises();
     expect((failed.vm as any).error).toBe("Unable to load meeting preparation");
   });
+  it("clears the initial load error and restores Agenda sections and suggestions after workspace retry", async () => {
+    workspaceLoadError = new TypeError("Offline");
+    vi.mocked(api.sections).mockRejectedValueOnce(new TypeError("Offline"));
+    const wrapper = await view();
+    const vm: any = wrapper.vm;
+    expect(vm.error).toBe("Unable to load meeting preparation");
+    workspaceLoadError = null;
+    await vm.workspace.open();
+    await flushPromises();
+    expect(vm.error).toBe("");
+    expect(vm.grouped[1].items.map((item: any) => item.id)).toEqual(["item-1", "item-2"]);
+    expect(vm.suggestions[0].name).toBe("Suggested");
+  });
+
+  it("keeps the load error if presentation data still cannot load on retry", async () => {
+    workspaceLoadError = new TypeError("Offline");
+    const wrapper = await view();
+    const vm: any = wrapper.vm;
+    workspaceLoadError = null;
+    vi.mocked(api.sections).mockRejectedValueOnce(new TypeError("Still unavailable"));
+    await vm.workspace.open();
+    await flushPromises();
+    expect(vm.error).toBe("Unable to load meeting preparation");
+    expect(vm.grouped).toEqual([]);
+  });
+
   it("keeps Topic status out of preparation and starts a planned Meeting after confirmation", async () => {
     const wrapper = await view();
     const vm: any = wrapper.vm;

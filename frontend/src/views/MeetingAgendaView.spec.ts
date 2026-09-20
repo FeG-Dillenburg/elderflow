@@ -182,6 +182,20 @@ describe("MeetingAgendaView", () => {
     await flushPromises();
     expect(errorView.text()).toContain("Unable to load meeting");
   });
+  it("clears a failed load and restores section data when the workspace is retried", async () => {
+    workspaceLoadError = new TypeError("Offline");
+    vi.mocked(api.sections).mockRejectedValueOnce(new TypeError("Offline"));
+    const wrapper = await view();
+    const vm: any = wrapper.vm;
+    expect(vm.error).toBe("Unable to load meeting");
+    workspaceLoadError = null;
+    await vm.workspace.open();
+    await flushPromises();
+    expect(vm.error).toBe("");
+    expect(vm.sections[0].name).toBe("Main");
+    expect(vm.meeting.id).toBe("meeting-1");
+  });
+
   it("treats script-only rich text as empty after sanitization", async () => {
     const unsafeMeeting = structuredClone(meeting);
     unsafeMeeting.generalNotes = "<script>alert(1)</script>";
