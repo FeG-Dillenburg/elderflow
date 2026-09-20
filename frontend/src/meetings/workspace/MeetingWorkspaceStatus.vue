@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, onBeforeUnmount, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import CollaboratorAvatar from "../../components/CollaboratorAvatar.vue";
 import type { MeetingWorkspacePhase } from "./core";
@@ -13,6 +13,28 @@ const pendingChanges = computed(() => workspace.state.pendingChanges);
 const syncActivity = computed(() => workspace.state.syncActivity);
 const collaborators = computed(() => workspace.state.collaborators);
 const displayedPhase = computed(() => phase.value === "syncing" ? "ready" : phase.value);
+const iconPhase = ref<MeetingWorkspacePhase>(
+  phase.value === "syncing" ? "ready" : phase.value,
+);
+let syncingIconTimer: ReturnType<typeof setTimeout> | undefined;
+
+watch(phase, (nextPhase) => {
+  if (syncingIconTimer !== undefined) clearTimeout(syncingIconTimer);
+  syncingIconTimer = undefined;
+  if (nextPhase === "syncing") {
+    syncingIconTimer = setTimeout(() => {
+      iconPhase.value = "syncing";
+      syncingIconTimer = undefined;
+    }, 1_000);
+    return;
+  }
+  iconPhase.value = nextPhase;
+});
+
+onBeforeUnmount(() => {
+  if (syncingIconTimer !== undefined) clearTimeout(syncingIconTimer);
+});
+
 const iconForPhase: Record<MeetingWorkspacePhase, string> = {
   opening: "pi-clock",
   locked: "pi-lock",
@@ -33,7 +55,7 @@ const iconForPhase: Record<MeetingWorkspacePhase, string> = {
         role="status"
         aria-live="polite"
       >
-        <i class="pi" :class="iconForPhase[phase]" aria-hidden="true" />
+        <i class="pi" :class="iconForPhase[iconPhase]" aria-hidden="true" />
         <span>{{ t(`meetingWorkspace.phases.${displayedPhase}`) }}</span>
         <span v-if="pendingChanges" class="visually-hidden">
           {{ t("meetingWorkspace.syncActivity") }}

@@ -21,7 +21,7 @@ describe("MeetingWorkspaceStatus", () => {
     document.querySelector("#meeting-workspace-status")?.remove();
   });
 
-  it("steps the sync illustration without changing the connected text, then fades it", async () => {
+  it("steps the sync illustration, debounces the clock icon, then fades it", async () => {
     vi.useFakeTimers();
     const target = document.createElement("div");
     target.id = "meeting-workspace-status";
@@ -69,6 +69,7 @@ describe("MeetingWorkspaceStatus", () => {
 
     expect(target.textContent).toContain("Live collaboration connected");
     expect(target.querySelector(".workspace-sync-activity.is-visible")).toBeNull();
+    expect(target.querySelector(".workspace-phase .pi-wifi")).not.toBeNull();
 
     state.phase = "syncing";
     state.pendingChanges = true;
@@ -84,13 +85,28 @@ describe("MeetingWorkspaceStatus", () => {
     expect(firstStep).not.toBeNull();
     expect(firstStep?.classList.contains("is-visible")).toBe(true);
     expect(firstStep?.style.getPropertyValue("--sync-rotation")).toBe("32deg");
+    expect(target.querySelector(".workspace-phase .pi-wifi")).not.toBeNull();
 
+    await vi.advanceTimersByTimeAsync(500);
+    state.phase = "ready";
+    await nextTick();
+    await vi.advanceTimersByTimeAsync(500);
+    expect(target.querySelector(".workspace-phase .pi-wifi")).not.toBeNull();
+    expect(target.querySelector(".workspace-phase .pi-clock")).toBeNull();
+
+    state.phase = "syncing";
     state.syncActivity += 1;
+    await nextTick();
     await nextTick();
     expect(firstStep?.style.getPropertyValue("--sync-rotation")).toBe("64deg");
 
-    await vi.advanceTimersByTimeAsync(1_000);
+    await vi.advanceTimersByTimeAsync(999);
     expect(firstStep?.classList.contains("is-visible")).toBe(true);
+    expect(target.querySelector(".workspace-phase .pi-wifi")).not.toBeNull();
+    await vi.advanceTimersByTimeAsync(2);
+    await nextTick();
+    expect(target.querySelector(".workspace-phase .pi")?.className).toContain("pi-clock");
+
     await vi.advanceTimersByTimeAsync(1_000);
     expect(firstStep?.classList.contains("is-fading")).toBe(true);
     await vi.advanceTimersByTimeAsync(400);
