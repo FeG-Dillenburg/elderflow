@@ -1,12 +1,17 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from "vue";
+import { computed, inject, onBeforeUnmount, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
+import Dialog from "primevue/dialog";
+import Button from "primevue/button";
+import Message from "primevue/message";
+import { closePromptKey } from "./close-prompt";
 import CollaboratorAvatar from "../../components/CollaboratorAvatar.vue";
 import type { MeetingWorkspacePhase } from "./core";
 import MeetingWorkspaceSyncActivity from "./MeetingWorkspaceSyncActivity.vue";
 import { useMeetingWorkspace } from "./vue";
 
 const workspace = useMeetingWorkspace();
+const closePrompt = inject(closePromptKey, null);
 const { t } = useI18n();
 const phase = computed(() => workspace.state.phase);
 const pendingChanges = computed(() => workspace.state.pendingChanges);
@@ -50,6 +55,33 @@ const iconForPhase: Record<MeetingWorkspacePhase, string> = {
 </script>
 
 <template>
+  <Dialog
+    :visible="closePrompt?.visible.value ?? false"
+    modal
+    :closable="false"
+    :header="t('meetingWorkspace.closeTitle')"
+  >
+    <p>{{ t("meetingWorkspace.closeDescription") }}</p>
+    <template #footer>
+      <Button
+        :label="t('meetingWorkspace.stay')"
+        @click="closePrompt?.answer(false)"
+      />
+      <Button
+        severity="danger"
+        :label="t('meetingWorkspace.discard')"
+        @click="closePrompt?.answer(true)"
+      />
+    </template>
+  </Dialog>
+  <Message v-if="workspace.state.notice" severity="warn">
+    {{ t(`meetingWorkspace.notices.${workspace.state.notice}`) }}
+  </Message>
+  <Button
+    v-if="phase === 'unavailable'"
+    :label="t('meetingWorkspace.retry')"
+    @click="workspace.open().catch(() => undefined)"
+  />
   <Teleport to="#meeting-workspace-status">
     <div class="meeting-workspace-status">
       <p

@@ -1,5 +1,5 @@
 <script lang="ts" setup>
-import { onMounted, reactive, ref } from "vue";
+import { onMounted, reactive, ref, watch } from "vue";
 import { computed } from "vue";
 import { useI18n } from "vue-i18n";
 import { RouterLink, useRoute, useRouter } from "vue-router";
@@ -55,10 +55,8 @@ const router = useRouter();
 const { t } = useI18n();
 const id = route.params.id as string;
 const { workspace, operations, opened } = useMeetingRoute(id);
-let initialWorkspaceOpen: Promise<void> | null = opened;
-const meeting = ref<Meeting | null>(null);
+const meeting = computed(() => workspace.state.meeting as Meeting | null);
 const readOnly = computed(() => meeting.value?.status === "completed");
-const discardedAfterReload = ref(false);
 const sections = ref<AgendaSection[]>([]);
 const suggestions = ref<MeetingSuggestion[]>([]);
 const futureSuggestions = ref<MeetingSuggestion[]>([]);
@@ -133,7 +131,7 @@ const initialiseGroups = () => {
   sections.value = orderedSections;
   grouped.value = orderedSections.map((section) => ({
     section,
-    items: (meeting.value?.agenda ?? [])
+    items: structuredClone(meeting.value?.agenda ?? [])
       .filter((item) => item.sectionId === section.id)
       .sort((left, right) => left.position - right.position),
   }));
@@ -149,7 +147,7 @@ const load = async () => {
       loadedFutureSuggestions,
     ] =
       await Promise.all([
-        initialWorkspaceOpen ?? workspace.refresh(),
+        opened,
         api.sections(),
         api.meetingSuggestions(id),
         api.userDirectory(),
@@ -157,10 +155,6 @@ const load = async () => {
           ? api.meetingSuggestions(id, { future: true })
           : Promise.resolve([]),
       ]);
-    initialWorkspaceOpen = null;
-    meeting.value = workspace.state.meeting
-      ? structuredClone(workspace.state.meeting) as Meeting
-      : null;
     sections.value = loadedSections;
     suggestions.value = loadedSuggestions;
     futureSuggestions.value = loadedFutureSuggestions;
@@ -171,9 +165,7 @@ const load = async () => {
     initialiseGroups();
   } catch (cause) {
     error.value =
-      cause instanceof Error
-        ? cause.message
-        : t("meetingPreparation.loadFailed");
+      t("meetingPreparation.loadFailed");
   }
 };
 
@@ -210,16 +202,9 @@ const normalize = () =>
     })),
   );
 
-const applyNormalization = () => {
-  for (const group of grouped.value) {
-    group.items.forEach((item, index) => {
-      item.sectionId = group.section.id;
-      item.position = index + 1;
-    });
-  }
-};
+watch(() => workspace.state.meeting, () => initialiseGroups());
 
-const withReload = async (action: () => Promise<unknown>) => {
+const withOperation = async (action: () => Promise<unknown>) => {
   if (pending.value) return false;
   pending.value = true;
   error.value = "";
@@ -228,15 +213,11 @@ const withReload = async (action: () => Promise<unknown>) => {
     await action();
   } catch (cause) {
     succeeded = false;
-    console.error("Meeting preparation operation failed", cause);
     error.value =
       cause instanceof Error
         ? cause.message
         : t("meetingPreparation.saveFailed");
   } finally {
-    meeting.value = workspace.state.meeting
-      ? structuredClone(workspace.state.meeting) as Meeting
-      : null;
     const currentSuggestions = await api.meetingSuggestions(id).catch(() => null);
     if (currentSuggestions) suggestions.value = currentSuggestions;
     initialiseGroups();
@@ -246,8 +227,7 @@ const withReload = async (action: () => Promise<unknown>) => {
 };
 
 const persistOrder = async () => {
-  applyNormalization();
-  await withReload(() => operations.reorderAgenda(normalize()));
+  await withOperation(() => operations.reorderAgenda(normalize()));
 };
 
 const isSuggestionClone = (
@@ -270,7 +250,7 @@ const onAgendaChange = async (
   if (event.added && isSuggestionClone(event.added.element)) {
     const [temporary] = group.items.splice(event.added.newIndex, 1);
     if (!temporary) return;
-    await withReload(() =>
+    await withOperation(() =>
       operations.addTopic({
         topicId: temporary.id,
         sectionId: group.section.id,
@@ -306,12 +286,12 @@ const addSelected = async () => {
     return sectionId ? [{ topicId: topic.id, sectionId, topic }] : [];
   });
   if (!additions.length) return;
-  const succeeded = await withReload(() => operations.addTopics(additions));
+  const succeeded = await withOperation(() => operations.addTopics(additions));
   if (succeeded) selectedTopicIds.value = [];
 };
 
 const remove = async (item: MeetingTopic) => {
-  await withReload(() => operations.removeTopic(item.id));
+  await withOperation(() => operations.removeTopic(item.id));
 };
 
 const saveDuration = async (item: MeetingTopic, duration: number | null) => {
@@ -360,7 +340,7 @@ const sectionDuration = (items: MeetingTopic[]) =>
   );
 
 const createAndAdd = async () => {
-  await withReload(async () => {
+  await withOperation(async () => {
     const topic = await api.createTopic(toTopicInput({
       ...form,
     }));
@@ -413,7 +393,7 @@ const saveDetails = async () => {
   if (!meeting.value || !detailsForm.date || !detailsForm.beginTime) return;
   const date = detailsForm.date;
   const beginTime = detailsForm.beginTime;
-  await withReload(() => operations.updateMeeting({
+  await withOperation(() => operations.updateMeeting({
     date: toLocalDate(date)!,
     beginTime: toLocalTime(beginTime),
     status: detailsForm.status,
@@ -429,10 +409,6 @@ const saveDetails = async () => {
 };
 
 onMounted(() => {
-  if (window.sessionStorage.getItem("elderflow:discarded-collaboration") === id) {
-    discardedAfterReload.value = true;
-    window.sessionStorage.removeItem("elderflow:discarded-collaboration");
-  }
   void load();
 });
 </script>
@@ -440,9 +416,6 @@ onMounted(() => {
 <template>
   <section class="page">
     <MeetingWorkspaceStatus />
-    <Message v-if="discardedAfterReload" severity="warn">
-      {{ t("e2ee.collaboration.discarded") }}
-    </Message>
     <Message v-if="error" severity="error">{{ error }}</Message>
     <template v-if="meeting">
       <header class="page-header">

@@ -452,7 +452,7 @@ import { getSessionToken } from '../auth/session';
 class ApiRequestError extends Error {
   readonly code: string | undefined;
 
-  constructor(payload: ApiErrorPayload | null) {
+  constructor(payload: ApiErrorPayload | null, readonly status?: number) {
     super(localizeApiError(payload, translate));
     this.code = payload?.code;
   }
@@ -471,7 +471,7 @@ export async function request<T>(path: string, options?: RequestInit): Promise<T
   if (!response.ok) {
     const payload = (await response.json().catch(() => null)) as ApiErrorPayload | null;
     notifyAuthorizationLoss(payload);
-    throw new ApiRequestError(payload);
+    throw new ApiRequestError(payload, response.status);
   }
   if (response.status === 204 || response.headers?.get('content-length') === '0') return undefined as T;
   return await response.json() as T;
@@ -489,7 +489,7 @@ async function requestBinaryBytes(path: string): Promise<Uint8Array> {
   if (!response.ok) {
     const payload = (await response.json().catch(() => null)) as ApiErrorPayload | null;
     notifyAuthorizationLoss(payload);
-    throw new ApiRequestError(payload);
+    throw new ApiRequestError(payload, response.status);
   }
   if (!response.headers.get('content-type')?.replaceAll(' ', '').startsWith(E2EE_MEDIA_TYPE)) {
     throw new Error('E2EE_BINARY_RESPONSE_INVALID');
@@ -507,7 +507,7 @@ export async function requestWithBinaryBody<T>(path: string, body: Uint8Array, h
   if (!response.ok) {
     const payload = (await response.json().catch(() => null)) as ApiErrorPayload | null;
     notifyAuthorizationLoss(payload);
-    throw new ApiRequestError(payload);
+    throw new ApiRequestError(payload, response.status);
   }
   return response.json() as Promise<T>;
 }
@@ -689,8 +689,9 @@ type EncryptedMeetingResponse = Omit<Meeting, 'title' | 'generalNotes' | 'openin
 
 const unprotectMeeting = async (
   response: EncryptedMeetingResponse,
-  options: { strictWorkspace?: boolean } = {},
+  options: { strictWorkspace?: boolean; signal?: AbortSignal } = {},
 ): Promise<Meeting> => {
+  options.signal?.throwIfAborted();
   const { protected: protectedTitle, ...structural } = response;
   const meeting: Meeting = {
     ...structural,
@@ -698,6 +699,7 @@ const unprotectMeeting = async (
     generalNotes: null,
     openingInput: null,
   };
+  options.signal?.throwIfAborted();
   if (!response.workspace) return meeting;
   try {
     const provider = meetingCollaboration.get(response.id);
@@ -1001,9 +1003,9 @@ export const api = {
     (await request<EncryptedMeetingResponse[]>('/api/meetings')).map((meeting) =>
       unprotectMeeting(meeting)),
   ),
-  meeting: async (id: string, options: { strictWorkspace?: boolean } = {}) => {
+  meeting: async (id: string, options: { strictWorkspace?: boolean; signal?: AbortSignal } = {}) => {
     const meeting = await unprotectMeeting(
-      await request<EncryptedMeetingResponse>(`/api/meetings/${id}`),
+      await request<EncryptedMeetingResponse>(`/api/meetings/${id}`, { signal: options.signal }),
       options,
     );
     if (meeting.agenda) {

@@ -32,8 +32,5 @@ export const saveMeetingTopicField =
     if (hasStructuralFields && hasProtectedFields) {
       saved = await operations.updateTopic(item.topicId, protectedPatch);
     }
-    if (item.topic) {
-      Object.assign(item.topic, saved);
-    }
     return saved;
   };

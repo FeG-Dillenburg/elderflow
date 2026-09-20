@@ -1,5 +1,6 @@
 import { Awareness, applyAwarenessUpdate, encodeAwarenessUpdate } from "y-protocols/awareness";
 import * as Y from "yjs";
+import { classifyMeetingFailure } from "./meeting-failure";
 import {
   meetingDocumentSession,
   type PendingEncryptedMeetingUpdate,
@@ -29,6 +30,8 @@ export class EncryptedMeetingCollaborationProvider extends EventTarget {
   private pending: PendingEncryptedMeetingUpdate[] = [];
   private sent = new Set<string>();
   private encryption = Promise.resolve();
+  private encrypting = new Set<Uint8Array>();
+  private reconnectTimer: ReturnType<typeof setTimeout> | undefined;
   private incoming = Promise.resolve();
   private stopped = false;
   private authenticated = false;
@@ -63,6 +66,7 @@ export class EncryptedMeetingCollaborationProvider extends EventTarget {
   }
 
   async connect(): Promise<void> {
+    if (this.stopped) return;
     this.setStatus("connecting");
     let credentials: CollaborationTicket;
     try {
@@ -72,7 +76,9 @@ export class EncryptedMeetingCollaborationProvider extends EventTarget {
         this.reloadCanonical();
         return;
       }
-      throw error;
+      this.setStatus("offline");
+      this.reconnect();
+      return;
     }
     if (this.stopped) return;
     const socket = this.socketFactory(credentials.websocketPath);
@@ -83,11 +89,8 @@ export class EncryptedMeetingCollaborationProvider extends EventTarget {
       documentId: credentials.documentId,
     })));
     socket.addEventListener("message", (event) => {
-      this.incoming = this.incoming.then(() => this.message(String(event.data))).catch((error: unknown) => {
-        if ((error as Error)?.message === "E2EE_MEETING_DOCUMENT_CONTEXT_INVALID") {
-          void this.synchronize().catch(() => this.setStatus("rejected"));
-        } else this.setStatus("rejected");
-      });
+      this.incoming = this.incoming.then(() => this.message(String(event.data)))
+        .catch((error: unknown) => this.handleFailure(error));
     });
     socket.addEventListener("close", () => this.closed());
     socket.addEventListener("error", () => this.setStatus("offline"));
@@ -95,6 +98,9 @@ export class EncryptedMeetingCollaborationProvider extends EventTarget {
 
   destroy(): void {
     this.stopped = true;
+    clearTimeout(this.reconnectTimer);
+    for (const copy of this.encrypting) copy.fill(0);
+    this.encrypting.clear();
     this.clearPending();
     this.document.off("updateV2", this.localUpdate);
     this.awareness.off("update", this.localAwareness);
@@ -104,7 +110,7 @@ export class EncryptedMeetingCollaborationProvider extends EventTarget {
   }
 
   hasPendingChanges(): boolean {
-    return this.pending.length > 0 || this.pausedPlaintext.length > 0;
+    return this.encrypting.size > 0 || this.pending.length > 0 || this.sent.size > 0 || this.pausedPlaintext.length > 0;
   }
 
   private readonly localUpdate = (update: Uint8Array, origin: unknown): void => {
@@ -119,7 +125,10 @@ export class EncryptedMeetingCollaborationProvider extends EventTarget {
   };
 
   private encryptLocalUpdate(copy: Uint8Array): void {
+    this.encrypting.add(copy);
+    this.setStatus("pending");
     void this.enqueue(async () => {
+      if (this.stopped) return;
       if (this.barrierId) {
         this.pausedPlaintext.push(copy);
         this.setStatus("paused");
@@ -139,7 +148,13 @@ export class EncryptedMeetingCollaborationProvider extends EventTarget {
       }
     }).catch(() => {
       if (!this.stopped) this.setStatus("rejected");
-    }).finally(() => this.acknowledgeBarrierWhenDrained());
+    }).finally(() => {
+      this.encrypting.delete(copy);
+      if (!this.stopped) {
+        this.dispatchEvent(new CustomEvent("status", { detail: this.status }));
+        this.acknowledgeBarrierWhenDrained();
+      }
+    });
   }
 
   private readonly localAwareness = async (
@@ -170,6 +185,7 @@ export class EncryptedMeetingCollaborationProvider extends EventTarget {
   }
 
   private async message(encoded: string): Promise<void> {
+    if (this.stopped) return;
     const frame = JSON.parse(encoded) as Record<string, string>;
     if (frame.type === "authenticated") {
       await this.synchronize();
@@ -290,9 +306,19 @@ export class EncryptedMeetingCollaborationProvider extends EventTarget {
     }
   }
 
+  private handleFailure(error: unknown): void {
+    if (this.stopped) return;
+    if (this.isTerminalAccessError(error)) {
+      this.reloadCanonical();
+    } else if (classifyMeetingFailure(error) === "recoverable") {
+      this.setStatus("offline");
+      this.socket?.close();
+    } else this.setStatus("rejected");
+  }
+
   private flush(): void {
     if (!this.authenticated || this.socket?.readyState !== WebSocket.OPEN) {
-      this.setStatus(this.pending.length ? "pending" : "offline");
+      this.setStatus("offline");
       return;
     }
     const pending = this.pending.find((candidate) => !this.sent.has(candidate.envelope));
@@ -309,12 +335,12 @@ export class EncryptedMeetingCollaborationProvider extends EventTarget {
     this.sent.clear();
     this.socket = null;
     if (this.stopped || this.status === "discarded") return;
-    this.setStatus(this.pending.length || this.pausedPlaintext.length ? "pending" : "offline");
+    this.setStatus("offline");
     this.reconnect();
   }
 
   private reconnect(): void {
-    window.setTimeout(() => void this.connect().catch((error: unknown) => {
+    this.reconnectTimer = setTimeout(() => void this.connect().catch((error: unknown) => {
       if (this.isTerminalAccessError(error)) {
         this.reloadCanonical();
         return;
@@ -342,10 +368,11 @@ export class EncryptedMeetingCollaborationProvider extends EventTarget {
         if ((parentChanged || rebasePending) && this.pending.length) await this.rebasePending();
       });
     } catch (error) {
+      if (classifyMeetingFailure(error) !== "recoverable") this.handleFailure(error);
       if (!this.stopped && this.socket?.readyState === WebSocket.OPEN) {
         this.socket.close();
       } else if (!this.stopped) {
-        this.setStatus(this.pending.length ? "pending" : "offline");
+        this.setStatus("offline");
       }
       throw error;
     }
@@ -387,7 +414,7 @@ export class EncryptedMeetingCollaborationProvider extends EventTarget {
   }
 
   private acknowledgeBarrierWhenDrained(): void {
-    if (!this.barrierId || this.barrierDrained || this.pending.length || this.sent.size
+    if (!this.barrierId || this.barrierDrained || this.encrypting.size || this.pending.length || this.sent.size
       || !this.authenticated || this.socket?.readyState !== WebSocket.OPEN) return;
     this.barrierDrained = true;
     this.socket.send(JSON.stringify({
@@ -498,22 +525,15 @@ export class EncryptedMeetingCollaborationProvider extends EventTarget {
   }
 
   private isTerminalAccessError(error: unknown): boolean {
-    return [
-      "AUTH_SESSION_REVOKED",
-      "AUTH_USER_NOT_FOUND",
-      "MEETING_COMPLETED_IMMUTABLE",
-      "E2EE_CLIENT_EPOCH_INVALID",
-      "E2EE_PROTECTED_CIPHERTEXT_FORBIDDEN",
-    ].includes((error as { code?: string })?.code ?? "");
+    return classifyMeetingFailure(error) === "access";
   }
 
   private reloadCanonical(): void {
     this.clearPending();
     meetingDocumentSession.discard(this.meetingId);
-    window.sessionStorage.setItem("elderflow:discarded-collaboration", this.meetingId);
     this.setStatus("discarded");
     this.destroy();
-    window.location.reload();
+
   }
 
   private clearPending(): void {
@@ -526,7 +546,7 @@ export class EncryptedMeetingCollaborationProvider extends EventTarget {
   }
 
   private setStatus(status: CollaborationStatus): void {
-    if (this.status === status) return;
+    if (this.stopped || this.status === status) return;
     this.status = status;
     this.dispatchEvent(new CustomEvent("status", { detail: status }));
   }

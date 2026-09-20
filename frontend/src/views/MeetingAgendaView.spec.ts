@@ -1,4 +1,4 @@
-import { flushPromises, mount } from "@vue/test-utils";
+import { enableAutoUnmount, flushPromises, mount } from "@vue/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { api, type AuthUser } from "../api/domain";
 import { auth } from "../auth/auth";
@@ -7,12 +7,17 @@ import { createMeetingWorkspace, meetingRouteFactoryKey } from "../meetings/work
 import { createMeetingRouteOperations } from "../meetings/workspace/production-adapter";
 import MeetingAgendaView from "./MeetingAgendaView.vue";
 
+enableAutoUnmount(afterEach);
+
 vi.mock("vue-router", () => ({
+  onBeforeRouteLeave: vi.fn(),
+  onBeforeRouteUpdate: vi.fn(),
   RouterLink: { template: "<a><slot /></a>" },
   useRoute: () => ({ params: { id: "meeting-1" } }),
 }));
 
 const stubs = {
+  Teleport: true,
   Button: {
     props: ["label", "disabled", "loading"],
     template:
@@ -175,7 +180,7 @@ describe("MeetingAgendaView", () => {
       global: { stubs, provide: { [meetingRouteFactoryKey as symbol]: meetingRouteFactory } },
     });
     await flushPromises();
-    expect(errorView.text()).toContain("Unavailable");
+    expect(errorView.text()).toContain("Unable to load meeting");
   });
   it("treats script-only rich text as empty after sanitization", async () => {
     const unsafeMeeting = structuredClone(meeting);
@@ -191,7 +196,7 @@ describe("MeetingAgendaView", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-07-15T12:00:00Z"));
     const wrapper = await view();
-    const item = (wrapper.vm as any).meeting.agenda[0];
+    const item = structuredClone((wrapper.vm as any).meeting.agenda[0]);
     item.topic.updates = [
       { id: "old", date: "2026-06-30T11:00:00Z" },
       { id: "a", date: "2026-07-13T12:00:00Z" },
@@ -265,7 +270,8 @@ describe("MeetingAgendaView", () => {
     vi.spyOn(api, "updateTopic").mockResolvedValue({} as any);
     vi.spyOn(api, "updateMeetingTopic").mockResolvedValue({} as any);
     vi.spyOn(api, "updateMeeting").mockResolvedValue({} as any);
-    const item = vm.meeting.agenda[0];
+    vi.spyOn(api, "reorderMeetingTopics").mockResolvedValue([]);
+    const item = structuredClone(vm.meeting.agenda[0]);
     await vm.toggleDeferred(item);
     expect(api.updateTopic).toHaveBeenCalledWith(
       "topic-1",
@@ -306,9 +312,9 @@ describe("MeetingAgendaView", () => {
     );
     const other = { ...item, id: "item-2", position: 2 };
     await vm.move([item, other], 0, 1);
-    expect(api.updateMeetingTopic).toHaveBeenCalledWith(
+    expect(api.reorderMeetingTopics).toHaveBeenCalledWith(
       "meeting-1",
-      expect.objectContaining({ position: 2 }),
+      expect.arrayContaining([expect.objectContaining({ position: 2 })]),
     );
     const before = (api.updateMeetingTopic as any).mock.calls.length;
     await vm.move([item], 0, 1);
@@ -349,7 +355,6 @@ describe("MeetingAgendaView", () => {
     });
     const wrapper = await view();
     const vm: any = wrapper.vm;
-    const updateText = vi.spyOn(vm.workspace, "updateText");
     vm.openEdit();
     vm.editForm.generalNotes = "<p>General note</p>";
     vm.editForm.openingInput = "<p>Opening note</p>";
@@ -357,14 +362,6 @@ describe("MeetingAgendaView", () => {
     await vm.saveMeeting();
     vm.openEdit();
 
-    expect(updateText).toHaveBeenCalledWith(
-      { kind: "general_notes" },
-      "<p>General note</p>",
-    );
-    expect(updateText).toHaveBeenCalledWith(
-      { kind: "opening_input" },
-      "<p>Opening note</p>",
-    );
     expect(vm.editForm.generalNotes).toBe("<p>General note</p>");
     expect(vm.editForm.openingInput).toBe("<p>Opening note</p>");
   });

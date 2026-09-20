@@ -1,3 +1,4 @@
+import { classifyMeetingFailure } from "../../e2ee/meeting-failure";
 import type { Meeting, MeetingTopic } from "../../api/domain";
 
 export type MeetingWorkspacePhase =
@@ -31,6 +32,8 @@ export interface MeetingWorkspaceCollaborator {
 
 export interface MeetingWorkspaceState {
   readonly phase: MeetingWorkspacePhase;
+  readonly closing?: boolean;
+  readonly notice?: "forced_close" | "access_changed" | "integrity_failure";
   readonly meeting: DeepReadonly<Meeting> | null;
   readonly pendingChanges: boolean;
   readonly syncActivity: number;
@@ -40,6 +43,7 @@ export interface MeetingWorkspaceState {
 export interface MeetingWorkspaceCollaboration {
   readonly phase: "ready" | "temporarily_offline" | "syncing" | "unavailable";
   readonly pending: boolean;
+  readonly failure?: "access" | "integrity";
   readonly collaborators: readonly MeetingWorkspaceCollaborator[];
   subscribe?(listener: (change?: "state" | "document" | "presence") => void): () => void;
   close(): void | Promise<void>;
@@ -47,9 +51,12 @@ export interface MeetingWorkspaceCollaboration {
 }
 
 export interface MeetingWorkspaceBackend {
-  load(meetingId: string): Promise<{ meeting: Meeting; unlocked: boolean; collaborative?: boolean }>;
+  load(meetingId: string, signal?: AbortSignal): Promise<{ meeting: Meeting; unlocked: boolean; collaborative?: boolean }>;
+  readText?(meeting: Meeting): Meeting;
   connect?(meetingId: string): Promise<MeetingWorkspaceCollaboration>;
   complete(meetingId: string): Promise<Meeting>;
+  dispose?(meetingId: string): void;
+  revokeAccess?(): void;
   updateText?(meetingId: string, target: MeetingTextTarget, value: string): Promise<void>;
 }
 
@@ -61,7 +68,9 @@ export interface MeetingWorkspace {
   text(target: MeetingTextTarget): MeetingTextBinding;
   updateText(target: MeetingTextTarget, value: string): Promise<void>;
   complete(): Promise<void>;
-  close(options?: { reason?: "navigation" | "lock" | "replacement" }): Promise<void>;
+  close(options?: { reason?: "navigation" | "lock" | "replacement"; discard?: boolean }): Promise<boolean>;
+  cancelClose(): void;
+  forceClose(reason: string): void;
   subscribe(listener: (state: MeetingWorkspaceState) => void): () => void;
 }
 
@@ -74,6 +83,7 @@ type DeepReadonly<T> = T extends (...args: never[]) => unknown
       : T;
 
 let liveWorkspace: MeetingWorkspace | null = null;
+const notices = new Map<string, "forced_close" | "access_changed">();
 
 const freeze = <T>(value: T): DeepReadonly<T> => {
   if (value && typeof value === "object" && !Object.isFrozen(value)) {
@@ -123,6 +133,17 @@ export const createMeetingWorkspace = (
   let collaboration: MeetingWorkspaceCollaboration | null = null;
   let unsubscribeCollaboration: (() => void) | null = null;
   let syncActivity = 0;
+  let generation = 0;
+  let controller = new AbortController();
+  let localWrites = 0;
+  let closing = false;
+  let refreshQueue = Promise.resolve();
+  const pending = () => localWrites > 0 || Boolean(collaboration?.pending);
+  const beforeUnload = (event: BeforeUnloadEvent) => {
+    if (!pending()) return;
+    event.preventDefault();
+    event.returnValue = "";
+  };
   let state: MeetingWorkspaceState = freeze({
     phase: "opening" as const,
     meeting: null,
@@ -132,46 +153,85 @@ export const createMeetingWorkspace = (
   });
   const listeners = new Set<(next: MeetingWorkspaceState) => void>();
   const publish = (next: MeetingWorkspaceState) => {
-    state = freeze(next);
+    state = freeze({ ...next, closing });
+    if (typeof window !== "undefined") {
+      window.removeEventListener("beforeunload", beforeUnload);
+      if (state.pendingChanges) window.addEventListener("beforeunload", beforeUnload);
+    }
     for (const listener of listeners) listener(state);
   };
 
+  const dispose = () => {
+    controller.abort();
+    unsubscribeCollaboration?.();
+    unsubscribeCollaboration = null;
+    const previous = collaboration;
+    collaboration = null;
+    void previous?.close();
+    backend.dispose?.(meetingId);
+  };
+  const fail = (error: unknown) => {
+    const category = classifyMeetingFailure(error);
+    if (category === "access") {
+      workspace.forceClose("access");
+    } else if (category === "recoverable") {
+      publish({ ...state, phase: state.meeting ? "temporarily_offline" : "unavailable", pendingChanges: pending() });
+    } else {
+      generation += 1;
+      localWrites = 0;
+      dispose();
+      publish({ ...state, phase: "unavailable", meeting: null, pendingChanges: false, collaborators: [], notice: "integrity_failure" });
+    }
+  };
   const load = async () => {
-    const loaded = await backend.load(meetingId);
+    const currentGeneration = generation;
+    const loaded = await backend.load(meetingId, controller.signal);
+    if (currentGeneration !== generation || state.phase === "closed") return;
     const completed = loaded.meeting.status === "completed";
     if (loaded.meeting.id !== meetingId) throw new Error("MEETING_WORKSPACE_UNAVAILABLE");
+    if (completed && collaboration) {
+      workspace.forceClose("access");
+      return;
+    }
     if (loaded.unlocked && loaded.collaborative !== false
       && !completed && backend.connect && !collaboration) {
-      collaboration = await backend.connect(meetingId);
+      const connected = await backend.connect(meetingId);
+      if (currentGeneration !== generation) {
+        void connected.close();
+        return;
+      }
+      collaboration = connected;
       unsubscribeCollaboration = collaboration.subscribe?.((change) => {
-        if (change !== "presence") syncActivity += 1;
-        if (change === "document") {
-          publish({ ...state, syncActivity });
-          void load().catch(() => {
-            publish({
-              phase: "unavailable",
-              meeting: null,
-              pendingChanges: false,
-              syncActivity,
-              collaborators: [],
-            });
-          });
+        if (!collaboration || currentGeneration !== generation) return;
+        if (collaboration.failure === "access") {
+          workspace.forceClose("access");
           return;
         }
-        if (!state.meeting || !collaboration) return;
-        publish({
-          phase: collaboration.phase,
-          meeting: state.meeting as Meeting,
-          pendingChanges: collaboration.pending,
-          syncActivity,
-          collaborators: collaboration.collaborators,
-        });
+        if (collaboration.failure === "integrity") {
+          fail(new Error("MEETING_WORKSPACE_INTEGRITY"));
+          return;
+        }
+        if (change !== "presence") syncActivity += 1;
+        publish({ ...state, phase: collaboration.phase, pendingChanges: pending(), syncActivity, collaborators: collaboration.collaborators });
+        if (change === "document") {
+          if (backend.readText && state.meeting) {
+            try {
+              publish({ ...state, meeting: backend.readText(state.meeting as Meeting) });
+            } catch (error) { fail(error); }
+          } else void workspace.refresh().catch(() => undefined);
+        }
       }) ?? null;
+      if (collaboration.failure) {
+        if (collaboration.failure === "access") workspace.forceClose("access");
+        else fail(new Error("MEETING_WORKSPACE_INTEGRITY"));
+        return;
+      }
     }
     publish({
+      ...state,
       phase: loaded.unlocked ? (collaboration?.phase ?? "ready") : "locked",
       meeting: loaded.meeting,
-      pendingChanges: collaboration?.pending ?? false,
+      pendingChanges: pending(),
       syncActivity,
       collaborators: collaboration?.collaborators ?? [],
     });
@@ -183,12 +243,21 @@ export const createMeetingWorkspace = (
       return state;
     },
     async open() {
-      if (liveWorkspace && liveWorkspace !== workspace) {
-        await liveWorkspace.close({ reason: "replacement" });
+      const openingGeneration = generation;
+      while (liveWorkspace && liveWorkspace !== workspace) {
+        if (!await liveWorkspace.close({ reason: "replacement" })) {
+          throw new Error("MEETING_WORKSPACE_PENDING_CHANGES");
+        }
       }
+      if (openingGeneration !== generation) return;
       liveWorkspace = workspace;
+      generation += 1;
+      const currentGeneration = generation;
+      controller = new AbortController();
+      closing = false;
       syncActivity = 0;
       publish({
+        notice: notices.get(meetingId),
         phase: "opening",
         meeting: null,
         pendingChanges: false,
@@ -198,36 +267,46 @@ export const createMeetingWorkspace = (
       try {
         await load();
       } catch (error) {
-        publish({
-          phase: "unavailable",
-          meeting: null,
-          pendingChanges: false,
-          syncActivity,
-          collaborators: [],
-        });
+        if (currentGeneration === generation) fail(error);
         throw error;
       }
     },
-    async refresh() {
-      if (state.phase === "closed") return;
-      await load();
+    refresh() {
+      const currentGeneration = generation;
+      const refreshed = refreshQueue.then(async () => {
+        if (state.phase === "closed" || currentGeneration !== generation) return;
+        try {
+          await load();
+        } catch (error) {
+          if (currentGeneration === generation) fail(error);
+          throw error;
+        }
+      });
+      refreshQueue = refreshed.catch(() => undefined);
+      return refreshed;
     },
     text(target) {
       const current = state.meeting;
       if (!current) throw new Error("MEETING_WORKSPACE_UNAVAILABLE");
-      let value: string | null | undefined;
-      if (target.kind === "general_notes") value = current.generalNotes;
-      else if (target.kind === "opening_input") value = current.openingInput;
-      else {
-        const appearance = compatibleAppearance(current, target);
-        if (target.kind === "meeting_topic_note") value = appearance.personNote?.text;
-        else if (target.kind === "preparation_context") value = appearance.preparationContext?.text;
-        else value = appearance.meetingMinutes?.text;
-      }
+      if ("appearanceId" in target) compatibleAppearance(current, target);
       return freeze({
         target,
-        value: value ?? "",
-        editable: editablePhases.includes(state.phase) && current.status !== "completed",
+        get value() {
+          const meeting = state.meeting;
+          if (!meeting) return "";
+          if (target.kind === "general_notes") return meeting.generalNotes ?? "";
+          if (target.kind === "opening_input") return meeting.openingInput ?? "";
+          const appearance = appearanceFor(meeting, target.appearanceId);
+          if (!appearance) return "";
+          if (target.kind === "meeting_topic_note") return appearance.personNote?.text ?? "";
+          if (target.kind === "preparation_context") return appearance.preparationContext?.text ?? "";
+          return appearance.meetingMinutes?.text ?? "";
+        },
+        get editable() {
+          return !closing && editablePhases.includes(state.phase)
+            && state.meeting?.status !== "completed" && Boolean(state.meeting)
+            && (!("appearanceId" in target) || Boolean(appearanceFor(state.meeting!, target.appearanceId)));
+        },
       });
     },
     async updateText(target, value) {
@@ -235,15 +314,28 @@ export const createMeetingWorkspace = (
       if (!binding.editable || !backend.updateText) {
         throw new Error("MEETING_TEXT_READ_ONLY");
       }
-      await backend.updateText(meetingId, target, value);
-      await workspace.refresh();
+      const currentGeneration = generation;
+      localWrites += 1;
+      publish({ ...state, pendingChanges: true });
+      try {
+        await backend.updateText(meetingId, target, value);
+        if (currentGeneration === generation) await workspace.refresh();
+      } finally {
+        if (currentGeneration === generation) {
+          localWrites -= 1;
+          publish({ ...state, pendingChanges: pending() });
+        }
+      }
     },
     async complete() {
+      const currentGeneration = generation;
       if (collaboration) await collaboration.complete();
       const current = state.meeting;
       if (!current) throw new Error("MEETING_WORKSPACE_UNAVAILABLE");
       const completed = await backend.complete(meetingId);
+      if (currentGeneration !== generation) return;
       await collaboration?.close();
+      if (currentGeneration !== generation) return;
       unsubscribeCollaboration?.();
       unsubscribeCollaboration = null;
       collaboration = null;
@@ -255,19 +347,39 @@ export const createMeetingWorkspace = (
         collaborators: [],
       });
     },
-    async close() {
-      await collaboration?.close();
-      unsubscribeCollaboration?.();
-      unsubscribeCollaboration = null;
-      collaboration = null;
+    async close(options = {}) {
+      if (state.phase === "closed") return true;
+      closing = true;
+      publish({ ...state, pendingChanges: pending() });
+      const deadline = Date.now() + 1_500;
+      while (!options.discard && pending() && Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      }
+      if (workspace.state.phase === "closed") return true;
+      if (!options.discard && pending()) return false;
+      generation += 1;
+      localWrites = 0;
+      dispose();
       if (liveWorkspace === workspace) liveWorkspace = null;
-      publish({
-        phase: "closed",
-        meeting: null,
-        pendingChanges: false,
-        syncActivity,
-        collaborators: [],
-      });
+      publish({ phase: "closed", meeting: null, pendingChanges: false, syncActivity, collaborators: [] });
+      return true;
+    },
+    cancelClose() {
+      if (state.phase === "closed") return;
+      closing = false;
+      publish({ ...state });
+    },
+    forceClose(reason) {
+      if (state.phase === "closed") return;
+      const notice = reason === "access" ? "access_changed" : "forced_close";
+      notices.set(meetingId, notice);
+      generation += 1;
+      closing = true;
+      localWrites = 0;
+      dispose();
+      if (liveWorkspace === workspace) liveWorkspace = null;
+      publish({ phase: "closed", meeting: null, pendingChanges: false, syncActivity, collaborators: [], notice });
+      if (reason === "access") backend.revokeAccess?.();
     },
     subscribe(listener) {
       listeners.add(listener);

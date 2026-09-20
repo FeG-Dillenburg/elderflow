@@ -55,6 +55,7 @@ export const auth = {
     }));
   },
   setUser(user: AuthUser): void {
+    if (state.user && state.user.id !== user.id) protectedText.lock('identity-change');
     state.user = user;
   },
   completeInitialization(user: AuthUser | null): void {

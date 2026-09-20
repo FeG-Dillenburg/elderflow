@@ -78,6 +78,16 @@ const de = {
   personTopic: { nameLabel: 'Person, Paar oder Gruppe', descriptionLabel: 'Beschreibung', noteLabel: 'Sitzungsthemennotiz', saving: 'Wird gespeichert…', saved: 'Gespeichert', retry: 'Erneut versuchen', noteSaveFailed: 'Die Sitzungsthemennotiz konnte nicht gespeichert werden', noNote: 'Keine Notiz erfasst' },
   meetingTexts: { preparationContext: 'Vorbereitungskontext', preparationDescription: 'Vor der Sitzung vorbereiteter Kontext. Änderungen werden automatisch gespeichert.', meetingMinutes: 'Sitzungsprotokoll', minutesDescription: 'Während der Sitzung erfasstes Protokoll. Änderungen werden automatisch gespeichert.', saving: 'Wird gespeichert…', saved: 'Gespeichert', retry: 'Erneut versuchen', preparationSaveFailed: 'Der Vorbereitungskontext konnte nicht gespeichert werden', minutesSaveFailed: 'Das Sitzungsprotokoll konnte nicht gespeichert werden', noPreparationContext: 'Kein Vorbereitungskontext erfasst', noMeetingMinutes: 'Kein Sitzungsprotokoll erfasst' },
   meetingWorkspace: {
+    closeTitle: "Änderungen sind noch nicht synchronisiert",
+    closeDescription: "Bleiben Sie und versuchen Sie es nach Wiederherstellung der Verbindung erneut, oder verwerfen Sie die nur in diesem Tab gespeicherten Änderungen. Das Verwerfen kann nicht rückgängig gemacht werden.",
+    stay: "Bleiben und erneut versuchen",
+    discard: "Änderungen verwerfen und fortfahren",
+    retry: "Vertrauenswürdige Inhalte neu laden",
+    notices: {
+      forced_close: "Geschützter Text wurde aus Sicherheitsgründen geschlossen. Nicht synchronisierte Änderungen in diesem Tab wurden verworfen.",
+      access_changed: "Der Zugriff auf diese Sitzung hat sich geändert. Geschützter Text wurde geschlossen und nicht synchronisierte Änderungen wurden verworfen.",
+      integrity_failure: "Der Sitzungsinhalt konnte nicht verifiziert werden. Die Bearbeitung ist deaktiviert. Laden Sie die Inhalte erneut.",
+    },
     phases: {
       opening: 'Sitzungsarbeitsbereich wird geöffnet…',
       locked: 'Geschützter Text gesperrt — zum Starten der Live-Zusammenarbeit entsperren',

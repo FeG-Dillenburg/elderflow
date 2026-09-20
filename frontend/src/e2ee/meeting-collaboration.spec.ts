@@ -523,7 +523,7 @@ describe("EncryptedMeetingCollaborationProvider", () => {
     document.destroy();
   });
 
-  it("persists a discard notice before reloading canonical state", () => {
+  it("reports terminal discard to its owning workspace without reloading", () => {
     const document = new Y.Doc();
     const provider = new EncryptedMeetingCollaborationProvider(
       "meeting",
@@ -536,7 +536,9 @@ describe("EncryptedMeetingCollaborationProvider", () => {
 
     (provider as unknown as { reloadCanonical: () => void }).reloadCanonical();
 
-    expect(window.sessionStorage.getItem("elderflow:discarded-collaboration")).toBe("meeting");
+    expect(provider.status).toBe("discarded");
+    expect(provider.hasPendingChanges()).toBe(false);
+    expect(window.sessionStorage.getItem("elderflow:discarded-collaboration")).toBeNull();
     document.destroy();
   });
 

@@ -47,6 +47,8 @@ describe("MeetingWorkspaceStatus", () => {
       updateText: vi.fn(),
       complete: vi.fn(),
       close: vi.fn(),
+      cancelClose: vi.fn(),
+      forceClose: vi.fn(),
       subscribe: vi.fn(() => () => undefined),
     };
     const Harness = defineComponent({
