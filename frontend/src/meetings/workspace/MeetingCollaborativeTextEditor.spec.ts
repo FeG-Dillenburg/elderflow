@@ -41,7 +41,6 @@ describe("MeetingCollaborativeTextEditor", () => {
         return () => undefined;
       },
       close: vi.fn(),
-      complete: vi.fn(),
     };
     const workspace = createMeetingWorkspace(meeting.id, {
       load: vi.fn(async () => ({ meeting, unlocked: true })),
@@ -113,7 +112,6 @@ describe("MeetingCollaborativeTextEditor", () => {
         return () => undefined;
       },
       close: vi.fn(),
-      complete: vi.fn(),
     };
     const workspace = createMeetingWorkspace(meeting.id, {
       load: async () => ({ meeting, unlocked: true }),

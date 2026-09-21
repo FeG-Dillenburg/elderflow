@@ -27,6 +27,11 @@ type Client = WebSocket & {
   connectionId?: string;
   collaboration?: ConsumedCollaborationTicket;
   reauthorization?: ReturnType<typeof setInterval>;
+  heartbeat?: {
+    timer: ReturnType<typeof setInterval>;
+    pendingId: string | null;
+    misses: number;
+  };
 };
 
 @Injectable()
@@ -52,13 +57,20 @@ export class MeetingCollaborationRelayService implements OnApplicationBootstrap,
     this.server.on("connection", (socket: Client) => this.connected(socket));
     meetingCollaborationEvents.on("completed", this.meetingCompleted);
     meetingCollaborationEvents.on("compaction-released", this.compactionReleased);
+    meetingCollaborationEvents.on("completion-barrier", this.completionBarrier);
+    meetingCollaborationEvents.on("completion-sequence", this.completionSequence);
   }
 
   onApplicationShutdown(): void {
     this.httpServer?.off("upgrade", this.upgrade);
     meetingCollaborationEvents.off("completed", this.meetingCompleted);
     meetingCollaborationEvents.off("compaction-released", this.compactionReleased);
-    for (const room of this.rooms.values()) for (const socket of room) socket.close(1012);
+    meetingCollaborationEvents.off("completion-barrier", this.completionBarrier);
+    meetingCollaborationEvents.off("completion-sequence", this.completionSequence);
+    for (const socket of this.server.clients) {
+      this.remove(socket as Client);
+      socket.terminate();
+    }
     this.server.close();
   }
 
@@ -73,6 +85,10 @@ export class MeetingCollaborationRelayService implements OnApplicationBootstrap,
   private connected(socket: Client): void {
     socket.connectionId = randomUUID();
     const timeout = setTimeout(() => socket.close(4401, "E2EE_COLLABORATION_AUTH_REQUIRED"), 5_000);
+    socket.on("close", () => {
+      clearTimeout(timeout);
+      this.remove(socket);
+    });
     socket.once("message", async (data, binary) => {
       try {
         const encoded = data.toString();
@@ -82,6 +98,7 @@ export class MeetingCollaborationRelayService implements OnApplicationBootstrap,
           || typeof frame.documentId !== "string") throw new Error("E2EE_COLLABORATION_FRAME_INVALID");
         socket.collaboration = await this.tickets.consume(frame.ticket, frame.documentId);
         clearTimeout(timeout);
+        if (socket.readyState !== WebSocket.OPEN) return;
         const room = this.rooms.get(frame.documentId) ?? new Set<Client>();
         room.add(socket);
         this.rooms.set(frame.documentId, room);
@@ -92,12 +109,12 @@ export class MeetingCollaborationRelayService implements OnApplicationBootstrap,
           compactionBarrierId: barrier?.barrierId ?? null,
         }));
         if (barrier) socket.send(JSON.stringify({
-          type: "compaction-barrier",
+          type: `${barrier.intention}-barrier`,
           barrierId: barrier.barrierId,
         }));
         socket.reauthorization = setInterval(() => void this.reauthorize(socket), 10_000);
         socket.on("message", (payload, isBinary) => void this.message(socket, payload, isBinary));
-        socket.on("close", () => this.remove(socket));
+        this.startHeartbeat(socket);
       } catch (error) {
         clearTimeout(timeout);
         socket.close(4401, this.code(error));
@@ -106,21 +123,41 @@ export class MeetingCollaborationRelayService implements OnApplicationBootstrap,
   }
 
   private async message(socket: Client, data: RawData, binary: boolean): Promise<void> {
+    if (socket.readyState !== WebSocket.OPEN) return;
     try {
       const encoded = data.toString();
       if (binary || Buffer.byteLength(encoded) > 1_500_000 || !socket.collaboration) {
         throw new Error("E2EE_COLLABORATION_FRAME_INVALID");
       }
       const frame = JSON.parse(encoded) as Record<string, unknown>;
+      if (frame.type === "pong") {
+        if (socket.heartbeat && typeof frame.id === "string" && frame.id === socket.heartbeat.pendingId) {
+          socket.heartbeat.pendingId = null;
+          socket.heartbeat.misses = 0;
+        }
+        return;
+      }
       if (frame.type === "request-compaction") {
         await this.requestCompaction(socket, frame.triggerServerSequence);
+        return;
+      }
+      if (frame.type === "completion-drained" || frame.type === "completion-confirmed") {
+        if (typeof frame.barrierId !== "string" || !socket.connectionId) {
+          throw new Error("E2EE_COLLABORATION_FRAME_INVALID");
+        }
+        if (frame.type === "completion-drained") {
+          await this.compactions.completionDrained(socket.collaboration.documentId, frame.barrierId, socket.connectionId);
+        } else if (typeof frame.serverSequence === "string") {
+          this.compactions.confirmCompletion(socket.collaboration.documentId, frame.barrierId,
+            socket.connectionId, frame.serverSequence);
+        }
         return;
       }
       if (frame.type === "compaction-drained") {
         await this.compactionDrained(socket, frame.barrierId);
         return;
       }
-      if (frame.type === "compaction-failed") {
+      if (frame.type === "compaction-failed" || frame.type === "completion-failed") {
         if (typeof frame.barrierId !== "string") throw new Error("E2EE_COLLABORATION_FRAME_INVALID");
         this.compactions.abort(socket.collaboration.documentId, frame.barrierId);
         return;
@@ -180,8 +217,36 @@ export class MeetingCollaborationRelayService implements OnApplicationBootstrap,
     }
   }
 
+  private startHeartbeat(socket: Client): void {
+    socket.heartbeat = {
+      pendingId: null,
+      misses: 0,
+      timer: setInterval(() => {
+        const heartbeat = socket.heartbeat;
+        if (!heartbeat) return;
+        if (socket.readyState !== WebSocket.OPEN) {
+          this.remove(socket);
+          socket.terminate();
+          return;
+        }
+        if (heartbeat.pendingId !== null) heartbeat.misses += 1;
+        if (heartbeat.misses >= 6) {
+          // Remove the participant immediately; do not wait for a close handshake
+          // with an unresponsive browser. Its normal reconnect flow stays enabled.
+          this.remove(socket);
+          socket.terminate();
+          return;
+        }
+        heartbeat.pendingId = randomUUID();
+        socket.send(JSON.stringify({ type: "ping", id: heartbeat.pendingId }));
+      }, 10_000),
+    };
+  }
+
   private remove(socket: Client): void {
     if (socket.reauthorization) clearInterval(socket.reauthorization);
+    if (socket.heartbeat) clearInterval(socket.heartbeat.timer);
+    socket.heartbeat = undefined;
     const documentId = socket.collaboration?.documentId;
     if (!documentId) return;
     if (socket.connectionId) this.compactions.disconnected(documentId, socket.connectionId);
@@ -219,7 +284,7 @@ export class MeetingCollaborationRelayService implements OnApplicationBootstrap,
 
   private readonly compactionReleased = (event: MeetingCompactionReleasedEvent): void => {
     const encoded = JSON.stringify({
-      type: "compaction-released",
+      type: event.intention === "completion" ? "completion-released" : "compaction-released",
       barrierId: event.barrierId,
       outcome: event.outcome,
     });
@@ -227,6 +292,24 @@ export class MeetingCollaborationRelayService implements OnApplicationBootstrap,
       if (client.readyState === WebSocket.OPEN) client.send(encoded);
     }
   };
+
+  private readonly completionBarrier = (event: { documentId: string; barrierId: string }): void => {
+    this.broadcastCompletion(event.documentId, { type: "completion-barrier", barrierId: event.barrierId });
+  };
+
+  private readonly completionSequence = (event: {
+    documentId: string; barrierId: string; serverSequence: string;
+  }): void => {
+    this.broadcastCompletion(event.documentId, { type: "completion-sequence",
+      barrierId: event.barrierId, serverSequence: event.serverSequence });
+  };
+
+  private broadcastCompletion(documentId: string, frame: object): void {
+    const encoded = JSON.stringify(frame);
+    for (const client of this.rooms.get(documentId) ?? []) {
+      if (client.readyState === WebSocket.OPEN) client.send(encoded);
+    }
+  }
 
   private async requestCompaction(socket: Client, value: unknown): Promise<void> {
     if (!socket.collaboration || !socket.connectionId || typeof value !== "string"
@@ -237,7 +320,7 @@ export class MeetingCollaborationRelayService implements OnApplicationBootstrap,
     const existing = this.compactions.current(socket.collaboration.documentId);
     if (existing) {
       socket.send(JSON.stringify({
-        type: "compaction-barrier",
+        type: `${existing.intention}-barrier`,
         barrierId: existing.barrierId,
       }));
       return;
@@ -271,7 +354,7 @@ export class MeetingCollaborationRelayService implements OnApplicationBootstrap,
       return;
     }
     const encoded = JSON.stringify({
-      type: "compaction-barrier",
+      type: `${barrier.intention}-barrier`,
       barrierId: barrier.barrierId,
     });
     for (const client of clients) client.send(encoded);

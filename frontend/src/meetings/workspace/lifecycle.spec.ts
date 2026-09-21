@@ -40,6 +40,42 @@ afterEach(() => {
 });
 
 describe("Meeting workspace lifecycle", () => {
+  it.each([false, true])("keeps Protected text unlocked after remote completion (discarded changes: %s)", async (discarded) => {
+    const { workspace, backend, connection, notify, replace } = setup();
+    await workspace.open();
+    replace({ ...workspace.state.meeting, status: "completed", generalNotes: "Saved text" } as Meeting);
+    Object.assign(connection, { failure: "completed", discardedChanges: discarded, pending: false });
+    notify();
+    await vi.waitFor(() => expect(workspace.state.meeting?.status).toBe("completed"));
+    expect(backend.revokeAccess).not.toHaveBeenCalled();
+    expect(workspace.state.phase).toBe("ready");
+    expect(workspace.state.notice).toBe(discarded ? "completed_changes_discarded" : "completed_elsewhere");
+    expect(workspace.text({ kind: "general_notes" }).value).toBe("Saved text");
+    expect(workspace.text({ kind: "general_notes" }).editable).toBe(false);
+    expect(backend.dispose).toHaveBeenCalledOnce();
+  });
+
+  it("does not mistake an acknowledged edit's pending refresh for lost content", async () => {
+    const { workspace, backend, connection, notify, replace } = setup();
+    await workspace.open();
+    const saved = { ...workspace.state.meeting, generalNotes: "Saved text" } as Meeting;
+    let releaseRefresh!: () => void;
+    backend.load.mockImplementationOnce(() => new Promise((resolve) => {
+      releaseRefresh = () => resolve({ meeting: saved, unlocked: true });
+    }));
+    const write = workspace.updateText({ kind: "general_notes" }, "Saved text");
+    await vi.waitFor(() => expect(backend.load).toHaveBeenCalledTimes(2));
+    replace({ ...saved, status: "completed" });
+    Object.assign(connection, { failure: "completed", discardedChanges: false, pending: false });
+    notify();
+    await vi.waitFor(() => expect(workspace.state.meeting?.status).toBe("completed"));
+    expect(workspace.state.notice).toBe("completed_elsewhere");
+    releaseRefresh();
+    await write;
+    expect(workspace.text({ kind: "general_notes" }).value).toBe("Saved text");
+    expect(backend.revokeAccess).not.toHaveBeenCalled();
+  });
+
   it("does not invent a security warning when a clean route remounts during unlock", async () => {
     const { workspace, backend } = setup();
     await workspace.open();
@@ -191,7 +227,7 @@ describe("Meeting workspace lifecycle", () => {
     expect(await workspace.close()).toBe(true);
   });
 
-  it.each(["forbidden", "completed"])("revokes key access when canonical refresh reports %s", async (cause) => {
+  it.each(["forbidden", "completed"])("distinguishes revoked access from a canonical %s Meeting", async (cause) => {
     const { workspace, backend, replace } = setup();
     await workspace.open();
     if (cause === "forbidden") {
@@ -201,9 +237,15 @@ describe("Meeting workspace lifecycle", () => {
       replace({ ...workspace.state.meeting, status: "completed" } as Meeting);
       await workspace.refresh();
     }
-    expect(workspace.state.phase).toBe("closed");
-    expect(workspace.state.meeting).toBeNull();
-    expect(backend.revokeAccess).toHaveBeenCalledOnce();
+    if (cause === "forbidden") {
+      expect(workspace.state.phase).toBe("closed");
+      expect(workspace.state.meeting).toBeNull();
+      expect(backend.revokeAccess).toHaveBeenCalledOnce();
+    } else {
+      expect(workspace.state.phase).toBe("ready");
+      expect(workspace.state.meeting?.status).toBe("completed");
+      expect(backend.revokeAccess).not.toHaveBeenCalled();
+    }
   });
 
   it("invalidates a retained binding when its appearance is removed", async () => {

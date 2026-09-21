@@ -7,9 +7,10 @@ export interface MeetingCompletedEvent {
 }
 
 export interface MeetingCompactionReleasedEvent {
+  intention?: "compaction" | "completion";
   meetingId: string;
   documentId: string;
   barrierId: string;
   participantIds: string[];
-  outcome: "compacted" | "aborted";
+  outcome: "compacted" | "completed" | "aborted";
 }

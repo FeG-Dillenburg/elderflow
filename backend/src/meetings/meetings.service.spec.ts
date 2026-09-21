@@ -16,6 +16,7 @@ describe("MeetingsService encrypted transaction boundaries", () => {
   const scalars = { validateWrite: jest.fn() };
   const compactions = {
     abortMeeting: jest.fn(),
+    beginCompletion: jest.fn().mockResolvedValue({ barrierId: "completion", serverSequence: "7" }),
     claim: jest.fn(),
     assertClaim: jest.fn(),
     complete: jest.fn(),
@@ -137,6 +138,7 @@ describe("MeetingsService encrypted transaction boundaries", () => {
       completedServerSequence: null,
     };
     manager.findOne.mockResolvedValue(meeting);
+    manager.findOneBy.mockResolvedValue({ id: "superadmin", role: "superadmin" });
     manager.findOneByOrFail.mockResolvedValue(document);
     manager.find.mockResolvedValue([]);
 

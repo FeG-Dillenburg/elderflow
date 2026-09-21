@@ -55,6 +55,157 @@ describe("EncryptedMeetingCollaborationProvider", () => {
     vi.unstubAllGlobals();
   });
 
+  it("answers heartbeats without acknowledging or discarding pending edits, including while paused", async () => {
+    const document = new Y.Doc();
+    const socket = new FakeSocket();
+    vi.spyOn(meetingDocumentSession, "encryptAwareness").mockResolvedValue("awareness");
+    vi.spyOn(meetingDocumentSession, "createPendingDocumentUpdate")
+      .mockResolvedValue({ envelope: "pending", activeSnapshotId: "snapshot", authorClock: 1 });
+    const provider = new EncryptedMeetingCollaborationProvider("meeting", document,
+      async () => ({ ticket: "ticket", documentId: "document", websocketPath: "/socket" }),
+      () => socket as unknown as WebSocket, undefined, async () => ({ parentChanged: false }));
+    await provider.connect();
+    socket.open();
+    socket.receive({ type: "authenticated" });
+    await settle();
+    document.getText("field").insert(0, "Pending text");
+    await settle();
+    socket.receive({ type: "ping", id: "first" });
+    socket.receive({ type: "completion-barrier", barrierId: "barrier" });
+    socket.receive({ type: "ping", id: "second" });
+    await settle();
+    const frames = socket.sent.map((value) => JSON.parse(value));
+    expect(frames).toContainEqual({ type: "pong", id: "first" });
+    expect(frames).toContainEqual({ type: "pong", id: "second" });
+    expect(provider.hasPendingChanges()).toBe(true);
+    expect(provider.status).toBe("paused");
+    expect(provider.discardedChanges).toBe(false);
+    provider.destroy();
+    document.destroy();
+  });
+
+  it("drains accepted plaintext and acknowledgements before confirming completion", async () => {
+    const document = new Y.Doc();
+    const socket = new FakeSocket();
+    let release!: (value: { envelope: string; activeSnapshotId: string; authorClock: number }) => void;
+    vi.spyOn(meetingDocumentSession, "createPendingDocumentUpdate")
+      .mockImplementationOnce(() => new Promise((resolve) => { release = resolve; }))
+      .mockResolvedValueOnce({ envelope: "second", activeSnapshotId: "snapshot", authorClock: 2 });
+    vi.spyOn(meetingDocumentSession, "encryptAwareness").mockResolvedValue("awareness");
+    vi.spyOn(meetingDocumentSession, "acknowledge").mockImplementation(() => undefined);
+    const provider = new EncryptedMeetingCollaborationProvider("meeting", document,
+      async () => ({ ticket: "ticket", documentId: "document", websocketPath: "/socket" }),
+      () => socket as unknown as WebSocket, undefined, async () => ({ parentChanged: false }));
+    await provider.connect();
+    socket.open();
+    socket.receive({ type: "authenticated" });
+    await settle();
+    document.getText("field").insert(0, "one");
+    document.getText("field").insert(3, "two");
+    await settle();
+    socket.receive({ type: "completion-barrier", barrierId: "completion" });
+    await settle();
+    const frames = () => socket.sent.map((frame) => JSON.parse(frame));
+    expect(frames().some((frame) => frame.type === "completion-drained")).toBe(false);
+    release({ envelope: "first", activeSnapshotId: "snapshot", authorClock: 1 });
+    await settle();
+    socket.receive({ type: "acknowledged", envelope: "first", clientEpochId: "epoch", authorClock: "1", serverSequence: "1" });
+    await settle();
+    expect(frames()).toContainEqual({ type: "update", envelope: "second" });
+    expect(frames().some((frame) => frame.type === "completion-drained")).toBe(false);
+    socket.receive({ type: "acknowledged", envelope: "second", clientEpochId: "epoch", authorClock: "2", serverSequence: "2" });
+    await settle();
+    expect(frames()).toContainEqual({ type: "completion-drained", barrierId: "completion" });
+    socket.receive({ type: "completion-released", barrierId: "completion", outcome: "aborted" });
+    await settle();
+    expect(provider.status).toBe("online");
+    provider.destroy();
+    document.destroy();
+  });
+
+  it("waits for authoritative resynchronization before confirming the completion sequence", async () => {
+    const document = new Y.Doc();
+    const socket = new FakeSocket();
+    let release!: () => void;
+    const resync = vi.fn().mockResolvedValue({ parentChanged: false });
+    vi.spyOn(meetingDocumentSession, "encryptAwareness").mockResolvedValue("awareness");
+    vi.spyOn(meetingDocumentSession, "serverSequence").mockReturnValue("8");
+    const provider = new EncryptedMeetingCollaborationProvider("meeting", document,
+      async () => ({ ticket: "ticket", documentId: "document", websocketPath: "/socket" }),
+      () => socket as unknown as WebSocket, undefined, resync);
+    await provider.connect();
+    socket.open();
+    socket.receive({ type: "authenticated" });
+    await settle();
+    socket.receive({ type: "completion-barrier", barrierId: "completion" });
+    await settle();
+    resync.mockImplementationOnce(() => new Promise((resolve) => {
+      release = () => resolve({ parentChanged: false });
+    }));
+    socket.receive({ type: "completion-sequence", barrierId: "completion", serverSequence: "8" });
+    await settle();
+    const confirmed = () => socket.sent.map((value) => JSON.parse(value))
+      .filter((frame) => frame.type === "completion-confirmed");
+    expect(confirmed()).toEqual([]);
+    release();
+    await settle();
+    expect(confirmed()).toEqual([{ type: "completion-confirmed", barrierId: "completion", serverSequence: "8" }]);
+    provider.destroy();
+    document.destroy();
+  });
+
+  it("aborts and preserves an editor transaction racing with the completion pause", async () => {
+    const document = new Y.Doc();
+    const socket = new FakeSocket();
+    vi.spyOn(meetingDocumentSession, "encryptAwareness").mockResolvedValue("awareness");
+    vi.spyOn(meetingDocumentSession, "createPendingDocumentUpdate")
+      .mockResolvedValue({ envelope: "preserved", activeSnapshotId: "snapshot", authorClock: 1 });
+    const provider = new EncryptedMeetingCollaborationProvider("meeting", document,
+      async () => ({ ticket: "ticket", documentId: "document", websocketPath: "/socket" }),
+      () => socket as unknown as WebSocket, undefined, async () => ({ parentChanged: false }));
+    await provider.connect();
+    socket.open();
+    socket.receive({ type: "authenticated" });
+    await settle();
+    socket.receive({ type: "completion-barrier", barrierId: "completion" });
+    await settle();
+    document.getText("field").insert(0, "retained edit");
+    expect(socket.sent.map((value) => JSON.parse(value))).toContainEqual({ type: "completion-failed", barrierId: "completion" });
+    socket.receive({ type: "completion-released", barrierId: "completion", outcome: "aborted" });
+    await settle();
+    expect(document.getText("field").toString()).toBe("retained edit");
+    expect(socket.sent.map((value) => JSON.parse(value))).toContainEqual({ type: "update", envelope: "preserved" });
+    provider.destroy();
+    document.destroy();
+  });
+
+  it("discards rejected memory-only changes when a late client finds the Meeting completed", async () => {
+    const document = new Y.Doc();
+    const socket = new FakeSocket();
+    vi.spyOn(meetingDocumentSession, "encryptAwareness").mockResolvedValue("awareness");
+    vi.spyOn(meetingDocumentSession, "createPendingDocumentUpdate")
+      .mockResolvedValue({ envelope: "late-change", activeSnapshotId: "snapshot", authorClock: 1 });
+    const discard = vi.spyOn(meetingDocumentSession, "discard").mockImplementation(() => document.destroy());
+    const provider = new EncryptedMeetingCollaborationProvider("meeting", document,
+      async () => ({ ticket: "ticket", documentId: "document", websocketPath: "/socket" }),
+      () => socket as unknown as WebSocket, undefined, async () => ({ parentChanged: false }));
+    document.getText("field").insert(0, "memory-only edit");
+    await settle();
+    expect(provider.hasPendingChanges()).toBe(true);
+    await provider.connect();
+    socket.open();
+    socket.receive({ type: "authenticated" });
+    await settle();
+    socket.receive({ type: "rejected", code: "MEETING_COMPLETED_IMMUTABLE" });
+    await settle();
+    expect(provider.status).toBe("discarded");
+    expect(provider.terminalCode).toBe("MEETING_COMPLETED_IMMUTABLE");
+    expect(provider.discardedChanges).toBe(true);
+    expect(provider.hasPendingChanges()).toBe(false);
+    expect(provider.isConnected()).toBe(false);
+    expect(discard).toHaveBeenCalledWith("meeting");
+  });
+
   it("sends only one encrypted update at a time and advances after acknowledgement", async () => {
     const document = new Y.Doc();
     const socket = new FakeSocket();

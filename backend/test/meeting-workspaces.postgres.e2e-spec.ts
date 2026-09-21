@@ -1,4 +1,17 @@
 import 'dotenv/config';
+import { INestApplication } from '@nestjs/common';
+import { HttpAdapterHost } from '@nestjs/core';
+import { Test } from '@nestjs/testing';
+import { once } from 'node:events';
+import { AddressInfo } from 'node:net';
+import { raw } from 'express';
+import request from 'supertest';
+import { WebSocket } from 'ws';
+import { MeetingsController } from '../src/meetings/meetings.controller';
+import { MeetingCollaborationRelayService } from '../src/meetings/meeting-collaboration-relay.service';
+import { MeetingCollaborationTicketService } from '../src/meetings/meeting-collaboration-ticket.service';
+import { MeetingCollaborationTicket } from '../src/meetings/meeting-collaboration-ticket.entity';
+import { E2EE_MEDIA_TYPE, isE2eeMediaType } from '../src/e2ee/e2ee-protocol';
 import { Encoder } from 'cbor-x';
 import sodium from 'libsodium-wrappers-sumo';
 import { DataSource } from 'typeorm';
@@ -58,6 +71,7 @@ describeWithPostgres('Encrypted Meeting workspaces with PostgreSQL', () => {
   let admin: DataSource;
   let database: DataSource;
   let service: MeetingsService;
+  const coordinator = new MeetingCompactionCoordinator();
   let signingPrivateKey: Uint8Array;
   let secondSigningPrivateKey: Uint8Array;
   const viewer = { id: userId, role: 'user' } as User;
@@ -92,6 +106,7 @@ describeWithPostgres('Encrypted Meeting workspaces with PostgreSQL', () => {
         MeetingDocumentSnapshot,
         MeetingDocumentUpdate,
         MeetingDocumentMutation,
+        MeetingCollaborationTicket,
       ],
       synchronize: true,
     });
@@ -193,7 +208,7 @@ describeWithPostgres('Encrypted Meeting workspaces with PostgreSQL', () => {
       new RecurrenceService(),
       new E2eeScalarService(),
       new MeetingDocumentService(),
-      new MeetingCompactionCoordinator(),
+      coordinator,
     );
   });
 
@@ -330,6 +345,143 @@ describeWithPostgres('Encrypted Meeting workspaces with PostgreSQL', () => {
     });
     await expect(database.getRepository(MeetingDocumentMutation).findOneBy({ id: targetMutationId }))
       .resolves.toMatchObject({ sourceAppearanceId: appearanceId });
+  });
+
+  describe('multi-client completion over HTTP and WebSocket', () => {
+    let app: INestApplication;
+    let relay: MeetingCollaborationRelayService;
+    let tickets: MeetingCollaborationTicketService;
+    let currentUser: User;
+    const clients: WebSocket[] = [];
+
+    beforeAll(async () => {
+      currentUser = await database.getRepository(User).findOneByOrFail({ id: userId });
+      tickets = new MeetingCollaborationTicketService(database.getRepository(MeetingCollaborationTicket));
+      const module = await Test.createTestingModule({
+        controllers: [MeetingsController],
+        providers: [
+          { provide: MeetingsService, useValue: service },
+          { provide: MeetingCollaborationTicketService, useValue: tickets },
+        ],
+      }).compile();
+      app = module.createNestApplication({ logger: false });
+      app.use(raw({ type: isE2eeMediaType, limit: '17mb' }));
+      app.use((req: { user: User }, _res: unknown, next: () => void) => {
+        req.user = currentUser;
+        next();
+      });
+      await app.listen(0, '127.0.0.1');
+      relay = new MeetingCollaborationRelayService(app.get(HttpAdapterHost), tickets, service, database, coordinator);
+      relay.onApplicationBootstrap();
+    });
+    beforeEach(async () => {
+      await database.getRepository(Meeting).update(meetingId, { status: 'in_progress', meetingLeaderId: userId, completedAt: null });
+      await database.getRepository(MeetingDocument).update(documentId, { completedServerSequence: null });
+    });
+    afterEach(async () => {
+      coordinator.abort(documentId);
+      await Promise.all(clients.splice(0).map(async (client) => {
+        if (client.readyState === WebSocket.CLOSED) return;
+        const closed = once(client, 'close');
+        client.close();
+        await closed;
+      }));
+      // Let the existing delayed completed broadcast finish before resetting the fixture.
+      await new Promise((resolve) => setTimeout(resolve, 260));
+    });
+    afterAll(async () => {
+      relay?.onApplicationShutdown();
+      await app?.close();
+    });
+
+    async function connect() {
+      const ticket = await tickets.mint(meetingId, currentUser);
+      const port = (app.getHttpServer().address() as AddressInfo).port;
+      const socket = new WebSocket(`ws://127.0.0.1:${port}${ticket.websocketPath}`);
+      clients.push(socket);
+      const frames: Array<Record<string, string>> = [];
+      socket.on('message', (data) => frames.push(JSON.parse(data.toString())));
+      await once(socket, 'open');
+      socket.send(JSON.stringify({ type: 'authenticate', ticket: ticket.ticket, documentId }));
+      const wait = async (type: string) => {
+        const deadline = Date.now() + 7_000;
+        while (!frames.some((frame) => frame.type === type)) {
+          if (Date.now() >= deadline) throw new Error(`Missing ${type}`);
+          await new Promise((resolve) => setTimeout(resolve, 5));
+        }
+        return frames.splice(frames.findIndex((frame) => frame.type === type), 1)[0];
+      };
+      await wait('authenticated');
+      return { socket, wait, send: (frame: object) => socket.send(JSON.stringify(frame)) };
+    }
+
+    async function settleClients(peers: Awaited<ReturnType<typeof connect>>[]) {
+      for (const peer of peers) {
+        const barrier = await peer.wait('completion-barrier');
+        peer.send({ type: 'completion-drained', barrierId: barrier.barrierId });
+      }
+      for (const peer of peers) {
+        const sequence = await peer.wait('completion-sequence');
+        peer.send({ type: 'completion-confirmed', barrierId: sequence.barrierId, serverSequence: sequence.serverSequence });
+      }
+    }
+
+    it('settles an edit from A before B completes and rejects every later write', async () => {
+      const a = await connect();
+      const b = await connect();
+      const completion = request(app.getHttpServer()).post(`/api/meetings/${meetingId}/complete`).then((result) => result);
+      const barrier = await a.wait('completion-barrier');
+      const envelope = signedUpdate(3);
+      a.send({ type: 'update', envelope });
+      const acknowledged = await a.wait('acknowledged');
+      expect(acknowledged.envelope).toBe(envelope);
+      await b.wait('update');
+      a.send({ type: 'completion-drained', barrierId: barrier.barrierId });
+      await settleClients([b]);
+      const sequence = await a.wait('completion-sequence');
+      expect(sequence.serverSequence).toBe(acknowledged.serverSequence);
+      a.send({ type: 'completion-confirmed', barrierId: sequence.barrierId, serverSequence: sequence.serverSequence });
+      expect((await completion).status).toBe(201);
+      const completed = await service.workspace(meetingId, currentUser);
+      expect(completed?.updates).toEqual(expect.arrayContaining([expect.objectContaining({ envelope })]));
+      expect(completed?.currentServerSequence).toBe(sequence.serverSequence);
+      await expect(database.getRepository(MeetingDocument).findOneByOrFail({ id: documentId }))
+        .resolves.toMatchObject({ completedServerSequence: sequence.serverSequence });
+      a.send({ type: 'update', envelope: signedUpdate(4) });
+      expect((await a.wait('rejected')).code).toBe('MEETING_COMPLETED_IMMUTABLE');
+      await request(app.getHttpServer()).post(`/api/meetings/${meetingId}/workspace/updates`)
+        .set('Content-Type', E2EE_MEDIA_TYPE).send(Buffer.from(signedUpdate(4), 'base64url')).expect(409);
+      await expect(tickets.mint(meetingId, currentUser)).rejects.toThrow();
+      await expect(database.getRepository(MeetingDocument).findOneByOrFail({ id: documentId }))
+        .resolves.toMatchObject({ currentServerSequence: sequence.serverSequence });
+    }, 15_000);
+
+    it('times out a non-draining client and keeps the Meeting in progress', async () => {
+      const a = await connect();
+      await connect();
+      const completion = request(app.getHttpServer()).post(`/api/meetings/${meetingId}/complete`).then((result) => result);
+      const barrier = await a.wait('completion-barrier');
+      a.send({ type: 'completion-drained', barrierId: barrier.barrierId });
+      const response = await completion;
+      expect(response.status).toBe(409);
+      expect(response.body.code).toBe('MEETING_COMPLETION_RETRY');
+      expect((await a.wait('completion-released')).outcome).toBe('aborted');
+      await expect(database.getRepository(Meeting).findOneByOrFail({ id: meetingId }))
+        .resolves.toMatchObject({ status: 'in_progress' });
+    }, 15_000);
+
+    it('aborts on disconnect and succeeds on a later retry', async () => {
+      const a = await connect();
+      const b = await connect();
+      const completion = request(app.getHttpServer()).post(`/api/meetings/${meetingId}/complete`).then((result) => result);
+      await a.wait('completion-barrier');
+      b.socket.close();
+      expect((await completion).body.code).toBe('MEETING_COMPLETION_RETRY');
+      await a.wait('completion-released');
+      const retry = request(app.getHttpServer()).post(`/api/meetings/${meetingId}/complete`).then((result) => result);
+      await settleClients([a]);
+      expect((await retry).status).toBe(201);
+    }, 15_000);
   });
 
   function signedUpdate(

@@ -58,60 +58,87 @@ export class MeetingsService {
   ) {}
 
   async complete(id: string, user: User) {
-    const response = await this.dataSource.transaction(async (manager) => {
-      const meeting = await manager.findOne(Meeting, {
-        where: { id },
-        lock: { mode: "pessimistic_write" },
-      });
-      if (!meeting) throw codedHttpException(HttpStatus.NOT_FOUND, "MEETING_NOT_FOUND", "Meeting not found");
-      if (meeting.status !== "in_progress") {
-        throw codedHttpException(
-          HttpStatus.CONFLICT,
-          "MEETING_COMPLETION_INVALID_STATUS",
-          "Only an in-progress Meeting can be completed",
-        );
-      }
-      if (
-        user.role !== "superadmin" &&
-        user.id !== meeting.meetingLeaderId &&
-        user.id !== meeting.minuteTakerId
-      ) {
-        throw codedHttpException(
-          HttpStatus.FORBIDDEN,
-          "MEETING_COMPLETION_FORBIDDEN",
-          "Only a Superadmin, the Meeting leader, or the Minute taker can complete this Meeting",
-        );
-      }
-      const appearances = await manager.find(MeetingTopic, {
-        where: { meetingId: id },
-        relations: { topic: { responsibleUser: true } },
-      });
-      for (const appearance of appearances) {
-        const topic = appearance.topic!;
-        appearance.topicNameSnapshotEnvelope = topic.nameEnvelope;
-        appearance.topicNameSnapshotCommitRevision = topic.nameCommitRevision;
-        appearance.membershipProcessStatusSnapshotEnvelope = topic.membershipProcessStatusEnvelope;
-        appearance.membershipProcessStatusSnapshotCommitRevision = topic.membershipProcessStatusCommitRevision;
-        appearance.godparentsSnapshotEnvelope = topic.godparentsEnvelope;
-        appearance.godparentsSnapshotCommitRevision = topic.godparentsCommitRevision;
-        appearance.responsibleUserDisplayNameSnapshot = topic.responsibleUser
-          ? `${topic.responsibleUser.firstName} ${topic.responsibleUser.lastName}`.trim()
-          : null;
-        await this.snapshots.apply(appearance, topic, manager);
-      }
-      if (appearances.length) await manager.save(MeetingTopic, appearances);
-      const document = await manager.findOneByOrFail(MeetingDocument, { meetingId: id });
-      document.completedServerSequence = document.currentServerSequence;
-      await manager.save(document);
-      meeting.status = "completed";
-      meeting.completedAt = new Date();
-      return meetingResponse(await manager.save(Meeting, meeting), user);
+    const documentId = await this.dataSource.transaction(async (manager) => {
+      const meeting = await manager.findOne(Meeting, { where: { id } });
+      this.assertCompletionAllowed(meeting, user);
+      return (await manager.findOneByOrFail(MeetingDocument, { meetingId: id })).id;
     });
-    meetingCollaborationEvents.emit("completed", {
-      meetingId: id,
+    const claim = await this.compactions.beginCompletion(id, documentId, user.id, async () => {
+      const document = await this.meetings.manager.findOneByOrFail(MeetingDocument, { meetingId: id });
+      return document.currentServerSequence;
     });
-    this.compactions.abortMeeting(id);
-    return response;
+    try {
+      const response = await this.dataSource.transaction(async (manager) => {
+        await manager.query("SET LOCAL lock_timeout = '5s'");
+        await manager.query("SET LOCAL statement_timeout = '5s'");
+        const meeting = await manager.findOne(Meeting, {
+          where: { id }, lock: { mode: "pessimistic_write" },
+        });
+        const currentUser = await manager.findOneBy(User, { id: user.id });
+        if (!currentUser || currentUser.archivedAt || currentUser.sessionVersion !== user.sessionVersion) {
+          throw codedHttpException(HttpStatus.FORBIDDEN, "MEETING_COMPLETION_FORBIDDEN", "Completion access changed");
+        }
+        this.assertCompletionAllowed(meeting, currentUser);
+        const appearances = await manager.find(MeetingTopic, {
+          where: { meetingId: id },
+          relations: { topic: { responsibleUser: true } },
+        });
+        for (const appearance of appearances) {
+          const topic = appearance.topic!;
+          appearance.topicNameSnapshotEnvelope = topic.nameEnvelope;
+          appearance.topicNameSnapshotCommitRevision = topic.nameCommitRevision;
+          appearance.membershipProcessStatusSnapshotEnvelope = topic.membershipProcessStatusEnvelope;
+          appearance.membershipProcessStatusSnapshotCommitRevision = topic.membershipProcessStatusCommitRevision;
+          appearance.godparentsSnapshotEnvelope = topic.godparentsEnvelope;
+          appearance.godparentsSnapshotCommitRevision = topic.godparentsCommitRevision;
+          appearance.responsibleUserDisplayNameSnapshot = topic.responsibleUser
+            ? `${topic.responsibleUser.firstName} ${topic.responsibleUser.lastName}`.trim()
+            : null;
+          await this.snapshots.apply(appearance, topic, manager);
+        }
+        if (appearances.length) await manager.save(MeetingTopic, appearances);
+        const document = await manager.findOneByOrFail(MeetingDocument, { meetingId: id });
+        this.compactions.assertClaim(id, claim.barrierId);
+        if (document.currentServerSequence !== claim.serverSequence) {
+          throw codedHttpException(HttpStatus.CONFLICT, "MEETING_COMPLETION_RETRY", "Meeting changes did not settle");
+        }
+        document.completedServerSequence = claim.serverSequence;
+        await manager.save(document);
+        meeting.status = "completed";
+        meeting.completedAt = new Date();
+        return meetingResponse(await manager.save(Meeting, meeting), user);
+      });
+      meetingCollaborationEvents.emit("completed", {
+        meetingId: id,
+      });
+      this.compactions.complete(id, claim.barrierId);
+      return response;
+    } catch (error) {
+      this.compactions.fail(id, claim.barrierId);
+      throw error;
+    }
+  }
+
+  private assertCompletionAllowed(meeting: Meeting | null, user: User): asserts meeting is Meeting {
+    if (!meeting) throw codedHttpException(HttpStatus.NOT_FOUND, "MEETING_NOT_FOUND", "Meeting not found");
+    if (meeting.status !== "in_progress") {
+      throw codedHttpException(
+        HttpStatus.CONFLICT,
+        "MEETING_COMPLETION_INVALID_STATUS",
+        "Only an in-progress Meeting can be completed",
+      );
+    }
+    if (
+      user.role !== "superadmin" &&
+      user.id !== meeting.meetingLeaderId &&
+      user.id !== meeting.minuteTakerId
+    ) {
+      throw codedHttpException(
+        HttpStatus.FORBIDDEN,
+        "MEETING_COMPLETION_FORBIDDEN",
+        "Only a Superadmin, the Meeting leader, or the Minute taker can complete this Meeting",
+      );
+    }
   }
 
   async findAll(user: User) {
@@ -275,6 +302,9 @@ export class MeetingsService {
   ) {
     this.documents.assertContentUser(user);
     if (source === "external") this.beginExternalDocumentWrite(meetingId);
+    else if (!this.compactions.beginCollaborationUpdate(meetingId)) {
+      throw codedHttpException(HttpStatus.CONFLICT, "MEETING_COMPLETION_RETRY", "Meeting document is committing");
+    }
     try {
       return await this.dataSource.transaction(async (manager) => {
         const result = await this.documents.appendUpdate(manager, user, meetingId, envelope);
@@ -302,6 +332,7 @@ export class MeetingsService {
       });
     } finally {
       if (source === "external") this.compactions.endExternalUpdate(meetingId);
+      else this.compactions.endCollaborationUpdate(meetingId);
     }
   }
 

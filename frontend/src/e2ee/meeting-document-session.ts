@@ -451,6 +451,10 @@ export class MeetingDocumentSession {
     return "applied";
   }
 
+  serverSequence(meetingId: string): string {
+    return String(this.requiredDocument(meetingId).currentServerSequence);
+  }
+
   acknowledge(meetingId: string, clientEpochId: string, authorClock: string, serverSequence: string): void {
     const loaded = this.requiredDocument(meetingId);
     loaded.authorClocks.set(clientEpochId, Number(authorClock));
