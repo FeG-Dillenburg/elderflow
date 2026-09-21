@@ -55,6 +55,35 @@ describe("EncryptedMeetingCollaborationProvider", () => {
     vi.unstubAllGlobals();
   });
 
+  it("answers heartbeats without acknowledging or discarding pending edits, including while paused", async () => {
+    const document = new Y.Doc();
+    const socket = new FakeSocket();
+    vi.spyOn(meetingDocumentSession, "encryptAwareness").mockResolvedValue("awareness");
+    vi.spyOn(meetingDocumentSession, "createPendingDocumentUpdate")
+      .mockResolvedValue({ envelope: "pending", activeSnapshotId: "snapshot", authorClock: 1 });
+    const provider = new EncryptedMeetingCollaborationProvider("meeting", document,
+      async () => ({ ticket: "ticket", documentId: "document", websocketPath: "/socket" }),
+      () => socket as unknown as WebSocket, undefined, async () => ({ parentChanged: false }));
+    await provider.connect();
+    socket.open();
+    socket.receive({ type: "authenticated" });
+    await settle();
+    document.getText("field").insert(0, "Pending text");
+    await settle();
+    socket.receive({ type: "ping", id: "first" });
+    socket.receive({ type: "completion-barrier", barrierId: "barrier" });
+    socket.receive({ type: "ping", id: "second" });
+    await settle();
+    const frames = socket.sent.map((value) => JSON.parse(value));
+    expect(frames).toContainEqual({ type: "pong", id: "first" });
+    expect(frames).toContainEqual({ type: "pong", id: "second" });
+    expect(provider.hasPendingChanges()).toBe(true);
+    expect(provider.status).toBe("paused");
+    expect(provider.discardedChanges).toBe(false);
+    provider.destroy();
+    document.destroy();
+  });
+
   it("drains accepted plaintext and acknowledgements before confirming completion", async () => {
     const document = new Y.Doc();
     const socket = new FakeSocket();

@@ -215,6 +215,12 @@ export class EncryptedMeetingCollaborationProvider extends EventTarget {
   private async message(encoded: string): Promise<void> {
     if (this.stopped) return;
     const frame = JSON.parse(encoded) as Record<string, string>;
+    if (frame.type === "ping") {
+      if (typeof frame.id === "string" && this.socket?.readyState === WebSocket.OPEN) {
+        this.socket.send(JSON.stringify({ type: "pong", id: frame.id }));
+      }
+      return;
+    }
     if (frame.type === "authenticated") {
       await this.synchronize();
       this.authenticated = true;
