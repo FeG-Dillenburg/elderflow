@@ -171,6 +171,7 @@ describe("EncryptedMeetingCollaborationProvider", () => {
     await settle();
     expect(provider.status).toBe("discarded");
     expect(provider.terminalCode).toBe("MEETING_COMPLETED_IMMUTABLE");
+    expect(provider.discardedChanges).toBe(true);
     expect(provider.hasPendingChanges()).toBe(false);
     expect(provider.isConnected()).toBe(false);
     expect(discard).toHaveBeenCalledWith("meeting");

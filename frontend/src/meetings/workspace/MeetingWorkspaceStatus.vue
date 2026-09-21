@@ -77,7 +77,7 @@ const iconForPhase: Record<MeetingWorkspacePhase, string> = {
   <Message
     v-if="workspace.state.notice"
     :key="workspace.state.notice"
-    severity="warn"
+    :severity="workspace.state.notice === 'completed_elsewhere' ? 'success' : 'warn'"
     closable
     :close-button-props="{ 'aria-label': t('meetingWorkspace.dismissNotice') }"
     @close="workspace.dismissNotice()"

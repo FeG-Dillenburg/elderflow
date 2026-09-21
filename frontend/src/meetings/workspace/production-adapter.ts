@@ -46,6 +46,9 @@ const collaborationFor = (meetingId: string): MeetingWorkspaceCollaboration => {
       if (provider.terminalCode === "MEETING_COMPLETED_IMMUTABLE") return "completed";
       return provider.status === "discarded" ? "access" : provider.status === "rejected" ? "integrity" : undefined;
     },
+    get discardedChanges() {
+      return provider.discardedChanges;
+    },
     get pending() {
       return provider.hasPendingChanges?.() ?? false;
     },

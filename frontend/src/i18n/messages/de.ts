@@ -87,7 +87,8 @@ const de = {
     notices: {
       security_closed: "Geschützter Text wurde aus Sicherheitsgründen geschlossen. Alle Änderungen waren bereits synchronisiert.",
       forced_close: "Geschützter Text wurde aus Sicherheitsgründen geschlossen. Nicht synchronisierte Änderungen in diesem Tab wurden verworfen.",
-      completed_elsewhere: "Diese Sitzung wurde an anderer Stelle abgeschlossen. Der Arbeitsbereich wurde geschlossen und nicht synchronisierte Änderungen wurden verworfen.",
+      completed_elsewhere: "Diese Sitzung wurde an anderer Stelle abgeschlossen. Alle Ihre Änderungen wurden gespeichert.",
+      completed_changes_discarded: "Diese Sitzung wurde an anderer Stelle abgeschlossen. Ihre nicht synchronisierten Änderungen konnten nicht gespeichert werden und wurden verworfen.",
       access_changed: "Der Zugriff auf diese Sitzung hat sich geändert. Geschützter Text wurde geschlossen und nicht synchronisierte Änderungen wurden verworfen.",
       integrity_failure: "Der Sitzungsinhalt konnte nicht verifiziert werden. Die Bearbeitung ist deaktiviert. Laden Sie die Inhalte erneut.",
     },

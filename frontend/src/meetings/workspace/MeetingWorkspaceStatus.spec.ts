@@ -6,7 +6,7 @@ import { defineComponent, h, nextTick, reactive } from "vue";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Meeting } from "../../api/domain";
 import MeetingWorkspaceStatus from "./MeetingWorkspaceStatus.vue";
-import type { MeetingWorkspace, MeetingWorkspaceState } from "./core";
+import type { MeetingWorkspace, MeetingWorkspaceState, MeetingWorkspaceCollaboration } from "./core";
 import { meetingRouteFactoryKey, useMeetingRoute } from "./vue";
 
 const meeting = {
@@ -22,6 +22,48 @@ describe("MeetingWorkspaceStatus", () => {
   afterEach(() => {
     vi.useRealTimers();
     document.querySelector("#meeting-workspace-status")?.remove();
+  });
+
+  it.each([
+    ["en", false, "All your changes were saved.", "success"],
+    ["de", false, "Alle Ihre Änderungen wurden gespeichert.", "success"],
+    ["en", true, "Your unsynchronized changes could not be saved and were discarded.", "warn"],
+    ["de", true, "Ihre nicht synchronisierten Änderungen konnten nicht gespeichert werden und wurden verworfen.", "warn"],
+  ] as const)("shows the correct %s completion notice (discarded: %s)", async (language, discarded, message, severity) => {
+    setLanguage(language);
+    let notify!: () => void;
+    let completed = false;
+    const connection: MeetingWorkspaceCollaboration = {
+      phase: "ready", pending: false, discardedChanges: discarded, collaborators: [], close: vi.fn(),
+      subscribe(listener) { notify = listener; return () => undefined; },
+    };
+    const workspace = createMeetingWorkspace(meeting.id, {
+      load: async () => ({ meeting: { ...meeting, status: completed ? "completed" : "in_progress" }, unlocked: true }),
+      connect: async () => connection,
+      complete: vi.fn(),
+    });
+    await workspace.open();
+    const Harness = defineComponent({
+      setup() {
+        useMeetingRoute(meeting.id);
+        return () => h(MeetingWorkspaceStatus);
+      },
+    });
+    const wrapper = mount(Harness, {
+      global: {
+        plugins: [PrimeVue],
+        stubs: { Teleport: true },
+        provide: {
+          [meetingRouteFactoryKey as symbol]: () => ({ workspace, opened: Promise.resolve(), operations: {} }),
+        },
+      },
+    });
+    completed = true;
+    Object.assign(connection, { failure: "completed" });
+    notify();
+    await vi.waitFor(() => expect(wrapper.find(`.p-message-${severity}`).text()).toContain(message));
+    expect(wrapper.find(`.p-message-${severity === "success" ? "warn" : "success"}`).exists()).toBe(false);
+    wrapper.unmount();
   });
 
   it.each([

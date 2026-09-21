@@ -39,6 +39,7 @@ export class EncryptedMeetingCollaborationProvider extends EventTarget {
   private compacting = false;
   private compactionTriggerSequence: string | null = null;
   terminalCode: string | null = null;
+  discardedChanges = false;
   private barrierIntention: "compaction" | "completion" = "compaction";
   private synchronizing = 0;
   private barrierId: string | null = null;
@@ -583,6 +584,7 @@ export class EncryptedMeetingCollaborationProvider extends EventTarget {
 
   private reloadCanonical(code?: string): void {
     this.terminalCode = code ?? null;
+    this.discardedChanges = this.hasPendingChanges();
     this.clearPending();
     meetingDocumentSession.discard(this.meetingId);
     this.setStatus("discarded");

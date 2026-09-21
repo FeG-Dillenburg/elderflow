@@ -87,7 +87,8 @@ export default {
     notices: {
       security_closed: "Protected text was closed for security. All changes were already synchronized.",
       forced_close: "Protected text was closed for security. Unsynchronized changes in this tab were discarded.",
-      completed_elsewhere: "This Meeting was completed elsewhere. The workspace was closed and any unsynchronized changes were discarded.",
+      completed_elsewhere: "This Meeting was completed elsewhere. All your changes were saved.",
+      completed_changes_discarded: "This Meeting was completed elsewhere. Your unsynchronized changes could not be saved and were discarded.",
       access_changed: "Access to this Meeting changed. Protected text was closed and unsynchronized changes were discarded.",
       integrity_failure: "The Meeting content could not be verified. Editing is disabled. Reload to try again.",
     },

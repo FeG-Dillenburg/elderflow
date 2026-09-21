@@ -86,7 +86,7 @@ describe("Meeting workspace contract", () => {
     await workspace.close({ discard: true });
   });
 
-  it("zeroizes a terminally completed workspace even if the completion response is lost", async () => {
+  it("reloads the saved Completed Meeting without locking when the completion response is lost", async () => {
     const { backend, collaboration } = setup(meeting({ status: "in_progress" }));
     let notify!: () => void;
     collaboration.subscribe = (listener) => { notify = listener; return () => undefined; };
@@ -100,11 +100,11 @@ describe("Meeting workspace contract", () => {
     const workspace = createMeetingWorkspace("meeting-1", backend);
     await workspace.open();
     await expect(workspace.complete()).rejects.toThrow("connection lost");
-    expect(workspace.state.phase).toBe("closed");
-    expect(workspace.state.meeting).toBeNull();
+    expect(workspace.state.phase).toBe("ready");
+    expect(workspace.state.meeting?.status).toBe("completed");
     expect(workspace.state.notice).toBe("completed_elsewhere");
     expect(backend.dispose).toHaveBeenCalledWith("meeting-1");
-    expect(backend.revokeAccess).toHaveBeenCalled();
+    expect(backend.revokeAccess).not.toHaveBeenCalled();
   });
 
   it("allows a locked authorized requester to complete without a local provider", async () => {
