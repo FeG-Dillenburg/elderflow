@@ -188,7 +188,9 @@ export const createMeetingWorkspace = (
     }
   };
   const completedElsewhere = async () => {
-    const discarded = pending() || Boolean(collaboration?.discardedChanges);
+    const discarded = collaboration
+      ? Boolean(collaboration.discardedChanges || collaboration.pending)
+      : localWrites > 0;
     const notice = discarded ? "completed_changes_discarded" : "completed_elsewhere";
     generation += 1;
     const currentGeneration = generation;

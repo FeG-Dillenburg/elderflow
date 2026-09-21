@@ -55,6 +55,27 @@ describe("Meeting workspace lifecycle", () => {
     expect(backend.dispose).toHaveBeenCalledOnce();
   });
 
+  it("does not mistake an acknowledged edit's pending refresh for lost content", async () => {
+    const { workspace, backend, connection, notify, replace } = setup();
+    await workspace.open();
+    const saved = { ...workspace.state.meeting, generalNotes: "Saved text" } as Meeting;
+    let releaseRefresh!: () => void;
+    backend.load.mockImplementationOnce(() => new Promise((resolve) => {
+      releaseRefresh = () => resolve({ meeting: saved, unlocked: true });
+    }));
+    const write = workspace.updateText({ kind: "general_notes" }, "Saved text");
+    await vi.waitFor(() => expect(backend.load).toHaveBeenCalledTimes(2));
+    replace({ ...saved, status: "completed" });
+    Object.assign(connection, { failure: "completed", discardedChanges: false, pending: false });
+    notify();
+    await vi.waitFor(() => expect(workspace.state.meeting?.status).toBe("completed"));
+    expect(workspace.state.notice).toBe("completed_elsewhere");
+    releaseRefresh();
+    await write;
+    expect(workspace.text({ kind: "general_notes" }).value).toBe("Saved text");
+    expect(backend.revokeAccess).not.toHaveBeenCalled();
+  });
+
   it("does not invent a security warning when a clean route remounts during unlock", async () => {
     const { workspace, backend } = setup();
     await workspace.open();
