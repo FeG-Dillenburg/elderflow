@@ -116,7 +116,11 @@ function submitForm(): void {
     v-model:visible="visible"
     modal
     :header="t('topicEdit.title')"
-    :style="{ width: '46rem', maxWidth: 'calc(100vw - 2rem)' }"
+    :style="{
+      width: '46rem',
+      maxWidth: 'calc(100vw - 2rem)',
+      maxHeight: props.typeLocked ? 'calc(100dvh - 2rem)' : undefined,
+    }"
   >
     <Message v-if="saveError" severity="error" role="alert">
       {{ saveError }}
