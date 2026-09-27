@@ -35,7 +35,7 @@ describe("New membership Topic renderers", () => {
     ]);
   });
 
-  it("places the creation-only Default section beside Godparent(s)", () => {
+  it("places the Default section beside Godparent(s)", () => {
     const wrapper = mount(NewMembershipTopicFormFields, {
       shallow: true,
       props: {
@@ -52,11 +52,11 @@ describe("New membership Topic renderers", () => {
     });
 
     expect(wrapper.findAll("label > span").map((label) => label.text())).toEqual([
+      "Description (optional)",
+      "Default section",
+      "Godparent(s)",
       "Status text",
       "Status color",
-      "Godparent(s)",
-      "Default section",
-      "Description (optional)",
     ]);
   });
 

@@ -9,7 +9,8 @@ const stubs = {
   DatePicker: true,
   Dialog: true,
   InputText: true,
-  RadioButton: true,
+  SelectButton: true,
+  TopicFormFields: false,
   Select: true,
   RichTextEditor: true,
 };
@@ -200,10 +201,8 @@ describe("TopicEditDialog", () => {
 
     expect(wrapper.findComponent(TopicTypeRadioGroup).props("disabled"))
       .toBe(true);
-    const radios = wrapper.findAllComponents({ name: "RadioButton" });
-    expect(radios.length).toBeGreaterThan(0);
-    expect(radios.every((radio) => radio.attributes("disabled") === "true"))
-      .toBe(true);
+    expect(wrapper.findComponent({ name: "SelectButton" }).attributes("disabled"))
+      .toBe("true");
     expect(wrapper.text()).toContain(
       "The Topic type cannot be changed after the Topic has appeared in a Meeting.",
     );

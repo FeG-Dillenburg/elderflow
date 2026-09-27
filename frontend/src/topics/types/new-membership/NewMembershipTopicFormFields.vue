@@ -2,6 +2,7 @@
 import { computed, onMounted } from "vue";
 import InputText from "primevue/inputtext";
 import Select from "primevue/select";
+import MembershipSignal from "./MembershipSignal.vue";
 import RichTextEditor from "../../../components/RichTextEditor.vue";
 import {
   membershipStatusSignals,
@@ -38,6 +39,25 @@ onMounted(() => {
 
 <template>
   <div class="membership-form-fields">
+    <label class="description">
+      <span>{{ t("newMembershipTopic.description") }}</span>
+      <RichTextEditor
+        height="120px"
+        :model-value="modelValue.description ?? ''"
+        :placeholder="t('newMembershipTopic.description')"
+        @update:model-value="patch('description', $event || null)"
+      />
+    </label>
+    <div v-if="$slots.default" class="default-section-field">
+      <slot />
+    </div>
+    <label>
+      <span>{{ t("newMembershipTopic.godparents") }}</span>
+      <InputText
+        :model-value="modelValue.godparents"
+        @update:model-value="patch('godparents', $event || null)"
+      />
+    </label>
     <label>
       <span>{{ t("newMembershipTopic.statusText") }}</span>
       <InputText
@@ -50,28 +70,18 @@ onMounted(() => {
       <Select
         :model-value="modelValue.membershipStatusSignal ?? 'new'"
         :options="signalOptions"
+        :aria-label="t('newMembershipTopic.statusColor')"
         option-label="label"
         option-value="value"
         @update:model-value="patch('membershipStatusSignal', $event as MembershipStatusSignal)"
-      />
-    </label>
-    <label>
-      <span>{{ t("newMembershipTopic.godparents") }}</span>
-      <InputText
-        :model-value="modelValue.godparents"
-        @update:model-value="patch('godparents', $event || null)"
-      />
-    </label>
-    <div v-if="$slots.default" class="default-section-field">
-      <slot />
-    </div>
-    <label class="description">
-      <span>{{ t("newMembershipTopic.description") }}</span>
-      <RichTextEditor
-        :model-value="modelValue.description ?? ''"
-        :placeholder="t('newMembershipTopic.description')"
-        @update:model-value="patch('description', $event || null)"
-      />
+      >
+        <template #value="{ value }">
+          <MembershipSignal :signal="value" />
+        </template>
+        <template #option="{ option }">
+          <MembershipSignal :signal="option.value" />
+        </template>
+      </Select>
     </label>
   </div>
 </template>
@@ -79,8 +89,8 @@ onMounted(() => {
 <style scoped>
 .membership-form-fields {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 1rem;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 0.75rem;
 }
 
 label {
