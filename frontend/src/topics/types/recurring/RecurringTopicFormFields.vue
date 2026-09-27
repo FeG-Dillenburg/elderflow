@@ -97,13 +97,18 @@ label > span:first-child {
 }
 
 .interval {
-  max-width: 22rem;
+  width: calc((100% - 0.75rem) / 2);
+  grid-template-columns: 4.5rem minmax(0, 1fr);
   gap: 0.5rem;
 }
 
 @media (max-width: 650px) {
   .row {
     grid-template-columns: 1fr;
+  }
+
+  .interval {
+    width: 100%;
   }
 }
 </style>
