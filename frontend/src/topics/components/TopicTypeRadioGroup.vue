@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from "vue";
-import RadioButton from "primevue/radiobutton";
+import SelectButton from "primevue/selectbutton";
 import { useI18n } from "vue-i18n";
 import { creatableTopicTypes } from "../topicTypeRegistry";
 import type { TopicType } from "../topicTypes";
@@ -26,18 +26,17 @@ const options = computed(() =>
     :class="{ disabled: props.disabled }"
   >
     <legend>{{ t("topics.type") }}</legend>
-    <div class="options">
-      <label v-for="option in options" :key="option.value">
-        <RadioButton
-          v-model="model"
-          :input-id="`${props.id}-${option.value}`"
-          :name="props.id"
-          :value="option.value"
-          :disabled="props.disabled"
-        />
-        <span>{{ option.label }}</span>
-      </label>
-    </div>
+    <SelectButton
+      v-model="model"
+      :id="props.id"
+      :options="options"
+      option-label="label"
+      option-value="value"
+      :allow-empty="false"
+      :disabled="props.disabled"
+      :aria-label="t('topics.type')"
+      size="small"
+    />
   </fieldset>
 </template>
 
@@ -56,21 +55,16 @@ const options = computed(() =>
   font-weight: 650;
 }
 
-.options {
+.topic-type-selector :deep(.p-selectbutton) {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.65rem 1.25rem;
 }
 
-.options label {
-  display: flex;
-  align-items: center;
-  gap: 0.45rem;
-  cursor: pointer;
+.topic-type-selector :deep(.p-togglebutton) {
+  flex: 1 1 auto;
 }
 
-.topic-type-selector.disabled .options label {
-  cursor: not-allowed;
-  opacity: 0.7;
+.topic-type-selector :deep(.p-togglebutton-label) {
+  white-space: normal;
 }
 </style>

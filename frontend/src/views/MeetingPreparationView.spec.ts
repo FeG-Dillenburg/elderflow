@@ -394,6 +394,28 @@ describe("MeetingPreparationView", () => {
     await vm.createAndAdd();
     expect(vm.newVisible).toBe(false);
   });
+  it("keeps rejected topic creation open with its error visible", async () => {
+    const wrapper = mount(MeetingPreparationView, {
+      shallow: true,
+      global: {
+        stubs: {
+          ...stubs,
+          Dialog: { template: '<div><slot /><slot name="footer" /></div>' },
+          Message: { template: '<div><slot /></div>' },
+        },
+        provide: { [meetingRouteFactoryKey as symbol]: meetingRouteFactory },
+      },
+    });
+    await flushPromises();
+    const vm: any = wrapper.vm;
+    vm.newVisible = true;
+    vi.spyOn(api, "createTopic").mockRejectedValueOnce(new Error("Invalid default position"));
+    await wrapper.vm.$nextTick();
+    await wrapper.get("#new-topic").trigger("submit");
+    await flushPromises();
+    expect(vm.newVisible).toBe(true);
+    expect(wrapper.get(".topic-create-error").text()).toBe("Invalid default position");
+  });
   it("labels an automatic recurrence removal as a skip and reports API conflicts", async () => {
     const recurringMeeting = structuredClone(meeting);
     recurringMeeting.agenda[0].source = "recurrence";

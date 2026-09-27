@@ -5,6 +5,7 @@ import TopicsView from "./TopicsView.vue";
 vi.mock("vue-router", () => ({ RouterLink: { template: "<a><slot /></a>" } }));
 const stubs = {
   Button: true,
+  TopicFormFields: false,
   Checkbox: true,
   Column: true,
   DataTable: true,
@@ -65,7 +66,7 @@ describe("TopicsView", () => {
     );
     expect(vm.visible).toBe(false);
   });
-  it("moves Default section into type fields when their ordering is type-specific", async () => {
+  it("keeps section selection available for every type and omits membership and recurring follow-up dates", async () => {
     const wrapper = await view();
     const form = wrapper.find("#topic-form");
 

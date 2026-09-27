@@ -31,9 +31,14 @@ const units = computed(() => [
   <div class="recurrence-fields">
     <label>
       <span>{{ t("recurringTopic.description") }}</span>
-      <RichTextEditor v-model="description" :placeholder="t('recurringTopic.description')" />
+      <RichTextEditor
+        v-model="description"
+        height="120px"
+        :placeholder="t('recurringTopic.description')"
+      />
     </label>
     <div class="row">
+      <slot />
       <label>
         <span>{{ t("recurringTopic.firstDueDate") }}</span>
         <DatePicker
@@ -43,36 +48,27 @@ const units = computed(() => [
           show-button-bar
         />
       </label>
-      <label>
-        <span>{{ t("recurringTopic.interval") }}</span>
-        <span class="interval">
-          <InputNumber
-            :model-value="modelValue.recurrenceInterval"
-            :min="1"
-            required
-            @update:model-value="emit('change', { recurrenceInterval: $event })"
-          />
-          <Select
-            :model-value="modelValue.recurrenceUnit"
-            :options="units"
-            option-label="label"
-            option-value="value"
-            required
-            @update:model-value="emit('change', { recurrenceUnit: $event })"
-          />
-        </span>
-      </label>
     </div>
-    <slot />
     <label>
-      <span>{{ t("recurringTopic.defaultPosition") }}</span>
-      <InputNumber
-        :model-value="modelValue.defaultPosition"
-        :min="1"
-        :placeholder="t('recurringTopic.append')"
-        show-buttons
-        @update:model-value="emit('change', { defaultPosition: $event })"
-      />
+      <span>{{ t("recurringTopic.interval") }}</span>
+      <span class="interval">
+        <InputNumber
+          :model-value="modelValue.recurrenceInterval"
+          :aria-label="t('recurringTopic.interval')"
+          :min="1"
+          required
+          @update:model-value="emit('change', { recurrenceInterval: $event })"
+        />
+        <Select
+          :model-value="modelValue.recurrenceUnit"
+          :aria-label="t('recurringTopic.unit')"
+          :options="units"
+          option-label="label"
+          option-value="value"
+          required
+          @update:model-value="emit('change', { recurrenceUnit: $event })"
+        />
+      </span>
     </label>
   </div>
 </template>
@@ -85,7 +81,7 @@ label {
 }
 
 .recurrence-fields {
-  gap: 1rem;
+  gap: 0.75rem;
 }
 
 label > span:first-child {
@@ -96,17 +92,23 @@ label > span:first-child {
 .row,
 .interval {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 1rem;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 0.75rem;
 }
 
 .interval {
+  width: calc((100% - 0.75rem) / 2);
+  grid-template-columns: 4.5rem minmax(0, 1fr);
   gap: 0.5rem;
 }
 
 @media (max-width: 650px) {
   .row {
     grid-template-columns: 1fr;
+  }
+
+  .interval {
+    width: 100%;
   }
 }
 </style>

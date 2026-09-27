@@ -1,27 +1,20 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from "vue";
 import Button from "primevue/button";
-import DatePicker from "primevue/datepicker";
 import Dialog from "primevue/dialog";
-import InputText from "primevue/inputtext";
 import Message from "primevue/message";
 import Select from "primevue/select";
-import TopicTypeRadioGroup from "../topics/components/TopicTypeRadioGroup.vue";
+import TopicFormFields from "./TopicFormFields.vue";
 import {
   api,
-  formatUser,
   toLocalDate,
   type AgendaSection,
   type Topic,
   type TopicInput,
   type User,
 } from "../api/domain";
-import TopicTypeRenderer from "../topics/TopicTypeRenderer.vue";
 import { creatableTopicTypes } from "../topics/topicTypeRegistry";
-import { assignableUsers } from "../auth/roles";
 import { useI18n } from "vue-i18n";
-import { dateInputFormat } from "../i18n";
-import { topicNameTranslationKey } from "../topics/topicTypes";
 import { toTopicInput } from "../topics/types/new-membership/topicInput";
 
 const props = withDefaults(defineProps<{
@@ -37,7 +30,6 @@ const visible = defineModel<boolean>("visible", { required: true });
 const formElement = ref<HTMLFormElement | null>(null);
 const saving = ref(false);
 const saveError = ref("");
-const responsibleUserOptions = computed(() => assignableUsers(props.users));
 const { t } = useI18n();
 const form = reactive({
   name: "",
@@ -124,31 +116,28 @@ function submitForm(): void {
     v-model:visible="visible"
     modal
     :header="t('topicEdit.title')"
-    :style="{ width: '46rem', maxWidth: 'calc(100vw - 2rem)' }"
+    :style="{
+      width: '46rem',
+      maxWidth: 'calc(100vw - 2rem)',
+      maxHeight: props.typeLocked ? 'calc(100dvh - 2rem)' : undefined,
+    }"
   >
     <Message v-if="saveError" severity="error" role="alert">
       {{ saveError }}
     </Message>
     <form ref="formElement" id="edit-topic" class="form" @submit.prevent="save">
-      <TopicTypeRadioGroup
-        id="edit-topic-type"
-        v-model="form.type"
+      <TopicFormFields
+        id="edit-topic"
+        :model-value="form"
+        :users="users"
+        :sections="sections"
         :types="editableTopicTypes"
-        :disabled="props.typeLocked"
-        :aria-describedby="props.typeLocked ? 'edit-topic-type-lock-help' : undefined"
-      />
-      <small
-        v-if="props.typeLocked"
-        id="edit-topic-type-lock-help"
-        class="field-help"
+        :type-locked="props.typeLocked"
+        :section-required="form.type === 'recurring'"
+        :active="visible"
+        :error="saveError"
+        @change="Object.assign(form, $event)"
       >
-        {{ t("topicEdit.typeLocked") }}
-      </small>
-      <div class="row">
-        <label>
-          <span>{{ t(topicNameTranslationKey(form.type)) }}</span>
-          <InputText v-model="form.name" required />
-        </label>
         <label>
           <span>{{ t("common.status") }}</span>
           <Select
@@ -156,59 +145,10 @@ function submitForm(): void {
             :options="statuses"
             option-label="label"
             option-value="value"
+            :aria-label="t('common.status')"
           />
         </label>
-      </div>
-      <TopicTypeRenderer
-        :type="form.type"
-        context="form"
-        :model-value="form"
-        @change="Object.assign(form, $event)"
-      >
-        <label v-if="form.type === 'recurring'">
-          <span>{{ t("topicEdit.defaultSection") }}</span>
-          <Select
-            v-model="form.defaultSectionId"
-            :options="sections"
-            option-label="name"
-            option-value="id"
-            show-clear
-            required
-          />
-        </label>
-      </TopicTypeRenderer>
-      <div class="row">
-        <label>
-          <span>{{ t("topicEdit.responsible") }}</span>
-          <Select
-            v-model="form.responsibleUserId"
-            :options="responsibleUserOptions"
-            option-label="firstName"
-            option-value="id"
-            show-clear
-          >
-            <template #option="{ option }">{{ formatUser(option) }}</template>
-          </Select>
-        </label>
-        <label v-if="form.type !== 'recurring'">
-          <span>{{ t("topicEdit.followUpDate") }}</span>
-          <DatePicker
-            v-model="form.followUpDate"
-            :date-format="dateInputFormat()"
-            show-button-bar
-          />
-        </label>
-      </div>
-      <label v-if="form.type !== 'recurring'">
-        <span>{{ t("topicEdit.defaultSection") }}</span>
-        <Select
-          v-model="form.defaultSectionId"
-          :options="sections"
-          option-label="name"
-          option-value="id"
-          show-clear
-        />
-      </label>
+      </TopicFormFields>
     </form>
     <template #footer>
       <Button
@@ -229,40 +169,7 @@ function submitForm(): void {
 </template>
 
 <style scoped>
-.form,
-.form label {
-  display: grid;
-  gap: 0.45rem;
-}
 .form {
-  gap: 1rem;
-}
-.form label > span {
-  font-size: 0.86rem;
-  font-weight: 650;
-}
-.field-help {
-  margin-top: -0.5rem;
-  color: var(--p-text-muted-color);
-}
-.form :deep(input),
-.form :deep(.p-select),
-.form :deep(.p-datepicker) {
-  width: 100%;
-}
-.row {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 1rem;
-}
-.form .checkbox {
-  display: flex;
-  grid-template-columns: auto 1fr;
-  align-items: center;
-}
-@media (max-width: 650px) {
-  .row {
-    grid-template-columns: 1fr;
-  }
+  margin: 0;
 }
 </style>

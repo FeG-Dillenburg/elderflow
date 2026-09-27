@@ -13,7 +13,7 @@ import Message from "primevue/message";
 import Select from "primevue/select";
 import Tag from "primevue/tag";
 import TopicTypeRenderer from "../topics/TopicTypeRenderer.vue";
-import TopicTypeRadioGroup from "../topics/components/TopicTypeRadioGroup.vue";
+import TopicFormFields from "../components/TopicFormFields.vue";
 import {
   api,
   formatUser,
@@ -28,7 +28,6 @@ import {
   type User,
 } from "../api/domain";
 import { dateInputFormat, formatDate } from "../i18n";
-import { topicNameTranslationKey } from "../topics/topicTypes";
 import { assignableUsers } from "../auth/roles";
 import {
   saveMeetingTopicField,
@@ -112,7 +111,7 @@ const form = reactive({
   description: null as string | null,
   type: "generic" as TopicInput["type"],
   status: "open",
-  followUpDate: null,
+  followUpDate: null as Date | null,
   responsibleUserId: null,
   membershipProcessStatus: null,
   membershipStatusSignal: null,
@@ -341,15 +340,16 @@ const sectionDuration = (items: MeetingTopic[]) =>
   );
 
 const createAndAdd = async () => {
-  await withOperation(async () => {
+  const succeeded = await withOperation(async () => {
     const topic = await api.createTopic(toTopicInput({
       ...form,
+      followUpDate: toLocalDate(form.followUpDate),
     }));
     const sectionId = form.defaultSectionId || sections.value[0]?.id;
     if (sectionId)
       await operations.addTopic({ topicId: topic.id, sectionId, topic });
   });
-  newVisible.value = false;
+  if (succeeded) newVisible.value = false;
 };
 
 const startMeeting = async () => {
@@ -781,45 +781,23 @@ const saveDetails = async () => {
     <Dialog
       v-if="!readOnly"
       v-model:visible="newVisible"
-      :style="{ width: '44rem', maxWidth: 'calc(100vw - 2rem)' }"
+      :style="{ width: '46rem', maxWidth: 'calc(100vw - 2rem)' }"
       :header="t('meetingPreparation.createAndAddTitle')"
       modal
     >
+      <Message v-if="error" class="topic-create-error" severity="error" role="alert">
+        {{ error }}
+      </Message>
       <form id="new-topic" class="form" @submit.prevent="createAndAdd">
-        <TopicTypeRadioGroup id="new-topic-type" v-model="form.type" />
-        <div class="row">
-          <label>
-            <span>{{ t(topicNameTranslationKey(form.type)) }}</span>
-            <InputText v-model="form.name" required />
-          </label>
-          <label>
-            <span>{{ t("meetingPreparation.section") }}</span>
-            <Select
-              v-model="form.defaultSectionId"
-              :options="sections"
-              option-label="name"
-              option-value="id"
-              required
-            />
-          </label>
-        </div>
-        <label>
-          <span>{{ t("topics.responsible") }}</span>
-          <Select
-            v-model="form.responsibleUserId"
-            :options="responsibleUserOptions"
-            option-label="firstName"
-            option-value="id"
-            show-clear
-          >
-            <template #option="{ option }">{{ formatUser(option) }}</template>
-          </Select>
-        </label>
-        <TopicTypeRenderer
-          :type="form.type"
-          context="form"
+        <TopicFormFields
+          id="new-topic"
           :model-value="form"
-          v-bind="form.type === 'new_membership' ? { initializeDefaults: true } : {}"
+          :users="users"
+          :sections="sections"
+          :active="newVisible"
+          :error="error"
+          initialize-defaults
+          section-required
           @change="Object.assign(form, $event)"
         />
       </form>
@@ -833,6 +811,7 @@ const saveDetails = async () => {
         <Button
           form="new-topic"
           :label="t('meetingPreparation.createAndAdd')"
+          :loading="pending"
           type="submit"
         />
       </template>

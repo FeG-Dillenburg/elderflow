@@ -10,10 +10,9 @@ import Message from "primevue/message";
 import Select from "primevue/select";
 import Tag from "primevue/tag";
 import TopicTypeRenderer from "../topics/TopicTypeRenderer.vue";
-import TopicTypeRadioGroup from "../topics/components/TopicTypeRadioGroup.vue";
+import TopicFormFields from "../components/TopicFormFields.vue";
 import TopicTypeBadge from "../topics/components/TopicTypeBadge.vue";
 import { canonicalTopicTypes } from "../topics/topicTypeRegistry";
-import { topicNameTranslationKey } from "../topics/topicTypes";
 import { toTopicInput } from "../topics/types/new-membership/topicInput";
 import {
   api,
@@ -278,68 +277,16 @@ onMounted(load);
         {{ createError }}
       </Message>
       <form id="topic-form" class="form" @submit.prevent="create">
-        <TopicTypeRadioGroup id="topic-form-type" v-model="form.type" />
-        <div class="row">
-          <label>
-            <span>{{ t(topicNameTranslationKey(form.type)) }}</span>
-            <InputText v-model="form.name" required />
-          </label>
-          <label>
-            <span>{{ t("topics.responsible") }}</span>
-            <Select
-              v-model="form.responsibleUserId"
-              :options="responsibleUserOptions"
-              option-label="firstName"
-              option-value="id"
-              show-clear
-            >
-              <template #option="{ option }">{{ formatUser(option) }}</template>
-            </Select>
-          </label>
-        </div>
-        <TopicTypeRenderer
-          :type="form.type"
-          context="form"
+        <TopicFormFields
+          id="topic-form"
           :model-value="form"
-          v-bind="form.type === 'new_membership' ? { initializeDefaults: true } : {}"
+          :users="users"
+          :sections="sections"
+          :active="visible"
+          :error="createError"
+          initialize-defaults
           @change="Object.assign(form, $event)"
-        >
-          <label
-            v-if="form.type === 'new_membership' || form.type === 'recurring'"
-          >
-            <span>{{ t("topics.defaultSection") }}</span>
-            <Select
-              v-model="form.defaultSectionId"
-              :options="sections"
-              option-label="name"
-              option-value="id"
-              show-clear
-            />
-          </label>
-        </TopicTypeRenderer>
-        <div
-          v-if="form.type !== 'new_membership' && form.type !== 'recurring'"
-          class="row"
-        >
-          <label>
-            <span>{{ t("topics.followUpDate") }}</span>
-            <DatePicker
-              v-model="form.followUpDate"
-              :date-format="dateInputFormat()"
-              show-button-bar
-            />
-          </label>
-          <label>
-            <span>{{ t("topics.defaultSection") }}</span>
-            <Select
-              v-model="form.defaultSectionId"
-              :options="sections"
-              option-label="name"
-              option-value="id"
-              show-clear
-            />
-          </label>
-        </div>
+        />
       </form>
       <template #footer>
         <Button

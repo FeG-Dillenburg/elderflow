@@ -48,18 +48,16 @@ describe("RecurringTopicFormFields", () => {
 
     await components[0].vm.$emit("update:modelValue", 2);
     await select.vm.$emit("update:modelValue", "weeks");
-    await components[1].vm.$emit("update:modelValue", 4);
     await datePicker.vm.$emit("update:modelValue", new Date(2026, 8, 15));
 
     expect(wrapper.emitted("change")).toEqual([
       [{ recurrenceInterval: 2 }],
       [{ recurrenceUnit: "weeks" }],
-      [{ defaultPosition: 4 }],
       [{ recurrenceFirstDueDate: "2026-09-15" }],
     ]);
   });
 
-  it("places the caller-provided Default section before Default position", () => {
+  it("places the caller-provided Default section before First due date", () => {
     const wrapper = mount(RecurringTopicFormFields, {
       shallow: true,
       props: {
@@ -77,7 +75,7 @@ describe("RecurringTopicFormFields", () => {
     const text = wrapper.text();
 
     expect(text.indexOf("Default section")).toBeLessThan(
-      text.indexOf("Default position"),
+      text.indexOf("First due date"),
     );
   });
 });

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import formSource from "../components/TopicFormFields.vue?raw";
 import topicEditSource from "../components/TopicEditDialog.vue?raw";
 import agendaSource from "../views/MeetingAgendaView.vue?raw";
 import detailSource from "../views/TopicDetailView.vue?raw";
@@ -22,7 +23,7 @@ import personModuleSource from "./types/person/index.ts?raw";
 
 describe("Topic renderer architecture", () => {
   it("routes every parent context through the shared dispatcher", () => {
-    expect(topicEditSource).toContain('context="form"');
+    expect(formSource).toContain('context="form"');
     expect(preparationSource).toContain('context="preparation"');
     expect(agendaSource).toContain('context="agenda"');
     expect(detailSource).toContain('context="detail"');
@@ -69,34 +70,23 @@ describe("Topic renderer architecture", () => {
     expect(preparationSource).toMatch(/\.item-actions\s*\{[^}]*display: flex;[^}]*justify-content: flex-end;/s);
   });
 
-  it("selects the Topic type before the name in both creation flows", () => {
-    for (const [source, formId] of [
-      [topicsSource, 'id="topic-form"'],
-      [preparationSource, 'id="new-topic"'],
-    ]) {
-      const form = source.slice(source.indexOf(formId));
-      expect(form.indexOf("<TopicTypeRadioGroup")).toBeLessThan(
-        form.indexOf("topicNameTranslationKey(form.type)"),
-      );
-      expect(form.indexOf("topicNameTranslationKey(form.type)")).toBeLessThan(
-        form.indexOf('context="form"'),
-      );
+  it("shares the Topic form across creation and editing entry points", () => {
+    for (const source of [topicsSource, preparationSource, topicEditSource]) {
+      expect(source).toContain("<TopicFormFields");
     }
-  });
-
-  it("uses a shared single-click radio group for creatable Topic types", () => {
-    expect(typeRadioGroupSource).toContain("<RadioButton");
-    expect(typeRadioGroupSource).toContain("v-model=\"model\"");
-    expect(typeRadioGroupSource).toContain("creatableTopicTypes()");
-    expect(topicsSource).toContain("<TopicTypeRadioGroup");
-    expect(preparationSource).toContain("<TopicTypeRadioGroup");
-  });
-
-  it("puts the shared type radio group first when editing a Topic", () => {
-    const form = topicEditSource.slice(topicEditSource.indexOf('id="edit-topic"'));
-    expect(form.indexOf("<TopicTypeRadioGroup")).toBeLessThan(
-      form.indexOf("topicNameTranslationKey(form.type)"),
+    expect(formSource.indexOf("<TopicTypeRadioGroup")).toBeLessThan(
+      formSource.indexOf("topicNameTranslationKey(modelValue.type)"),
     );
+    expect(formSource.indexOf("topicNameTranslationKey(modelValue.type)")).toBeLessThan(
+      formSource.indexOf('context="form"'),
+    );
+  });
+
+  it("uses a non-empty single-choice SelectButton for Topic types", () => {
+    expect(typeRadioGroupSource).toContain("<SelectButton");
+    expect(typeRadioGroupSource).toContain('v-model="model"');
+    expect(typeRadioGroupSource).toContain(':allow-empty="false"');
+    expect(typeRadioGroupSource).toContain("creatableTopicTypes()");
     expect(topicEditSource).toContain(':types="editableTopicTypes"');
   });
 });
