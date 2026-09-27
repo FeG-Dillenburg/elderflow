@@ -5,3 +5,7 @@ export const E2EE_KEY_OPERATOR_ROLES: readonly User['role'][] = ['superadmin', '
 export function isE2eeKeyOperator(role: User['role']): boolean {
   return E2EE_KEY_OPERATOR_ROLES.includes(role);
 }
+
+export function isProtectedTextReader(role: User['role']): boolean {
+  return isE2eeKeyOperator(role) || role === 'guest';
+}

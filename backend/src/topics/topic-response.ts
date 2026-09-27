@@ -1,4 +1,4 @@
-import { isE2eeKeyOperator } from "../e2ee/e2ee-role-policy";
+import { isProtectedTextReader } from "../e2ee/e2ee-role-policy";
 import { User } from "../users/user.entity";
 import { TopicUpdate } from "./topic-update.entity";
 import { Topic } from "./topic.entity";
@@ -16,7 +16,7 @@ export const accountResponse = (user?: User | null) => user
   : null;
 
 export function topicResponse(topic: Topic, viewer: User) {
-  const canReadProtected = isE2eeKeyOperator(viewer.role)
+  const canReadProtected = isProtectedTextReader(viewer.role)
     && Object.values(TOPIC_SCALAR_FIELDS).every(({ envelopeProperty }) =>
       Buffer.isBuffer(topic[envelopeProperty]));
   return {
@@ -58,7 +58,7 @@ export function topicResponse(topic: Topic, viewer: User) {
 export type TopicResponse = ReturnType<typeof topicResponse>;
 
 export function topicUpdateResponse(update: TopicUpdate, viewer: User) {
-  const canReadProtected = isE2eeKeyOperator(viewer.role)
+  const canReadProtected = isProtectedTextReader(viewer.role)
     && Buffer.isBuffer(update.textEnvelope);
   return {
     id: update.id,
@@ -76,7 +76,7 @@ export function topicUpdateResponse(update: TopicUpdate, viewer: User) {
 }
 
 export function topicLabelResponse(topic: Topic, viewer: User) {
-  const canReadProtected = isE2eeKeyOperator(viewer.role)
+  const canReadProtected = isProtectedTextReader(viewer.role)
     && Buffer.isBuffer(topic.nameEnvelope);
   return {
     id: topic.id,

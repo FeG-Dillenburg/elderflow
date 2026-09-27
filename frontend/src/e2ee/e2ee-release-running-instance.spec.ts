@@ -589,7 +589,7 @@ async function verifyAccessBoundaries(
   expect(guestResponse.status).toBe(200);
   const guestText = await guestResponse.text();
   expect(guestText).not.toContain(marker);
-  expect(JSON.parse(guestText)).toMatchObject({ protected: null });
+  expect(JSON.parse(guestText).protected).not.toBeNull();
 
   for (const restrictedToken of [itAdmin.token, "not-a-session-token"]) {
     const response = await fetch(`${evidenceApiUrl}/api/meetings/${meetingId}/workspace`, {

@@ -1,0 +1,43 @@
+.driver-popover.elderflow-tour {
+  max-width: min(24rem, calc(100vw - 2rem));
+  min-width: min(16rem, calc(100vw - 2rem));
+  border-radius: 0.8rem;
+  padding: 1.25rem;
+  color: #243047;
+  font-family: inherit;
+  box-shadow: 0 12px 40px rgb(15 23 42 / 30%);
+}
+.elderflow-tour .driver-popover-description {
+  max-height: max(5rem, calc(100dvh - 12rem));
+  overflow-y: auto;
+}
+.elderflow-tour .driver-popover-footer-btn {
+  padding: 0.6rem 0.9rem;
+  border-radius: 0.4rem;
+  font: inherit;
+  font-size: 0.875rem;
+  color: #fff;
+  background: #315f9f;
+  border-color: #315f9f;
+}
+.elderflow-tour .tour-skip {
+  color: #243047;
+  background: #fff;
+  border-color: #69778b;
+}
+.elderflow-tour button:focus-visible {
+  outline: 3px solid #315f9f;
+  outline-offset: 3px;
+}
+/* Interaction is gated in capture phase, including the requested next option. */
+.driver-active .driver-overlay,
+.driver-active .driver-overlay * {
+  pointer-events: none !important;
+}
+.driver-active .tour-allowed-option,
+.driver-active .tour-allowed-option * {
+  pointer-events: auto !important;
+}
+@media (prefers-reduced-motion: reduce) {
+  .driver-popover, .driver-overlay { animation: none !important; transition: none !important; }
+}

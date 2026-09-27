@@ -1,3 +1,4 @@
+import { TourProgress1720000020000 } from './1720000020000-TourProgress';
 import { CreateUsers1720000000000 } from './1720000000000-CreateUsers';
 import { CreateAgendaDomain1720000001000 } from './1720000001000-CreateAgendaDomain';
 import { ArchiveUsers1720000002000 } from './1720000002000-ArchiveUsers';
@@ -40,4 +41,5 @@ export const migrations = [
   MeetingMutationCompaction1720000017000,
   KeyRotationCeremonies1720000018000,
   ExternalAuthentication1720000019000,
+  TourProgress1720000020000,
 ];

@@ -3,7 +3,7 @@ import sodium from "libsodium-wrappers-sumo";
 import { EntityManager, In, Not } from "typeorm";
 import { E2eeClientEpoch, isClientEpochWritable } from "../e2ee/e2ee-client-epoch.entity";
 import { E2eeKeyState } from "../e2ee/e2ee-key-state.entity";
-import { isE2eeKeyOperator } from "../e2ee/e2ee-role-policy";
+import { isE2eeKeyOperator, isProtectedTextReader } from "../e2ee/e2ee-role-policy";
 import {
   meetingSnapshotClientEpochId,
   meetingUpdateClientEpochId,
@@ -283,7 +283,9 @@ export class MeetingDocumentService {
     user: User,
     meetingId: string,
   ) {
-    this.assertContentUser(user);
+    if (!isProtectedTextReader(user.role)) {
+      throw codedHttpException(HttpStatus.FORBIDDEN, "E2EE_PROTECTED_CIPHERTEXT_FORBIDDEN", "This role cannot read Protected ciphertext");
+    }
     const document = await manager.findOne(MeetingDocument, { where: { meetingId } });
     if (!document?.activeSnapshotId) return null;
     const [snapshot, updates] = await Promise.all([

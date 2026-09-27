@@ -575,4 +575,20 @@ describe("MeetingAgendaView", () => {
     expect(wrapper.find(".topic-footer").exists()).toBe(false);
     expect(wrapper.text()).not.toContain("Finish meeting");
   });
+  it("opens an unlocked Guest's active meeting through the production read-only path", async () => {
+    const guest = authenticatedUser("guest");
+    guest.role = "guest";
+    guest.permissions.meetings = "view";
+    guest.permissions.topics = "view";
+    auth.setUser(guest);
+    protectedText.state.status = "unlocked";
+    vi.spyOn(api, "meeting").mockResolvedValue({ ...structuredClone(meeting), workspace: { documentId: "read-only-document" } } as any);
+    const wrapper = mount(MeetingAgendaView, { shallow: true, global: { stubs } });
+    await flushPromises();
+    expect(wrapper.text()).toContain("Council");
+    expect(wrapper.text()).not.toContain("could not be opened");
+    expect(wrapper.find(".topic-actions").exists()).toBe(false);
+    expect(protectedText.state.status).toBe("unlocked");
+  });
+
 });

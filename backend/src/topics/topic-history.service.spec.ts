@@ -65,7 +65,7 @@ describe("TopicHistoryService encrypted read model", () => {
     expect(serialized).not.toContain('"meeting":null');
   });
 
-  it("withholds Update ciphertext from Guests", async () => {
+  it("returns authorized Update ciphertext to Guests", async () => {
     updates.find.mockResolvedValue([{
       id: "update",
       meetingId: null,
@@ -75,7 +75,7 @@ describe("TopicHistoryService encrypted read model", () => {
     }]);
 
     await expect(service.getHistory("topic", { role: "guest" } as User)).resolves.toEqual([
-      expect.objectContaining({ protected: null }),
+      expect.objectContaining({ protected: expect.objectContaining({ textEnvelope: "AQ" }) }),
     ]);
   });
 
@@ -111,7 +111,7 @@ describe("TopicHistoryService encrypted read model", () => {
     ]);
   });
 
-  it("withholds Meeting title ciphertext from Guests", async () => {
+  it("returns authorized Meeting title ciphertext to Guests", async () => {
     appearances.find.mockResolvedValue([{
       id: "appearance",
       meetingId: "meeting",
@@ -128,7 +128,7 @@ describe("TopicHistoryService encrypted read model", () => {
     const [entry] = await service.getHistory("topic", { role: "guest" } as User);
     expect(entry).toMatchObject({
       kind: "meeting_appearance",
-      meeting: { protected: null },
+      meeting: { protected: { titleEnvelope: "CQ", titleCommitRevision: "2" } },
     });
   });
 

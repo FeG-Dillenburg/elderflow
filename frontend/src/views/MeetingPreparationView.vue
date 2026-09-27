@@ -6,6 +6,7 @@ import { RouterLink, useRoute, useRouter } from "vue-router";
 import Draggable from "vuedraggable";
 import Button from "primevue/button";
 import DatePicker from "primevue/datepicker";
+import { tours } from "../tours/tours";
 import Dialog from "primevue/dialog";
 import InputNumber from "primevue/inputnumber";
 import InputText from "primevue/inputtext";
@@ -783,7 +784,7 @@ const saveDetails = async () => {
       v-model:visible="newVisible"
       :style="{ width: '46rem', maxWidth: 'calc(100vw - 2rem)' }"
       :header="t('meetingPreparation.createAndAddTitle')"
-      modal
+      :modal="tours.state.activeId !== 'new-topic-dialog'"
     >
       <Message v-if="error" class="topic-create-error" severity="error" role="alert">
         {{ error }}
@@ -794,6 +795,7 @@ const saveDetails = async () => {
           :model-value="form"
           :users="users"
           :sections="sections"
+          tour-enabled
           :active="newVisible"
           :error="error"
           initialize-defaults

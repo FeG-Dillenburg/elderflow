@@ -5,6 +5,9 @@ import Dialog from "primevue/dialog";
 import Message from "primevue/message";
 import Password from "primevue/password";
 import { useI18n } from "vue-i18n";
+import { auth } from "../auth/auth";
+import { isE2eeKeyOperator } from "./roles";
+import { tours } from "../tours/tours";
 import router from "../router";
 import { protectedText } from "./protected-text";
 
@@ -14,6 +17,7 @@ const { t } = useI18n();
 const dialogPassThrough = {
   mask: { class: "unlock-dialog-mask" },
   root: {
+    "data-tour-id": "unlock-dialog",
     "aria-labelledby": "protected-text-unlock-title",
     "aria-describedby": "protected-text-unlock-description",
   },
@@ -41,6 +45,7 @@ async function unlock(): Promise<void> {
 }
 
 async function openRecovery(): Promise<void> {
+  tours.recovery();
   protectedText.skip();
   await router.push("/key-recovery");
 }
@@ -49,7 +54,7 @@ async function openRecovery(): Promise<void> {
 <template>
   <Dialog
     :visible="protectedText.state.promptVisible"
-    modal
+    :modal="!tours.state.activeId || tours.state.suspended"
     :closable="false"
     :show-header="false"
     :pt="dialogPassThrough"
@@ -72,6 +77,7 @@ async function openRecovery(): Promise<void> {
           ref="input"
           v-model="passphrase"
           input-id="protected-text-passphrase"
+          :pt="{ pcInputText: { root: { 'data-tour-id': 'unlock-passphrase' } } }"
           :placeholder="t('e2ee.unlockPassphrasePlaceholder')"
           :feedback="false"
           toggle-mask
@@ -100,6 +106,7 @@ async function openRecovery(): Promise<void> {
       />
       <Button
         type="button"
+        v-if="isE2eeKeyOperator(auth.state.user)"
         class="recovery-button"
         severity="secondary"
         text

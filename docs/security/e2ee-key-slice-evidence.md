@@ -1,5 +1,8 @@
 # Issue #48 E2EE key-slice evidence
 
+> Policy update (#81): historical Guest ciphertext-exclusion results below describe the previous policy. Guests now receive authorized read-only ciphertext and ordinary unlock wrappers; recovery, key operations, and all content writes remain forbidden. See [product-tour and Guest-access verification](./product-tours-and-guest-access.md).
+
+
 ## Reset and setup fixture
 
 This is the first encrypted development release and intentionally has no plaintext migration or dual-read path. Reset synthetic development data before exercising setup:

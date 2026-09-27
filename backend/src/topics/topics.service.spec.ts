@@ -115,10 +115,10 @@ describe("TopicsService encrypted contracts", () => {
     expect(JSON.stringify(result[0])).not.toContain('"name":');
   });
 
-  it("withholds all Protected ciphertext from Guest viewers", async () => {
+  it("returns authorized Protected ciphertext to Guest viewers", async () => {
     topics.find.mockResolvedValue([encryptedTopic()]);
     await expect(service.findAll({}, { role: "guest" } as User)).resolves.toEqual([
-      expect.objectContaining({ protected: null }),
+      expect.objectContaining({ protected: expect.objectContaining({ nameEnvelope: "AQ" }) }),
     ]);
   });
 

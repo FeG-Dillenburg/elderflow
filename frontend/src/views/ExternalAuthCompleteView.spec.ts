@@ -69,7 +69,7 @@ describe('ExternalAuthCompleteView', () => {
     expect(getSessionToken()).toBe('external-session');
     expect(auth.state.user).toEqual(user);
     expect(currentLanguage()).toBe('en');
-    expect(unlock).toHaveBeenCalledWith(user);
+    expect(unlock).toHaveBeenCalledWith(user, false);
     await vi.waitFor(() => {
       expect(router.currentRoute.value.fullPath).toBe('/meetings?view=mine');
     });

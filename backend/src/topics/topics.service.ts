@@ -12,7 +12,7 @@ import { normalizedMembershipTopicState } from './membership-topic-state';
 import { RecurrenceService } from '../recurrence/recurrence.service';
 import { SkippedRecurrence } from '../recurrence/skipped-recurrence.entity';
 import { E2eeScalarService } from '../e2ee/e2ee-scalar.service';
-import { isE2eeKeyOperator } from '../e2ee/e2ee-role-policy';
+import { isProtectedTextReader } from '../e2ee/e2ee-role-policy';
 import { topicResponse, topicUpdateResponse } from './topic-response';
 import {
   SCALAR_AGGREGATES,
@@ -350,7 +350,7 @@ export class TopicsService {
       meeting: appearance.meeting
         ? {
             id: appearance.meeting.id,
-            protected: isE2eeKeyOperator(user.role) && Buffer.isBuffer(appearance.meeting.titleEnvelope)
+            protected: isProtectedTextReader(user.role) && Buffer.isBuffer(appearance.meeting.titleEnvelope)
               ? {
                   titleEnvelope: appearance.meeting.titleEnvelope.toString('base64url'),
                   titleCommitRevision: appearance.meeting.titleCommitRevision,
@@ -389,7 +389,7 @@ export class TopicsService {
       meeting: skip.meeting
         ? {
             id: skip.meeting.id,
-            protected: isE2eeKeyOperator(user.role) && Buffer.isBuffer(skip.meeting.titleEnvelope)
+            protected: isProtectedTextReader(user.role) && Buffer.isBuffer(skip.meeting.titleEnvelope)
               ? {
                   titleEnvelope: skip.meeting.titleEnvelope.toString('base64url'),
                   titleCommitRevision: skip.meeting.titleCommitRevision,

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, ref, watch, onUnmounted } from "vue";
 import DatePicker from "primevue/datepicker";
 import InputText from "primevue/inputtext";
 import Select from "primevue/select";
@@ -9,6 +9,7 @@ import { dateInputFormat } from "../i18n";
 import TopicTypeRadioGroup from "../topics/components/TopicTypeRadioGroup.vue";
 import TopicTypeRenderer from "../topics/TopicTypeRenderer.vue";
 import { topicNameTranslationKey, type TopicType } from "../topics/topicTypes";
+import { tours } from "../tours/tours";
 import TopicMoreOptions from "./TopicMoreOptions.vue";
 
 type TopicFormDraft = {
@@ -25,17 +26,32 @@ const props = defineProps<{
   sectionRequired?: boolean;
   initializeDefaults?: boolean;
   active?: boolean;
+  tourEnabled?: boolean;
   error?: string;
 }>();
 const emit = defineEmits<{ change: [patch: Partial<TopicFormDraft>] }>();
 const { t } = useI18n();
+const root = ref<HTMLElement | null>(null);
+let stopTour: (() => void) | undefined;
+watch([root, () => props.active, () => props.tourEnabled], ([element, visible, enabled]) => {
+  stopTour?.();
+  stopTour = undefined;
+  if (element && visible && enabled) {
+    stopTour = tours.topicOpened({
+      root: element,
+      select: (type) => emit("change", { type }),
+      isOpen: () => Boolean(props.active && element.isConnected),
+    });
+  }
+}, { flush: "post" });
+onUnmounted(() => stopTour?.());
 const hasFollowUp = computed(() =>
   props.modelValue.type !== "new_membership" && props.modelValue.type !== "recurring",
 );
 </script>
 
 <template>
-  <div class="topic-form-fields">
+  <div ref="root" class="topic-form-fields">
     <TopicTypeRadioGroup
       :id="`${id}-type`"
       :model-value="modelValue.type"

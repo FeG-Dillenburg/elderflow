@@ -9,7 +9,7 @@ import { E2eeKeyState } from './e2ee-key-state.entity';
 import { E2eeRecoveryCeremony } from './e2ee-recovery-ceremony.entity';
 import { ApproveRecoveryDto, RegisterClientEpochDto, StartRecoveryDto } from './dto/e2ee.dto';
 import { decodeBase64UrlEnvelope, validateKeyEnvelope } from './envelope-validator';
-import { isE2eeKeyOperator } from './e2ee-role-policy';
+import { isE2eeKeyOperator, isProtectedTextReader } from './e2ee-role-policy';
 import { Encoder } from 'cbor-x';
 import { E2eeContentKeyWrapper } from './e2ee-content-key-wrapper.entity';
 import {
@@ -189,7 +189,7 @@ export class E2eeService {
       writeGraceUntil: null,
     });
     try {
-      await this.dataSource.getRepository(E2eeClientEpoch).save(epoch);
+      await this.dataSource.getRepository(E2eeClientEpoch).insert(epoch);
     } catch {
       throw codedHttpException(HttpStatus.CONFLICT, 'E2EE_CLIENT_EPOCH_CONFLICT', 'Client epoch is already registered');
     }
@@ -499,13 +499,15 @@ export class E2eeService {
   }
 
   private assertContentUser(user: User): void {
-    if (!isE2eeKeyOperator(user.role)) {
+    if (!isProtectedTextReader(user.role)) {
       throw new ForbiddenException('Your role cannot access Protected-text keys');
     }
   }
 
   private assertKeyOperator(user: User): void {
-    this.assertContentUser(user);
+    if (!isE2eeKeyOperator(user.role)) {
+      throw new ForbiddenException('Your role cannot operate Protected-text keys');
+    }
   }
 
   private requiredKeyState(): Promise<E2eeKeyState> {

@@ -88,7 +88,7 @@ describe('taskResponse', () => {
     expect(JSON.stringify(result)).not.toContain('must-not-leak');
   });
 
-  it.each(['guest', 'it-admin'])('withholds all Protected ciphertext from %s', (role) => {
+  it.each(['it-admin'])('withholds all Protected ciphertext from %s', (role) => {
     const result = taskResponse(task, { role } as any);
 
     expect(result.protected).toBeNull();

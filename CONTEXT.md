@@ -137,8 +137,12 @@ Long-form Protected text embedded in Meeting preparation or the active Agenda th
 _Avoid_: Every Protected text field, standalone Update; Jedes geschützte Textfeld, eigenständige Aktualisierung
 
 **Content user (Inhaltsbenutzer)**:
-An authenticated user whose role permits access to confidential leadership content and who may therefore unlock Protected text. An IT admin is not a Content user and is never offered the Protected-text unlock flow.
+An authenticated user whose role permits access to confidential leadership content and who may therefore unlock Protected text. This includes read-only Guests. An IT admin is not a Content user and is never offered the Protected-text unlock flow.
 _Avoid_: Every user, IT admin; Jeder Benutzer, IT-Administrator
+
+**Protected-text reader (Leseberechtigter für geschützten Text)**:
+A Content user with the Superadmin, Admin, User, or Guest role who may obtain ordinary unlock wrappers, manage their own client epochs, and decrypt ciphertext allowed by existing resource permissions. This read policy does not grant content writes or Key-operator privileges.
+_Avoid_: Key operator, every user; Schlüsselverantwortlicher, jeder Benutzer
 
 **Protected-text unlock session (Entsperrsitzung für geschützten Text)**:
 The bounded period in one browser context after a Content user unlocks Protected text, during which plaintext and unwrapped key material may remain in memory. It is separate from the user's authentication session and does not create, expire, or rotate persistent encryption keys.

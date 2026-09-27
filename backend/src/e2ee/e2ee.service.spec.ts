@@ -88,7 +88,7 @@ describe('E2eeService', () => {
     )).resolves.toMatchObject({ participantRole: 'initiator' });
   });
 
-  it.each(['it-admin', 'guest'])('denies key state and recovery to the %s role', async (role) => {
+  it.each(['it-admin'])('denies key state and recovery to the %s role', async (role) => {
     const user = { id: `${role}-id`, role } as any;
 
     await expect(service.keyState(user)).rejects.toThrow(ForbiddenException);

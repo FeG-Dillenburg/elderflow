@@ -1,4 +1,26 @@
 const de = {
+  tours: {
+    help: 'Hilfe / Touren', firstLogin: 'Erste Anmeldung', newTopic: 'Dialog „Neues Thema“',
+    start: 'Starten', next: 'Weiter', skip: 'Überspringen', finish: 'Abschließen',
+    replayDescription: 'Du kannst eine Einführung jederzeit wiederholen. Abgeschlossene Touren bleiben abgeschlossen.',
+    unavailable: 'Der Tourfortschritt konnte nicht synchronisiert werden. Du kannst Elderflow weiter verwenden und die Tour unter Hilfe / Touren erneut starten.',
+    welcomeTitle: 'Willkommen bei Elderflow', encryptionTitle: 'Elderflow ist verschlüsselt', passphraseTitle: 'Verschlüsselungspasswort eingeben',
+    topicTitles: { generic: 'Themenart auswählen', person: 'Personenthemen', new_membership: 'Aufnahmethemen', recurring: 'Wiederkehrende Themen' },
+    steps: {
+      welcome: 'Entdecke Elderflow mit dieser Einführung. Wir beginnen mit dem Schutz deiner vertraulichen Inhalte.',
+      'protected-text-encryption': 'Vertrauliche Inhalte in Elderflow sind Ende-zu-Ende-verschlüsselt. Gib das gemeinsame Verschlüsselungspasswort ein, um sie auf diesem Gerät anzuzeigen.',
+      'protected-text-passphrase': 'Gib das Verschlüsselungspasswort ein, das du erhalten hast. Wähle Weiter, um zu entsperren oder ohne Entsperren fortzufahren. Die Tour wartet auf dich.',
+      'dashboard-overview': 'Das Dashboard zeigt die wichtigen Informationen, die gerade relevant sind.',
+      'meetings-navigation': 'Hier findest du alle vergangenen und bevorstehenden Sitzungen.',
+      'topics-navigation': 'Hier siehst du aktuelle Themen und kannst mit entsprechender Berechtigung neue hinzufügen.',
+      'profile-settings': 'In deinem Profil kannst du persönliche Angaben und Einstellungen wie die Sprache ändern.',
+      'sign-out': 'Hier kannst du dich abmelden und deine aktuelle Sitzung beenden.',
+      'topic-type-generic': 'Elderflow unterstützt vier Themenarten. Sie teilen Felder wie Name und Text und haben jeweils eigene Funktionen. Allgemeine Themen sind für gewöhnliche Anliegen gedacht. Wähle Person oder Weiter.',
+      'topic-type-person': 'Personenthemen betreffen eine Person oder Gruppe und ermöglichen aktuelle Mitteilungen, zum Beispiel Gebetsanliegen. Wähle Aufnahme oder Weiter.',
+      'topic-type-new-membership': 'Aufnahmethemen begleiten Mitgliedschaftsanträge mit Paten, Statustext und Phase. Wähle Wiederkehrend oder Weiter.',
+      'topic-type-recurring': 'Wiederkehrende Themen erscheinen regelmäßig in Sitzungen. Lege Intervall und Standardposition fest und beschreibe im Text, was besprochen oder getan werden soll. Nach Abschluss kannst du vor dem Speichern jede Themenart wählen.',
+    },
+  },
   common: {
     add: 'Hinzufügen', cancel: 'Abbrechen', close: 'Schließen', create: 'Erstellen', delete: 'Löschen', edit: 'Bearbeiten', save: 'Speichern', loading: 'Wird geladen…',
     yes: 'Ja', no: 'Nein', none: 'Keine', unassigned: 'Nicht zugewiesen', actions: 'Aktionen', date: 'Datum', status: 'Status', name: 'Name',

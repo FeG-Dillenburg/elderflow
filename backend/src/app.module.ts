@@ -1,3 +1,4 @@
+import { ToursModule } from './tours/tours.module';
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
@@ -61,6 +62,7 @@ import { ExternalAuthModule } from './external-auth/external-auth.module';
     SetupModule,
     E2eeModule,
     ExternalAuthModule,
+    ToursModule,
   ],
   controllers: [AppController],
   providers: [

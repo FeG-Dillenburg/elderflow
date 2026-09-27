@@ -95,7 +95,7 @@ describe("Protected-text unlock dialog", () => {
     );
     expect(wrapper.text()).toContain("Unlock Protected text");
     expect(wrapper.text()).toContain("Continue without unlocking");
-    expect(wrapper.text()).toContain("I do not know the passphrase");
+    expect(wrapper.text()).not.toContain("I do not know the passphrase");
     expect(wrapper.text()).toContain(
       "Unlocking decrypts Protected text only in this browser session.",
     );

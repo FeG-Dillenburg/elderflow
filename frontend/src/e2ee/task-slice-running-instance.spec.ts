@@ -150,7 +150,7 @@ evidence('Task E2EE running instance', () => {
     });
     expect(guestResponse.status).toBe(200);
     const guestTasks = await guestResponse.json() as EncryptedTaskResponse[];
-    expect(guestTasks.find(({ id }) => id === taskId)?.protected).toBeNull();
+    expect(guestTasks.find(({ id }) => id === taskId)?.protected).not.toBeNull();
     expect(JSON.stringify(guestTasks)).not.toContain(marker);
 
     const itAdminResponse = await fetch(`${evidenceApiUrl}/api/tasks?status=done`, {
