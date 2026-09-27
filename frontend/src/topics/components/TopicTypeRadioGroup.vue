@@ -58,12 +58,10 @@ const options = computed(() =>
 .topic-type-selector :deep(.p-selectbutton) {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.25rem;
 }
 
 .topic-type-selector :deep(.p-togglebutton) {
   flex: 1 1 auto;
-  border-radius: var(--p-border-radius-sm);
 }
 
 .topic-type-selector :deep(.p-togglebutton-label) {
