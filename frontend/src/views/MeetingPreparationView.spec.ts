@@ -26,7 +26,7 @@ const stubs = {
   Tag: true,
   RichTextEditor: true,
   Draggable: {
-    props: ["list", "group", "itemKey", "handle", "sort"],
+    props: ["list", "group", "itemKey", "handle", "sort", "setData"],
     template: '<div class="draggable"><slot v-for="(element, index) in list" name="item" :element="element" :index="index" /><slot name="footer" /></div>',
   },
 };
@@ -116,6 +116,27 @@ describe("MeetingPreparationView", () => {
     await flushPromises();
     return wrapper;
   };
+  it("marks agenda and suggestion drags without exposing card text", async () => {
+    const wrapper = await view();
+    await (wrapper.vm as any).toggleFutureTopics();
+    await flushPromises();
+    const sources = wrapper.findAllComponents(stubs.Draggable);
+    expect(sources).toHaveLength(4);
+    for (const source of sources) {
+      const values = new Map<string, string>([["text/plain", "Old card text"]]);
+      const dataTransfer = {
+        clearData: () => values.clear(),
+        setData: (type: string, value: string) => values.set(type, value),
+      };
+      const card = document.createElement("article");
+      card.textContent = "Topic name BIUA 🔗 Private note";
+      expect(source.props("setData")).toBeTypeOf("function");
+      source.props("setData")(dataTransfer, card);
+      expect([...values.keys()]).toEqual(["application/x-elderflow-agenda-card"]);
+      expect([...values.values()].join("")).not.toContain("Private note");
+    }
+  });
+
   it("loads, groups ordered agenda items, and records loading errors", async () => {
     const wrapper = await view();
     const vm: any = wrapper.vm;

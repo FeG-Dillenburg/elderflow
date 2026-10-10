@@ -15,6 +15,7 @@ import { auth } from "../../auth/auth";
 import { createCollaboratorPresentation } from "../../e2ee/collaborator-presentation";
 import type { MeetingTextTarget } from "./core";
 import { tryUseMeetingWorkspace } from "./vue";
+import { preventAgendaCardDrop } from "../agenda-drag";
 import { meetingEditorBinding } from "./editor-binding";
 
 const props = withDefaults(defineProps<{
@@ -94,10 +95,13 @@ const editor = binding ? useEditor({
       render: renderCollaborationCaret,
     }),
   ],
-  editorProps: { attributes: {
-    "aria-label": props.ariaLabel ?? props.placeholder ?? "",
-    ...(props.ariaDescription ? { "aria-description": props.ariaDescription } : {}),
-  } },
+  editorProps: {
+    handleDOMEvents: { drop: preventAgendaCardDrop },
+    attributes: {
+      "aria-label": props.ariaLabel ?? props.placeholder ?? "",
+      ...(props.ariaDescription ? { "aria-description": props.ariaDescription } : {}),
+    },
+  },
   onUpdate: ({ editor: current }) => {
     model.value = current.getHTML();
   },

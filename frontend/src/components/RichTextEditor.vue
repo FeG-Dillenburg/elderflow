@@ -3,6 +3,7 @@ import { useEditor } from "@tiptap/vue-3";
 import { computed, onBeforeUnmount, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { meetingRichTextExtensions } from "./meeting-rich-text-extensions";
+import { preventAgendaCardDrop } from "../meetings/agenda-drag";
 import RichTextEditorFrame from "./RichTextEditorFrame.vue";
 
 const props = withDefaults(defineProps<{
@@ -33,10 +34,13 @@ const editor = useEditor({
   extensions: [
     ...extensions,
   ],
-  editorProps: { attributes: {
-    "aria-label": props.ariaLabel ?? resolvedPlaceholder.value,
-    ...(props.ariaDescription ? { "aria-description": props.ariaDescription } : {}),
-  } },
+  editorProps: {
+    handleDOMEvents: { drop: preventAgendaCardDrop },
+    attributes: {
+      "aria-label": props.ariaLabel ?? resolvedPlaceholder.value,
+      ...(props.ariaDescription ? { "aria-description": props.ariaDescription } : {}),
+    },
+  },
   onUpdate: ({ editor: current }) => {
     model.value = current.getHTML();
   },
