@@ -191,6 +191,17 @@ describe("MeetingsService encrypted transaction boundaries", () => {
     expect(manager.save).not.toHaveBeenCalledWith(MeetingDocumentMutation, expect.anything());
   });
 
+  it("rejects insertion into an ambiguous section before writing an appearance", async () => {
+    manager.find.mockResolvedValue([{ id: "first", position: 1 }, { id: "second", position: 1 }]);
+    await expect(service.addTopic("meeting", {
+      id: "appearance", mutationId: "mutation", topicId: "topic", sectionId: "section",
+      initialUpdateEnvelope: "opaque",
+    } as never, user)).rejects.toMatchObject({
+      response: expect.objectContaining({ code: "AGENDA_POSITIONS_INVALID" }),
+    });
+    expect(documents.appendUpdate).not.toHaveBeenCalled();
+  });
+
   it("records structure, opaque update, and idempotency marker in one transaction", async () => {
     await service.addTopic("meeting", {
       id: "appearance",

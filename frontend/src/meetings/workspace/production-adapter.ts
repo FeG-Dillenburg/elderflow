@@ -5,6 +5,7 @@ import {
   type MeetingParticipant,
   type MeetingTopic,
   type MeetingTopicAddition,
+  type MeetingTopicPatch,
   type StructuralTopicFieldPatch,
   type Topic,
 } from "../../api/domain";
@@ -135,7 +136,7 @@ export interface MeetingRouteOperations {
   addTopics(inputs: MeetingTopicAddition[]): Promise<MeetingTopic[]>;
   removeTopic(appearanceId: string): Promise<void>;
   reorderAgenda(items: Array<{ id: string; sectionId: string; position: number }>): Promise<MeetingTopic[]>;
-  updateAppearance(item: MeetingTopic, options?: { deferred?: boolean }): Promise<MeetingTopic>;
+  updateAppearance(appearanceId: string, patch: MeetingTopicPatch): Promise<MeetingTopic>;
   updateTopicFields(appearanceId: string, input: StructuralTopicFieldPatch): Promise<Topic>;
   updateTopic(topicId: string, input: Partial<import("../../api/domain").TopicInput>): Promise<Topic>;
 }
@@ -167,9 +168,8 @@ export const createMeetingRouteOperations = (
     addTopics: (inputs) => mutate(() => api.addMeetingTopics(meetingId, inputs)),
     removeTopic: (appearanceId) => mutate(() => api.removeMeetingTopic(meetingId, appearanceId)),
     reorderAgenda: (items) => mutate(() => api.reorderMeetingTopics(meetingId, items)),
-    updateAppearance: (item, options) => mutate(() => options
-      ? api.updateMeetingTopic(meetingId, item, options)
-      : api.updateMeetingTopic(meetingId, item)),
+    updateAppearance: (appearanceId, patch) => mutate(() =>
+      api.updateMeetingTopic(meetingId, appearanceId, patch)),
     updateTopicFields: (appearanceId, input) => mutate(() =>
       api.updateMeetingTopicFields(meetingId, appearanceId, input)),
     updateTopic: (topicId, input) => mutate(() => api.updateTopic(topicId, input)),

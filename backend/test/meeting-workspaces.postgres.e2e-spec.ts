@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import { randomUUID } from 'node:crypto';
 import { INestApplication } from '@nestjs/common';
 import { HttpAdapterHost } from '@nestjs/core';
 import { Test } from '@nestjs/testing';
@@ -265,6 +266,50 @@ describeWithPostgres('Encrypted Meeting workspaces with PostgreSQL', () => {
       .rejects.toMatchObject({
         response: expect.objectContaining({ code: 'E2EE_UPDATE_REPLAY' }),
       });
+  });
+
+  it('preserves relative order when inserting a forgotten topic, then postponing and refreshing', async () => {
+    const original = await database.getRepository(Topic).findOneByOrFail({ id: topicId });
+    const additions = await database.getRepository(Topic).save([
+      { ...original, id: randomUUID() }, { ...original, id: randomUUID() },
+    ]);
+    const envelope = (clock: number) => signedUpdate(
+      clock, documentId, snapshotId, secondEpochId, secondNoncePrefix, secondSigningPrivateKey,
+    );
+    const second = await service.addTopic(meetingId, {
+      id: randomUUID(), mutationId: randomUUID(), topicId: additions[0].id,
+      sectionId, initialUpdateEnvelope: envelope(2),
+    }, viewer);
+    await service.reorderTopics(meetingId, [
+      { id: second.id, sectionId, position: 1 },
+      { id: appearanceId, sectionId, position: 2 },
+    ]);
+    const forgotten = await service.addTopic(meetingId, {
+      id: randomUUID(), mutationId: randomUUID(), topicId: additions[1].id,
+      sectionId, position: 2, initialUpdateEnvelope: envelope(3),
+    }, viewer);
+    await service.updateTopic(meetingId, appearanceId, { plannedDuration: 1 });
+    await service.updateTopic(meetingId, appearanceId, { deferred: true });
+    const refreshed = await service.findOne(meetingId, viewer);
+    expect(refreshed.agenda.map((item) => [item.id, item.position])).toEqual([
+      [second.id, 1], [forgotten.id, 2], [appearanceId, 3],
+    ]);
+    expect(refreshed.agenda[2]).toMatchObject({ plannedDuration: 1, status: 'planned' });
+    expect(refreshed.agenda[2].deferredAt).toBeTruthy();
+    await expect(service.reorderTopics(meetingId, [
+      { id: second.id, sectionId, position: 1 },
+      { id: appearanceId, sectionId, position: 2 },
+    ])).rejects.toMatchObject({ response: expect.objectContaining({ code: 'AGENDA_CHANGED' }) });
+    await expect(service.reorderTopics(meetingId, [
+      { id: second.id, sectionId, position: 1 },
+      { id: forgotten.id, sectionId, position: 1 },
+      { id: appearanceId, sectionId, position: 2 },
+    ])).rejects.toMatchObject({ response: expect.objectContaining({ code: 'AGENDA_POSITIONS_INVALID' }) });
+    await service.removeTopic(meetingId, second.id);
+    await service.removeTopic(meetingId, forgotten.id);
+    expect((await service.findOne(meetingId, viewer)).agenda[0]).toMatchObject({
+      id: appearanceId, position: 1, plannedDuration: 1,
+    });
   });
 
   it('atomically moves recurrence structure with an independent target update', async () => {

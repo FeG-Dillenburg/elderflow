@@ -389,15 +389,7 @@ describe("domain API client", () => {
     const fetch = vi.fn().mockResolvedValue(response({}));
     vi.stubGlobal("fetch", fetch);
     await api.topic("topic");
-    await api.updateMeetingTopic("meeting", {
-      id: "item",
-      sectionId: "section",
-      position: 2,
-      agendaNote: null,
-      plannedDuration: 10,
-      status: "planned",
-      ignored: "x",
-    } as any, { deferred: true });
+    await api.updateMeetingTopic("meeting", "item", { deferred: true });
     await api.deleteSection("section");
     expect(fetch.mock.calls.map((call) => [call[0], call[1]?.method])).toEqual([
       ["/api/topics/topic", undefined],
@@ -405,12 +397,18 @@ describe("domain API client", () => {
       ["/api/agenda-sections/section", "DELETE"],
     ]);
     expect(JSON.parse(fetch.mock.calls[1][1].body)).toEqual({
-      sectionId: "section",
-      position: 2,
-      plannedDuration: 10,
-      status: "planned",
       deferred: true,
     });
+  });
+  it("sends only the intended duration or status patch, including one minute and clearing", async () => {
+    const fetch = vi.fn().mockResolvedValue(response({}));
+    vi.stubGlobal("fetch", fetch);
+    await api.updateMeetingTopic("meeting", "item", { plannedDuration: 1 });
+    await api.updateMeetingTopic("meeting", "item", { status: "done" });
+    await api.updateMeetingTopic("meeting", "item", { plannedDuration: null });
+    expect(fetch.mock.calls.map((call) => JSON.parse(call[1].body))).toEqual([
+      { plannedDuration: 1 }, { status: "done" }, { plannedDuration: null },
+    ]);
   });
   it("serializes an optional insertion position and complete transactional reorder payload", async () => {
     const fetch = vi.fn().mockResolvedValue(response({}));

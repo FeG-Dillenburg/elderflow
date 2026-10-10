@@ -1269,7 +1269,7 @@ export const api = {
     }
   },
   reorderMeetingTopics: (meetingId: string, items: Array<{ id: string; sectionId: string; position: number }>) => request<MeetingTopic[]>(`/api/meetings/${meetingId}/topics/order`, { method: 'PUT', body: JSON.stringify({ items }) }),
-  updateMeetingTopic: (meetingId: string, item: MeetingTopic, options?: { deferred?: boolean }) => request<MeetingTopic>(`/api/meetings/${meetingId}/topics/${item.id}`, { method: 'PUT', body: JSON.stringify({ sectionId: item.sectionId, position: item.position, plannedDuration: item.plannedDuration, status: item.status, deferred: options?.deferred }) }),
+  updateMeetingTopic: (meetingId: string, appearanceId: string, patch: MeetingTopicPatch) => request<MeetingTopic>(`/api/meetings/${meetingId}/topics/${appearanceId}`, { method: 'PUT', body: JSON.stringify({ plannedDuration: patch.plannedDuration, status: patch.status, deferred: patch.deferred }) }),
   updateMeetingTopicFields: async (
     meetingId: string,
     itemId: string,
@@ -1358,4 +1358,8 @@ export const toLocalDate = (date: Date | null): string | null => {
   const month = String(date.getMonth() + 1).padStart(2, '0');
   const day = String(date.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
+};
+
+export type MeetingTopicPatch = Partial<Pick<MeetingTopic, 'plannedDuration' | 'status'>> & {
+  deferred?: boolean;
 };

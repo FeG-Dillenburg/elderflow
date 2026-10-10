@@ -278,6 +278,25 @@ describe("MeetingAgendaView", () => {
     await vm.removeParticipant("user-1");
     expect(api.removeParticipant).toHaveBeenCalledWith("meeting-1", "user-1");
   });
+  it("does not resend retained structure after the global status refresh", async () => {
+    const wrapper = await view();
+    const vm: any = wrapper.vm;
+    const stale = structuredClone(vm.meeting.agenda[0]);
+    vi.spyOn(api, "updateTopic").mockImplementation(async () => {
+      Object.assign(workspaceMeeting.agenda[0], {
+        sectionId: "new-section", position: 2, plannedDuration: 1,
+      });
+      return {} as any;
+    });
+    const save = vi.spyOn(api, "updateMeetingTopic").mockResolvedValue({} as any);
+    await vm.toggleDone(stale);
+    expect(save).toHaveBeenCalledWith("meeting-1", "item-1", {
+      status: "done", deferred: undefined,
+    });
+    expect(vm.meeting.agenda[0]).toMatchObject({
+      sectionId: "new-section", position: 2, plannedDuration: 1,
+    });
+  });
   it("defers, toggles completion, moves, and saves a meeting with local date/time mapping", async () => {
     const wrapper = await view();
     const vm: any = wrapper.vm;
@@ -293,8 +312,8 @@ describe("MeetingAgendaView", () => {
     );
     expect(api.updateMeetingTopic).toHaveBeenLastCalledWith(
       "meeting-1",
-      expect.anything(),
-      { deferred: true },
+      "item-1",
+      { status: undefined, deferred: true },
     );
     item.topic.status = "deferred";
     await vm.toggleDeferred(item);
@@ -304,8 +323,8 @@ describe("MeetingAgendaView", () => {
     );
     expect(api.updateMeetingTopic).toHaveBeenLastCalledWith(
       "meeting-1",
-      expect.anything(),
-      { deferred: false },
+      "item-1",
+      { status: undefined, deferred: false },
     );
     await vm.toggleDone(item);
     expect(api.updateTopic).toHaveBeenLastCalledWith(
@@ -322,7 +341,8 @@ describe("MeetingAgendaView", () => {
     );
     expect(api.updateMeetingTopic).toHaveBeenLastCalledWith(
       "meeting-1",
-      expect.objectContaining({ status: "planned" }),
+      "item-1",
+      { status: "planned", deferred: undefined },
     );
     const other = { ...item, id: "item-2", position: 2 };
     await vm.move([item, other], 0, 1);
