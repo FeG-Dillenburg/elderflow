@@ -308,8 +308,7 @@ const saveDuration = async (item: MeetingTopic, duration: number | null) => {
     .catch(() => undefined)
     .then(async () => {
       try {
-        await operations.updateAppearance({
-          ...item,
+        await operations.updateAppearance(item.id, {
           plannedDuration: normalizedDuration,
         });
       } catch (cause) {

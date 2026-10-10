@@ -12,6 +12,7 @@ import {
   IsUUID,
   Min,
   ValidateNested,
+  ValidateIf,
 } from "class-validator";
 
 export class MeetingEncryptedScalarsDto {
@@ -79,11 +80,11 @@ export class MeetingDocumentUpdateDto {
 }
 
 export class UpdateMeetingTopicDto {
-  @IsUUID() sectionId: string;
-  @IsInt() @Min(1) position: number;
   @IsOptional() @IsInt() @Min(1) plannedDuration?: number | null;
-  @IsIn(["planned", "discussed", "skipped", "moved", "done"]) status: string;
-  @IsOptional() @IsBoolean() deferred?: boolean;
+  @ValidateIf((_object, value) => value !== undefined)
+  @IsIn(["planned", "discussed", "skipped", "moved", "done"]) status?: string;
+  @ValidateIf((_object, value) => value !== undefined)
+  @IsBoolean() deferred?: boolean;
 }
 
 export class MeetingTopicOrderItemDto {

@@ -166,18 +166,13 @@ const setTopicStatus = async (item: MeetingTopic, status: string) => {
       ? "done"
       : item.status === "done"
         ? "planned"
-        : item.status;
-    const appearance = {
-      ...item,
-      status: appearanceStatus,
-    };
+        : undefined;
     const deferred = status === "deferred" ? true : wasDeferred ? false : undefined;
-    if (deferred === undefined) {
-      await operations.updateAppearance(appearance);
-    } else {
-      await operations.updateAppearance(appearance, { deferred });
-    }
-    } catch {
+    await operations.updateAppearance(item.id, {
+      status: appearanceStatus,
+      deferred,
+    });
+  } catch {
     error.value = t("meetingAgenda.topicStatusFailed");
   }
 };

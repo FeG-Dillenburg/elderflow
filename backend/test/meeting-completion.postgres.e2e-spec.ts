@@ -1,3 +1,8 @@
+import { INestApplication, ValidationPipe } from '@nestjs/common';
+import { Test } from '@nestjs/testing';
+import request from 'supertest';
+import { MeetingsController } from '../src/meetings/meetings.controller';
+import { MeetingCollaborationTicketService } from '../src/meetings/meeting-collaboration-ticket.service';
 import 'dotenv/config';
 import { DataSource } from 'typeorm';
 import { AgendaSection } from '../src/agenda-sections/agenda-section.entity';
@@ -167,6 +172,79 @@ describeWithPostgres('Meeting completion with PostgreSQL (integration)', () => {
     });
   });
 
+  describe('Agenda patch requests with real persistence', () => {
+    let app: INestApplication;
+    const patch = (input: object) => request(app.getHttpServer())
+      .put(`/api/meetings/${meeting.id}/topics/${appearance.id}`).send(input);
+    const reorder = (items: unknown[]) => request(app.getHttpServer())
+      .put(`/api/meetings/${meeting.id}/topics/order`).send({ items });
+
+    beforeAll(async () => {
+      const module = await Test.createTestingModule({
+        controllers: [MeetingsController],
+        providers: [
+          { provide: MeetingsService, useValue: service },
+          { provide: MeetingCollaborationTicketService, useValue: {} },
+        ],
+      }).compile();
+      app = module.createNestApplication();
+      app.useGlobalPipes(new ValidationPipe({
+        transform: true, whitelist: true, forbidNonWhitelisted: true,
+      }));
+      await app.init();
+    });
+    afterAll(async () => { await app?.close(); });
+
+    it('preserves a newer section and one-minute duration through stale status and duration requests', async () => {
+      const section = await database.getRepository(AgendaSection).save({ name: 'Moved', position: 2 });
+      const moved = { id: appearance.id, sectionId: section.id, position: 1 };
+      await reorder([moved]).expect(200);
+      await patch({ plannedDuration: 1 }).expect(200);
+      const done = await patch({ status: 'done', deferred: true }).expect(200);
+      expect(done.body).toMatchObject({ ...moved, plannedDuration: 1, status: 'done' });
+      expect(done.body.deferredAt).toBeTruthy();
+      const duration = await patch({ plannedDuration: 2 }).expect(200);
+      expect(duration.body).toMatchObject({ ...moved, plannedDuration: 2, status: 'done' });
+      expect(duration.body.deferredAt).toBe(done.body.deferredAt);
+      await patch({ plannedDuration: null }).expect(200);
+      expect((await patch({ deferred: false }).expect(200)).body).toMatchObject({
+        ...moved, plannedDuration: null, status: 'done', deferredAt: null,
+      });
+    });
+
+    it('serializes overlapping reorder, status and duration writes without losing unrelated fields', async () => {
+      const section = await database.getRepository(AgendaSection).save({ name: 'Moved', position: 2 });
+      const moved = { id: appearance.id, sectionId: section.id, position: 1 };
+      await Promise.all([
+        reorder([moved]).expect(200),
+        patch({ status: 'done', deferred: true }).expect(200),
+        patch({ plannedDuration: 1 }).expect(200),
+      ]);
+      const result = await patch({}).expect(200);
+      expect(result.body).toMatchObject({ ...moved, status: 'done', plannedDuration: 1 });
+      expect(result.body.deferredAt).toBeTruthy();
+    });
+
+    it('rejects legacy structural patches and malformed ordering without changing the agenda', async () => {
+      await patch({ sectionId: appearance.sectionId, position: 1, status: 'done' }).expect(400);
+      for (const items of [
+        [{ id: appearance.id, sectionId: appearance.sectionId, position: 2 }],
+        [{ id: appearance.id, sectionId: appearance.sectionId, position: 1 },
+          { id: appearance.id, sectionId: appearance.sectionId, position: 2 }],
+      ]) await reorder(items).expect(400);
+      expect((await patch({}).expect(200)).body).toMatchObject({
+        position: 1, plannedDuration: 15, status: 'planned',
+      });
+    });
+
+    it('rejects patch and reorder requests once the meeting is completed', async () => {
+      await database.getRepository(Meeting).update(meeting.id, { status: 'completed' });
+      expect((await patch({ plannedDuration: 1 }).expect(409)).body.code)
+        .toBe('MEETING_COMPLETED_IMMUTABLE');
+      await reorder([{ id: appearance.id, sectionId: appearance.sectionId, position: 1 }]).expect(409);
+    });
+  });
+
   it('rolls back snapshots and status as one real transaction', async () => {
     jest.spyOn(snapshots, 'apply').mockRejectedValueOnce(new Error('snapshot failed'));
 
@@ -234,8 +312,6 @@ describeWithPostgres('Meeting completion with PostgreSQL (integration)', () => {
     const completion = service.complete(meeting.id, leader);
     await started;
     const mutation = service.updateTopic(meeting.id, appearance.id, {
-      sectionId: appearance.sectionId,
-      position: appearance.position,
       plannedDuration: appearance.plannedDuration,
       status: appearance.status,
     });

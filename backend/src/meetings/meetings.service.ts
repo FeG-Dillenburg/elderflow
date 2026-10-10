@@ -545,6 +545,13 @@ export class MeetingsService {
         where: { meetingId, sectionId: input.sectionId },
         order: { position: "ASC" },
       });
+      if (items.some((item, index) => item.position !== index + 1)) {
+        throw codedHttpException(
+          HttpStatus.CONFLICT,
+          "AGENDA_POSITIONS_INVALID",
+          "Positions must be consecutive and start at 1; reorder the agenda before inserting",
+        );
+      }
       const position = input.position ?? recurrencePosition ?? items.length + 1;
       if (position > items.length + 1) {
         throw codedHttpException(HttpStatus.BAD_REQUEST, "AGENDA_POSITION_INVALID", "Position must be within the agenda section");
@@ -609,8 +616,9 @@ export class MeetingsService {
       await lockedMutableMeeting(manager, meetingId);
       const item = await manager.findOneBy(MeetingTopic, { id, meetingId });
       if (!item) throw codedHttpException(HttpStatus.NOT_FOUND, "AGENDA_TOPIC_NOT_FOUND", "Agenda topic not found");
-      const { deferred, ...changes } = input;
-      Object.assign(item, changes);
+      const { deferred, status, plannedDuration } = input;
+      if (status !== undefined) item.status = status;
+      if (plannedDuration !== undefined) item.plannedDuration = plannedDuration;
       if (deferred === true && !item.deferredAt) item.deferredAt = new Date();
       if (deferred === false) item.deferredAt = null;
       return manager.save(MeetingTopic, item);
