@@ -31,7 +31,7 @@ defineProps<{
       </PersonTopicNote>
       <span v-if="canEdit" class="lifecycle-actions">
         <TopicDoneButton
-          :done="item.topic?.status === 'done'"
+          :done="item.topicStatusDecision === 'done'"
           size="small"
           @toggle="markDone"
         />

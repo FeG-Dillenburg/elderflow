@@ -80,6 +80,8 @@ export class MeetingDocumentUpdateDto {
 }
 
 export class UpdateMeetingTopicDto {
+  @ValidateIf((_object, value) => value !== undefined)
+  @IsIn(["done", "deferred", null]) topicStatusDecision?: "done" | "deferred" | null;
   @IsOptional() @IsInt() @Min(1) plannedDuration?: number | null;
   @ValidateIf((_object, value) => value !== undefined)
   @IsIn(["planned", "discussed", "skipped", "moved", "done"]) status?: string;

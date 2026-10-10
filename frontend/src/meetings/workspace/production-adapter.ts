@@ -62,12 +62,15 @@ const collaborationFor = (meetingId: string): MeetingWorkspaceCollaboration => {
         if (provider.status === "discarded" && provider.terminalCode !== "MEETING_COMPLETED_IMMUTABLE") protectedText.lock("authorization-loss");
       };
       provider.addEventListener("status", stateChanged);
+      const agendaChanged = () => listener("structure");
+      provider.addEventListener("agenda-changed", agendaChanged);
       const presenceChanged = () => listener("presence");
       provider.awareness.on("change", presenceChanged);
       const documentChanged = () => listener("document");
       provider.document?.on("updateV2", documentChanged);
       return () => {
         provider.removeEventListener("status", stateChanged);
+        provider.removeEventListener("agenda-changed", agendaChanged);
         provider.awareness.off("change", presenceChanged);
         provider.document?.off("updateV2", documentChanged);
       };

@@ -74,6 +74,10 @@ const completionTimestamp = computed(() => props.entry.meeting.completedAt || pr
         </p>
       </header>
 
+      <p v-if="entry.topicStatusDecision" class="topic-decision">
+        {{ t(`meetingAgenda.${entry.meeting.status === 'completed' ? 'recorded' : 'pending'}${entry.topicStatusDecision === 'done' ? 'Done' : 'Deferred'}`) }}
+      </p>
+
       <section
         v-if="showTopicSnapshot"
         class="topic-snapshot"

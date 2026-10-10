@@ -19,6 +19,8 @@ import { MeetingMutationCompaction1720000017000 } from './1720000017000-MeetingM
 import { KeyRotationCeremonies1720000018000 } from './1720000018000-KeyRotationCeremonies';
 import { ExternalAuthentication1720000019000 } from './1720000019000-ExternalAuthentication';
 
+import { MeetingTopicStatusDecisions1720000020000 } from './1720000020000-MeetingTopicStatusDecisions';
+
 export const migrations = [
   CreateUsers1720000000000,
   CreateAgendaDomain1720000001000,
@@ -40,4 +42,5 @@ export const migrations = [
   MeetingMutationCompaction1720000017000,
   KeyRotationCeremonies1720000018000,
   ExternalAuthentication1720000019000,
+  MeetingTopicStatusDecisions1720000020000,
 ];

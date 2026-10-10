@@ -22,6 +22,20 @@ describe('TopicHistoryTimeline', () => {
     },
   };
 
+  it('distinguishes a pending Meeting decision from its completed historical decision', async () => {
+    const entry: TopicHistoryEntry = {
+      id: 'appearance', kind: 'meeting_appearance', appearanceId: 'appearance',
+      effectiveAt: '2026-07-15T20:00:00', deferredAt: null,
+      topicStatusDecision: 'done', meeting: { ...meeting, status: 'in_progress' },
+      section: null, topic: { type: 'generic', name: 'Topic', responsibleUserDisplayName: null, membershipProcessStatus: null, membershipStatusSignal: null, godparents: null },
+      preparationContext: null, personNote: null, meetingMinutes: null,
+    };
+    const wrapper = mount(TopicHistoryTimeline, { props: { entries: [entry] }, ...options });
+    expect(wrapper.text()).toContain('Done in this Meeting; applies to the Topic when the Meeting finishes.');
+    await wrapper.setProps({ entries: [{ ...entry, meeting }] });
+    expect(wrapper.text()).toContain('This Meeting marked the Topic done.');
+  });
+
   it('renders mixed semantic entries in contract order and keeps Meeting contents together', () => {
     const longNote = `<p>${'Long historical context '.repeat(30)}</p>`;
     const entries: TopicHistoryEntry[] = [

@@ -346,6 +346,7 @@ export class TopicsService {
       position: appearance.position,
       plannedDuration: appearance.plannedDuration,
       status: appearance.status,
+      topicStatusDecision: appearance.topicStatusDecision,
       deferredAt: appearance.deferredAt,
       meeting: appearance.meeting
         ? {

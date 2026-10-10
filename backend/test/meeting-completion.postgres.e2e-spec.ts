@@ -1,3 +1,5 @@
+import { MeetingTopicStatusDecisions1720000020000 } from '../src/database/migrations/1720000020000-MeetingTopicStatusDecisions';
+import { randomUUID } from 'node:crypto';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
@@ -172,6 +174,24 @@ describeWithPostgres('Meeting completion with PostgreSQL (integration)', () => {
     });
   });
 
+  it('upgrades existing PostgreSQL appearances without replaying legacy statuses', async () => {
+    await database.getRepository(MeetingTopic).update(appearance.id, { status: 'done', deferredAt: new Date('2026-07-01T12:00:00Z') });
+    const before = await database.getRepository(MeetingTopic).findOneByOrFail({ id: appearance.id });
+    const runner = database.createQueryRunner();
+    await runner.connect();
+    try {
+      await runner.query(`SET search_path TO "${schema}"`);
+      await runner.query('ALTER TABLE meeting_topics DROP COLUMN topic_status_decision');
+      await new MeetingTopicStatusDecisions1720000020000().up(runner);
+    } finally {
+      await runner.query('RESET search_path');
+      await runner.release();
+    }
+    expect(await database.getRepository(MeetingTopic).findOneByOrFail({ id: appearance.id })).toEqual(before);
+    await service.complete(meeting.id, leader);
+    expect((await database.getRepository(Topic).findOneByOrFail({ id: appearance.topicId })).status).toBe('open');
+  });
+
   describe('Agenda patch requests with real persistence', () => {
     let app: INestApplication;
     const patch = (input: object) => request(app.getHttpServer())
@@ -194,6 +214,18 @@ describeWithPostgres('Meeting completion with PostgreSQL (integration)', () => {
       await app.init();
     });
     afterAll(async () => { await app?.close(); });
+
+    it('persists only the final explicit decision and leaves the global Topic and structure unchanged', async () => {
+      const done = await patch({ topicStatusDecision: 'done' }).expect(200);
+      expect(done.body).toMatchObject({ topicStatusDecision: 'done', status: 'planned', plannedDuration: 15, position: 1 });
+      expect((await database.getRepository(Topic).findOneByOrFail({ id: appearance.topicId })).status).toBe('open');
+      await patch({ topicStatusDecision: 'deferred' }).expect(200);
+      expect((await patch({}).expect(200)).body.topicStatusDecision).toBe('deferred');
+      await patch({ topicStatusDecision: null }).expect(200);
+      expect((await patch({}).expect(200)).body.topicStatusDecision).toBeNull();
+      await service.complete(meeting.id, leader);
+      expect((await database.getRepository(Topic).findOneByOrFail({ id: appearance.topicId })).status).toBe('open');
+    });
 
     it('preserves a newer section and one-minute duration through stale status and duration requests', async () => {
       const section = await database.getRepository(AgendaSection).save({ name: 'Moved', position: 2 });
@@ -245,6 +277,56 @@ describeWithPostgres('Meeting completion with PostgreSQL (integration)', () => {
     });
   });
 
+  it.each(['done', 'deferred'] as const)('atomically applies %s after notes settle, retries failure, and never replays completion', async (decision) => {
+    await service.updateTopic(meeting.id, appearance.id, { topicStatusDecision: decision === 'done' ? 'deferred' : 'done' });
+    await service.updateTopic(meeting.id, appearance.id, { topicStatusDecision: decision });
+    jest.spyOn(snapshots, 'apply').mockRejectedValueOnce(new Error('snapshot failed'));
+    await expect(service.complete(meeting.id, leader)).rejects.toThrow('snapshot failed');
+    expect((await database.getRepository(Topic).findOneByOrFail({ id: appearance.topicId })).status).toBe('open');
+    expect((await database.getRepository(MeetingTopic).findOneByOrFail({ id: appearance.id })).topicStatusDecision).toBe(decision);
+
+    const documentId = '00000000-0000-4000-8000-000000000099';
+    coordinator.join(documentId, 'client');
+    const completion = service.complete(meeting.id, leader);
+    while (!coordinator.current(documentId)) await new Promise((resolve) => setTimeout(resolve, 5));
+    const barrierId = coordinator.current(documentId)!.barrierId;
+    expect((await database.getRepository(Topic).findOneByOrFail({ id: appearance.topicId })).status).toBe('open');
+    await database.getRepository(MeetingDocument).update({ meetingId: meeting.id }, { currentServerSequence: '1' });
+    await coordinator.completionDrained(documentId, barrierId, 'client');
+    coordinator.confirmCompletion(documentId, barrierId, 'client', '1');
+    await completion;
+    coordinator.disconnected(documentId, 'client');
+    expect((await database.getRepository(Topic).findOneByOrFail({ id: appearance.topicId })).status).toBe(decision);
+    expect((await database.getRepository(MeetingDocument).findOneByOrFail({ meetingId: meeting.id })).completedServerSequence).toBe('1');
+    const completed = await database.getRepository(MeetingTopic).findOneByOrFail({ id: appearance.id });
+    expect(completed.topicStatusDecision).toBe(decision);
+    expect(Boolean(completed.deferredAt)).toBe(decision === 'deferred');
+    await database.getRepository(Topic).update(appearance.topicId, { status: 'open' });
+    await expect(service.complete(meeting.id, leader)).rejects.toMatchObject({
+      response: expect.objectContaining({ code: 'MEETING_COMPLETION_INVALID_STATUS' }),
+    });
+    expect((await database.getRepository(Topic).findOneByOrFail({ id: appearance.topicId })).status).toBe('open');
+  });
+
+  it.each([null, 'deferred'] as const)('completes an older unfinished meeting later with decision %s in completion order', async (olderDecision) => {
+    const older = await database.getRepository(Meeting).save({
+      ...meeting, id: randomUUID(), date: '2026-07-01',
+    });
+    await database.getRepository(MeetingDocument).save({
+      id: randomUUID(), activeSnapshotId: randomUUID(), meetingId: older.id, currentServerSequence: '0', envelopeFormat: 1, cryptoSuite: 1, meetingCodec: 2,
+    });
+    const olderAppearance = await database.getRepository(MeetingTopic).save({
+      ...appearance, id: randomUUID(), meetingId: older.id, topicStatusDecision: olderDecision,
+    });
+    await service.updateTopic(meeting.id, appearance.id, { topicStatusDecision: 'done' });
+    await service.complete(meeting.id, leader);
+    expect((await database.getRepository(Topic).findOneByOrFail({ id: appearance.topicId })).status).toBe('done');
+    expect(await database.getRepository(MeetingTopic).findOneByOrFail({ id: olderAppearance.id })).toEqual(olderAppearance);
+    await service.complete(older.id, leader);
+    expect((await database.getRepository(Topic).findOneByOrFail({ id: appearance.topicId })).status).toBe(olderDecision ?? 'done');
+    expect((await database.getRepository(MeetingTopic).findOneByOrFail({ id: appearance.id })).topicStatusDecision).toBe('done');
+  });
+
   it('rolls back snapshots and status as one real transaction', async () => {
     jest.spyOn(snapshots, 'apply').mockRejectedValueOnce(new Error('snapshot failed'));
 
@@ -267,6 +349,7 @@ describeWithPostgres('Meeting completion with PostgreSQL (integration)', () => {
     ['status', 'MEETING_COMPLETION_INVALID_STATUS'],
     ['session', 'MEETING_COMPLETION_FORBIDDEN'],
   ])('revalidates %s after draining and releases the failed claim', async (change, code) => {
+    await service.updateTopic(meeting.id, appearance.id, { topicStatusDecision: 'done' });
     const documentId = '00000000-0000-4000-8000-000000000099';
     coordinator.join(documentId, 'client');
     const completion = service.complete(meeting.id, leader);
@@ -279,6 +362,8 @@ describeWithPostgres('Meeting completion with PostgreSQL (integration)', () => {
     await coordinator.completionDrained(documentId, barrierId, 'client');
     coordinator.confirmCompletion(documentId, barrierId, 'client', '0');
     await rejected;
+    expect((await database.getRepository(Topic).findOneByOrFail({ id: appearance.topicId })).status).toBe('open');
+    expect((await database.getRepository(MeetingTopic).findOneByOrFail({ id: appearance.id })).topicStatusDecision).toBe('done');
     expect(coordinator.current(documentId)).toBeNull();
     coordinator.disconnected(documentId, 'client');
     await expect(database.getRepository(MeetingDocument).findOneByOrFail({ meetingId: meeting.id }))

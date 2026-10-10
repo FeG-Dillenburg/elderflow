@@ -246,6 +246,27 @@ describe("Meeting workspace contract", () => {
     expect(workspace.state.meeting).toBeNull();
   });
 
+  it("refreshes remote decisions while minutes stay editable and pending text remains present", async () => {
+    let loaded = meeting({ status: "in_progress" });
+    let notify!: Parameters<NonNullable<MeetingWorkspaceCollaboration["subscribe"]>>[0];
+    const { collaboration } = setup(loaded);
+    Object.assign(collaboration, { pending: true });
+    collaboration.subscribe = (listener) => { notify = listener; return () => undefined; };
+    const workspace = createMeetingWorkspace("meeting-1", {
+      load: async () => ({ meeting: loaded, unlocked: true }),
+      connect: async () => collaboration,
+      complete: vi.fn(),
+    });
+    await workspace.open();
+    loaded = { ...loaded, agenda: loaded.agenda!.map((item) => ({ ...item, topicStatusDecision: "done" })) };
+    notify("structure");
+    await vi.waitFor(() => expect(workspace.state.meeting?.agenda?.[0].topicStatusDecision).toBe("done"));
+    expect(workspace.text({ kind: "meeting_minutes_text", appearanceId: "generic-appearance" }).value).toBe("Minutes");
+    expect(workspace.text({ kind: "meeting_minutes_text", appearanceId: "generic-appearance" }).editable).toBe(true);
+    expect(workspace.state.pendingChanges).toBe(true);
+    await workspace.close({ discard: true });
+  });
+
   it("publishes remote edits, collaborator presence, and temporary offline state", async () => {
     let loaded = meeting();
     let notify: ((change?: "state" | "document") => void) | undefined;
