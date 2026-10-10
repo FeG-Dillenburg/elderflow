@@ -44,6 +44,9 @@ export class MeetingTopic {
   @Column({ type: 'text', default: 'planned' })
   status: string;
 
+  @Column({ name: 'topic_status_decision', type: 'text', nullable: true })
+  topicStatusDecision: 'done' | 'deferred' | null;
+
   @Column({ name: 'deferred_at', type: 'timestamptz', nullable: true })
   deferredAt: Date | null;
 

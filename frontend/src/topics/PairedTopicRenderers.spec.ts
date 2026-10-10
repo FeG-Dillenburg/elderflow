@@ -5,6 +5,8 @@ import GenericTopicPreparation from "./types/generic/GenericTopicPreparation.vue
 import NewMembershipTopicAppearance from "./types/new-membership/NewMembershipTopicAppearance.vue";
 import NewMembershipTopicPreparation from "./types/new-membership/NewMembershipTopicPreparation.vue";
 import RecurringTopicAgenda from "./types/recurring/RecurringTopicAgenda.vue";
+import PersonTopicAgenda from "./types/person/PersonTopicAgenda.vue";
+import NewMembershipTopicAgenda from "./types/new-membership/NewMembershipTopicAgenda.vue";
 import PersonTopicPreparation from "./types/person/PersonTopicPreparation.vue";
 
 const item = (type: string) => ({
@@ -30,6 +32,21 @@ const saves = {
 };
 
 describe("paired Topic renderers", () => {
+  it.each([
+    ['generic', GenericTopicAgenda],
+    ['person', PersonTopicAgenda],
+    ['new_membership', NewMembershipTopicAgenda],
+  ])('uses the local Done decision for %s while minutes remain editable', async (type, component) => {
+    const appearance = { ...item(type), topicStatusDecision: 'done' };
+    appearance.topic.status = 'open';
+    const wrapper = shallowMount(component, {
+      props: { item: appearance, canEdit: true, canWriteMinutes: true, meetingStatus: 'in_progress', users: [], saveField: vi.fn() } as any,
+    });
+    expect(wrapper.getComponent({ name: 'TopicDoneButton' }).props('done')).toBe(true);
+    await wrapper.setProps({ item: { ...appearance, topicStatusDecision: null, topic: { ...appearance.topic, status: 'done', membershipStatusSignal: 'nearly_finished' } } });
+    expect(wrapper.getComponent({ name: 'TopicDoneButton' }).props('done')).toBe(false);
+  });
+
   it("adds direct preparation-context editing to Generic preparation", () => {
     const wrapper = shallowMount(GenericTopicPreparation, {
       props: {

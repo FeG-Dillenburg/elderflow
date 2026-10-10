@@ -99,14 +99,14 @@ const saveCurrentMinutes = (text: string | null) =>
       <span />
       <span>
         <Button
-          :aria-pressed="item.topic?.status === 'deferred'"
-          :label="item.topic?.status === 'deferred' ? t('meetingAgenda.deferred') : t('meetingAgenda.defer')"
-          :severity="item.topic?.status === 'deferred' ? 'danger' : 'secondary'"
+          :aria-pressed="item.topicStatusDecision === 'deferred'"
+          :label="item.topicStatusDecision === 'deferred' ? t('meetingAgenda.deferred') : t('meetingAgenda.defer')"
+          :severity="item.topicStatusDecision === 'deferred' ? 'danger' : 'secondary'"
           text
           @click="toggleDeferred"
         />
         <TopicDoneButton
-          :done="item.topic?.status === 'done'"
+          :done="item.topicStatusDecision === 'done'"
           @toggle="markDone"
         />
       </span>

@@ -83,6 +83,14 @@ export class MeetingsService {
           where: { meetingId: id },
           relations: { topic: { responsibleUser: true } },
         });
+        // Lock Topics in a stable order across Meetings that share appearances.
+        for (const appearance of [...appearances].sort((left, right) => left.topicId.localeCompare(right.topicId))) {
+          if (!appearance.topicStatusDecision) continue;
+          await manager.update(Topic, appearance.topicId, { status: appearance.topicStatusDecision });
+          appearance.topic!.status = appearance.topicStatusDecision;
+          appearance.status = appearance.topicStatusDecision === "done" ? "done" : "planned";
+          appearance.deferredAt = appearance.topicStatusDecision === "deferred" ? new Date() : null;
+        }
         for (const appearance of appearances) {
           const topic = appearance.topic!;
           appearance.topicNameSnapshotEnvelope = topic.nameEnvelope;
@@ -612,17 +620,22 @@ export class MeetingsService {
   }
 
   async updateTopic(meetingId: string, id: string, input: UpdateMeetingTopicDto): Promise<MeetingTopic> {
-    return this.dataSource.transaction(async (manager) => {
+    const updated = await this.dataSource.transaction(async (manager) => {
       await lockedMutableMeeting(manager, meetingId);
       const item = await manager.findOneBy(MeetingTopic, { id, meetingId });
       if (!item) throw codedHttpException(HttpStatus.NOT_FOUND, "AGENDA_TOPIC_NOT_FOUND", "Agenda topic not found");
-      const { deferred, status, plannedDuration } = input;
+      const { deferred, status, plannedDuration, topicStatusDecision } = input;
+      if (topicStatusDecision !== undefined) item.topicStatusDecision = topicStatusDecision;
       if (status !== undefined) item.status = status;
       if (plannedDuration !== undefined) item.plannedDuration = plannedDuration;
       if (deferred === true && !item.deferredAt) item.deferredAt = new Date();
       if (deferred === false) item.deferredAt = null;
       return manager.save(MeetingTopic, item);
     });
+    if (input.topicStatusDecision !== undefined) {
+      meetingCollaborationEvents.emit("agenda-changed", { meetingId });
+    }
+    return updated;
   }
 
   async updateTopicFields(

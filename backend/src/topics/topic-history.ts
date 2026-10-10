@@ -40,6 +40,7 @@ export interface MeetingAppearanceHistoryEntry {
   kind: 'meeting_appearance';
   effectiveAt: string;
   appearanceId: string | null;
+  topicStatusDecision: "done" | "deferred" | null;
   deferredAt: string | null;
   meeting: TopicHistoryMeeting;
   section: { id: string; name: string } | null;

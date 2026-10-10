@@ -74,6 +74,17 @@ const completionTimestamp = computed(() => props.entry.meeting.completedAt || pr
         </p>
       </header>
 
+      <p v-if="entry.topicStatusDecision" class="topic-decision">
+        <i
+          v-if="entry.topicStatusDecision === 'done'"
+          class="pi pi-check"
+          aria-hidden="true"
+        />
+        <span>
+          {{ t(`meetingAgenda.${entry.meeting.status === 'completed' ? 'recorded' : 'pending'}${entry.topicStatusDecision === 'done' ? 'Done' : 'Deferred'}`) }}
+        </span>
+      </p>
+
       <section
         v-if="showTopicSnapshot"
         class="topic-snapshot"
@@ -231,6 +242,19 @@ const completionTimestamp = computed(() => props.entry.meeting.completedAt || pr
 .meeting-minute-taker.after-section::before {
   margin-right: 0.65rem;
   content: "·";
+}
+
+.topic-decision {
+  display: flex;
+  align-items: baseline;
+  gap: 0.45rem;
+  margin: 0;
+  padding: 0.9rem 1.1rem;
+}
+
+.topic-decision i {
+  flex: none;
+  color: var(--p-green-600);
 }
 
 .topic-snapshot,

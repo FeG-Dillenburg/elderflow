@@ -47,7 +47,7 @@ export interface MeetingWorkspaceCollaboration {
   readonly editingPaused?: boolean;
   readonly discardedChanges?: boolean;
   readonly collaborators: readonly MeetingWorkspaceCollaborator[];
-  subscribe?(listener: (change?: "state" | "document" | "presence") => void): () => void;
+  subscribe?(listener: (change?: "state" | "document" | "presence" | "structure") => void): () => void;
   close(): void | Promise<void>;
 }
 
@@ -247,6 +247,7 @@ export const createMeetingWorkspace = (
         }
         if (change !== "presence") syncActivity += 1;
         publish({ ...state, phase: completing ? "syncing" : collaboration.phase, pendingChanges: pending(), syncActivity, collaborators: collaboration.collaborators });
+        if (change === "structure") void workspace.refresh().catch(() => undefined);
         if (change === "document") {
           if (backend.readText && state.meeting) {
             try {

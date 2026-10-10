@@ -157,29 +157,21 @@ const addParticipant = async () => {
 const removeParticipant = async (userId: string) => {
   await operations.removeParticipant(userId);
 };
-const setTopicStatus = async (item: MeetingTopic, status: string) => {
+const setTopicStatus = async (
+  item: MeetingTopic,
+  topicStatusDecision: "done" | "deferred" | null,
+) => {
   error.value = "";
   try {
-    const wasDeferred = item.topic?.status === "deferred";
-    await operations.updateTopic(item.topicId, { status });
-    const appearanceStatus = status === "done"
-      ? "done"
-      : item.status === "done"
-        ? "planned"
-        : undefined;
-    const deferred = status === "deferred" ? true : wasDeferred ? false : undefined;
-    await operations.updateAppearance(item.id, {
-      status: appearanceStatus,
-      deferred,
-    });
+    await operations.updateAppearance(item.id, { topicStatusDecision });
   } catch {
     error.value = t("meetingAgenda.topicStatusFailed");
   }
 };
 const toggleDeferred = (item: MeetingTopic) =>
-  setTopicStatus(item, item.topic?.status === "deferred" ? "open" : "deferred");
+  setTopicStatus(item, item.topicStatusDecision === "deferred" ? null : "deferred");
 const toggleDone = (item: MeetingTopic) =>
-  setTopicStatus(item, item.topic?.status === "done" ? "open" : "done");
+  setTopicStatus(item, item.topicStatusDecision === "done" ? null : "done");
 const move = async (
   items: MeetingTopic[],
   index: number,
@@ -384,6 +376,13 @@ onMounted(async () => {
                 :toggle-deferred="() => toggleDeferred(item)"
                 :mark-done="() => toggleDone(item)"
               />
+              <p
+                v-if="item.topicStatusDecision"
+                class="topic-decision"
+                role="status"
+              >
+                {{ t(`meetingAgenda.${isCompleted ? 'recorded' : 'pending'}${item.topicStatusDecision === 'done' ? 'Done' : 'Deferred'}`) }}
+              </p>
               <div v-if="canEdit" class="topic-actions">
                 <Button
                   :disabled="itemIndex === 0"
@@ -865,7 +864,16 @@ onMounted(async () => {
   align-items: start;
 }
 
+.topic-decision {
+  grid-column: 1;
+  color: #536f9f;
+  margin: 0.35rem 0 0;
+  font-size: 0.85rem;
+}
+
 .topic-actions {
+  grid-column: 2;
+  grid-row: 1;
   display: flex;
 }
 

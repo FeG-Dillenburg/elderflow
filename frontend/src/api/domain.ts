@@ -236,6 +236,7 @@ export interface MeetingTopic {
   meetingMinutes?: VersionedMeetingText | null;
   source?: AgendaAppearanceSource;
   contentEditedAt?: string | null;
+  topicStatusDecision?: "done" | "deferred" | null;
   deferredAt?: string | null;
   plannedDuration: number | null;
   status: string;
@@ -335,6 +336,7 @@ export type TopicHistoryEntry =
       kind: 'meeting_appearance';
       effectiveAt: string;
       appearanceId: string | null;
+      topicStatusDecision?: 'done' | 'deferred' | null;
       deferredAt: string | null;
       meeting: TopicHistoryMeeting;
       section: Pick<AgendaSection, 'id' | 'name'> | null;
@@ -1269,7 +1271,7 @@ export const api = {
     }
   },
   reorderMeetingTopics: (meetingId: string, items: Array<{ id: string; sectionId: string; position: number }>) => request<MeetingTopic[]>(`/api/meetings/${meetingId}/topics/order`, { method: 'PUT', body: JSON.stringify({ items }) }),
-  updateMeetingTopic: (meetingId: string, appearanceId: string, patch: MeetingTopicPatch) => request<MeetingTopic>(`/api/meetings/${meetingId}/topics/${appearanceId}`, { method: 'PUT', body: JSON.stringify({ plannedDuration: patch.plannedDuration, status: patch.status, deferred: patch.deferred }) }),
+  updateMeetingTopic: (meetingId: string, appearanceId: string, patch: MeetingTopicPatch) => request<MeetingTopic>(`/api/meetings/${meetingId}/topics/${appearanceId}`, { method: 'PUT', body: JSON.stringify({ plannedDuration: patch.plannedDuration, status: patch.status, deferred: patch.deferred, topicStatusDecision: patch.topicStatusDecision }) }),
   updateMeetingTopicFields: async (
     meetingId: string,
     itemId: string,
@@ -1361,5 +1363,6 @@ export const toLocalDate = (date: Date | null): string | null => {
 };
 
 export type MeetingTopicPatch = Partial<Pick<MeetingTopic, 'plannedDuration' | 'status'>> & {
+  topicStatusDecision?: "done" | "deferred" | null;
   deferred?: boolean;
 };

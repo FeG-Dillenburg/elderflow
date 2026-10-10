@@ -55,6 +55,51 @@ describe("EncryptedMeetingCollaborationProvider", () => {
     vi.unstubAllGlobals();
   });
 
+  it("refreshes structural decisions after reconnecting when an agenda notification was missed", async () => {
+    vi.spyOn(meetingDocumentSession, "encryptAwareness").mockResolvedValue("awareness");
+    const document = new Y.Doc();
+    document.getText("field").insert(0, "Preserved minutes");
+    let socket = new FakeSocket();
+    const provider = new EncryptedMeetingCollaborationProvider("meeting", document,
+      async () => ({ ticket: "ticket", documentId: "document", websocketPath: "/socket" }),
+      () => socket as unknown as WebSocket, undefined, async () => ({ parentChanged: false }));
+    const changed = vi.fn();
+    provider.addEventListener("agenda-changed", changed);
+    await provider.connect();
+    socket.open();
+    socket.receive({ type: "authenticated" });
+    await settle();
+    expect(changed).toHaveBeenCalledOnce();
+    socket.close();
+    // A decision changes on the server while this participant is offline.
+    socket = new FakeSocket();
+    await provider.connect();
+    socket.open();
+    socket.receive({ type: "authenticated" });
+    await settle();
+    expect(changed).toHaveBeenCalledTimes(2);
+    expect(document.getText("field").toString()).toBe("Preserved minutes");
+    provider.destroy();
+  });
+
+  it("notifies the workspace of a remote agenda decision without replacing collaborative text", async () => {
+    const document = new Y.Doc();
+    document.getText("field").insert(0, "Minutes still being written");
+    const socket = new FakeSocket();
+    const provider = new EncryptedMeetingCollaborationProvider("meeting", document,
+      async () => ({ ticket: "ticket", documentId: "document", websocketPath: "/socket" }),
+      () => socket as unknown as WebSocket);
+    const changed = vi.fn();
+    provider.addEventListener("agenda-changed", changed);
+    await provider.connect();
+    socket.open();
+    socket.receive({ type: "agenda-changed" });
+    await settle();
+    expect(changed).toHaveBeenCalledOnce();
+    expect(document.getText("field").toString()).toBe("Minutes still being written");
+    provider.destroy();
+  });
+
   it("answers heartbeats without acknowledging or discarding pending edits, including while paused", async () => {
     const document = new Y.Doc();
     const socket = new FakeSocket();
