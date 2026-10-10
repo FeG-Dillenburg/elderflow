@@ -28,10 +28,12 @@ const previousDate = computed(() => previous.value?.date
     class="meeting-preparation-context"
   >
     <section v-if="hasPreviousContent" class="context-group">
-      <h4>{{ t("meetingPreparation.previousMeeting") }}</h4>
-      <small v-if="previousDate">
-        {{ formatDate(previousDate, { dateStyle: "short", timeStyle: "short" }) }}
-      </small>
+      <div class="context-heading">
+        <h4>{{ t("meetingPreparation.previousMeeting") }}</h4>
+        <small v-if="previousDate">
+          {{ formatDate(previousDate, { dateStyle: "short", timeStyle: "short" }) }}
+        </small>
+      </div>
       <div
         v-if="hasMeaningfulRichText(previous?.preparationContext?.text)"
         class="context-entry previous-preparation"
@@ -71,6 +73,13 @@ const previousDate = computed(() => previous.value?.date
 .context-group {
   display: grid;
   gap: 0.4rem;
+}
+
+.context-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.2rem 0.5rem;
 }
 
 h4 {
