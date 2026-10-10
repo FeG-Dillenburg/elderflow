@@ -1,3 +1,4 @@
+import { In, LessThan } from "typeorm";
 import { MeetingDocumentMutation } from "./meeting-document-mutation.entity";
 import { MeetingTopic } from "./meeting-topic.entity";
 import { MeetingsService } from "./meetings.service";
@@ -265,6 +266,44 @@ describe("MeetingsService encrypted transaction boundaries", () => {
     await expect(service.addTopic("meeting", input as never, user)).resolves.toBe(appearance);
     expect(documents.storedUpdateMatches).not.toHaveBeenCalled();
     expect(documents.appendUpdate).not.toHaveBeenCalled();
+  });
+
+  it("returns ordered preparation candidates without eagerly loading historical documents or person history", async () => {
+    const findOne = jest.fn().mockResolvedValue({ id: "meeting", date: "2026-11-01", beginTime: "19:00", status: "planned" });
+    const agenda = [
+      { id: "current", meetingId: "meeting", topicId: "topic", topic: { id: "topic", type: "generic" } },
+      { id: "person-current", meetingId: "meeting", topicId: "person", topic: { id: "person", type: "person" } },
+      { id: "other-current", meetingId: "meeting", topicId: "other-topic", topic: { id: "other-topic", type: "generic" } },
+    ];
+    const find = jest.fn()
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce(agenda)
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([
+        { id: "october", topicId: "topic", meetingId: "october-meeting", meeting: { date: "2026-10-01", beginTime: "19:00" } },
+        { id: "september", topicId: "topic", meetingId: "september-meeting", meeting: { date: "2026-09-01", beginTime: "19:00" } },
+        { id: "person-prior", topicId: "person", meetingId: "september-meeting", meeting: { date: "2026-09-01", beginTime: "19:00" } },
+      ]);
+    Object.assign(repository, { findOne, find });
+    documents.bootstrap.mockResolvedValue({ documentId: "document" });
+
+    const result = await service.findOne("meeting", user);
+
+    expect(result.agenda[0]).toMatchObject({ preparationHistory: [
+      { appearanceId: "october", meetingId: "october-meeting", date: "2026-10-01", beginTime: "19:00" },
+      { appearanceId: "september", meetingId: "september-meeting", date: "2026-09-01", beginTime: "19:00" },
+    ] });
+    expect(result.agenda[1]).toMatchObject({ preparationHistory: [], previousAppearance: null });
+    expect(result.agenda[2]).toMatchObject({ preparationHistory: [] });
+    expect(find.mock.calls[4][0]).toMatchObject({
+      where: [
+        { topicId: In(["topic", "other-topic"]), meeting: { date: LessThan("2026-11-01") } },
+        { topicId: In(["topic", "other-topic"]), meeting: { date: "2026-11-01", beginTime: LessThan("19:00") } },
+      ],
+      order: { meeting: { date: "DESC", beginTime: "DESC", id: "DESC" } },
+    });
+    expect(documents.bootstrap).toHaveBeenCalledTimes(1);
   });
 
   it("marks first appearances as new and suggests the most recent earlier section", async () => {

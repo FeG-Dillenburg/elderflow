@@ -18,3 +18,10 @@ export function sanitizeRichText(html: string | null | undefined): string {
   }
   return template.innerHTML;
 }
+
+
+export function hasMeaningfulRichText(html: string | null | undefined): boolean {
+  const template = document.createElement("template");
+  template.innerHTML = sanitizeRichText(html);
+  return Boolean(template.content.textContent?.replace(/[\s\u200B-\u200D\uFEFF]/g, ""));
+}

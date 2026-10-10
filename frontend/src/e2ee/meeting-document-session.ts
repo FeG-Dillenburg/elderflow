@@ -287,6 +287,17 @@ export class MeetingDocumentSession {
     }
   }
 
+  hasWorkspaceRevision(
+    sessionId: string,
+    revision: Pick<EncryptedWorkspace, "documentId" | "activeSnapshotId" | "currentServerSequence">,
+  ): boolean {
+    const loaded = this.documents.get(sessionId);
+    return this.keys !== null && loaded !== undefined
+      && loaded.documentId === revision.documentId
+      && loaded.activeSnapshotId === revision.activeSnapshotId
+      && String(loaded.currentServerSequence) === revision.currentServerSequence;
+  }
+
   hydrateFragments(meetingId: string, appearanceIds: Array<{ id: string; person: boolean }>) {
     const loaded = this.requiredDocument(meetingId);
     return {
