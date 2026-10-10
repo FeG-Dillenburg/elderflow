@@ -1,5 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { api, formatUser, meetingLabel, request, toLocalDate } from "./domain";
+import sodium from "libsodium-wrappers-sumo";
+import { bytesToBase64Url } from "../e2ee/protocol";
+import { meetingFragmentId } from "../e2ee/meeting-document-codec";
 import { Decoder, Encoder } from "cbor-x";
 import { meetingDocumentSession } from "../e2ee/meeting-document-session";
 import {
@@ -652,4 +655,162 @@ describe("domain API client", () => {
     expect(toLocalDate(null)).toBeNull();
     expect(toLocalDate(new Date(2026, 6, 15))).toBe("2026-07-15");
   });
+});
+
+
+describe("encrypted preparation history", () => {
+  const current = "00000000-0000-4000-8000-000000000301";
+  const october = "00000000-0000-4000-8000-000000000302";
+  const september = "00000000-0000-4000-8000-000000000303";
+  const epoch = "00000000-0000-4000-8000-000000000304";
+
+  afterEach(() => {
+    meetingDocumentSession.lock();
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  async function setup(text: string, minutes = "", options: {
+    unavailable?: "missing" | "corrupt";
+    type?: "generic" | "person";
+    olderPreparation?: string;
+  } = {}) {
+    const type = options.type ?? "generic";
+    await sodium.ready;
+    const signing = sodium.crypto_sign_seed_keypair(new Uint8Array(32).fill(9), "uint8array");
+    meetingDocumentSession.unlock({
+      organizationId: "00000000-0000-4000-8000-000000000305",
+      ockId: "00000000-0000-4000-8000-000000000306",
+      clientEpochId: epoch,
+      noncePrefix: new Uint8Array(16).fill(5),
+      contentKey: new Uint8Array(32).fill(6),
+      signingPrivateKey: signing.privateKey,
+    });
+    async function workspace(id: string, appearance: string, preparation: string, minutes: string) {
+      const initial = await meetingDocumentSession.createInitial(id);
+      const updates = [];
+      for (const [fragment, value] of [["preparationContext", preparation], ["meetingMinutes", minutes]] as const) {
+        const envelope = await meetingDocumentSession.createFragmentUpdate(id, meetingFragmentId(fragment, appearance), value);
+        updates.push({ clientEpochId: epoch, authorClock: String(updates.length + 1), signingPublicKey: bytesToBase64Url(signing.publicKey), envelope });
+      }
+      return { meetingId: id, documentId: initial.documentId, activeSnapshotId: initial.snapshotId, currentServerSequence: "2",
+        snapshot: { id: initial.snapshotId, clientEpochId: epoch, snapshotClock: "1", signingPublicKey: bytesToBase64Url(signing.publicKey), envelope: initial.snapshotEnvelope }, updates };
+    }
+    const currentWorkspace = await workspace(current, "current", "Current preparation", "");
+    const octoberWorkspace = await workspace(october, "october", text, minutes);
+    const septemberWorkspace = await workspace(september, "september", options.olderPreparation ?? "<p>September context</p>", "");
+    const dates = ["2026-09-01T18:59:00", "2026-09-01T19:00:00", "2026-09-01T19:01:00", "2026-11-01T19:00:00", "2026-11-01T19:01:00"];
+    const fetch = vi.fn().mockImplementation(async (url: string) => {
+      if (url === `/api/meetings/${current}`) return response({ id: current, protected: null, date: "2026-11-01", beginTime: "19:00", status: "planned", workspace: currentWorkspace,
+        agenda: [{ id: "current", meetingId: current, topicId: "topic", status: "planned", preparationHistory: [
+          { appearanceId: "october", meetingId: october, date: "2026-10-01", beginTime: "19:00", status: "deferred", documentRevision: { documentId: octoberWorkspace.documentId, activeSnapshotId: octoberWorkspace.activeSnapshotId, currentServerSequence: octoberWorkspace.currentServerSequence } },
+          { appearanceId: "september", meetingId: september, date: "2026-09-01", beginTime: "19:00", documentRevision: { documentId: septemberWorkspace.documentId, activeSnapshotId: septemberWorkspace.activeSnapshotId, currentServerSequence: septemberWorkspace.currentServerSequence } },
+        ], topic: { id: "topic", type, protected: null, updates: dates.map((date, i) => ({ id: `update-${i}`, topicId: "topic", type: "update", date, protected: null })) } }],
+      });
+      if (url === `/api/meetings/${october}/workspace`) return response(options.unavailable === "missing"
+        ? null
+        : options.unavailable === "corrupt"
+          ? { ...octoberWorkspace, snapshot: { ...octoberWorkspace.snapshot, envelope: "invalid" } }
+          : octoberWorkspace);
+      if (url === `/api/meetings/${september}/workspace`) return response(septemberWorkspace);
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetch);
+    vi.spyOn(Date, "now").mockReturnValue(new Date("2026-12-01T12:00:00").getTime());
+    return fetch;
+  }
+
+  it("skips formatting-only postponed notes and bounds updates by the selected scheduled meeting and historical cutoff", async () => {
+    await setup("<p><strong> &nbsp; </strong><br></p>");
+    const result = await api.meeting(current);
+    expect(result.agenda?.[0].previousAppearance).toMatchObject({ appearanceId: "september", date: "2026-09-01", preparationContext: { text: "<p>September context</p>" } });
+    expect(result.agenda?.[0].preparationUpdates?.map((update) => update.id)).toEqual(["update-2", "update-3"]);
+    expect(result.agenda?.[0].preparationContext?.text).toBe("Current preparation");
+  });
+  it.each([
+    ["<p>October preparation</p>", ""],
+    ["", "<p>October minutes</p>"],
+  ])("selects a meaningful postponed appearance with preparation %s or minutes %s", async (preparation, minutes) => {
+    const fetch = await setup(preparation, minutes);
+    const result = await api.meeting(current);
+    expect(result.agenda?.[0].previousAppearance?.appearanceId).toBe("october");
+    expect(fetch.mock.calls.map(([url]) => url)).not.toContain(`/api/meetings/${september}/workspace`);
+  });
+
+  it("reports unavailable history without skipping it or losing current notes", async () => {
+    const fetch = await setup("", "", { unavailable: "missing" });
+    const result = await api.meeting(current);
+    expect(result.agenda?.[0]).toMatchObject({ previousAppearance: null, preparationHistoryUnavailable: true, preparationUpdates: [], preparationContext: { text: "Current preparation" } });
+    expect(fetch.mock.calls.map(([url]) => url)).not.toContain(`/api/meetings/${september}/workspace`);
+  });
+
+  it("never loads Person Topic history and preserves its current editable note", async () => {
+    const fetch = await setup("Old person context", "", { type: "person" });
+    await meetingDocumentSession.createFragmentUpdate(current, meetingFragmentId("personNote", "current"), "Current person note");
+    // Preserve the real attached document while the structural response refreshes.
+    vi.spyOn(meetingCollaboration, "get").mockReturnValue({ synchronize: async () => {} } as never);
+    const result = await api.meeting(current);
+    expect(result.agenda?.[0]).toMatchObject({ previousAppearance: null, preparationUpdates: [], personNote: { text: "Current person note" } });
+    expect(fetch.mock.calls.map(([url]) => url)).toEqual([`/api/meetings/${current}`]);
+  });
+
+  it("includes updates only through now for upcoming preparation", async () => {
+    await setup("", "");
+    vi.spyOn(Date, "now").mockReturnValue(new Date("2026-09-01T19:01:00").getTime());
+    const result = await api.meeting(current);
+    expect(result.agenda?.[0].preparationUpdates?.map((update) => update.id)).toEqual(["update-2"]);
+  });
+
+  it("reuses unchanged prior documents across preparation reloads in the same unlock session", async () => {
+    const fetch = await setup("");
+    await api.meeting(current);
+    const result = await api.meeting(current);
+    expect(result.agenda?.[0].previousAppearance?.appearanceId).toBe("september");
+    expect(fetch.mock.calls.filter(([url]) => url === `/api/meetings/${october}/workspace`)).toHaveLength(1);
+    expect(fetch.mock.calls.filter(([url]) => url === `/api/meetings/${september}/workspace`)).toHaveLength(1);
+  });
+
+  it("shows all updates through the cutoff when every earlier appearance is empty", async () => {
+    await setup("   ", "<p><br></p>", { olderPreparation: "<p>&nbsp;</p>" });
+    const result = await api.meeting(current);
+    expect(result.agenda?.[0].previousAppearance).toBeNull();
+    expect(result.agenda?.[0].preparationUpdates?.map((update) => update.id)).toEqual(["update-0", "update-1", "update-2", "update-3"]);
+  });
+
+  it("does not treat an undecryptable appearance as empty", async () => {
+    const fetch = await setup("", "", { unavailable: "corrupt" });
+    const result = await api.meeting(current);
+    expect(result.agenda?.[0].preparationHistoryUnavailable).toBe(true);
+    expect(fetch.mock.calls.map(([url]) => url)).not.toContain(`/api/meetings/${september}/workspace`);
+  });
+
+  it("reloads a changed prior document instead of using a stale revision", async () => {
+    const fetch = await setup("");
+    await api.meeting(current);
+    const structural = await (await fetch(`/api/meetings/${current}`)).json();
+    structural.agenda[0].preparationHistory[0].documentRevision.currentServerSequence = "3";
+    fetch.mockResolvedValueOnce(response(structural));
+    await api.meeting(current);
+    expect(fetch.mock.calls.filter(([url]) => url === `/api/meetings/${october}/workspace`)).toHaveLength(2);
+  });
+
+  it("uses same-day scheduled start times and shows duplicate updates once in chronological order", async () => {
+    const fetch = await setup("October context");
+    const structural = await (await fetch(`/api/meetings/${current}`)).json();
+    structural.agenda[0].preparationHistory[0].date = "2026-11-01";
+    structural.agenda[0].preparationHistory[0].beginTime = "18:00";
+    structural.agenda[0].preparationHistory[1].date = "2026-11-01";
+    structural.agenda[0].preparationHistory[1].beginTime = "17:00";
+    const update = { id: "between-meetings", topicId: "topic", type: "update", date: "2026-11-01T18:30:00", protected: null };
+    structural.agenda[0].topic.updates = [
+      structural.agenda[0].topic.updates[3], update, update,
+      { ...update, id: "at-source-start", date: "2026-11-01T18:00:00" },
+      { ...update, id: "after-cutoff", date: "2026-11-01T19:01:00" },
+    ];
+    fetch.mockResolvedValueOnce(response(structural));
+    const result = await api.meeting(current);
+    expect(result.agenda?.[0].previousAppearance).toMatchObject({ appearanceId: "october", date: "2026-11-01", beginTime: "18:00" });
+    expect(result.agenda?.[0].preparationUpdates?.map((entry) => entry.id)).toEqual(["between-meetings", "update-3"]);
+  });
+
 });

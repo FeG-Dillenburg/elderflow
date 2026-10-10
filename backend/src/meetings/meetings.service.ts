@@ -226,6 +226,7 @@ export class MeetingsService {
         : Promise.resolve(null),
     ]);
     const topicIds = agenda.map((item) => item.topicId);
+    const historyTopicIds = agenda.filter((item) => item.topic?.type !== "person").map((item) => item.topicId);
     const [standaloneUpdates, tasks, earlierAppearances] = topicIds.length
       ? await Promise.all([
           this.updates.find({
@@ -239,30 +240,50 @@ export class MeetingsService {
             select: assignedTaskSummarySelect,
             order: { dueDate: "ASC" },
           }),
-          this.meetingTopics.find({
+          historyTopicIds.length ? this.meetingTopics.find({
             where: [
-              { topicId: In(topicIds), meeting: { date: LessThan(meeting.date) } },
+              { topicId: In(historyTopicIds), meeting: { date: LessThan(meeting.date) } },
               {
-                topicId: In(topicIds),
+                topicId: In(historyTopicIds),
                 meeting: { date: meeting.date, beginTime: LessThan(meeting.beginTime) },
               },
             ],
             relations: { meeting: true },
-            order: { meeting: { date: "DESC", beginTime: "DESC" } },
-          }),
+            order: { meeting: { date: "DESC", beginTime: "DESC", id: "DESC" } },
+          }) : Promise.resolve([]),
         ])
       : [[], [], []] as [TopicUpdate[], Task[], MeetingTopic[]];
-    const previousByTopic = new Map<string, MeetingTopic>();
-    for (const appearance of earlierAppearances) {
-      if (!previousByTopic.has(appearance.topicId)) previousByTopic.set(appearance.topicId, appearance);
-    }
-    const priorMeetingIds = isE2eeKeyOperator(user.role)
-      ? [...new Set([...previousByTopic.values()].map((item) => item.meetingId))]
+    const priorMeetingIds = [...new Set(earlierAppearances.map((item) => item.meetingId))];
+    const priorDocuments = isE2eeKeyOperator(user.role) && priorMeetingIds.length
+      ? await this.meetings.manager.find(MeetingDocument, {
+          where: { meetingId: In(priorMeetingIds) },
+          select: { meetingId: true, id: true, activeSnapshotId: true, currentServerSequence: true },
+        })
       : [];
-    const priorDocuments = (await Promise.all(
-      priorMeetingIds.map((priorMeetingId) =>
-        this.documents.bootstrap(this.meetings.manager, user, priorMeetingId)),
-    )).filter((value): value is NonNullable<typeof value> => value !== null);
+    const revisionsByMeeting = new Map(priorDocuments.map((document) => [document.meetingId, {
+      documentId: document.id,
+      activeSnapshotId: document.activeSnapshotId,
+      currentServerSequence: document.currentServerSequence,
+    }]));
+    const historyByTopic = new Map<string, Array<{
+      appearanceId: string;
+      meetingId: string;
+      date: string;
+      beginTime: string;
+      documentRevision: { documentId: string; activeSnapshotId: string | null; currentServerSequence: string } | null;
+    }>>();
+    for (const appearance of earlierAppearances) {
+      if (appearance.meetingId === id || !appearance.meeting) continue;
+      const history = historyByTopic.get(appearance.topicId) ?? [];
+      history.push({
+        appearanceId: appearance.id,
+        meetingId: appearance.meetingId,
+        date: appearance.meeting.date,
+        beginTime: appearance.meeting.beginTime,
+        documentRevision: revisionsByMeeting.get(appearance.meetingId) ?? null,
+      });
+      historyByTopic.set(appearance.topicId, history);
+    }
     return {
       ...meetingResponse(meeting, user),
       participants: participants.map((participant) => ({
@@ -279,16 +300,13 @@ export class MeetingsService {
           language: participant.user.language,
         } : null,
       })),
-      agenda: agenda.map((item) => this.appearanceResponse(
-        item,
-        standaloneUpdates,
-        tasks,
-        user,
-        previousByTopic.get(item.topicId),
-      )),
-      workspace: workspace
-        ? { ...workspace, priorDocuments }
-        : null,
+      agenda: agenda.map((item) => ({
+        ...this.appearanceResponse(item, standaloneUpdates, tasks, user),
+        preparationHistory: item.topic?.type === "person"
+          ? []
+          : historyByTopic.get(item.topicId) ?? [],
+      })),
+      workspace,
       collaboration: { available: meeting.status !== "completed" },
     };
   }
