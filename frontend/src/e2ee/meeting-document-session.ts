@@ -463,7 +463,6 @@ export class MeetingDocumentSession {
 
   async createCompaction(
     meetingId: string,
-    fragments: StableMeetingFragment[],
     expectedServerSequence?: number,
     stableDocumentState?: Uint8Array,
   ) {
@@ -479,10 +478,11 @@ export class MeetingDocumentSession {
       "SHA-256",
       Uint8Array.from(loaded.activeSnapshotEnvelope).buffer,
     ));
-    const stableDocument = stableDocumentState ? new Y.Doc() : null;
-    if (stableDocument && stableDocumentState) Y.applyUpdateV2(stableDocument, stableDocumentState);
-    const document = this.compactionDocument(stableDocument ?? loaded.document, fragments);
+    // Agenda metadata can be stale, including on a different client initiating compaction.
+    // Preserve every fragment; only PostgreSQL structure determines visible appearances.
+    const document = new Y.Doc();
     try {
+      Y.applyUpdateV2(document, stableDocumentState ?? Y.encodeStateAsUpdateV2(loaded.document));
       const envelope = await createEncryptedMeetingSnapshot({
         organizationId: keys.organizationId,
         documentId: loaded.documentId,
@@ -502,7 +502,6 @@ export class MeetingDocumentSession {
       return { snapshotId, snapshotEnvelope: bytesToBase64Url(envelope) };
     } finally {
       document.destroy();
-      stableDocument?.destroy();
     }
   }
 
@@ -626,26 +625,6 @@ export class MeetingDocumentSession {
     return clocks;
   }
 
-  private compactionDocument(
-    source: Y.Doc,
-    fragments: StableMeetingFragment[],
-  ): Y.Doc {
-    const compacted = new Y.Doc();
-    Y.applyUpdateV2(compacted, Y.encodeStateAsUpdateV2(source));
-    const retained = new Set<string>(fragments);
-    for (const name of compacted.share.keys()) {
-      const fragment = name.startsWith("tiptap:") ? name.slice(7) : name;
-      if (retained.has(fragment)) continue;
-      if (name.startsWith("tiptap:")) {
-        const shared = compacted.getXmlFragment(name);
-        if (shared.length) shared.delete(0, shared.length);
-      } else {
-        const shared = compacted.getText(name);
-        if (shared.length) shared.delete(0, shared.length);
-      }
-    }
-    return compacted;
-  }
 }
 
 export const meetingDocumentSession = new MeetingDocumentSession();

@@ -367,12 +367,7 @@ async function createEvidenceFixture(token: string, userId: string): Promise<voi
     barrierId: barrierA.barrierId,
     serverSequence: "100",
   });
-  const snapshot = await clientA.session.createCompaction(meetingId, [
-    "meeting/general-notes",
-    "meeting/opening-input",
-    meetingFragmentId("preparationContext", appearanceId),
-    meetingFragmentId("meetingMinutes", appearanceId),
-  ], 100);
+  const snapshot = await clientA.session.createCompaction(meetingId, 100);
   await binaryRequest(
     `/api/meetings/${meetingId}/workspace/compact`,
     token,

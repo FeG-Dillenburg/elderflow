@@ -4,7 +4,6 @@ import {
   requestWithBinaryBody,
   type Meeting,
 } from "../../api/domain";
-import { meetingFragmentId, type StableMeetingFragment } from "../../e2ee/meeting-document-codec";
 import {
   meetingDocumentSession,
   type EncryptedWorkspace,
@@ -53,11 +52,9 @@ const compactWorkspace = async (
   barrierId: string,
   serverSequence: string,
   stableDocumentState: Uint8Array,
-  fragments: StableMeetingFragment[],
 ): Promise<void> => {
   const snapshot = await meetingDocumentSession.createCompaction(
     meetingId,
-    fragments,
     Number(serverSequence),
     stableDocumentState,
   );
@@ -90,16 +87,6 @@ export const startMeetingCollaboration = async (meeting: Meeting): Promise<void>
       barrierId,
       serverSequence,
       stableDocumentState,
-      [
-        "meeting/general-notes",
-        "meeting/opening-input",
-        ...(meeting.agenda ?? []).flatMap((item) => item.topic?.type === "person"
-          ? [meetingFragmentId("personNote", item.id)]
-          : [
-              meetingFragmentId("preparationContext", item.id),
-              meetingFragmentId("meetingMinutes", item.id),
-            ]),
-      ],
     ),
     async () => {
       const workspace = await request<EncryptedWorkspace | null>(`/api/meetings/${id}/workspace`);
