@@ -460,6 +460,30 @@ describeWithPostgres('Encrypted Meeting workspaces with PostgreSQL', () => {
       return { socket, wait, send: (frame: object) => socket.send(JSON.stringify(frame)) };
     }
 
+    let proofCounter = 0;
+    function signedProof(recordId: string, fieldId: number) {
+      const nonce = Buffer.alloc(24);
+      nonce.set(noncePrefix);
+      nonce.writeBigUInt64BE(BigInt(++proofCounter), 16);
+      const header = [uuidBytes(organizationId), 261, uuidBytes(recordId), fieldId,
+        uuidBytes(ockId), uuidBytes(epochId), proofCounter, nonce];
+      const ciphertext = Buffer.alloc(272, 7);
+      const signature = sodium.crypto_sign_detached(Buffer.concat([
+        Buffer.from('ElderFlow signed envelope v1\0'), Buffer.from(encoder.encode([1, 4, 1, header, ciphertext])),
+      ]), signingPrivateKey);
+      return Buffer.from(encoder.encode([1, 4, 1, header, ciphertext, signature])).toString('base64url');
+    }
+    async function completeOverHttp() {
+      const prepared = await request(app.getHttpServer()).post(`/api/meetings/${meetingId}/completion/prepare`)
+        .send({ proofEnvelope: signedProof(meetingId, 2) });
+      if (prepared.status !== 201) return prepared;
+      const appearances = await database.getRepository(MeetingTopic).findBy({ meetingId });
+      return request(app.getHttpServer()).post(`/api/meetings/${meetingId}/complete`).send({
+        ...prepared.body, proofEnvelope: signedProof(prepared.body.barrierId, 1),
+        appearances: appearances.map((appearance) => ({ appearanceId: appearance.id, mentions: [] })),
+      });
+    }
+
     async function settleClients(peers: Awaited<ReturnType<typeof connect>>[]) {
       for (const peer of peers) {
         const barrier = await peer.wait('completion-barrier');
@@ -474,7 +498,7 @@ describeWithPostgres('Encrypted Meeting workspaces with PostgreSQL', () => {
     it('settles an edit from A before B completes and rejects every later write', async () => {
       const a = await connect();
       const b = await connect();
-      const completion = request(app.getHttpServer()).post(`/api/meetings/${meetingId}/complete`).then((result) => result);
+      const completion = completeOverHttp();
       const barrier = await a.wait('completion-barrier');
       const envelope = signedUpdate(3);
       a.send({ type: 'update', envelope });
@@ -504,7 +528,7 @@ describeWithPostgres('Encrypted Meeting workspaces with PostgreSQL', () => {
     it('times out a non-draining client and keeps the Meeting in progress', async () => {
       const a = await connect();
       await connect();
-      const completion = request(app.getHttpServer()).post(`/api/meetings/${meetingId}/complete`).then((result) => result);
+      const completion = completeOverHttp();
       const barrier = await a.wait('completion-barrier');
       a.send({ type: 'completion-drained', barrierId: barrier.barrierId });
       const response = await completion;
@@ -518,12 +542,12 @@ describeWithPostgres('Encrypted Meeting workspaces with PostgreSQL', () => {
     it('aborts on disconnect and succeeds on a later retry', async () => {
       const a = await connect();
       const b = await connect();
-      const completion = request(app.getHttpServer()).post(`/api/meetings/${meetingId}/complete`).then((result) => result);
+      const completion = completeOverHttp();
       await a.wait('completion-barrier');
       b.socket.close();
       expect((await completion).body.code).toBe('MEETING_COMPLETION_RETRY');
       await a.wait('completion-released');
-      const retry = request(app.getHttpServer()).post(`/api/meetings/${meetingId}/complete`).then((result) => result);
+      const retry = completeOverHttp();
       await settleClients([a]);
       expect((await retry).status).toBe(201);
     }, 15_000);

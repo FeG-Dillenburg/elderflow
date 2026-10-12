@@ -96,4 +96,13 @@ describe("Meeting completion barrier", () => {
     expect(coordinator.beginExternalUpdate("meeting")).toBe(true);
   });
 
+  it("expires finalization even after submission begins waiting for persistence", async () => {
+    jest.useFakeTimers();
+    const claim = await coordinator.beginCompletion("meeting", "document", "user", sequence);
+    coordinator.claimCompletionSubmission("meeting", claim.barrierId, "user", "7");
+    await jest.advanceTimersByTimeAsync(30_000);
+    expect(coordinator.current("document")).toBeNull();
+    expect(() => coordinator.assertClaim("meeting", claim.barrierId)).toThrow();
+  });
+
 });

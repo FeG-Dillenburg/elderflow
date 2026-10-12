@@ -19,7 +19,7 @@ export function mentionExtension(options: MentionEditorOptions = {}) {
     state.doc.descendants((node, position) => {
       if (!node.isText || node.marks.some((mark) => mark.type.name === "link" || mark.type.name === "code")) return;
       const value = node.text!;
-      const tokens = /(^|[\s([{])@([\p{L}\p{M}]+(?:[-’'][\p{L}\p{M}]+)*)(?=$|[\s,;:!?.)}\]])/gu;
+      const tokens = /(^|[\s([{])@([\p{L}\p{M}]+(?:[-’'][\p{L}\p{M}]+)*)(?=$|[\s\p{P}])/gu;
       for (const match of value.matchAll(tokens)) {
         const end = match.index! + match[0].length;
         const from = position + match.index! + match[1].length;
@@ -27,7 +27,7 @@ export function mentionExtension(options: MentionEditorOptions = {}) {
         const before = resolved.parent.textBetween(0, resolved.parentOffset).at(-1);
         const after = state.doc.textBetween(position + end, Math.min(state.doc.content.size, position + end + 1));
         if (before && !/[\s([{]/u.test(before)) continue;
-        if (after && !/[\s,;:!?.)}\]]/u.test(after)) continue;
+        if (after && (!/[\s\p{P}]/u.test(after) || /[-’'/_@#\p{Pc}]/u.test(after))) continue;
         if (value[end] === "." && /[\p{L}\p{M}\d]/u.test(value[end + 1] ?? "")) continue;
         if (end === value.length && !allowEnd) continue;
         const candidates = users().filter((user) => user.firstName.normalize("NFC").toLocaleLowerCase()
@@ -82,6 +82,7 @@ export function mentionExtension(options: MentionEditorOptions = {}) {
   }).configure({
     HTMLAttributes: { class: "mention" },
     suggestion: {
+      shouldShow: ({ transaction }) => !transaction.getMeta("y-sync$"),
       items: ({ query }) => users().filter((user) =>
         `${user.firstName} ${user.lastName}`.toLocaleLowerCase().includes(query.toLocaleLowerCase())),
       command: ({ editor, range, props }) => {
@@ -139,7 +140,7 @@ export function mentionExtension(options: MentionEditorOptions = {}) {
           onKeyDown: ({ event }) => {
             if (event.key === "Escape") { close(); return true; }
             if (!list) return false;
-            if (event.key === "Enter") { choose(active); return true; }
+            if (event.key === "Enter" && current.items[active]) { choose(active); return true; }
             if (event.key === "ArrowDown" || event.key === "ArrowUp") {
               active = (active + (event.key === "ArrowDown" ? 1 : -1) + current.items.length) % (current.items.length || 1);
               draw(current); return true;

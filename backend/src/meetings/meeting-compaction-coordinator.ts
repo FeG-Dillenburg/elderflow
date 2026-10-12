@@ -292,7 +292,7 @@ export class MeetingCompactionCoordinator {
       || barrier.completion.confirmed.size !== barrier.participants.size) return;
     barrier.phase = "finalizing";
     clearTimeout(barrier.timeout);
-    barrier.timeout = setTimeout(() => this.abort(barrier.documentId, barrier.id), 30_000);
+    barrier.timeout = setTimeout(() => this.fail(barrier.meetingId, barrier.id), 30_000);
     barrier.completion.resolve({ barrierId: barrier.id, serverSequence: barrier.serverSequence });
   }
 
@@ -302,7 +302,7 @@ export class MeetingCompactionCoordinator {
       || barrier.meetingId !== meetingId || barrier.compactorUserId !== userId
       || barrier.serverSequence !== sequence) throw this.completionAborted();
     barrier.phase = "committing";
-    clearTimeout(barrier.timeout);
+    // The total finalization deadline includes pool acquisition and persistence.
     return barrier.documentId;
   }
 

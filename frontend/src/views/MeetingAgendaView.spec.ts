@@ -553,12 +553,14 @@ describe("MeetingAgendaView", () => {
   });
 
   it("prevents duplicate completion, reports failure, and switches successful completion to read-only", async () => {
+    protectedText.state.status = "unlocked";
     const activeMeeting = structuredClone(meeting);
     activeMeeting.status = "in_progress";
     activeMeeting.meetingLeaderId = "leader";
     const completedMeeting = structuredClone(activeMeeting);
     completedMeeting.status = "completed";
     auth.setUser(authenticatedUser("leader"));
+    protectedText.state.status = "unlocked";
     workspaceMeeting = activeMeeting;
     const complete = vi.spyOn(api, "completeMeeting");
     let rejectCompletion!: (reason: Error) => void;

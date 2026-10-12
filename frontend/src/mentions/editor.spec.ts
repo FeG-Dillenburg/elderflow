@@ -47,3 +47,15 @@ it("does not convert a mention-looking substring split across formatting", () =>
   editor.commands.insertContent('<p>word<strong>@Daniel </strong></p>');
   expect(editor.getHTML()).not.toContain('data-type="mention"');
 });
+it("recognizes Unicode sentence punctuation without consuming Enter for unknown names", async () => {
+  editor = new Editor({ extensions: meetingRichTextExtensions(false, { users: () => [{ id, firstName: "Daniel", lastName: "Test" }] }) });
+  editor.commands.insertContent("@Daniel—please @Daniel…");
+  expect(editor.getJSON().content?.[0].content?.filter((node) => node.type === "mention")).toHaveLength(2);
+  editor.commands.setContent("");
+  document.body.append(editor.view.dom);
+  editor.view.dom.focus();
+  editor.commands.insertContent("@Unknown");
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  editor.view.dom.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+  expect(editor.getJSON().content).toHaveLength(2);
+});

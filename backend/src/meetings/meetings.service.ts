@@ -87,6 +87,7 @@ export class MeetingsService {
     const claim = { barrierId: input.barrierId, serverSequence: input.serverSequence };
     try {
       const response = await this.dataSource.transaction(async (manager) => {
+        this.compactions.assertClaim(id, claim.barrierId);
         await manager.query("SET LOCAL lock_timeout = '5s'");
         await manager.query("SET LOCAL statement_timeout = '5s'");
         const meeting = await manager.findOne(Meeting, {
@@ -114,6 +115,7 @@ export class MeetingsService {
           const entries = submitted.get(appearance.id)!.mentions;
           const seen = new Set<string>();
           for (const entry of entries) {
+            this.compactions.assertClaim(id, claim.barrierId);
             const key = `${entry.userId}:${entry.occurrence}`;
             if (seen.has(key) || entry.id !== mentionRecordId(claim.barrierId, appearance.id, entry.userId, entry.occurrence)) {
               throw codedHttpException(HttpStatus.BAD_REQUEST, "E2EE_ENVELOPE_CONTEXT_INVALID", "Invalid mention context");

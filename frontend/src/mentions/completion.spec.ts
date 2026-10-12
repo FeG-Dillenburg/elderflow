@@ -6,7 +6,7 @@ import { scalarSession } from "../e2ee/scalar-session";
 import { bytesToBase64Url, base64UrlToBytes } from "../e2ee/protocol";
 import { meetingFragmentId } from "../e2ee/meeting-document-codec";
 import { startMeetingCollaboration } from "../meetings/workspace/infrastructure";
-import { completeWithMentions, type CompletionSubmission } from "./completion";
+import { completeWithMentions, mentionRecordId, type CompletionSubmission } from "./completion";
 import type { Meeting } from "../api/domain";
 class Socket extends EventTarget {
   static readonly CONNECTING = 0;
@@ -127,4 +127,9 @@ it.each([false, true])("captures a collaborator's final mention only after the s
     expect(JSON.parse(plaintext!)).toMatchObject({ meetingId, appearanceId, serverSequence: "1", context: "Before @Daniel speaks to Dr. X." });
     expect(JSON.stringify(result)).not.toContain("Daniel");
   }
+});
+
+it("uses the standard UUIDv5 occurrence context shared with the server", async () => {
+  await expect(mentionRecordId("11111111-1111-4111-8111-111111111111", "22222222-2222-4222-8222-222222222222", "33333333-3333-4333-8333-333333333333", 7))
+    .resolves.toBe("8b5663cd-cb3e-5c7f-8c94-6936046241cd");
 });

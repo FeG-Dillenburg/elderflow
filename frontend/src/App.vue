@@ -37,7 +37,7 @@ const navigation: Array<{
   },
   {
     to: "/my-mentions",
-    icon: "pi pi-at",
+    icon: "pi-at",
     labelKey: "mentions.title",
     permission: "topics",
   },
@@ -67,7 +67,8 @@ const navigation: Array<{
   },
 ];
 const visibleNavigation = computed(() =>
-  navigation.filter((item) => auth.canView(item.permission)),
+  navigation.filter((item) => auth.canView(item.permission)
+    && (item.to !== "/my-mentions" || protectedText.isEligible(auth.state.user))),
 );
 const primaryNavigation = computed(() =>
   visibleNavigation.value.filter((item) => !["/users", "/agenda-sections", "/authentication-settings"].includes(item.to)),
