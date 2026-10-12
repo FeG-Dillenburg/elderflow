@@ -1,4 +1,18 @@
 export default {
+  mentions: {
+    title: "My mentions",
+    suggestions: "Mention a person",
+    context: "Context",
+    topic: "Topic",
+    meeting: "Source Meeting",
+    loading: "Loading mentions…",
+    empty: "You have no current mentions.",
+    locked: "Unlock Protected text to see your mentions.",
+    unavailable: "These mentions cannot be decrypted.",
+    error: "Mentions could not be loaded.",
+    unlock: "Unlock",
+  },
+
   common: {
     add: 'Add', cancel: 'Cancel', close: 'Close', create: 'Create', delete: 'Delete', edit: 'Edit', save: 'Save', loading: 'Loading…',
     yes: 'Yes', no: 'No', none: 'None', unassigned: 'Unassigned', actions: 'Actions', date: 'Date', status: 'Status', name: 'Name',

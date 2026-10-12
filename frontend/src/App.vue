@@ -36,6 +36,12 @@ const navigation: Array<{
     permission: "topics",
   },
   {
+    to: "/my-mentions",
+    icon: "pi pi-at",
+    labelKey: "mentions.title",
+    permission: "topics",
+  },
+  {
     to: "/tasks",
     icon: "pi-check-square",
     labelKey: "nav.tasks",
@@ -468,5 +474,36 @@ nav {
     margin: -1rem -1rem 1rem;
     padding: 0.5rem 1rem;
   }
+}
+
+:deep(.mention) {
+  color: #b42318;
+}
+
+:deep(.mention-own) {
+  color: #fff;
+  background: #b42318;
+  border-radius: 0.25rem;
+  padding: 0.05rem 0.2rem;
+}
+
+:global(.mention-suggestions) {
+  max-height: 16rem;
+  overflow-y: auto;
+  min-width: 12rem;
+  background: #fff;
+  color: #202b3b;
+  border: 1px solid #d6dce5;
+  border-radius: 0.4rem;
+  box-shadow: 0 4px 16px #0002;
+}
+
+:global(.mention-suggestions [role="option"]) {
+  padding: 0.5rem 0.75rem;
+  cursor: pointer;
+}
+
+:global(.mention-suggestions [aria-selected="true"]) {
+  background: #fce8e6;
 }
 </style>

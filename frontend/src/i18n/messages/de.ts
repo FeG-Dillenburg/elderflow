@@ -1,4 +1,18 @@
 const de = {
+  mentions: {
+    title: "Meine Erwähnungen",
+    suggestions: "Eine Person erwähnen",
+    context: "Zusammenhang",
+    topic: "Thema",
+    meeting: "Ursprüngliche Sitzung",
+    loading: "Erwähnungen werden geladen…",
+    empty: "Du hast keine aktuellen Erwähnungen.",
+    locked: "Entsperre geschützten Text, um deine Erwähnungen zu sehen.",
+    unavailable: "Diese Erwähnungen können nicht entschlüsselt werden.",
+    error: "Erwähnungen konnten nicht geladen werden.",
+    unlock: "Entsperren",
+  },
+
   common: {
     add: 'Hinzufügen', cancel: 'Abbrechen', close: 'Schließen', create: 'Erstellen', delete: 'Löschen', edit: 'Bearbeiten', save: 'Speichern', loading: 'Wird geladen…',
     yes: 'Ja', no: 'Nein', none: 'Keine', unassigned: 'Nicht zugewiesen', actions: 'Aktionen', date: 'Datum', status: 'Status', name: 'Name',

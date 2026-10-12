@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useMentions } from "../mentions/use-mentions";
 import { useEditor } from "@tiptap/vue-3";
 import { computed, onBeforeUnmount, watch } from "vue";
 import { useI18n } from "vue-i18n";
@@ -26,7 +27,7 @@ const model = defineModel<string>({ default: "" });
 const emit = defineEmits<{ blur: [] }>();
 const { t } = useI18n();
 const resolvedPlaceholder = computed(() => props.placeholder ?? t("editor.placeholder"));
-const extensions = meetingRichTextExtensions(false);
+const extensions = meetingRichTextExtensions(false, useMentions());
 
 const editor = useEditor({
   content: model.value,

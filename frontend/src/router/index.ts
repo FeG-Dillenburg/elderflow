@@ -18,6 +18,7 @@ const router = createRouter({
     { path: '/meetings/:id/prepare', name: 'meeting-prepare', component: () => import('../views/MeetingPreparationView.vue'), meta: { permission: 'meetings', manage: true } },
     { path: '/topics', name: 'topics', component: () => import('../views/TopicsView.vue'), meta: { permission: 'topics' } },
     { path: '/topics/:id', name: 'topic', component: () => import('../views/TopicDetailView.vue'), meta: { permission: 'topics' } },
+    { path: '/my-mentions', name: 'my-mentions', component: () => import('../views/MyMentionsView.vue'), meta: { permission: 'topics', keyOperator: true } },
     { path: '/tasks', name: 'tasks', component: () => import('../views/TasksView.vue'), meta: { permission: 'tasks' } },
     { path: '/agenda-sections', name: 'agenda-sections', component: () => import('../views/AgendaSectionsView.vue'), meta: { permission: 'contentSettings' } },
     { path: '/users', name: 'users', component: () => import('../views/UsersView.vue'), meta: { permission: 'users' } },

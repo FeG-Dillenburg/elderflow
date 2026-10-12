@@ -6,10 +6,11 @@ import {
   type MeetingCompactionReleasedEvent,
 } from "./meeting-collaboration-events";
 
-type BarrierPhase = "draining" | "confirming" | "ready" | "committing";
+type BarrierPhase = "draining" | "confirming" | "ready" | "finalizing" | "committing";
 
 interface CompactionBarrier {
   intention: "compaction" | "completion";
+  cancelled?: boolean;
   completion?: {
     readSequence: () => Promise<string>;
     confirmed: Set<string>;
@@ -88,7 +89,7 @@ export class MeetingCompactionCoordinator {
     this.connections.set(documentId, connections);
     const barrier = this.barriers.get(documentId);
     if (!barrier) return null;
-    if (barrier.intention === "completion" && barrier.phase === "committing") {
+    if (barrier.intention === "completion" && (barrier.phase === "committing" || barrier.phase === "finalizing")) {
       return { intention: barrier.intention, barrierId: barrier.id, participantIds: [participantId] };
     }
     barrier.participants.add(participantId);
@@ -138,7 +139,7 @@ export class MeetingCompactionCoordinator {
 
   assertClaim(meetingId: string, barrierId: string): void {
     const barrier = [...this.barriers.values()].find((candidate) => candidate.id === barrierId);
-    if (!barrier || barrier.meetingId !== meetingId || barrier.phase !== "committing") {
+    if (!barrier || barrier.meetingId !== meetingId || (barrier.phase !== "committing" || barrier.cancelled)) {
       throw codedHttpException(
         HttpStatus.CONFLICT,
         "E2EE_COMPACTION_BARRIER_INVALID",
@@ -161,7 +162,11 @@ export class MeetingCompactionCoordinator {
 
   abort(documentId: string, barrierId?: string): void {
     const barrier = this.barriers.get(documentId);
-    if (!barrier || barrier.phase === "committing" || (barrierId && barrier.id !== barrierId)) return;
+    if (!barrier || (barrierId && barrier.id !== barrierId)) return;
+    if (barrier.phase === "committing") {
+      if (barrier.intention === "completion") barrier.cancelled = true;
+      return;
+    }
     this.release(barrier, "aborted");
   }
 
@@ -175,22 +180,20 @@ export class MeetingCompactionCoordinator {
     connections?.delete(participantId);
     if (connections?.size === 0) this.connections.delete(documentId);
     const barrier = this.barriers.get(documentId);
-    if (barrier?.participants.has(participantId) && barrier.phase !== "committing") {
-      this.release(barrier, "aborted");
-    }
+    if (barrier?.participants.has(participantId)) this.abort(documentId, barrier.id);
   }
 
   prepareUpdate(documentId: string, participantId: string): boolean {
     const barrier = this.barriers.get(documentId);
     if (!barrier) return true;
-    if (barrier.phase === "committing") return false;
+    if (barrier.phase === "committing" || barrier.phase === "finalizing") return false;
     if (barrier.drained.has(participantId)) this.release(barrier, "aborted");
     return true;
   }
 
   beginExternalUpdate(meetingId: string): boolean {
     const barrier = [...this.barriers.values()].find((candidate) => candidate.meetingId === meetingId);
-    if (barrier?.phase === "committing") return false;
+    if (barrier?.phase === "committing" || barrier?.phase === "finalizing") return false;
     if (barrier) this.release(barrier, "aborted");
     this.externalWriters.set(meetingId, (this.externalWriters.get(meetingId) ?? 0) + 1);
     return true;
@@ -250,7 +253,7 @@ export class MeetingCompactionCoordinator {
 
   beginCollaborationUpdate(meetingId: string): boolean {
     const barrier = [...this.barriers.values()].find((entry) => entry.meetingId === meetingId);
-    if (barrier?.phase === "committing") return false;
+    if (barrier?.phase === "committing" || barrier?.phase === "finalizing") return false;
     this.collaborationWriters.set(meetingId, (this.collaborationWriters.get(meetingId) ?? 0) + 1);
     return true;
   }
@@ -287,9 +290,26 @@ export class MeetingCompactionCoordinator {
   private claimCompletion(barrier: CompactionBarrier): void {
     if (!barrier.completion || barrier.phase !== "confirming" || barrier.serverSequence === null
       || barrier.completion.confirmed.size !== barrier.participants.size) return;
+    barrier.phase = "finalizing";
+    clearTimeout(barrier.timeout);
+    barrier.timeout = setTimeout(() => this.abort(barrier.documentId, barrier.id), 30_000);
+    barrier.completion.resolve({ barrierId: barrier.id, serverSequence: barrier.serverSequence });
+  }
+
+  claimCompletionSubmission(meetingId: string, barrierId: string, userId: string, sequence: string): string {
+    const barrier = [...this.barriers.values()].find((entry) => entry.id === barrierId);
+    if (!barrier || barrier.intention !== "completion" || barrier.phase !== "finalizing"
+      || barrier.meetingId !== meetingId || barrier.compactorUserId !== userId
+      || barrier.serverSequence !== sequence) throw this.completionAborted();
     barrier.phase = "committing";
     clearTimeout(barrier.timeout);
-    barrier.completion.resolve({ barrierId: barrier.id, serverSequence: barrier.serverSequence });
+    return barrier.documentId;
+  }
+
+  cancelCompletion(meetingId: string, barrierId: string, userId: string): void {
+    const barrier = [...this.barriers.values()].find((entry) => entry.id === barrierId);
+    if (barrier?.intention === "completion" && barrier.meetingId === meetingId
+      && barrier.compactorUserId === userId) this.abort(barrier.documentId, barrier.id);
   }
 
   private completionAborted() {

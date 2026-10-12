@@ -107,15 +107,13 @@ describe("Meeting workspace contract", () => {
     expect(backend.revokeAccess).not.toHaveBeenCalled();
   });
 
-  it("allows a locked authorized requester to complete without a local provider", async () => {
+  it("blocks completion while Protected text is locked", async () => {
     const { backend } = setup(meeting({ status: "in_progress" }), false);
     const workspace = createMeetingWorkspace("meeting-1", backend);
     await workspace.open();
-    await workspace.complete();
-    expect(backend.complete).toHaveBeenCalledWith("meeting-1");
-    expect(backend.connect).not.toHaveBeenCalled();
-    expect(workspace.state.meeting?.status).toBe("completed");
-    expect(workspace.text({ kind: "general_notes" }).editable).toBe(false);
+    await expect(workspace.complete()).rejects.toThrow("E2EE_PROTECTED_TEXT_LOCKED");
+    expect(backend.complete).not.toHaveBeenCalled();
+    expect(workspace.state.meeting?.status).toBe("in_progress");
   });
 
   it("blocks voluntary close with pending changes and closes after acknowledgement", async () => {

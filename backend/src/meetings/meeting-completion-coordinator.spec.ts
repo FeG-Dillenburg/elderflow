@@ -79,4 +79,21 @@ describe("Meeting completion barrier", () => {
     coordinator.endCollaborationUpdate("meeting");
   });
 
+  it("keeps the stable sequence frozen during client extraction, bounds finalization, and releases on disconnect", async () => {
+    jest.useFakeTimers();
+    coordinator.join("document", "a");
+    const pending = coordinator.beginCompletion("meeting", "document", "user", sequence);
+    const id = coordinator.current("document")!.barrierId;
+    await coordinator.completionDrained("document", id, "a");
+    coordinator.confirmCompletion("document", id, "a", "7");
+    await pending;
+    expect(coordinator.prepareUpdate("document", "a")).toBe(false);
+    coordinator.disconnected("document", "a");
+    expect(coordinator.current("document")).toBeNull();
+    const next = await coordinator.beginCompletion("meeting", "document", "user", sequence);
+    await jest.advanceTimersByTimeAsync(30_000);
+    expect(() => coordinator.claimCompletionSubmission("meeting", next.barrierId, "user", "7")).toThrow();
+    expect(coordinator.beginExternalUpdate("meeting")).toBe(true);
+  });
+
 });

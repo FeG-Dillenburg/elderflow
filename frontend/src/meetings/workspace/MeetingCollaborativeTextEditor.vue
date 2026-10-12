@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useMentions } from "../../mentions/use-mentions";
 import Collaboration from "@tiptap/extension-collaboration";
 import CollaborationCaret from "@tiptap/extension-collaboration-caret";
 import { generateJSON, getSchema } from "@tiptap/core";
@@ -49,7 +50,7 @@ const workspaceReadOnly = computed(() => {
 });
 const editorReadOnly = computed(() => props.readonly || workspaceReadOnly.value);
 const binding = workspace ? meetingEditorBinding(workspace, props.target) : null;
-const extensions = meetingRichTextExtensions(Boolean(binding));
+const extensions = meetingRichTextExtensions(Boolean(binding), useMentions());
 const collaborator = computed(() => createCollaboratorPresentation(auth.state.user
   ? {
       id: auth.state.user.id,

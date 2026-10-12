@@ -368,6 +368,7 @@ export const createMeetingWorkspace = (
       const currentGeneration = generation;
       const current = state.meeting;
       if (!current) throw new Error("MEETING_WORKSPACE_UNAVAILABLE");
+      if (state.phase === "locked") throw new Error("E2EE_PROTECTED_TEXT_LOCKED");
       const previousPhase = state.phase;
       let committed = false;
       completing = true;
