@@ -265,7 +265,13 @@ export interface MeetingTopicAddition {
 export type MeetingSuggestion = Topic & {
   isNew: boolean;
   previousSectionId: string | null;
-  previousAppearance: { id: string; meetingId: string } | null;
+  previousAppearance: {
+    id: string;
+    meetingId: string;
+    position: number;
+    date: string;
+    beginTime: string;
+  } | null;
 };
 
 export interface SkippedRecurrence {

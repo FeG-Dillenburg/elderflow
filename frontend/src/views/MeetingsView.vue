@@ -86,9 +86,31 @@ const create = async () => {
           || topic.defaultSectionId
           || sections[0]?.id;
         return sectionId ? [{ topicId: topic.id, sectionId, topic }] : [];
+      })
+      .sort((left, right) => {
+        const a = left.topic.previousAppearance;
+        const b = right.topic.previousAppearance;
+        if (a && b) {
+          // Keep each earlier Meeting's section order together, newest first.
+          const sourceOrder = `${b.date}|${b.beginTime}|${b.meetingId}`
+            .localeCompare(`${a.date}|${a.beginTime}|${a.meetingId}`);
+          if (sourceOrder) return sourceOrder;
+          if (a.position !== b.position) return a.position - b.position;
+        } else if (a || b) {
+          return a ? -1 : 1;
+        }
+        return left.topicId.localeCompare(right.topicId);
       });
-    if (automaticTopics.length) {
-      await api.addMeetingTopics(meeting.id, automaticTopics);
+    // Insert the carry-over block before existing appearances in each section.
+    // Increasing positions keep its order while the batch API shifts existing items.
+    const sectionPositions = new Map<string, number>();
+    const additions = automaticTopics.map((item) => {
+      const position = (sectionPositions.get(item.sectionId) ?? 0) + 1;
+      sectionPositions.set(item.sectionId, position);
+      return { ...item, position };
+    });
+    if (additions.length) {
+      await api.addMeetingTopics(meeting.id, additions);
     }
     visible.value = false;
     await router.push(`/meetings/${meeting.id}/prepare`);

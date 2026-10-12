@@ -226,6 +226,20 @@ describe("domain API client", () => {
       expect.any(Object),
     );
   });
+  it("retains prior agenda position and scheduled source Meeting in suggestions", async () => {
+    const previousAppearance = {
+      id: "prior-appearance", meetingId: "prior-meeting", position: 4,
+      date: "2026-07-01", beginTime: "19:00",
+    };
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(response([{
+      id: "person", type: "person", status: "open", protected: null,
+      isNew: false, previousSectionId: "section", previousAppearance,
+    }])));
+
+    const suggestions = await api.meetingSuggestions("meeting");
+
+    expect(suggestions[0]).toMatchObject({ previousSectionId: "section", previousAppearance });
+  });
   it("hydrates the previous Meeting appearance for agenda preparation context", async () => {
     const priorWorkspace = {
       meetingId: "prior-meeting",
@@ -514,11 +528,13 @@ describe("domain API client", () => {
       {
         topicId: "00000000-0000-4000-8000-000000000001",
         sectionId: "00000000-0000-4000-8000-000000000002",
+        position: 1,
         topic: { type: "generic", description: "First description", isNew: true } as any,
       },
       {
         topicId: "00000000-0000-4000-8000-000000000003",
         sectionId: "00000000-0000-4000-8000-000000000004",
+        position: 2,
         topic: {
           type: "new_membership",
           description: "Second description",
@@ -544,6 +560,8 @@ describe("domain API client", () => {
       .decode(fetch.mock.calls[0][1].body) as unknown[];
     expect(mutation[0]).toEqual(Uint8Array.from([7, 8]));
     expect(mutation[1]).toHaveLength(2);
+    expect((mutation[1] as unknown[][]).map((item) => item.slice(6, 8)))
+      .toEqual([[1, true], [2, true]]);
   });
   it("copies the current recurring description instead of prior Preparation context", async () => {
     const fetch = vi.fn().mockResolvedValue(response({ id: "target-appearance" }));

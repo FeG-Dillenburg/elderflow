@@ -764,16 +764,22 @@ export class MeetingsService {
           .filter((appearance) => appearance.topicId === topic.id);
         const previous = appearances.find((appearance) => Boolean(
           appearance.meeting
-          && [appearance.meeting.date, appearance.meeting.beginTime, appearance.meeting.id]
+          && [appearance.meeting.date, appearance.meeting.beginTime]
             .join("|")
-            < [meeting.date, meeting.beginTime, meeting.id].join("|"),
+            < [meeting.date, meeting.beginTime].join("|"),
         ));
         return {
           ...topicResponse(topic, user),
           isNew: appearances.length === 0,
           previousSectionId: previous?.sectionId ?? null,
           previousAppearance: previous
-            ? { id: previous.id, meetingId: previous.meetingId }
+            ? {
+              id: previous.id,
+              meetingId: previous.meetingId,
+              position: previous.position,
+              date: previous.meeting!.date,
+              beginTime: previous.meeting!.beginTime,
+            }
             : null,
         };
       });

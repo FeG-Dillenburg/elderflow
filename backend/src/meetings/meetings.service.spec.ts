@@ -339,10 +339,19 @@ describe("MeetingsService encrypted transaction boundaries", () => {
       .mockResolvedValueOnce([firstTopic, returningTopic])
       .mockResolvedValueOnce([
         {
+          id: "same-time-appearance",
+          meetingId: "aaa",
+          topicId: "returning-topic",
+          sectionId: "wrong-section",
+          position: 1,
+          meeting: { id: "aaa", date: "2026-09-15", beginTime: "19:00" },
+        },
+        {
           id: "later-appearance",
           meetingId: "prior-meeting",
           topicId: "returning-topic",
           sectionId: "later-section",
+          position: 4,
           meeting: { date: "2026-09-01", beginTime: "19:00" },
         },
         {
@@ -368,12 +377,51 @@ describe("MeetingsService encrypted transaction boundaries", () => {
         previousAppearance: {
           id: "later-appearance",
           meetingId: "prior-meeting",
+          position: 4,
+          date: "2026-09-01",
+          beginTime: "19:00",
         },
       }),
     ]);
     expect((repository as unknown as { find: jest.Mock }).find.mock.calls[2][0].order).toEqual({
       meeting: { date: "DESC", beginTime: "DESC", id: "DESC" },
     });
+  });
+
+  it("inserts a consecutive carry-over block ahead of existing recurrence appearances", async () => {
+    const stored = [
+      { id: "recurrence", topicId: "recurring", meetingId: "meeting", sectionId: "section", position: 1, source: "recurrence" },
+    ];
+    manager.findOne.mockImplementation(async (entity, options) => entity === Topic
+      ? { id: options.where.id, type: "person", status: "open" }
+      : { id: "meeting", status: "planned" });
+    manager.find.mockImplementation(async (entity, options) => entity === MeetingTopic
+      ? stored.filter((item) => item.sectionId === options.where.sectionId)
+        .sort((a, b) => a.position - b.position)
+      : []);
+    manager.save.mockImplementation(async (entity, input) => {
+      if (entity === MeetingTopic && !Array.isArray(input)) {
+        const appearance = input as typeof stored[number];
+        if (!stored.some((item) => item.id === appearance.id)) stored.push(appearance);
+      }
+      return input;
+    });
+
+    const result = await service.addTopics("meeting", {
+      initialUpdateEnvelope: "notes-update",
+      items: [
+        { id: "A", mutationId: "mutation-A", topicId: "A", sectionId: "section", position: 1 },
+        { id: "B", mutationId: "mutation-B", topicId: "B", sectionId: "section", position: 2 },
+        { id: "D", mutationId: "mutation-D", topicId: "D", sectionId: "section", position: 3 },
+      ],
+    }, user);
+
+    expect(result.map(({ topicId, position }) => [topicId, position])).toEqual([
+      ["A", 1], ["B", 2], ["D", 3],
+    ]);
+    expect(stored.find((item) => item.id === "recurrence")).toMatchObject({ position: 4, source: "recurrence" });
+    expect(documents.appendUpdate).toHaveBeenCalledWith(manager, user, "meeting", "notes-update");
+    manager.save.mockImplementation(async (_entity: unknown, input?: unknown) => input ?? _entity);
   });
 
   it("adds several Topic appearances with one encrypted document update in one transaction", async () => {
