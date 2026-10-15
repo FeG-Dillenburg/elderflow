@@ -90,7 +90,7 @@ onBeforeUnmount(() => controller?.abort());
         <Column :header="t('mentions.meeting')">
           <template #body="{ data }">
             <RouterLink class="meeting-link" :to="`/meetings/${data.meetingId}`">
-              {{ data.meetingTitle }} · {{ formatDate(data.date) }}
+              {{ data.meetingTitle }} {{ formatDate(data.date) }}
             </RouterLink>
           </template>
         </Column>
