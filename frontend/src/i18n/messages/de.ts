@@ -1,10 +1,12 @@
 const de = {
   mentions: {
+    eyebrow: "Persönliche Übersicht",
+    description: "Deine aktuellen Erwähnungen mit Kontext und Sitzung.",
     title: "Meine Erwähnungen",
     suggestions: "Eine Person erwähnen",
     context: "Zusammenhang",
     topic: "Thema",
-    meeting: "Ursprüngliche Sitzung",
+    meeting: "Sitzung",
     loading: "Erwähnungen werden geladen…",
     empty: "Du hast keine aktuellen Erwähnungen.",
     locked: "Entsperre geschützten Text, um deine Erwähnungen zu sehen.",

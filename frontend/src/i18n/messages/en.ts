@@ -1,10 +1,12 @@
 export default {
   mentions: {
+    eyebrow: "Personal overview",
+    description: "Your current mentions with their context and meeting.",
     title: "My mentions",
     suggestions: "Mention a person",
     context: "Context",
     topic: "Topic",
-    meeting: "Source Meeting",
+    meeting: "Meeting",
     loading: "Loading mentions…",
     empty: "You have no current mentions.",
     locked: "Unlock Protected text to see your mentions.",
