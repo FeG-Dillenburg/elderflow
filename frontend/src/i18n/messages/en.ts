@@ -38,6 +38,10 @@ export default {
   login: { title: 'Welcome back', description: 'Sign in to continue to your workspace.', submit: 'Sign in', failed: 'Unable to sign in' },
   externalAuth: {
     settingsTitle: 'Authentication settings', settingsDescription: 'Configure the installation-wide External login provider. Local login always remains available.',
+    clearClientSecret: 'Clear client secret',
+    clientSecretSaved: 'A client secret is saved. Leave this field unchanged to keep it.',
+    clientSecretRemovalPending: 'The saved client secret will be removed when you save.',
+    churchToolsSecretHelp: 'If ChurchTools generates a secret when creating the client, copy it here. Legacy clients may work without a secret.',
     providerType: 'Provider type', oidc: 'OpenID Connect', churchTools: 'ChurchTools', displayLabel: 'Display label', issuerUrl: 'Issuer URL', churchToolsUrl: 'ChurchTools installation URL', clientId: 'Client ID', clientSecret: 'Client secret (optional)', replaceClientSecret: 'Replace client secret', removeClientSecret: 'Remove the saved client secret',
     publicBaseUrl: 'Public ElderFlow URL', publicBaseUrlHelp: 'Use the canonical browser-facing URL, especially behind a reverse proxy.', callbackUrl: 'Callback URL', copyCallback: 'Copy callback URL', callbackCopied: 'Callback URL copied.',
     testLogin: 'Test provider login', enable: 'Enable', disable: 'Disable', remove: 'Remove provider', removeConfirm: 'Remove this provider? Existing sessions and Local login stay active; historical links remain reserved.',

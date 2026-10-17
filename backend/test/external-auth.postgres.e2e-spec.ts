@@ -1,6 +1,7 @@
+import { ChurchToolsClientSecrets1720000022000 } from '../src/database/migrations/1720000022000-ChurchToolsClientSecrets';
 import 'dotenv/config';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config';
+import { ConfigService, ConfigModule } from '@nestjs/config';
 import { Test } from '@nestjs/testing';
 import { createServer, Server } from 'node:http';
 import { generateKeyPairSync, sign } from 'node:crypto';
@@ -10,6 +11,8 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { ExternalAuthentication1720000019000 } from '../src/database/migrations/1720000019000-ExternalAuthentication';
 import { SessionService } from '../src/auth/session.service';
 import { E2eeRecoveryCeremony } from '../src/e2ee/e2ee-recovery-ceremony.entity';
+import { ProviderSettingsService } from '../src/external-auth/provider-settings.service';
+import { ProviderSecretService } from '../src/external-auth/provider-secret.service';
 import { ExternalAuthModule } from '../src/external-auth/external-auth.module';
 import { ExternalAuthProvider } from '../src/external-auth/external-auth-provider.entity';
 import { ExternalIdentity } from '../src/external-auth/external-identity.entity';
@@ -122,6 +125,7 @@ describeWithPostgres('External login HTTP API with PostgreSQL and a local provid
       type: 'postgres',
       url: databaseUrl,
       schema: migrationSchema,
+      entities: [ExternalAuthProvider, ExternalIdentity, User],
     });
     await migrationDatabase.initialize();
     const runner = migrationDatabase.createQueryRunner();
@@ -134,6 +138,46 @@ describeWithPostgres('External login HTTP API with PostgreSQL and a local provid
       await runner.query(`INSERT INTO "installation_settings" ("id", "name") VALUES (1, 'Existing installation')`);
 
       await new ExternalAuthentication1720000019000().up(runner);
+
+      const config = new ConfigService({ AUTH_PROVIDER_SECRETS_KEY: Buffer.alloc(32, 7).toString('base64url') });
+      const secrets = new ProviderSecretService(config);
+      const settings = new ProviderSettingsService(
+        runner.manager.getRepository(ExternalAuthProvider),
+        runner.manager.getRepository(ExternalIdentity),
+        runner.manager.getRepository(User), secrets, config,
+      );
+      const input = {
+        type: 'churchtools' as const, displayLabel: 'ChurchTools',
+        churchToolsUrl: 'https://example.church.tools', clientId: 'existing-client',
+        publicBaseUrl: 'https://elderflow.example.com',
+      };
+      const legacy = await settings.save(input);
+      await runner.query(`INSERT INTO external_identities (provider_id, user_id, subject)
+        VALUES ($1, '00000000-0000-4000-8000-000000000066', 'existing-subject')`, [legacy.id]);
+      await runner.query(`INSERT INTO external_auth_providers
+        (type, display_label, issuer_url, client_secret_envelope, removed_at)
+        VALUES ('oidc', 'Historical OIDC', 'https://identity.example.com', $1, now())`, [secrets.encrypt('existing-oidc-secret')]);
+      const beforeProviders = await runner.query('SELECT * FROM external_auth_providers ORDER BY id');
+      const beforeLinks = await runner.query('SELECT * FROM external_identities');
+
+      await new ChurchToolsClientSecrets1720000022000().up(runner);
+
+      expect(await runner.query('SELECT * FROM external_auth_providers ORDER BY id')).toEqual(beforeProviders);
+      expect(await runner.query('SELECT * FROM external_identities')).toEqual(beforeLinks);
+      expect(await settings.save({ ...input, clientSecret: 'generated-secret' })).toMatchObject({
+        id: legacy.id, clientSecretConfigured: true,
+      });
+      expect(secrets.decrypt((await settings.requireCurrent(true)).clientSecretEnvelope!)).toBe('generated-secret');
+      await settings.save({ ...input, displayLabel: 'Renamed' });
+      expect(secrets.decrypt((await settings.requireCurrent(true)).clientSecretEnvelope!)).toBe('generated-secret');
+      await settings.save({ ...input, clientSecret: 'replacement-secret' });
+      expect(secrets.decrypt((await settings.requireCurrent(true)).clientSecretEnvelope!)).toBe('replacement-secret');
+      await settings.save({ ...input, removeClientSecret: true });
+      expect((await settings.requireCurrent(true)).clientSecretEnvelope).toBeNull();
+      await settings.remove();
+      expect(await settings.save({ ...input, clientSecret: 'new-client-secret' })).toMatchObject({ clientSecretConfigured: true });
+      await expect(runner.query(`UPDATE external_auth_providers SET issuer_url = 'https://invalid.example.com' WHERE id = $1`, [legacy.id]))
+        .rejects.toMatchObject({ code: '23514' });
 
       await expect(runner.query(`SELECT "email" FROM "users"`)).resolves.toEqual([
         { email: 'existing@example.com' },

@@ -3,7 +3,6 @@ import { computed, onMounted, reactive, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRoute } from "vue-router";
 import Button from "primevue/button";
-import Checkbox from "primevue/checkbox";
 import Dialog from "primevue/dialog";
 import InputText from "primevue/inputtext";
 import Message from "primevue/message";
@@ -43,6 +42,20 @@ const form = reactive({
   clientSecret: "",
   removeClientSecret: false,
 });
+
+const savedSecretVisible = computed(() => Boolean(provider.value?.clientSecretConfigured)
+  && !form.removeClientSecret && !form.clientSecret);
+const secretCanClear = computed(() => Boolean(form.clientSecret) || savedSecretVisible.value);
+
+function updateClientSecret(value: string | null | undefined): void {
+  form.clientSecret = value ?? "";
+  if (form.clientSecret) form.removeClientSecret = false;
+}
+
+function clearClientSecret(): void {
+  form.clientSecret = "";
+  form.removeClientSecret = Boolean(provider.value?.clientSecretConfigured);
+}
 
 const providerTypes = computed(() => [
   { label: t("externalAuth.oidc"), value: "oidc" },
@@ -136,8 +149,8 @@ async function save(): Promise<void> {
       churchToolsUrl: form.type === "churchtools" ? form.churchToolsUrl || null : null,
       clientId: form.clientId || null,
       publicBaseUrl: form.publicBaseUrl || null,
-      clientSecret: form.type === "oidc" && form.clientSecret ? form.clientSecret : undefined,
-      removeClientSecret: form.type === "oidc" && form.removeClientSecret,
+      clientSecret: form.clientSecret ? form.clientSecret : undefined,
+      removeClientSecret: form.removeClientSecret,
     });
     applySettings(savedProvider);
     users.value = await externalAuthApi.users();
@@ -278,19 +291,40 @@ onMounted(load);
         <span>{{ t("externalAuth.clientId") }}</span>
         <InputText v-model="form.clientId" :disabled="Boolean(provider?.clientId)" />
       </label>
-      <label v-if="form.type === 'oidc'">
-        <span>{{ provider?.clientSecretConfigured ? t("externalAuth.replaceClientSecret") : t("externalAuth.clientSecret") }}</span>
-        <Password
-          v-model="form.clientSecret"
-          :feedback="false"
-          toggle-mask
-          autocomplete="new-password"
-        />
-      </label>
-      <label v-if="form.type === 'oidc' && provider?.clientSecretConfigured" class="check-label">
-        <Checkbox v-model="form.removeClientSecret" binary input-id="remove-client-secret" />
-        <span>{{ t("externalAuth.removeClientSecret") }}</span>
-      </label>
+      <div class="secret-field">
+        <label for="client-secret">{{ t("externalAuth.clientSecret") }}</label>
+        <div class="secret-input" :class="{ 'has-clear': secretCanClear }">
+          <Password
+            :model-value="form.clientSecret"
+            input-id="client-secret"
+            fluid
+            :feedback="false"
+            :toggle-mask="Boolean(form.clientSecret)"
+            :placeholder="savedSecretVisible ? '••••••••' : ''"
+            autocomplete="new-password"
+            @update:model-value="updateClientSecret"
+          />
+          <Button
+            v-if="secretCanClear"
+            type="button"
+            icon="pi pi-times"
+            class="secret-clear"
+            :class="{ 'beside-eye': Boolean(form.clientSecret) }"
+            :aria-label="t('externalAuth.clearClientSecret')"
+            :title="t('externalAuth.clearClientSecret')"
+            severity="secondary"
+            text
+            rounded
+            @click="clearClientSecret"
+          />
+        </div>
+        <small v-if="form.removeClientSecret || savedSecretVisible" role="status">
+          {{ t(form.removeClientSecret ? "externalAuth.clientSecretRemovalPending" : "externalAuth.clientSecretSaved") }}
+        </small>
+        <small v-if="form.type === 'churchtools'">
+          {{ t("externalAuth.churchToolsSecretHelp") }}
+        </small>
+      </div>
       <label>
         <span>{{ t("externalAuth.publicBaseUrl") }}</span>
         <InputText v-model="form.publicBaseUrl" type="url" />
@@ -448,9 +482,30 @@ p {
   font-weight: 400;
 }
 
-.check-label {
-  grid-template-columns: auto 1fr;
-  align-items: center;
+.secret-field {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.secret-input {
+  position: relative;
+}
+
+.secret-input.has-clear :deep(input) {
+  padding-inline-end: 5rem;
+}
+
+.secret-clear {
+  position: absolute;
+  inset-inline-end: 0.25rem;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 1.75rem;
+  height: 1.75rem;
+}
+
+.secret-clear.beside-eye {
+  inset-inline-end: 2rem;
 }
 
 .callback-row,

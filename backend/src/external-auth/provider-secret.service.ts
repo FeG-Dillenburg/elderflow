@@ -1,9 +1,10 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
 
 @Injectable()
 export class ProviderSecretService {
+  private readonly logger = new Logger(ProviderSecretService.name);
   private readonly key: Buffer | null;
 
   constructor(config: ConfigService) {
@@ -13,6 +14,9 @@ export class ProviderSecretService {
       this.key = decoded?.length === 32 ? decoded : null;
     } catch {
       this.key = null;
+    }
+    if (configured && !this.key) {
+      this.logger.warn('AUTH_PROVIDER_SECRETS_KEY has an invalid decoded length: it must be exactly 32 bytes, encoded as base64url. Saving provider client secrets is unavailable. Local login remains available.');
     }
   }
 
