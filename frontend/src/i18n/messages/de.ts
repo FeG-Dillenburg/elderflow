@@ -38,6 +38,9 @@ const de = {
   login: { title: 'Willkommen zurück', description: 'Anmelden, um zum Arbeitsbereich zu gelangen.', submit: 'Anmelden', failed: 'Anmeldung fehlgeschlagen' },
   externalAuth: {
     settingsTitle: 'Authentifizierungseinstellungen', settingsDescription: 'Konfigurieren Sie den installationsweiten Externen Anmeldeanbieter. Die Lokale Anmeldung bleibt immer verfügbar.',
+    clearClientSecret: 'Client-Secret löschen',
+    clientSecretSaved: 'Ein Client-Secret ist gespeichert. Lassen Sie dieses Feld unverändert, um es beizubehalten.',
+    clientSecretRemovalPending: 'Das gespeicherte Client-Secret wird beim Speichern entfernt.',
     churchToolsSecretHelp: 'Wenn ChurchTools beim Erstellen des Clients ein Secret erzeugt, kopieren Sie es hierher. Ältere Clients funktionieren möglicherweise ohne Secret.',
     providerType: 'Anbietertyp', oidc: 'OpenID Connect', churchTools: 'ChurchTools', displayLabel: 'Anzeigename', issuerUrl: 'Aussteller-URL', churchToolsUrl: 'ChurchTools-Installations-URL', clientId: 'Client-ID', clientSecret: 'Client-Secret (optional)', replaceClientSecret: 'Client-Secret ersetzen', removeClientSecret: 'Gespeichertes Client-Secret entfernen',
     publicBaseUrl: 'Öffentliche ElderFlow-URL', publicBaseUrlHelp: 'Verwenden Sie die kanonische, im Browser sichtbare URL, besonders hinter einem Reverse-Proxy.', callbackUrl: 'Callback-URL', copyCallback: 'Callback-URL kopieren', callbackCopied: 'Callback-URL kopiert.',

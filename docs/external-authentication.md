@@ -40,7 +40,7 @@ The adapter follows the ChurchTools contract: `/oauth/authorize`, `/oauth/access
 
 A controlled diagnostic test recorded in [issue #101](https://github.com/FeG-Dillenburg/elderflow/issues/101) found that a newly generated client on ChurchTools 3.137.1 required its generated secret. This does not establish when the requirement changed or whether legacy clients require one. After configuring ElderFlow, complete **Test provider login** against your instance before enabling the provider.
 
-Saved secrets are never returned to the browser. Leaving the secret field blank preserves the saved value; enter a new value to replace it or explicitly select removal. Changing or removing a secret requires another successful provider test. If the original ChurchTools secret was lost, regenerate it if supported, or create a replacement client and reconfigure the ElderFlow provider using the removal workflow below; do not edit a persisted client ID directly.
+Saved secrets are never returned to the browser. Masked placeholder dots and a status message indicate a saved secret without exposing its value. Leaving the field unchanged preserves it; enter a new value to replace it, or use the inline clear button to mark it for removal. Removal takes effect only when you save. Changing or removing a secret requires another successful provider test. If the original ChurchTools secret was lost, regenerate it if supported, or create a replacement client and reconfigure the ElderFlow provider using the removal workflow below; do not edit a persisted client ID directly.
 
 ## Linking and maintenance
 
