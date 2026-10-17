@@ -1,4 +1,20 @@
 export default {
+  mentions: {
+    eyebrow: "Personal overview",
+    description: "Your current mentions with their context and meeting.",
+    title: "My mentions",
+    suggestions: "Mention a person",
+    context: "Context",
+    topic: "Topic",
+    meeting: "Meeting",
+    loading: "Loading mentions…",
+    empty: "You have no current mentions.",
+    locked: "Unlock Protected text to see your mentions.",
+    unavailable: "These mentions cannot be decrypted.",
+    error: "Mentions could not be loaded.",
+    unlock: "Unlock",
+  },
+
   common: {
     add: 'Add', cancel: 'Cancel', close: 'Close', create: 'Create', delete: 'Delete', edit: 'Edit', save: 'Save', loading: 'Loading…',
     yes: 'Yes', no: 'No', none: 'None', unassigned: 'Unassigned', actions: 'Actions', date: 'Date', status: 'Status', name: 'Name',
@@ -138,6 +154,7 @@ export default {
       MEETING_NOT_FOUND: 'Meeting not found', MEETING_CREATE_RETRY_MISMATCH: 'This Meeting create request was retried with different content.', MEETING_MUTATION_RETRY_MISMATCH: 'This Meeting change was retried with different content.', TOPIC_NOT_FOUND: 'Topic not found', TASK_NOT_FOUND: 'Task not found', TASK_CREATE_RETRY_MISMATCH: 'This Task create request was retried with different content.', AGENDA_SECTION_NOT_FOUND: 'Agenda section not found', AGENDA_TOPIC_NOT_FOUND: 'Agenda topic not found',
       AGENDA_TOPIC_CONFLICT: 'Topic is already on this agenda', AGENDA_POSITION_INVALID: 'Position must be within the agenda section', AGENDA_TOPIC_IDS_DUPLICATE: 'Agenda topic IDs must be unique',
       AGENDA_CHANGED: 'Agenda changed; reload before reordering', AGENDA_SECTION_INVALID: 'An agenda section does not exist', AGENDA_POSITIONS_INVALID: 'Positions must be consecutive and start at 1 in every section',
+      E2EE_PROTECTED_TEXT_LOCKED: "Unlock Protected text before completing this Meeting.",
       MEETING_COMPLETION_RETRY: "The Meeting could not be completed yet. Please wait a moment for all users’ changes to be saved, then try again.",
       MEETING_COMPLETION_INVALID_STATUS: 'Only an in-progress Meeting can be completed.', MEETING_COMPLETION_FORBIDDEN: 'Only a Superadmin, the Meeting leader, or the Minute taker can finish this Meeting.', MEETING_COMPLETED_IMMUTABLE: 'Completed Meeting content cannot be changed.', MEETING_STATUS_TRANSITION_INVALID: 'Use the Finish meeting action to complete an in-progress Meeting.', MEETING_PREPARATION_CONTEXT_READ_ONLY: 'Preparation context can only be changed while the Meeting is planned.', MEETING_MINUTES_STATUS_INVALID: 'Meeting minutes can only be changed while the Meeting is in progress.', MEETING_MINUTES_FORBIDDEN: 'Only the Meeting leader or Minute taker can change Meeting minutes.', MEETING_MINUTES_ENDPOINT_REQUIRED: 'Change Meeting minutes from their Meeting appearance.', MEETING_TEXT_STALE: 'This Meeting text changed elsewhere. Retry with the latest value.', MEETING_TEXT_TOPIC_TYPE_INVALID: 'This text is not valid for the Topic type.',
       RECURRENCE_CONFIGURATION_INVALID: 'Complete the recurrence settings and choose a default section.', RECURRENCE_EDITED_APPEARANCE_CONFLICT: 'The schedule conflicts with a manually placed or edited recurring appearance.', RECURRENCE_RECONCILIATION_CHANGED: 'The recurring agenda changed. Reload before reconciling it.', SKIPPED_RECURRENCE_NOT_FOUND: 'The skipped recurrence no longer exists.',

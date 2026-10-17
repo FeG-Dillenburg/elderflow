@@ -1,3 +1,9 @@
+import { completionFixture } from "./completion-fixture";
+import { MentionSnapshot } from "../src/meetings/mention-snapshot.entity";
+import { E2eeKeyState } from "../src/e2ee/e2ee-key-state.entity";
+import { E2eeClientEpoch } from "../src/e2ee/e2ee-client-epoch.entity";
+import { E2eeScalarWrite } from "../src/e2ee/e2ee-scalar-write.entity";
+import { MentionSnapshots1720000021000 } from "../src/database/migrations/1720000021000-MentionSnapshots";
 import { MeetingTopicStatusDecisions1720000020000 } from '../src/database/migrations/1720000020000-MeetingTopicStatusDecisions';
 import { randomUUID } from 'node:crypto';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
@@ -40,6 +46,7 @@ describeWithPostgres('Meeting completion with PostgreSQL (integration)', () => {
   let leader: User;
   let meeting: Meeting;
   let appearance: MeetingTopic;
+  let cryptoClient: Awaited<ReturnType<typeof completionFixture>>;
 
   beforeAll(async () => {
     admin = new DataSource({ type: 'postgres', url: databaseUrl });
@@ -50,6 +57,7 @@ describeWithPostgres('Meeting completion with PostgreSQL (integration)', () => {
       url: databaseUrl,
       schema,
       entities: [
+        MentionSnapshot, E2eeKeyState, E2eeClientEpoch, E2eeScalarWrite,
         User, AgendaSection, Topic, TopicUpdate, Meeting, MeetingUser, MeetingTopic,
         Task, SkippedRecurrence, MeetingDocument, MeetingDocumentSnapshot,
         MeetingDocumentUpdate, MeetingDocumentMutation,
@@ -86,6 +94,10 @@ describeWithPostgres('Meeting completion with PostgreSQL (integration)', () => {
   beforeEach(async () => {
     await database.query(`
       TRUNCATE TABLE
+        "${schema}"."e2ee_scalar_writes",
+        "${schema}"."e2ee_client_epochs",
+        "${schema}"."e2ee_key_state",
+        "${schema}"."mention_snapshots",
         "${schema}"."topic_updates",
         "${schema}"."meeting_document_mutations",
         "${schema}"."meeting_document_updates",
@@ -174,6 +186,8 @@ describeWithPostgres('Meeting completion with PostgreSQL (integration)', () => {
     });
   });
 
+  beforeEach(async () => { cryptoClient = await completionFixture(database, service, leader); });
+
   it('upgrades existing PostgreSQL appearances without replaying legacy statuses', async () => {
     await database.getRepository(MeetingTopic).update(appearance.id, { status: 'done', deferredAt: new Date('2026-07-01T12:00:00Z') });
     const before = await database.getRepository(MeetingTopic).findOneByOrFail({ id: appearance.id });
@@ -188,7 +202,7 @@ describeWithPostgres('Meeting completion with PostgreSQL (integration)', () => {
       await runner.release();
     }
     expect(await database.getRepository(MeetingTopic).findOneByOrFail({ id: appearance.id })).toEqual(before);
-    await service.complete(meeting.id, leader);
+    await cryptoClient.complete(meeting.id);
     expect((await database.getRepository(Topic).findOneByOrFail({ id: appearance.topicId })).status).toBe('open');
   });
 
@@ -223,7 +237,7 @@ describeWithPostgres('Meeting completion with PostgreSQL (integration)', () => {
       expect((await patch({}).expect(200)).body.topicStatusDecision).toBe('deferred');
       await patch({ topicStatusDecision: null }).expect(200);
       expect((await patch({}).expect(200)).body.topicStatusDecision).toBeNull();
-      await service.complete(meeting.id, leader);
+      await cryptoClient.complete(meeting.id);
       expect((await database.getRepository(Topic).findOneByOrFail({ id: appearance.topicId })).status).toBe('open');
     });
 
@@ -281,13 +295,13 @@ describeWithPostgres('Meeting completion with PostgreSQL (integration)', () => {
     await service.updateTopic(meeting.id, appearance.id, { topicStatusDecision: decision === 'done' ? 'deferred' : 'done' });
     await service.updateTopic(meeting.id, appearance.id, { topicStatusDecision: decision });
     jest.spyOn(snapshots, 'apply').mockRejectedValueOnce(new Error('snapshot failed'));
-    await expect(service.complete(meeting.id, leader)).rejects.toThrow('snapshot failed');
+    await expect(cryptoClient.complete(meeting.id)).rejects.toThrow('snapshot failed');
     expect((await database.getRepository(Topic).findOneByOrFail({ id: appearance.topicId })).status).toBe('open');
     expect((await database.getRepository(MeetingTopic).findOneByOrFail({ id: appearance.id })).topicStatusDecision).toBe(decision);
 
     const documentId = '00000000-0000-4000-8000-000000000099';
     coordinator.join(documentId, 'client');
-    const completion = service.complete(meeting.id, leader);
+    const completion = cryptoClient.complete(meeting.id);
     while (!coordinator.current(documentId)) await new Promise((resolve) => setTimeout(resolve, 5));
     const barrierId = coordinator.current(documentId)!.barrierId;
     expect((await database.getRepository(Topic).findOneByOrFail({ id: appearance.topicId })).status).toBe('open');
@@ -302,7 +316,7 @@ describeWithPostgres('Meeting completion with PostgreSQL (integration)', () => {
     expect(completed.topicStatusDecision).toBe(decision);
     expect(Boolean(completed.deferredAt)).toBe(decision === 'deferred');
     await database.getRepository(Topic).update(appearance.topicId, { status: 'open' });
-    await expect(service.complete(meeting.id, leader)).rejects.toMatchObject({
+    await expect(cryptoClient.complete(meeting.id)).rejects.toMatchObject({
       response: expect.objectContaining({ code: 'MEETING_COMPLETION_INVALID_STATUS' }),
     });
     expect((await database.getRepository(Topic).findOneByOrFail({ id: appearance.topicId })).status).toBe('open');
@@ -319,10 +333,10 @@ describeWithPostgres('Meeting completion with PostgreSQL (integration)', () => {
       ...appearance, id: randomUUID(), meetingId: older.id, topicStatusDecision: olderDecision,
     });
     await service.updateTopic(meeting.id, appearance.id, { topicStatusDecision: 'done' });
-    await service.complete(meeting.id, leader);
+    await cryptoClient.complete(meeting.id);
     expect((await database.getRepository(Topic).findOneByOrFail({ id: appearance.topicId })).status).toBe('done');
     expect(await database.getRepository(MeetingTopic).findOneByOrFail({ id: olderAppearance.id })).toEqual(olderAppearance);
-    await service.complete(older.id, leader);
+    await cryptoClient.complete(older.id);
     expect((await database.getRepository(Topic).findOneByOrFail({ id: appearance.topicId })).status).toBe(olderDecision ?? 'done');
     expect((await database.getRepository(MeetingTopic).findOneByOrFail({ id: appearance.id })).topicStatusDecision).toBe('done');
   });
@@ -330,7 +344,7 @@ describeWithPostgres('Meeting completion with PostgreSQL (integration)', () => {
   it('rolls back snapshots and status as one real transaction', async () => {
     jest.spyOn(snapshots, 'apply').mockRejectedValueOnce(new Error('snapshot failed'));
 
-    await expect(service.complete(meeting.id, leader)).rejects.toThrow('snapshot failed');
+    await expect(cryptoClient.complete(meeting.id)).rejects.toThrow('snapshot failed');
     expect(coordinator.current('00000000-0000-4000-8000-000000000099')).toBeNull();
     expect(coordinator.beginExternalUpdate(meeting.id)).toBe(true);
     coordinator.endExternalUpdate(meeting.id);
@@ -352,7 +366,7 @@ describeWithPostgres('Meeting completion with PostgreSQL (integration)', () => {
     await service.updateTopic(meeting.id, appearance.id, { topicStatusDecision: 'done' });
     const documentId = '00000000-0000-4000-8000-000000000099';
     coordinator.join(documentId, 'client');
-    const completion = service.complete(meeting.id, leader);
+    const completion = cryptoClient.complete(meeting.id);
     const rejected = expect(completion).rejects.toMatchObject({ response: expect.objectContaining({ code }) });
     while (!coordinator.current(documentId)) await new Promise((resolve) => setTimeout(resolve, 5));
     const barrierId = coordinator.current(documentId)!.barrierId;
@@ -371,7 +385,7 @@ describeWithPostgres('Meeting completion with PostgreSQL (integration)', () => {
   });
 
   it('persists historical snapshots once and rejects a stale completion', async () => {
-    await service.complete(meeting.id, leader);
+    await cryptoClient.complete(meeting.id);
 
     await expect(database.getRepository(MeetingTopic).findOneByOrFail({ id: appearance.id }))
       .resolves.toMatchObject({
@@ -379,7 +393,7 @@ describeWithPostgres('Meeting completion with PostgreSQL (integration)', () => {
         topicNameSnapshotCommitRevision: '1',
         responsibleUserDisplayNameSnapshot: 'Ada Lovelace',
       });
-    await expect(service.complete(meeting.id, leader)).rejects.toMatchObject({
+    await expect(cryptoClient.complete(meeting.id)).rejects.toMatchObject({
       response: expect.objectContaining({ code: 'MEETING_COMPLETION_INVALID_STATUS' }),
     });
   });
@@ -394,7 +408,7 @@ describeWithPostgres('Meeting completion with PostgreSQL (integration)', () => {
       await blocked;
     });
 
-    const completion = service.complete(meeting.id, leader);
+    const completion = cryptoClient.complete(meeting.id);
     await started;
     const mutation = service.updateTopic(meeting.id, appearance.id, {
       plannedDuration: appearance.plannedDuration,
@@ -412,4 +426,91 @@ describeWithPostgres('Meeting completion with PostgreSQL (integration)', () => {
         topicNameSnapshotEnvelope: Buffer.from([1]),
       });
   });
+  it("upgrades populated appearances without changing content or backfilling completed history", async () => {
+    const before = await database.getRepository(MeetingTopic).findOneByOrFail({ id: appearance.id });
+    const runner = database.createQueryRunner();
+    await runner.connect();
+    try {
+      await runner.query(`SET search_path TO "${schema}"`);
+      await runner.query('DROP TABLE mention_snapshots');
+      await runner.query('ALTER TABLE meeting_topics DROP COLUMN mentions_captured');
+      await new MentionSnapshots1720000021000().up(runner);
+    } finally {
+      await runner.query('RESET search_path');
+      await runner.release();
+    }
+    expect(await database.getRepository(MeetingTopic).findOneByOrFail({ id: appearance.id })).toEqual(before);
+    expect(await service.currentMentions(leader)).toEqual([]);
+  });
+
+  it("keeps historical rows while chronologically replacing and clearing current mentions", async () => {
+    await cryptoClient.complete(meeting.id, [leader.id]);
+    expect(await service.currentMentions(leader)).toEqual([expect.objectContaining({ meetingId: meeting.id, topicId: appearance.topicId })]);
+    const another = await database.getRepository(User).save({ ...leader, id: randomUUID(), email: 'other@example.com' });
+    expect(await service.currentMentions(another)).toEqual([]);
+    await expect(service.currentMentions({ ...leader, role: 'it-admin' })).rejects.toThrow();
+    const addMeeting = async (date: string, id = randomUUID()) => {
+      const next = await database.getRepository(Meeting).save({ ...meeting, id, date, status: 'in_progress' });
+      await database.getRepository(MeetingDocument).save({
+        id: randomUUID(), activeSnapshotId: randomUUID(), meetingId: id,
+        currentServerSequence: '0', envelopeFormat: 1, cryptoSuite: 1, meetingCodec: 2,
+      });
+      await database.getRepository(MeetingTopic).save({ ...appearance, id: randomUUID(), meetingId: id });
+      return next;
+    };
+    const older = await addMeeting('2020-01-01');
+    await cryptoClient.complete(older.id, [leader.id]);
+    expect(await service.currentMentions(leader)).toEqual([expect.objectContaining({ meetingId: meeting.id })]);
+    const newer = await addMeeting('2030-01-01');
+    await cryptoClient.complete(newer.id);
+    expect(await service.currentMentions(leader)).toEqual([]);
+    expect(await database.getRepository(MentionSnapshot).count()).toBe(2);
+    const tie = await addMeeting('2030-01-01', 'ffffffff-ffff-4fff-bfff-ffffffffffff');
+    await cryptoClient.complete(tie.id, [leader.id]);
+    expect(await service.currentMentions(leader)).toEqual([expect.objectContaining({ meetingId: tie.id })]);
+  });
+
+  it("rolls back mention rows together with failed completion and permits a clean retry", async () => {
+    jest.spyOn(snapshots, 'apply').mockRejectedValueOnce(new Error('snapshot failed'));
+    await expect(cryptoClient.complete(meeting.id, [leader.id])).rejects.toThrow('snapshot failed');
+    expect(await service.currentMentions(leader)).toEqual([]);
+    expect(await database.getRepository(MentionSnapshot).count()).toBe(0);
+    await cryptoClient.complete(meeting.id, [leader.id]);
+    expect(await service.currentMentions(leader)).toHaveLength(1);
+  });
+
+  it.each(['sequence', 'context', 'user', 'epoch', 'appearance', 'signature'])("rejects invalid %s without completing", async (invalid) => {
+    const input = await cryptoClient.prepare(meeting.id, [leader.id]);
+    if (invalid === 'sequence') input.serverSequence = '999';
+    if (invalid === 'context') input.appearances[0].mentions[0].id = randomUUID();
+    if (invalid === 'user') input.appearances[0].mentions[0].userId = randomUUID();
+    if (invalid === 'epoch') await database.getRepository(E2eeClientEpoch).update(cryptoClient.epochId, { revokedAt: new Date() });
+    if (invalid === 'appearance') input.appearances = [];
+    if (invalid === 'signature') {
+      const bytes = Buffer.from(input.appearances[0].mentions[0].contextEnvelope, 'base64url');
+      bytes[bytes.length - 1] ^= 1;
+      input.appearances[0].mentions[0].contextEnvelope = bytes.toString('base64url');
+    }
+    await expect(service.complete(meeting.id, leader, input)).rejects.toThrow();
+    service.cancelCompletion(meeting.id, input.barrierId, leader);
+    expect(await service.currentMentions(leader)).toEqual([]);
+    expect((await database.getRepository(Meeting).findOneByOrFail({ id: meeting.id })).status).toBe('in_progress');
+    expect(await database.getRepository(MentionSnapshot).count()).toBe(0);
+  });
+
+  it("aborts a disconnected completion even while its transaction is writing snapshots", async () => {
+    const documentId = (await database.getRepository(MeetingDocument).findOneByOrFail({ meetingId: meeting.id })).id;
+    coordinator.join(documentId, 'completer');
+    const pending = cryptoClient.prepare(meeting.id, [leader.id]);
+    while (!coordinator.current(documentId)) await new Promise((resolve) => setTimeout(resolve, 5));
+    const barrierId = coordinator.current(documentId)!.barrierId;
+    await coordinator.completionDrained(documentId, barrierId, 'completer');
+    coordinator.confirmCompletion(documentId, barrierId, 'completer', '0');
+    const input = await pending;
+    jest.spyOn(snapshots, 'apply').mockImplementationOnce(async () => { coordinator.disconnected(documentId, 'completer'); });
+    await expect(service.complete(meeting.id, leader, input)).rejects.toThrow();
+    expect(await database.getRepository(MentionSnapshot).count()).toBe(0);
+    expect((await database.getRepository(Meeting).findOneByOrFail({ id: meeting.id })).status).toBe('in_progress');
+  });
+
 });

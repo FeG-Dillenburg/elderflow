@@ -3,6 +3,8 @@ export const SCALAR_AGGREGATES = {
   update: 257,
   task: 258,
   meeting: 259,
+  mention: 260,
+  completion: 261,
 } as const;
 
 export const TOPIC_SCALAR_FIELDS = {
@@ -69,6 +71,8 @@ export type TaskScalarFieldId = TaskScalarField["fieldId"];
 export type MeetingScalarFieldId = (typeof MEETING_SCALAR_FIELDS)[keyof typeof MEETING_SCALAR_FIELDS]["fieldId"];
 
 export type ScalarFieldContext =
+  | { aggregateType: typeof SCALAR_AGGREGATES.completion; recordId: string; fieldId: 1 | 2 }
+  | { aggregateType: typeof SCALAR_AGGREGATES.mention; recordId: string; fieldId: 1 }
   | {
       aggregateType: typeof SCALAR_AGGREGATES.topic;
       recordId: string;

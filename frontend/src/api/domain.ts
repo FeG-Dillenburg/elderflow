@@ -1,3 +1,4 @@
+import { completeWithMentions } from "../mentions/completion";
 import { hasMeaningfulRichText } from '../components/sanitize-rich-text';
 import type { SupportedLanguage } from '../i18n/language';
 import { localizeApiError, type ApiErrorPayload } from '../i18n/api-errors';
@@ -1170,7 +1171,8 @@ export const api = {
     return saved;
   },
   completeMeeting: async (id: string) => {
-    const response = await request<EncryptedMeetingResponse>(`/api/meetings/${id}/complete`, { method: 'POST' });
+    const response = await completeWithMentions(id, (input) =>
+      request<EncryptedMeetingResponse>(`/api/meetings/${id}/complete`, { method: 'POST', body: JSON.stringify(input) }));
     const meeting = await unprotectMeeting(response);
     await reconcileAllRecurringTopics();
     return meeting;

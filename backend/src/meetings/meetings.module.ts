@@ -1,3 +1,4 @@
+import { MentionSnapshot } from "./mention-snapshot.entity";
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AgendaSection } from '../agenda-sections/agenda-section.entity';
@@ -27,6 +28,7 @@ import { MeetingCompactionCoordinator } from './meeting-compaction-coordinator';
 @Module({
   imports: [
     TypeOrmModule.forFeature([
+      MentionSnapshot,
       Meeting,
       MeetingUser,
       MeetingTopic,

@@ -1,3 +1,4 @@
+import { mentionExtension, type MentionEditorOptions } from "../mentions/editor";
 import Color from "@tiptap/extension-color";
 import Highlight from "@tiptap/extension-highlight";
 import Link from "@tiptap/extension-link";
@@ -5,8 +6,9 @@ import { TextStyle } from "@tiptap/extension-text-style";
 import Underline from "@tiptap/extension-underline";
 import StarterKit from "@tiptap/starter-kit";
 
-export const meetingRichTextExtensions = (collaborative = false) => [
+export const meetingRichTextExtensions = (collaborative = false, mentions: MentionEditorOptions = {}) => [
   StarterKit.configure({ link: false, underline: false, undoRedo: collaborative ? false : {} }),
+  mentionExtension(mentions),
   TextStyle,
   Color,
   Highlight.configure({ multicolor: true }),

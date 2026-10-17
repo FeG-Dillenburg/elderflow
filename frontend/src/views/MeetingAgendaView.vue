@@ -240,6 +240,8 @@ const finishMeeting = async () => {
     finishError.value = e instanceof Error
       && e.message === "MEETING_WORKSPACE_PENDING_CHANGES"
       ? t("meetingAgenda.finishPendingChanges")
+      : e instanceof Error && ["E2EE_PROTECTED_TEXT_LOCKED", "MEETING_COMPLETION_RETRY"].includes(e.message)
+        ? t(`errors.codes.${e.message}`)
       : e instanceof Error ? e.message : t("meetingAgenda.finishFailed");
   } finally {
     finishing.value = false;
@@ -410,7 +412,16 @@ onMounted(async () => {
           icon="pi pi-check-circle"
           :label="t('meetingAgenda.finish')"
           severity="success"
+          :disabled="protectedText.state.status !== 'unlocked'"
+          :title="protectedText.state.status !== 'unlocked' ? t('errors.codes.E2EE_PROTECTED_TEXT_LOCKED') : undefined"
           @click="finishVisible = true"
+        />
+        <Button
+          v-if="protectedText.state.status !== 'unlocked'"
+          :label="t('mentions.unlock')"
+          icon="pi pi-lock-open"
+          severity="secondary"
+          @click="protectedText.showUnlock()"
         />
       </div>
       <p
@@ -638,7 +649,7 @@ onMounted(async () => {
         />
         <Button
           aria-describedby="finish-meeting-description"
-          :disabled="finishing"
+          :disabled="finishing || protectedText.state.status !== 'unlocked'"
           icon="pi pi-check-circle"
           :label="t('meetingAgenda.confirmFinish')"
           :loading="finishing"

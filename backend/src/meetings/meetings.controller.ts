@@ -1,3 +1,4 @@
+import { CompletionPrepareDto, CompletionSubmissionDto } from "./dto/completion.dto";
 import {
   BadRequestException,
   Body,
@@ -56,10 +57,28 @@ export class MeetingsController {
     return this.service.create(input as MeetingDto, user);
   }
 
+  @Get("my-mentions")
+  @Header("Cache-Control", "no-store")
+  myMentions(@CurrentUser() user: User) { return this.service.currentMentions(user); }
+
+  @Post(":id/completion/prepare")
+  @Header("Cache-Control", "no-store")
+  prepareCompletion(@Param("id", ParseUUIDPipe) id: string, @CurrentUser() user: User,
+    @Body() input: CompletionPrepareDto) {
+    return this.service.prepareCompletion(id, user, input);
+  }
+
+  @Delete(":id/completion/:barrierId")
+  cancelCompletion(@Param("id", ParseUUIDPipe) id: string,
+    @Param("barrierId", ParseUUIDPipe) barrierId: string, @CurrentUser() user: User) {
+    return this.service.cancelCompletion(id, barrierId, user);
+  }
+
   @Post(":id/complete")
   @Header("Cache-Control", "no-store")
-  complete(@Param("id", ParseUUIDPipe) id: string, @CurrentUser() user: User) {
-    return this.service.complete(id, user);
+  complete(@Param("id", ParseUUIDPipe) id: string, @CurrentUser() user: User,
+    @Body() input: CompletionSubmissionDto) {
+    return this.service.complete(id, user, input);
   }
 
   @Get(":id")

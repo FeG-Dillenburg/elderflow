@@ -19,6 +19,7 @@ describe("MeetingsService encrypted transaction boundaries", () => {
     abortMeeting: jest.fn(),
     beginCompletion: jest.fn().mockResolvedValue({ barrierId: "completion", serverSequence: "7" }),
     claim: jest.fn(),
+    claimCompletionSubmission: jest.fn().mockReturnValue("document"),
     assertClaim: jest.fn(),
     complete: jest.fn(),
     fail: jest.fn(),
@@ -146,7 +147,7 @@ describe("MeetingsService encrypted transaction boundaries", () => {
     await expect(service.complete("meeting", {
       id: "superadmin",
       role: "superadmin",
-    } as never)).resolves.toEqual(expect.objectContaining({
+    } as never, { barrierId: "completion", documentId: "document", serverSequence: "7", proofEnvelope: "opaque", appearances: [] })).resolves.toEqual(expect.objectContaining({
       id: "meeting",
       status: "completed",
     }));
@@ -166,10 +167,10 @@ describe("MeetingsService encrypted transaction boundaries", () => {
       minuteTakerId: "minute-taker",
     });
 
-    await expect(service.complete("meeting", {
+    await expect(service.prepareCompletion("meeting", {
       id: "unassigned-admin",
       role: "admin",
-    } as never)).rejects.toThrow(
+    } as never, { proofEnvelope: "opaque" })).rejects.toThrow(
       "Only a Superadmin, the Meeting leader, or the Minute taker can complete this Meeting",
     );
 

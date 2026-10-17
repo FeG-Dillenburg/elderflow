@@ -1,3 +1,7 @@
+import { CompletionPrepareDto, CompletionSubmissionDto } from "./dto/completion.dto";
+import { MentionSnapshot } from "./mention-snapshot.entity";
+import { mentionRecordId } from "./mention-completion";
+import { permissionsByRole } from "../auth/permissions";
 import { HttpStatus, Injectable } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { createHash } from "node:crypto";
@@ -57,18 +61,33 @@ export class MeetingsService {
     private readonly compactions: MeetingCompactionCoordinator,
   ) {}
 
-  async complete(id: string, user: User) {
+  async prepareCompletion(id: string, user: User, input: CompletionPrepareDto) {
     const documentId = await this.dataSource.transaction(async (manager) => {
       const meeting = await manager.findOne(Meeting, { where: { id } });
       this.assertCompletionAllowed(meeting, user);
+      await this.scalars.validateWrite(manager, user, {
+        aggregateType: SCALAR_AGGREGATES.completion, recordId: id, fieldId: 2,
+      }, input.proofEnvelope, null);
       return (await manager.findOneByOrFail(MeetingDocument, { meetingId: id })).id;
     });
     const claim = await this.compactions.beginCompletion(id, documentId, user.id, async () => {
       const document = await this.meetings.manager.findOneByOrFail(MeetingDocument, { meetingId: id });
       return document.currentServerSequence;
     });
+    return { ...claim, documentId };
+  }
+
+  cancelCompletion(id: string, barrierId: string, user: User) {
+    this.compactions.cancelCompletion(id, barrierId, user.id);
+  }
+
+  async complete(id: string, user: User, input?: CompletionSubmissionDto) {
+    if (!input) throw codedHttpException(HttpStatus.CONFLICT, "E2EE_PROTECTED_TEXT_LOCKED", "An unlocked completion claim is required");
+    const documentId = this.compactions.claimCompletionSubmission(id, input.barrierId, user.id, input.serverSequence);
+    const claim = { barrierId: input.barrierId, serverSequence: input.serverSequence };
     try {
       const response = await this.dataSource.transaction(async (manager) => {
+        this.compactions.assertClaim(id, claim.barrierId);
         await manager.query("SET LOCAL lock_timeout = '5s'");
         await manager.query("SET LOCAL statement_timeout = '5s'");
         const meeting = await manager.findOne(Meeting, {
@@ -79,10 +98,43 @@ export class MeetingsService {
           throw codedHttpException(HttpStatus.FORBIDDEN, "MEETING_COMPLETION_FORBIDDEN", "Completion access changed");
         }
         this.assertCompletionAllowed(meeting, currentUser);
+        if (input.documentId !== documentId) throw codedHttpException(HttpStatus.CONFLICT, "MEETING_COMPLETION_RETRY", "Completion context changed");
+        await this.scalars.validateWrite(manager, currentUser, {
+          aggregateType: SCALAR_AGGREGATES.completion, recordId: claim.barrierId, fieldId: 1,
+        }, input.proofEnvelope, null);
         const appearances = await manager.find(MeetingTopic, {
           where: { meetingId: id },
           relations: { topic: { responsibleUser: true } },
         });
+        const submitted = new Map(input.appearances.map((entry) => [entry.appearanceId, entry]));
+        if (submitted.size !== appearances.length || submitted.size !== input.appearances.length
+          || appearances.some((appearance) => !submitted.has(appearance.id))) {
+          throw codedHttpException(HttpStatus.BAD_REQUEST, "E2EE_ENVELOPE_CONTEXT_INVALID", "Invalid appearance snapshots");
+        }
+        for (const appearance of appearances) {
+          const entries = submitted.get(appearance.id)!.mentions;
+          const seen = new Set<string>();
+          for (const entry of entries) {
+            this.compactions.assertClaim(id, claim.barrierId);
+            const key = `${entry.userId}:${entry.occurrence}`;
+            if (seen.has(key) || entry.id !== mentionRecordId(claim.barrierId, appearance.id, entry.userId, entry.occurrence)) {
+              throw codedHttpException(HttpStatus.BAD_REQUEST, "E2EE_ENVELOPE_CONTEXT_INVALID", "Invalid mention context");
+            }
+            seen.add(key);
+            const target = await manager.findOneBy(User, { id: entry.userId });
+            if (!target || target.archivedAt || target.role === "it-admin") {
+              throw codedHttpException(HttpStatus.BAD_REQUEST, "E2EE_ENVELOPE_CONTEXT_INVALID", "Mentioned user is not eligible");
+            }
+            const encrypted = await this.scalars.validateWrite(manager, currentUser, {
+              aggregateType: SCALAR_AGGREGATES.mention, recordId: entry.id, fieldId: 1,
+            }, entry.contextEnvelope, null);
+            await manager.insert(MentionSnapshot, {
+              id: entry.id, appearanceId: appearance.id, userId: entry.userId,
+              occurrence: entry.occurrence, contextEnvelope: encrypted.envelope,
+            });
+          }
+          appearance.mentionsCaptured = true;
+        }
         // Lock Topics in a stable order across Meetings that share appearances.
         for (const appearance of [...appearances].sort((left, right) => left.topicId.localeCompare(right.topicId))) {
           if (!appearance.topicStatusDecision) continue;
@@ -114,7 +166,13 @@ export class MeetingsService {
         await manager.save(document);
         meeting.status = "completed";
         meeting.completedAt = new Date();
-        return meetingResponse(await manager.save(Meeting, meeting), user);
+        const saved = await manager.save(Meeting, meeting);
+        // Revalidate the author epoch after all writes, just before transaction commit.
+        await this.scalars.validateWrite(manager, currentUser, {
+          aggregateType: SCALAR_AGGREGATES.completion, recordId: claim.barrierId, fieldId: 1,
+        }, input.proofEnvelope, null);
+        this.compactions.assertClaim(id, claim.barrierId);
+        return meetingResponse(saved, user);
       });
       meetingCollaborationEvents.emit("completed", {
         meetingId: id,
@@ -125,6 +183,37 @@ export class MeetingsService {
       this.compactions.fail(id, claim.barrierId);
       throw error;
     }
+  }
+
+  async currentMentions(user: User) {
+    this.scalars.assertContentUser(user);
+    if (permissionsByRole[user.role].topics === "hide" || permissionsByRole[user.role].meetings === "hide") {
+      throw codedHttpException(HttpStatus.FORBIDDEN, "E2EE_PROTECTED_CIPHERTEXT_FORBIDDEN", "Content access required");
+    }
+    const rows = await this.dataSource.getRepository(MentionSnapshot).createQueryBuilder("mention")
+      .innerJoinAndSelect("mention.appearance", "appearance")
+      .innerJoinAndSelect("appearance.meeting", "meeting")
+      .innerJoinAndSelect("appearance.topic", "topic")
+      .where("mention.user_id = :userId", { userId: user.id })
+      .andWhere("meeting.status = 'completed'")
+      .andWhere((query) => `NOT EXISTS ${query.subQuery()
+        .select("1").from(MeetingTopic, "newer_appearance")
+        .innerJoin("newer_appearance.meeting", "newer")
+        .where("newer_appearance.topic_id = appearance.topic_id")
+        .andWhere("newer.status = 'completed'")
+        .andWhere("(newer.date, newer.begin_time, newer.id) > (meeting.date, meeting.begin_time, meeting.id)")
+        .getQuery()}`)
+      .orderBy("meeting.date", "DESC").addOrderBy("meeting.begin_time", "DESC")
+      .addOrderBy("meeting.id", "DESC").addOrderBy("mention.occurrence", "ASC")
+      .getMany();
+    return rows.map((row) => ({
+      id: row.id, appearanceId: row.appearanceId,
+      topicId: row.appearance!.topicId, meetingId: row.appearance!.meetingId,
+      date: row.appearance!.meeting!.date,
+      contextEnvelope: row.contextEnvelope.toString("base64url"),
+      topicNameEnvelope: row.appearance!.topicNameSnapshotEnvelope?.toString("base64url") ?? null,
+      meetingTitleEnvelope: row.appearance!.meeting!.titleEnvelope.toString("base64url"),
+    }));
   }
 
   private assertCompletionAllowed(meeting: Meeting | null, user: User): asserts meeting is Meeting {

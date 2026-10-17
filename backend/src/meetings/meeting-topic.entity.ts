@@ -44,6 +44,9 @@ export class MeetingTopic {
   @Column({ type: 'text', default: 'planned' })
   status: string;
 
+  @Column({ name: 'mentions_captured', type: 'boolean', default: false })
+  mentionsCaptured: boolean;
+
   @Column({ name: 'topic_status_decision', type: 'text', nullable: true })
   topicStatusDecision: 'done' | 'deferred' | null;
 

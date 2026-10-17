@@ -1,4 +1,20 @@
 const de = {
+  mentions: {
+    eyebrow: "Persönliche Übersicht",
+    description: "Deine aktuellen Erwähnungen mit Kontext und Sitzung.",
+    title: "Meine Erwähnungen",
+    suggestions: "Eine Person erwähnen",
+    context: "Zusammenhang",
+    topic: "Thema",
+    meeting: "Sitzung",
+    loading: "Erwähnungen werden geladen…",
+    empty: "Du hast keine aktuellen Erwähnungen.",
+    locked: "Entsperre geschützten Text, um deine Erwähnungen zu sehen.",
+    unavailable: "Diese Erwähnungen können nicht entschlüsselt werden.",
+    error: "Erwähnungen konnten nicht geladen werden.",
+    unlock: "Entsperren",
+  },
+
   common: {
     add: 'Hinzufügen', cancel: 'Abbrechen', close: 'Schließen', create: 'Erstellen', delete: 'Löschen', edit: 'Bearbeiten', save: 'Speichern', loading: 'Wird geladen…',
     yes: 'Ja', no: 'Nein', none: 'Keine', unassigned: 'Nicht zugewiesen', actions: 'Aktionen', date: 'Datum', status: 'Status', name: 'Name',
@@ -138,6 +154,7 @@ const de = {
       MEETING_NOT_FOUND: 'Sitzung nicht gefunden', MEETING_CREATE_RETRY_MISMATCH: 'Diese Anfrage zum Erstellen einer Sitzung wurde mit anderem Inhalt wiederholt.', MEETING_MUTATION_RETRY_MISMATCH: 'Diese Sitzungsänderung wurde mit anderem Inhalt wiederholt.', TOPIC_NOT_FOUND: 'Thema nicht gefunden', TASK_NOT_FOUND: 'Aufgabe nicht gefunden', TASK_CREATE_RETRY_MISMATCH: 'Diese Anfrage zum Erstellen einer Aufgabe wurde mit anderem Inhalt wiederholt.', AGENDA_SECTION_NOT_FOUND: 'Tagesordnungsabschnitt nicht gefunden', AGENDA_TOPIC_NOT_FOUND: 'Tagesordnungsthema nicht gefunden',
       AGENDA_TOPIC_CONFLICT: 'Das Thema steht bereits auf dieser Tagesordnung', AGENDA_POSITION_INVALID: 'Die Position muss innerhalb des Tagesordnungsabschnitts liegen', AGENDA_TOPIC_IDS_DUPLICATE: 'Themen-IDs der Tagesordnung müssen eindeutig sein',
       AGENDA_CHANGED: 'Die Tagesordnung wurde geändert; vor dem Sortieren neu laden', AGENDA_SECTION_INVALID: 'Ein Tagesordnungsabschnitt ist nicht vorhanden', AGENDA_POSITIONS_INVALID: 'Positionen müssen in jedem Abschnitt fortlaufend sein und mit 1 beginnen',
+      E2EE_PROTECTED_TEXT_LOCKED: "Entsperre geschützten Text, bevor du diese Sitzung abschließt.",
       MEETING_COMPLETION_RETRY: "Die Sitzung konnte noch nicht abgeschlossen werden. Bitte warten Sie einen Moment, damit die Änderungen aller Benutzer gespeichert werden können, und versuchen Sie es erneut.",
       MEETING_COMPLETION_INVALID_STATUS: 'Nur eine laufende Sitzung kann abgeschlossen werden.', MEETING_COMPLETION_FORBIDDEN: 'Nur ein Superadministrator, die Sitzungsleitung oder die Protokollführung kann diese Sitzung abschließen.', MEETING_COMPLETED_IMMUTABLE: 'Inhalte einer abgeschlossenen Sitzung können nicht geändert werden.', MEETING_STATUS_TRANSITION_INVALID: 'Eine laufende Sitzung muss über „Sitzung abschließen“ beendet werden.', MEETING_PREPARATION_CONTEXT_READ_ONLY: 'Der Vorbereitungskontext kann nur bei einer geplanten Sitzung geändert werden.', MEETING_MINUTES_STATUS_INVALID: 'Das Sitzungsprotokoll kann nur während einer laufenden Sitzung geändert werden.', MEETING_MINUTES_FORBIDDEN: 'Nur die Sitzungsleitung oder Protokollführung kann das Sitzungsprotokoll ändern.', MEETING_MINUTES_ENDPOINT_REQUIRED: 'Ändern Sie das Sitzungsprotokoll beim zugehörigen Tagesordnungseintrag.', MEETING_TEXT_STALE: 'Dieser Sitzungstext wurde an anderer Stelle geändert. Versuchen Sie es mit dem aktuellen Wert erneut.', MEETING_TEXT_TOPIC_TYPE_INVALID: 'Dieser Text ist für die Themenart nicht zulässig.',
       RECURRENCE_CONFIGURATION_INVALID: 'Vervollständigen Sie die Wiederholungseinstellungen und wählen Sie einen Standardabschnitt.', RECURRENCE_EDITED_APPEARANCE_CONFLICT: 'Der Zeitplan kollidiert mit einem manuell platzierten oder bearbeiteten wiederkehrenden Eintrag.', RECURRENCE_RECONCILIATION_CHANGED: 'Die wiederkehrende Tagesordnung wurde geändert. Laden Sie sie vor dem Abgleich neu.', SKIPPED_RECURRENCE_NOT_FOUND: 'Die übersprungene Wiederholung ist nicht mehr vorhanden.',

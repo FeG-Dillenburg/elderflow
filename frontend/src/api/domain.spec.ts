@@ -616,20 +616,14 @@ describe("domain API client", () => {
       MEETING_COLLABORATION_ORIGIN,
     );
   });
-  it("uses the explicit completion action without a mutable Meeting payload", async () => {
-    const fetch = vi.fn()
-      .mockResolvedValueOnce(response({ status: "completed" }))
-      .mockResolvedValueOnce(response([]));
+  it("does not request completion from a locked browser", async () => {
+    const fetch = vi.fn();
     vi.stubGlobal("fetch", fetch);
-
-    await api.completeMeeting("meeting");
-
-    expect(fetch).toHaveBeenCalledWith(
-      "/api/meetings/meeting/complete",
-      expect.objectContaining({ method: "POST" }),
-    );
-    expect(fetch.mock.calls[0][1]?.body).toBeUndefined();
+    scalarSession.lock();
+    await expect(api.completeMeeting("meeting")).rejects.toThrow("E2EE_PROTECTED_TEXT_LOCKED");
+    expect(fetch).not.toHaveBeenCalled();
   });
+
   it("writes one or more inline Topic fields through the narrow patch endpoint", async () => {
     const fetch = vi.fn().mockResolvedValue(response({
       id: "topic",
