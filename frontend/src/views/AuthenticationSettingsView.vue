@@ -136,8 +136,8 @@ async function save(): Promise<void> {
       churchToolsUrl: form.type === "churchtools" ? form.churchToolsUrl || null : null,
       clientId: form.clientId || null,
       publicBaseUrl: form.publicBaseUrl || null,
-      clientSecret: form.type === "oidc" && form.clientSecret ? form.clientSecret : undefined,
-      removeClientSecret: form.type === "oidc" && form.removeClientSecret,
+      clientSecret: form.clientSecret ? form.clientSecret : undefined,
+      removeClientSecret: form.removeClientSecret,
     });
     applySettings(savedProvider);
     users.value = await externalAuthApi.users();
@@ -278,7 +278,7 @@ onMounted(load);
         <span>{{ t("externalAuth.clientId") }}</span>
         <InputText v-model="form.clientId" :disabled="Boolean(provider?.clientId)" />
       </label>
-      <label v-if="form.type === 'oidc'">
+      <label>
         <span>{{ provider?.clientSecretConfigured ? t("externalAuth.replaceClientSecret") : t("externalAuth.clientSecret") }}</span>
         <Password
           v-model="form.clientSecret"
@@ -286,8 +286,11 @@ onMounted(load);
           toggle-mask
           autocomplete="new-password"
         />
+        <small v-if="form.type === 'churchtools'">
+          {{ t("externalAuth.churchToolsSecretHelp") }}
+        </small>
       </label>
-      <label v-if="form.type === 'oidc' && provider?.clientSecretConfigured" class="check-label">
+      <label v-if="provider?.clientSecretConfigured" class="check-label">
         <Checkbox v-model="form.removeClientSecret" binary input-id="remove-client-secret" />
         <span>{{ t("externalAuth.removeClientSecret") }}</span>
       </label>

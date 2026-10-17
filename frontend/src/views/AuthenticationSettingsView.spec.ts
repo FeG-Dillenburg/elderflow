@@ -67,7 +67,7 @@ describe('AuthenticationSettingsView', () => {
     await wrapper.get('select').setValue('churchtools');
     expect(wrapper.text()).toContain('ChurchTools installation URL');
     expect(wrapper.text()).not.toContain('Issuer URL');
-    expect(wrapper.text()).not.toContain('Client secret');
+    expect(wrapper.text()).toContain('Client secret');
   });
 
   it('loads active-user link status immediately after the first provider save', async () => {
@@ -86,8 +86,8 @@ describe('AuthenticationSettingsView', () => {
     expect(wrapper.text()).toContain('Unlinked');
   });
 
-  it('never displays a saved secret and exposes explicit replace/remove controls', async () => {
-    vi.mocked(externalAuthApi.settings).mockResolvedValue(providerSettings({ clientSecretConfigured: true }));
+  it.each(['oidc', 'churchtools'])('%s never displays a saved secret and exposes explicit replace/remove controls', async (type) => {
+    vi.mocked(externalAuthApi.settings).mockResolvedValue(providerSettings({ type, clientSecretConfigured: true }));
     const wrapper = mount(AuthenticationSettingsView, { global: { plugins: [router], stubs } });
     await flushPromises();
 
@@ -97,9 +97,9 @@ describe('AuthenticationSettingsView', () => {
     expect(wrapper.html()).not.toContain('clientSecretEnvelope');
   });
 
-  it('emits explicit secret replacement and removal requests without exposing the saved value', async () => {
-    vi.mocked(externalAuthApi.settings).mockResolvedValue(providerSettings({ clientSecretConfigured: true }));
-    vi.spyOn(externalAuthApi, 'save').mockResolvedValue(providerSettings({ clientSecretConfigured: true }));
+  it.each(['oidc', 'churchtools'])('%s emits explicit secret replacement and removal requests without exposing the saved value', async (type) => {
+    vi.mocked(externalAuthApi.settings).mockResolvedValue(providerSettings({ type, clientSecretConfigured: true }));
+    vi.spyOn(externalAuthApi, 'save').mockResolvedValue(providerSettings({ type, clientSecretConfigured: true }));
     const wrapper = mount(AuthenticationSettingsView, { global: { plugins: [router], stubs } });
     await flushPromises();
 

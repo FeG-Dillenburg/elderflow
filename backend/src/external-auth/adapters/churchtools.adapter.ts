@@ -3,12 +3,13 @@ import { codedHttpException } from '../../errors/coded-http.exception';
 import { ExternalAuthProvider } from '../external-auth-provider.entity';
 import { ExternalLoginTransaction } from '../external-login-transaction.entity';
 import { ProviderHttpService } from '../provider-http.service';
+import { ProviderSecretService } from '../provider-secret.service';
 import { ProviderUrlService } from '../provider-url.service';
 import { callbackUrl, ExternalCallback, ExternalIdentityResult, ProviderAdapter } from './provider-adapter';
 
 @Injectable()
 export class ChurchToolsAdapter implements ProviderAdapter {
-  constructor(private readonly http: ProviderHttpService, private readonly urls: ProviderUrlService) {}
+  constructor(private readonly http: ProviderHttpService, private readonly urls: ProviderUrlService, private readonly secrets: ProviderSecretService) {}
 
   async createAuthorizationUrl(provider: ExternalAuthProvider, _transaction: ExternalLoginTransaction, state: string): Promise<string> {
     const base = this.base(provider);
@@ -20,9 +21,13 @@ export class ChurchToolsAdapter implements ProviderAdapter {
 
   async exchange(provider: ExternalAuthProvider, _transaction: ExternalLoginTransaction, callback: ExternalCallback): Promise<ExternalIdentityResult> {
     const base = this.base(provider);
-    const token = await this.http.postForm(new URL('/oauth/access_token', `${base}/`).toString(), new URLSearchParams({
+    const form = new URLSearchParams({
       grant_type: 'authorization_code', code: callback.code, client_id: provider.clientId!, redirect_uri: callbackUrl(provider),
-    }), undefined, 'token');
+    });
+    if (provider.clientSecretEnvelope) {
+      form.set('client_secret', this.secrets.decrypt(provider.clientSecretEnvelope));
+    }
+    const token = await this.http.postForm(new URL('/oauth/access_token', `${base}/`).toString(), form, undefined, 'token');
     if (typeof token.access_token !== 'string') throw this.invalid();
     const profile = await this.http.getJson(new URL('/oauth/userinfo', `${base}/`).toString(), `Bearer ${token.access_token}`, 'userinfo');
     const nestedProfile = this.record(profile.data);
