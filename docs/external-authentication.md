@@ -30,7 +30,7 @@ Enter a display label, issuer URL, client ID, optional client secret, and Public
 
 For either OpenID Connect or ChurchTools, if a client secret is used, configure `AUTH_PROVIDER_SECRETS_KEY` with a stable, random 32-byte base64url value. Generate one outside the application deployment and store it in the deployment secret manager. This key must be independent from `AUTH_SESSION_SECRET` and all Protected-text keys. Keep the same value when restoring a database backup.
 
-A missing or wrong key does not prevent startup or Local login. A provider that needs the unreadable secret is hidden from the public login page and Authentication Settings shows a restricted diagnostic. Providers without a client secret remain usable.
+A configured key with an invalid decoded length produces a startup warning stating that `AUTH_PROVIDER_SECRETS_KEY` must be exactly 32 bytes encoded as base64url; the key value is never logged. Restart the backend after changing this environment variable. A missing or wrong key does not prevent startup or Local login. A provider that needs the unreadable secret is hidden from the public login page and Authentication Settings shows a restricted diagnostic. Providers without a client secret remain usable.
 
 ## ChurchTools
 

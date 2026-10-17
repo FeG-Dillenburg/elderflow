@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Repository } from 'typeorm';
 import { User } from '../users/user.entity';
@@ -93,5 +94,26 @@ describe.each(['churchtools', 'oidc'] as const)('%s provider settings secrets', 
     expect(await service('').getPublicProvider()).not.toBeNull();
     const changed = await settings.save({ ...input, clientSecret: 'new-secret' });
     expect(changed).toMatchObject({ enabled: false, testedAt: null, canEnable: false, status: 'draft' });
+  });
+});
+
+describe('Provider settings startup diagnostics', () => {
+  it('explains an invalid deployment-key length without logging the key', () => {
+    const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    try {
+      const { service } = fixture();
+      const invalidKey = Buffer.alloc(39, 7).toString('base64url');
+      service(invalidKey);
+      expect(warn).toHaveBeenCalledWith(
+        'AUTH_PROVIDER_SECRETS_KEY has an invalid decoded length: it must be exactly 32 bytes, encoded as base64url. Saving provider client secrets is unavailable. Local login remains available.',
+      );
+      expect(JSON.stringify(warn.mock.calls)).not.toContain(invalidKey);
+      warn.mockClear();
+      service();
+      service('');
+      expect(warn).not.toHaveBeenCalled();
+    } finally {
+      warn.mockRestore();
+    }
   });
 });
