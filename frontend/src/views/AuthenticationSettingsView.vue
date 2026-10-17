@@ -282,6 +282,7 @@ onMounted(load);
         <span>{{ provider?.clientSecretConfigured ? t("externalAuth.replaceClientSecret") : t("externalAuth.clientSecret") }}</span>
         <Password
           v-model="form.clientSecret"
+          fluid
           :feedback="false"
           toggle-mask
           autocomplete="new-password"
