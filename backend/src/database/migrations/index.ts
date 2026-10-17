@@ -1,3 +1,4 @@
+import { ChurchToolsClientSecrets1720000022000 } from './1720000022000-ChurchToolsClientSecrets';
 import { MentionSnapshots1720000021000 } from "./1720000021000-MentionSnapshots";
 import { CreateUsers1720000000000 } from './1720000000000-CreateUsers';
 import { CreateAgendaDomain1720000001000 } from './1720000001000-CreateAgendaDomain';
@@ -45,4 +46,5 @@ export const migrations = [
   ExternalAuthentication1720000019000,
   MeetingTopicStatusDecisions1720000020000,
   MentionSnapshots1720000021000,
+  ChurchToolsClientSecrets1720000022000,
 ];
