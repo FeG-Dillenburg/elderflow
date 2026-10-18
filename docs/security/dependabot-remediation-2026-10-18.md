@@ -40,7 +40,9 @@ Development paths include Jest/ts-loader → micromatch 4.0.8 → braces 3.0.3, 
 - Runtime smoke checks against installed packages pass: the actual AppModule Joi schema accepts valid development/production settings and rejects invalid ports/URLs and missing production secrets; proxy-addr rejects arbitrary IPv4 clients for `::ffff:10.0.0.0/8` and `::/1`, while preserving a correctly mapped trusted subnet; Multer disk storage cleans an aborted multipart upload while an asynchronous destination callback is pending.
 - DOMPurify sanitizes strings in both rich-text helpers; no `IN_PLACE` path exists. The reported DOM-node in-place advisories are not an identified application exploit path, but the package is updated regardless. ProseMirror paste handling is relevant and covered by existing editor/mention/drag-paste tests.
 - The backend configures no custom proxy trust subnets and exposes no Multer/FileInterceptor upload route. The dependency behavior checks therefore require no application compatibility changes.
+- `pnpm test` passes: 69 backend suites / 281 tests; 82 frontend files / 529 tests, with 3 frontend files/tests skipped by their existing conditions; root dossier and CI-badge checks also pass. Backend HTTP/WebSocket tests require running outside the sandbox, whose local socket restrictions otherwise produce `listen EPERM`.
 - `pnpm build` passes for both workspaces. Existing Vite chunk-size warnings remain.
+- Standards review: no hard violations; corrected the stale Multer version/removal condition in `dependency-overrides.md`. Specification review: no findings.
 
 ## Release follow-up
 
