@@ -33,7 +33,7 @@ function openForm() {
     attachTo: document.body,
     props: { id: 'tour-form', modelValue: draft, users: [], sections: [], active: true, tourEnabled: true,
       onChange: (patch: object) => Object.assign(draft, patch) },
-    global: { plugins: [PrimeVue], stubs: { TopicTypeRenderer: true, TopicMoreOptions: true } },
+    global: { plugins: [PrimeVue], stubs: { RichTextEditor: true, DatePicker: true, TopicMoreOptions: true } },
   });
   mounted.push(form);
   return { form, draft };
@@ -57,7 +57,7 @@ describe('Product tours through the visible UI', () => {
     vi.clearAllMocks();
   });
 
-  it('advances by Next and by the requested option, and finishes with Recurring selected', async () => {
+  it('advances by Next and by the requested option, and highlights godparents, and finishes with Generic selected', async () => {
     const { draft, form } = openForm();
     await settle();
     expect(document.querySelector('.driver-popover-title')?.textContent).toBe('Select Topic Type');
@@ -69,13 +69,34 @@ describe('Product tours through the visible UI', () => {
     expect(draft.type).toBe('new_membership');
     click('Next');
     await settle();
+    expect(draft.type).toBe('new_membership');
+    expect(form.get('[data-tour-id="topic-godparents"]').classes()).toContain('driver-active-element');
+    expect(document.querySelector('.driver-popover-description')?.textContent).toContain('godparent');
+    click('Next');
+    await settle();
     expect(draft.type).toBe('recurring');
     click('Finish');
     await settle();
     expect(document.querySelector('.driver-popover')).toBeNull();
     expect(tourApi.record).toHaveBeenCalledWith(expect.objectContaining({ tourId: 'new-topic-dialog', event: 'complete', stepId: 'topic-type-recurring' }), expect.any(AbortSignal));
-    expect(draft.type).toBe('recurring');
+    expect(draft.type).toBe('generic');
   });
+  it('repositions the highlight when a dialog moves after its opening transition without a window resize', async () => {
+    const { form } = openForm();
+    await settle();
+    const option = form.get('[data-tour-id="topic-type-generic"]').element;
+    let top = 200;
+    vi.spyOn(option, 'getBoundingClientRect').mockImplementation(() => ({
+      x: 100, y: top, top, left: 100, right: 200, bottom: top + 30, width: 100, height: 30,
+      toJSON: () => ({}),
+    }));
+    await new Promise((resolve) => setTimeout(resolve, 450));
+    const originalPath = document.querySelector('.driver-overlay path')?.getAttribute('d');
+    expect(originalPath).toBeTruthy();
+    top = 320;
+    await vi.waitFor(() => expect(document.querySelector('.driver-overlay path')?.getAttribute('d')).not.toBe(originalPath));
+  });
+
   it('blocks unrelated controls, supports keyboard Escape, and retries on the next dialog opening', async () => {
     const { form, draft } = openForm();
     await settle();

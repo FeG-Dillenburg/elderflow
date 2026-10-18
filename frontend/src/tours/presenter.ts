@@ -12,6 +12,7 @@ export class TourPresenter {
   private skip: (() => void) | null = null;
   private advance: (() => void) | null = null;
   private refreshTimer: ReturnType<typeof setTimeout> | undefined;
+  private layoutFrame: number | undefined;
   private returnFocus = document.activeElement as HTMLElement | null;
 
   show(step: TourStep, target: HTMLElement | undefined, nextOption: HTMLElement | null,
@@ -62,8 +63,20 @@ export class TourPresenter {
         },
       },
     });
+    // Dialog recentering, transitions and wrapped text can move targets without a resize.
+    let previousLayout = '';
+    const trackLayout = () => {
+      const rect = target?.getBoundingClientRect();
+      const popover = this.popover?.getBoundingClientRect();
+      const layout = [rect?.x, rect?.y, rect?.width, rect?.height, popover?.width, popover?.height].join(',');
+      if (layout !== previousLayout) {
+        previousLayout = layout;
+        this.driver?.refresh();
+      }
+      this.layoutFrame = requestAnimationFrame(trackLayout);
+    };
+    this.layoutFrame = requestAnimationFrame(trackLayout);
     this.refreshTimer = setTimeout(() => {
-      this.driver?.refresh();
       if (this.popover && !this.popover.contains(document.activeElement)
         && !this.allowed?.contains(document.activeElement)) {
         this.popover.querySelector<HTMLButtonElement>('.driver-popover-next-btn')?.focus();
@@ -78,6 +91,8 @@ export class TourPresenter {
 
   hide(): void {
     clearTimeout(this.refreshTimer);
+    if (this.layoutFrame !== undefined) cancelAnimationFrame(this.layoutFrame);
+    this.layoutFrame = undefined;
     window.removeEventListener('keydown', this.keydown, true);
     window.removeEventListener('focusin', this.focusin, true);
     for (const event of ['pointerdown', 'mousedown', 'click', 'submit']) {

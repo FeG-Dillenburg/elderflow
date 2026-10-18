@@ -8,7 +8,7 @@ import { User } from '../users/user.entity';
 
 const definitions = {
   'first-login': ['welcome', 'protected-text-encryption', 'protected-text-passphrase', 'dashboard-overview', 'meetings-navigation', 'topics-navigation', 'mentions-navigation', 'profile-settings', 'sign-out'],
-  'new-topic-dialog': ['topic-type-generic', 'topic-type-person', 'topic-type-new-membership', 'topic-type-recurring'],
+  'new-topic-dialog': ['topic-type-generic', 'topic-type-person', 'topic-type-new-membership', 'topic-godparents', 'topic-type-recurring'],
 } as const;
 
 class TourEventDto {

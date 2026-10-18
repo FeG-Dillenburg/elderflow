@@ -115,6 +115,7 @@ postgres('Versioned tour progress through authenticated HTTP', () => {
     await request(app.getHttpServer()).get('/api/tours').expect(401);
     await send('guest', 'start', 'welcome').expect(201);
     await send('guest', 'step', 'mentions-navigation').expect(201);
+    await send('user', 'step', 'topic-godparents', { tourId: 'new-topic-dialog' }).expect(201);
     await send('guest', 'start', undefined, { tourId: 'new-topic-dialog' }).expect(403);
     await send('it-admin', 'start', 'welcome').expect(403);
     await send('user', 'complete', 'welcome').expect(400);

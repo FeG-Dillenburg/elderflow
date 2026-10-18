@@ -1,5 +1,6 @@
 export default {
   tours: {
+    godparentsTitle: "Godparents",
   "help": "Help / Tours",
   "firstLogin": "First login",
   "newTopic": "New Topic dialog",
@@ -25,13 +26,14 @@ export default {
     "dashboard-overview": "The dashboard shows the important information that is currently relevant.",
     "meetings-navigation": "Find all past and upcoming meetings here.",
     "topics-navigation": "See current topics and, if you have permission, add new ones.",
+      "topic-godparents": "For a new membership, you can enter a godparent here, for example.",
       "mentions-navigation": "Here you can see all topics where you were mentioned.",
     "profile-settings": "Change your personal information and settings, including your language, in your profile.",
     "sign-out": "Use this button to log out and close your current session.",
     "topic-type-generic": "Elderflow supports four topic types. They share fields such as name and text, with additional behavior for each type. Generic is for ordinary topics. Select Person or choose Next to continue.",
     "topic-type-person": "Person Topics focus on a person or group and let you share updates, for example prayer requests. Select New Membership or choose Next to continue.",
-    "topic-type-new-membership": "New Membership Topics track membership requests, including godparents, status text, and phase. Select Recurring or choose Next to continue.",
-    "topic-type-recurring": "Recurring Topics reappear regularly in meetings. Set a repeat interval and default position, and use the text to explain what to discuss or do. After finishing, you can choose any type before saving."
+    "topic-type-new-membership": "New Membership Topics track membership requests, including godparents, status text, and phase. Choose Next to see where to enter a godparent.",
+    "topic-type-recurring": "Recurring Topics reappear regularly in meetings. Set a repeat interval and default position, and use the text to explain what to discuss or do. After finishing, the form returns to Generic. You can choose any type before saving."
   }
 },
   mentions: {

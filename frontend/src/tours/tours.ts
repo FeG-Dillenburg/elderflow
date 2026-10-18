@@ -134,10 +134,11 @@ async function finish(attempt: Attempt, completed: boolean, redirect = true): Pr
   // Keep the completion write ahead of the next trigger's eligibility read.
   await record(attempt, completed ? 'complete' : 'skip');
   if (active !== attempt) return;
+  if (completed && attempt.context?.isOpen()) attempt.context.select('generic');
   active = null;
   state.activeId = null;
   await nextTick();
-  const currentTarget = attempt.definition.steps[attempt.index]?.target;
+  const currentTarget = completed && attempt.context ? 'topic-type-generic' : attempt.definition.steps[attempt.index]?.target;
   const formFocus = currentTarget && attempt.context?.isOpen()
     ? attempt.context.root.querySelector(`[data-tour-id="${currentTarget}"]`)?.closest('button') ?? undefined
     : undefined;

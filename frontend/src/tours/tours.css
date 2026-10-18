@@ -1,6 +1,7 @@
 .driver-popover.elderflow-tour {
-  max-width: min(24rem, calc(100vw - 2rem));
-  min-width: min(16rem, calc(100vw - 2rem));
+  width: min(36rem, calc(100vw - 2rem));
+  max-width: min(36rem, calc(100vw - 2rem));
+  min-width: min(24rem, calc(100vw - 2rem));
   border-radius: 0.8rem;
   padding: 1.25rem;
   color: #243047;

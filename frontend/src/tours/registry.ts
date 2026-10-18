@@ -42,12 +42,19 @@ export const tourRegistry: Record<TourId, TourDefinition> = {
   'new-topic-dialog': {
     id: 'new-topic-dialog', version: 1, nameKey: 'tours.newTopic',
     audience: (user) => isProtectedTextReader(user) && user.permissions.topics === 'manage',
-    steps: (['generic', 'person', 'new_membership', 'recurring'] as const).map((topicType) => ({
-      id: `topic-type-${topicType.replace('_', '-')}`,
-      target: `topic-type-${topicType.replace('_', '-')}`,
-      titleKey: `tours.topicTitles.${topicType}`,
-      descriptionKey: `tours.steps.topic-type-${topicType.replace('_', '-')}`,
-      side: 'top', skippable: true, topicType,
-    })),
+    steps: (['generic', 'person', 'new_membership', 'recurring'] as const).flatMap((topicType): TourStep[] => {
+      const typeStep: TourStep = {
+        id: `topic-type-${topicType.replace('_', '-')}`,
+        target: `topic-type-${topicType.replace('_', '-')}`,
+        titleKey: `tours.topicTitles.${topicType}`,
+        descriptionKey: `tours.steps.topic-type-${topicType.replace('_', '-')}`,
+        side: 'top', skippable: true, topicType,
+      };
+      return topicType === 'new_membership' ? [typeStep, {
+        id: 'topic-godparents', target: 'topic-godparents',
+        titleKey: 'tours.godparentsTitle', descriptionKey: 'tours.steps.topic-godparents',
+        side: 'top', skippable: true, topicType,
+      }] : [typeStep];
+    }),
   },
 };

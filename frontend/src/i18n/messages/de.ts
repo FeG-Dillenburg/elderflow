@@ -1,5 +1,6 @@
 const de = {
   tours: {
+    godparentsTitle: "Paten",
     help: 'Hilfe / Touren', firstLogin: 'Erste Anmeldung', newTopic: 'Dialog „Neues Thema“',
     start: 'Starten', next: 'Weiter', skip: 'Überspringen', finish: 'Abschließen',
     replayDescription: 'Du kannst eine Einführung jederzeit wiederholen. Abgeschlossene Touren bleiben abgeschlossen.',
@@ -13,13 +14,14 @@ const de = {
       'dashboard-overview': 'Das Dashboard zeigt die wichtigen Informationen, die gerade relevant sind.',
       'meetings-navigation': 'Hier findest du alle vergangenen und bevorstehenden Sitzungen.',
       'topics-navigation': 'Hier siehst du aktuelle Themen und kannst mit entsprechender Berechtigung neue hinzufügen.',
+      "topic-godparents": "Bei einer Aufnahme lässt sich hier beispielsweise ein Pate hinterlegen.",
       "mentions-navigation": "Hier siehst Du alle Themen, in denen Du erwähnt wurdest.",
       'profile-settings': 'In deinem Profil kannst du persönliche Angaben und Einstellungen wie die Sprache ändern.',
       'sign-out': 'Hier kannst du dich abmelden und deine aktuelle Sitzung beenden.',
       'topic-type-generic': 'Elderflow unterstützt vier Themenarten. Sie teilen Felder wie Name und Text und haben jeweils eigene Funktionen. Allgemeine Themen sind für gewöhnliche Anliegen gedacht. Wähle Person oder Weiter.',
       'topic-type-person': 'Personenthemen betreffen eine Person oder Gruppe und ermöglichen aktuelle Mitteilungen, zum Beispiel Gebetsanliegen. Wähle Aufnahme oder Weiter.',
-      'topic-type-new-membership': 'Aufnahmethemen begleiten Mitgliedschaftsanträge mit Paten, Statustext und Phase. Wähle Wiederkehrend oder Weiter.',
-      'topic-type-recurring': 'Wiederkehrende Themen erscheinen regelmäßig in Sitzungen. Lege Intervall und Standardposition fest und beschreibe im Text, was besprochen oder getan werden soll. Nach Abschluss kannst du vor dem Speichern jede Themenart wählen.',
+      'topic-type-new-membership': 'Aufnahmethemen begleiten Mitgliedschaftsanträge mit Paten, Statustext und Phase. Wähle Weiter, um das Feld für Paten kennenzulernen.',
+      'topic-type-recurring': 'Wiederkehrende Themen erscheinen regelmäßig in Sitzungen. Lege Intervall und Standardposition fest und beschreibe im Text, was besprochen oder getan werden soll. Nach Abschluss kehrt das Formular zu Allgemein zurück. Du kannst vor dem Speichern jede Themenart wählen.',
     },
   },
   mentions: {
