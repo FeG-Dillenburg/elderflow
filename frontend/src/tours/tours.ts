@@ -69,7 +69,9 @@ async function show(attempt: Attempt): Promise<void> {
   if (!live(attempt) || active !== attempt) return;
   const step = attempt.definition.steps[attempt.index];
   if (!step) { await finish(attempt, false); return; }
-  const element = step.target ? await target(attempt, step.target) : undefined;
+  const marker = step.target ? await target(attempt, step.target) : undefined;
+  const element = step.target?.startsWith('topic-type-')
+    ? marker?.closest<HTMLButtonElement>('button') ?? marker : marker;
   if (!live(attempt) || active !== attempt) return;
   if (step.target && !element) {
     // Missing targets can never implicitly complete a tour.

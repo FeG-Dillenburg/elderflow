@@ -61,6 +61,7 @@ describe('Product tours through the visible UI', () => {
     const { draft, form } = openForm();
     await settle();
     expect(document.querySelector('.driver-popover-title')?.textContent).toBe('Select Topic Type');
+    expect(document.querySelector('.driver-active-element')).toBe(form.get('[data-tour-id="topic-type-generic"]').element.closest('button'));
     click('Next');
     await settle();
     expect(draft.type).toBe('person');
@@ -84,7 +85,7 @@ describe('Product tours through the visible UI', () => {
   it.each([100, 450])('repositions the popover when the dialog moves at %sms without a window resize', async (delay) => {
     const { form } = openForm();
     for (const type of ['generic', 'person']) {
-      const option = form.get(`[data-tour-id="topic-type-${type}"]`).element;
+      const option = form.get(`[data-tour-id="topic-type-${type}"]`).element.closest('button')!;
       let top = 200;
       vi.spyOn(option, 'getBoundingClientRect').mockImplementation(() => ({
         x: 100, y: top, top, left: 100, right: 200, bottom: top + 30, width: 100, height: 30,

@@ -31,7 +31,9 @@ export class TourPresenter {
       disableActiveInteraction: false,
       popoverClass: 'elderflow-tour',
       overlayOpacity: 0.65,
-      stagePadding: step.target?.startsWith('nav-') ? 2 : 10,
+      stagePadding: step.target?.startsWith('topic-type-') ? 0 : step.target?.startsWith('nav-') ? 2 : 10,
+      stageRadius: step.target?.startsWith('topic-type-') && target
+        ? parseFloat(getComputedStyle(target).borderTopLeftRadius) || 0 : 5,
       onDestroyed: () => { this.popover = null; },
       // Driver ignores refreshes until its own highlight animation has finished.
       // Force another measurement on the following frame, even if layout is stable.
