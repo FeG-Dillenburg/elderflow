@@ -15,7 +15,7 @@ import {
   TopicHistoryTopicDisplay,
 } from './topic-history';
 import { TopicUpdate } from './topic-update.entity';
-import { isE2eeKeyOperator } from '../e2ee/e2ee-role-policy';
+import { isProtectedTextReader } from '../e2ee/e2ee-role-policy';
 
 type TimedHistoryEntry = TopicHistoryEntry & { sortTime: number };
 
@@ -79,7 +79,7 @@ export class TopicHistoryService {
       sortTime: update.date.getTime(),
       updateId: update.id,
       createdByDisplayName: this.userDisplayName(update.createdBy),
-      protected: isE2eeKeyOperator(viewer.role) && Buffer.isBuffer(update.textEnvelope)
+      protected: isProtectedTextReader(viewer.role) && Buffer.isBuffer(update.textEnvelope)
         ? {
             textEnvelope: update.textEnvelope.toString('base64url'),
             textCommitRevision: update.textCommitRevision!,
@@ -148,7 +148,7 @@ export class TopicHistoryService {
     const godparentsCommitRevision = completed
       ? appearance?.godparentsSnapshotCommitRevision
       : topic.godparentsCommitRevision;
-    const canReadProtected = isE2eeKeyOperator(viewer.role)
+    const canReadProtected = isProtectedTextReader(viewer.role)
       && Buffer.isBuffer(nameEnvelope)
       && Buffer.isBuffer(membershipProcessStatusEnvelope)
       && Buffer.isBuffer(godparentsEnvelope)
@@ -186,7 +186,7 @@ export class TopicHistoryService {
   ): TopicHistoryMeeting {
     return {
       id: meeting.id,
-      protected: isE2eeKeyOperator(viewer.role) && Buffer.isBuffer(meeting.titleEnvelope)
+      protected: isProtectedTextReader(viewer.role) && Buffer.isBuffer(meeting.titleEnvelope)
         ? {
             titleEnvelope: meeting.titleEnvelope.toString('base64url'),
             titleCommitRevision: meeting.titleCommitRevision,

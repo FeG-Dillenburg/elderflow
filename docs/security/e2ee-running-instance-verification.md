@@ -119,7 +119,7 @@ rg -n 'EF54_' \
 Expected verify observations:
 
 - exact title and all three collaborative values decrypt after restart;
-- Guest receives structural data without Protected payload, while IT-admin and invalid-session requests cannot fetch the workspace;
+- Guest receives authorized Protected payload and can decrypt after unlock, while IT-admin and invalid-session requests cannot fetch the workspace;
 - HTTP workspace/Meeting bodies contain no `EF54_` and use `Cache-Control: no-store`;
 - captured incoming and outgoing WebSocket JSON contains tickets and opaque base64url envelopes, not markers;
 - both cryptographic client contexts converge after concurrent and disconnected edits;
@@ -156,7 +156,7 @@ Use two genuinely separate browser profiles or private contexts, A and B. Do not
 6. Inspect Network and Application in both contexts: no marker in URLs, Local Storage, Session Storage, IndexedDB, Cache Storage, service-worker caches, or locked response text; protected HTTP responses say `no-store`; WebSocket frames contain opaque envelopes plus content-free compaction control fields only.
 7. Hard reload both contexts. They must start locked. Unlock and confirm all committed markers return.
 8. In A, complete the Meeting while B holds a disconnected edit. Reconnect B. Confirm a visible localized discarded-change message, canonical frozen reload, and read-only Completed Meeting.
-9. Sign in as IT admin: no unlock, ciphertext-delivery, recovery, rotation, or editor path. Sign in as Guest: read-only structural behavior only, with no write ticket. Verify an unrelated or authorization-lost context is rejected.
+9. Sign in as IT admin: no unlock, ciphertext-delivery, recovery, rotation, or editor path. Sign in as Guest: unlock and read authorized Protected text, with no content mutations, write ticket, recovery material, or key ceremony access. Verify an unrelated or authorization-lost context is rejected.
 10. Switch English/German and repeat locked, offline, paused/resynchronizing, rejected/discarded, and key-operation status checks. At phone width, verify unlock and ceremony layouts without horizontal loss; check keyboard order, focus restoration/trapping, ARIA labels/live feedback, and non-color-only states.
 
 Record only compact observations/screenshots without Protected text beyond these synthetic markers. Do not attach full network traces, dumps, console logs, secrets, or ciphertext bodies to the repository.

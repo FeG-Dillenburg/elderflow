@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from "vue";
+import { computed, onMounted, reactive, ref, watch } from "vue";
+import { tours } from "../tours/tours";
 import Button from "primevue/button";
 import Column from "primevue/column";
 import DataTable from "primevue/datatable";
@@ -121,6 +122,12 @@ const open = () => {
   createError.value = "";
   visible.value = true;
 };
+watch(() => tours.state.topicReplay, (requested) => {
+  if (requested && auth.canManage("topics")) {
+    tours.state.topicReplay = false;
+    open();
+  }
+}, { immediate: true });
 const create = async () => {
   if (saving.value) return;
   saving.value = true;
@@ -264,7 +271,7 @@ onMounted(load);
     </div>
     <Dialog
       v-model:visible="visible"
-      modal
+      :modal="tours.state.activeId !== 'new-topic-dialog'"
       :header="t('topics.createTitle')"
       :style="{ width: '46rem', maxWidth: 'calc(100vw - 2rem)' }"
     >
@@ -282,6 +289,7 @@ onMounted(load);
           :model-value="form"
           :users="users"
           :sections="sections"
+          tour-enabled
           :active="visible"
           :error="createError"
           initialize-defaults

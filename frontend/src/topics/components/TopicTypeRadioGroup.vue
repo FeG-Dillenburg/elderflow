@@ -22,6 +22,7 @@ const options = computed(() =>
 
 <template>
   <fieldset
+    data-tour-id="topic-type-selector"
     class="topic-type-selector"
     :class="{ disabled: props.disabled }"
   >
@@ -36,7 +37,13 @@ const options = computed(() =>
       :disabled="props.disabled"
       :aria-label="t('topics.type')"
       size="small"
-    />
+    >
+      <template #option="{ option }">
+        <span :data-tour-id="`topic-type-${option.value.replace('_', '-')}`">
+          {{ option.label }}
+        </span>
+      </template>
+    </SelectButton>
   </fieldset>
 </template>
 

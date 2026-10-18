@@ -1,3 +1,4 @@
+import { auth } from "../../auth/auth";
 import {
   api,
   type Meeting,
@@ -88,12 +89,13 @@ export const productionMeetingWorkspaceBackend: MeetingWorkspaceBackend = {
     if (protectedText.state.status === "unlocked" && !meeting.workspace) {
       throw new Error("MEETING_WORKSPACE_UNAVAILABLE");
     }
-    await startMeetingCollaboration(meeting);
+    const collaborative = auth.canManage("meetings") && Boolean(meeting.workspace);
+    if (collaborative) await startMeetingCollaboration(meeting);
     signal?.throwIfAborted();
     return {
       meeting,
       unlocked: protectedText.state.status === "unlocked",
-      collaborative: Boolean(meeting.workspace),
+      collaborative,
     };
   },
   revokeAccess() {

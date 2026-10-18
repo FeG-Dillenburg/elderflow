@@ -1,3 +1,4 @@
+import { TourProgress1720000023000 } from './1720000023000-TourProgress';
 import { ChurchToolsClientSecrets1720000022000 } from './1720000022000-ChurchToolsClientSecrets';
 import { MentionSnapshots1720000021000 } from "./1720000021000-MentionSnapshots";
 import { CreateUsers1720000000000 } from './1720000000000-CreateUsers';
@@ -47,4 +48,5 @@ export const migrations = [
   MeetingTopicStatusDecisions1720000020000,
   MentionSnapshots1720000021000,
   ChurchToolsClientSecrets1720000022000,
+  TourProgress1720000023000,
 ];

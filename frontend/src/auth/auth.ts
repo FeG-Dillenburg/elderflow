@@ -7,7 +7,7 @@ import { clearSessionToken, getSessionToken, setSessionToken } from './session';
 import { protectedText } from '../e2ee/protected-text';
 import { externalAuthApi } from '../api/external-auth';
 
-const state = reactive<{ user: AuthUser | null; ready: boolean }>({ user: null, ready: false });
+const state = reactive<{ user: AuthUser | null; ready: boolean; loginPending: boolean }>({ user: null, ready: false, loginPending: false });
 let initialization: Promise<void> | null = null;
 
 async function acceptSession(result: { token: string; user: AuthUser }): Promise<void> {
@@ -20,7 +20,8 @@ async function acceptSession(result: { token: string; user: AuthUser }): Promise
     installationDefault: installation.defaultLanguage,
     browserLanguages: navigator.languages,
   }));
-  await protectedText.offerUnlock(result.user);
+  await protectedText.offerUnlock(result.user, false);
+  state.loginPending = true;
 }
 
 export const auth = {
@@ -43,6 +44,8 @@ export const auth = {
     await acceptSession(await externalAuthApi.complete(code));
   },
   logout(): void {
+    window.dispatchEvent(new Event('elderflow:before-logout'));
+    state.loginPending = false;
     protectedText.lock('logout');
     clearSessionToken();
     state.user = null;
@@ -60,6 +63,7 @@ export const auth = {
   },
   completeInitialization(user: AuthUser | null): void {
     state.user = user;
+    state.loginPending = false;
     state.ready = true;
   },
   permission(category: PermissionCategory): PermissionLevel {

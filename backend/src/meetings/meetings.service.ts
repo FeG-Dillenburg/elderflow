@@ -8,7 +8,7 @@ import { createHash } from "node:crypto";
 import { DataSource, In, LessThan, Repository } from "typeorm";
 import { AgendaSection } from "../agenda-sections/agenda-section.entity";
 import { E2eeScalarService } from "../e2ee/e2ee-scalar.service";
-import { isE2eeKeyOperator } from "../e2ee/e2ee-role-policy";
+import { isProtectedTextReader } from "../e2ee/e2ee-role-policy";
 import { MEETING_SCALAR_FIELDS, SCALAR_AGGREGATES } from "../e2ee/scalar-registry";
 import { codedHttpException } from "../errors/coded-http.exception";
 import { RecurrenceService } from "../recurrence/recurrence.service";
@@ -318,7 +318,7 @@ export class MeetingsService {
         relations: { section: true, topic: { responsibleUser: true } },
         order: { section: { position: "ASC" }, position: "ASC" },
       }),
-      isE2eeKeyOperator(user.role)
+      isProtectedTextReader(user.role)
         ? this.documents.bootstrap(this.meetings.manager, user, id)
         : Promise.resolve(null),
     ]);
@@ -351,7 +351,7 @@ export class MeetingsService {
         ])
       : [[], [], []] as [TopicUpdate[], Task[], MeetingTopic[]];
     const priorMeetingIds = [...new Set(earlierAppearances.map((item) => item.meetingId))];
-    const priorDocuments = isE2eeKeyOperator(user.role) && priorMeetingIds.length
+    const priorDocuments = isProtectedTextReader(user.role) && priorMeetingIds.length
       ? await this.meetings.manager.find(MeetingDocument, {
           where: { meetingId: In(priorMeetingIds) },
           select: { meetingId: true, id: true, activeSnapshotId: true, currentServerSequence: true },

@@ -34,7 +34,7 @@ const date = (value: string | null) =>
     <header class="page-header">
       <div>
         <p class="eyebrow">{{ t("dashboard.eyebrow") }}</p>
-        <h1>{{ t("dashboard.title") }}</h1>
+        <h1 data-tour-id="dashboard-heading">{{ t("dashboard.title") }}</h1>
         <p>{{ t("dashboard.description") }}</p>
       </div>
     </header>

@@ -1,4 +1,41 @@
 export default {
+  tours: {
+    godparentsTitle: "Godparents",
+  "help": "Help / Tours",
+  "firstLogin": "First login",
+  "newTopic": "New Topic dialog",
+  "start": "Start",
+  "next": "Next",
+  "skip": "Skip",
+  "finish": "Finish",
+  "replayDescription": "Replay an introduction at any time. Your completed tours stay completed.",
+  "unavailable": "Tour progress could not be synchronized. You can continue using Elderflow and try the tour again from Help / Tours.",
+  "welcomeTitle": "Welcome to Elderflow",
+  "encryptionTitle": "Elderflow is encrypted",
+  "passphraseTitle": "Enter encryption password",
+  "topicTitles": {
+    "generic": "Select Topic Type",
+    "person": "Person Topics",
+    "new_membership": "New Membership Topics",
+    "recurring": "Recurring Topics"
+  },
+  "steps": {
+    "welcome": "Let’s explore Elderflow together. Start with the protection of your confidential content.",
+    "protected-text-encryption": "Confidential content in Elderflow is end-to-end encrypted. Enter the shared encryption password to display it on this device.",
+    "protected-text-passphrase": "Enter the encryption password you received. Click the password field or choose Next to unlock, or continue without unlocking. The tour will wait for you.",
+    "dashboard-overview": "The dashboard shows the important information that is currently relevant.",
+    "meetings-navigation": "Find all past and upcoming meetings here.",
+    "topics-navigation": "See current topics and, if you have permission, add new ones.",
+      "topic-godparents": "For a new membership, you can enter a godparent here, for example.",
+      "mentions-navigation": "Here you can see all topics where you were mentioned.",
+    "profile-settings": "Change your personal information and settings, including your language, in your profile.",
+    "sign-out": "Use this button to log out and close your current session.",
+    "topic-type-generic": "Elderflow supports four topic types. They share fields such as name and text, with additional behavior for each type. Generic is for ordinary topics. Select Person or choose Next to continue.",
+    "topic-type-person": "Person Topics focus on a person or group and let you share updates, for example prayer requests. Select New Membership or choose Next to continue.",
+    "topic-type-new-membership": "New Membership Topics track membership requests, including godparents, status text, and phase. Choose Next to see where to enter a godparent.",
+    "topic-type-recurring": "Recurring Topics reappear regularly in meetings. Set a repeat interval and default position, and use the text to explain what to discuss or do. After finishing, the form returns to Generic. You can choose any type before saving."
+  }
+},
   mentions: {
     eyebrow: "Personal overview",
     description: "Your current mentions with their context and meeting.",

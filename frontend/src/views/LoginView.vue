@@ -5,6 +5,7 @@ import Button from "primevue/button";
 import InputText from "primevue/inputtext";
 import Message from "primevue/message";
 import Password from "primevue/password";
+import { safeReturnPath } from "../auth/return-path";
 import { auth } from "../auth/auth";
 import { useI18n } from "vue-i18n";
 import Divider from "primevue/divider";
@@ -33,7 +34,7 @@ async function startExternalLogin(): Promise<void> {
   errorMessage.value = "";
   try {
     const result = await externalAuthApi.startLogin(
-      typeof route.query.redirect === "string" ? route.query.redirect : "/",
+      safeReturnPath(route.query.redirect),
     );
     window.location.assign(result.authorizationUrl);
   } catch {
@@ -48,7 +49,7 @@ async function submit(): Promise<void> {
   try {
     await auth.login(form.email, form.password);
     await router.push(
-      typeof route.query.redirect === "string" ? route.query.redirect : "/",
+      safeReturnPath(route.query.redirect),
     );
   } catch (error) {
     errorMessage.value =

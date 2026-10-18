@@ -134,7 +134,7 @@ describe("DashboardService", () => {
     });
   });
 
-  it("withholds all dashboard Protected ciphertext from Guest viewers", async () => {
+  it("returns authorized dashboard ciphertext to Guest viewers", async () => {
     const topic = {
       id: "topic",
       nameEnvelope: Buffer.from([1]),
@@ -151,8 +151,8 @@ describe("DashboardService", () => {
     topics.find.mockResolvedValue([topic]);
 
     const result = await service.get({ id: "guest", role: "guest" } as any);
-    expect(result.followUpTopics[0]).toMatchObject({ id: "topic", protected: null });
-    expect(result.myOpenTasks[0]).toMatchObject({ id: "task", protected: null });
-    expect(JSON.stringify(result)).not.toContain("nameEnvelope");
+    expect(result.followUpTopics[0]).toMatchObject({ id: "topic", protected: expect.objectContaining({ nameEnvelope: "AQ" }) });
+    expect(result.myOpenTasks[0]).toMatchObject({ id: "task", protected: expect.objectContaining({ titleEnvelope: Buffer.from("task-title").toString("base64url") }) });
+    expect(JSON.stringify(result)).not.toContain("task-title");
   });
 });

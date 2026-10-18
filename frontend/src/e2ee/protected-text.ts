@@ -5,7 +5,7 @@ import { api, type AuthUser } from '../api/domain';
 import { unlockWithPassphrase, type PublicKeyState } from './crypto';
 import { UnlockSession, type LockReason } from './unlock-session';
 import { recoverySession } from './recovery-session';
-import { isE2eeKeyOperator } from './roles';
+import { isProtectedTextReader } from './roles';
 import { bytesToBase64Url } from './protocol';
 import { scalarSession } from './scalar-session';
 import { meetingDocumentSession } from './meeting-document-session';
@@ -46,7 +46,7 @@ export const protectedText = {
     return () => { if (workspaceLifecycle === lifecycle) workspaceLifecycle = null; };
   },
   isEligible(user: AuthUser | null): boolean {
-    return isE2eeKeyOperator(user);
+    return isProtectedTextReader(user);
   },
   async offerUnlock(user: AuthUser | null, showPrompt = true): Promise<void> {
     protectedText.lock('identity-change', false);

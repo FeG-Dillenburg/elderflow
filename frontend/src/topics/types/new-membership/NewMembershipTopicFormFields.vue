@@ -51,7 +51,7 @@ onMounted(() => {
     <div v-if="$slots.default" class="default-section-field">
       <slot />
     </div>
-    <label>
+    <label data-tour-id="topic-godparents">
       <span>{{ t("newMembershipTopic.godparents") }}</span>
       <InputText
         :model-value="modelValue.godparents"

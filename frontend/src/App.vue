@@ -6,6 +6,9 @@ import { auth } from "./auth/auth";
 import { roleLabel } from "./auth/roles";
 import router from "./router";
 import { useI18n } from "vue-i18n";
+import TourHost from "./tours/TourHost.vue";
+import ToursHelp from "./tours/ToursHelp.vue";
+import { isE2eeKeyOperator } from "./e2ee/roles";
 import UnlockDialog from "./e2ee/UnlockDialog.vue";
 import { protectedText } from "./e2ee/protected-text";
 
@@ -101,6 +104,7 @@ function toggleProtectedText(): void {
 </script>
 
 <template>
+  <TourHost />
   <div v-if="auth.state.user && !isSetupRoute" class="app-shell">
     <aside class="sidebar">
       <div class="brand">
@@ -121,6 +125,7 @@ function toggleProtectedText(): void {
           v-for="item in primaryNavigation"
           :key="item.to"
           :to="item.to"
+          :data-tour-id="`nav-${item.to.slice(1)}`"
           class="nav-link"
         >
           <i :class="item.icon" aria-hidden="true" class="pi" />
@@ -136,16 +141,17 @@ function toggleProtectedText(): void {
           </RouterLink>
         </template>
         <RouterLink
-          v-if="protectedText.isEligible(auth.state.user)"
+          v-if="isE2eeKeyOperator(auth.state.user)"
           to="/key-recovery"
           class="nav-link"
         >
           <i class="pi pi-key" aria-hidden="true" />
           {{ t("e2ee.recoveryAction") }}
         </RouterLink>
+        <ToursHelp />
       </nav>
       <div class="current-user">
-        <RouterLink to="/profile" class="profile-link">
+        <RouterLink to="/profile" class="profile-link" data-tour-id="nav-profile">
           <span class="avatar">
             {{ auth.state.user.firstName[0] }}{{ auth.state.user.lastName[0] }}
           </span>
@@ -155,6 +161,7 @@ function toggleProtectedText(): void {
           </span>
         </RouterLink>
         <button
+          data-tour-id="nav-sign-out"
           class="logout-button"
           type="button"
           :title="t('nav.signOut')"
@@ -464,7 +471,8 @@ nav {
   }
 
   .current-user {
-    display: none;
+    display: flex;
+    margin-top: 1rem;
   }
 
   .main-content {

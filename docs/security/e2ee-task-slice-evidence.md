@@ -1,5 +1,8 @@
 # Task and dashboard E2EE slice evidence
 
+> Policy update (#81): historical Guest ciphertext-exclusion results below describe the previous policy. Guests now receive authorized read-only ciphertext and ordinary unlock wrappers; recovery, key operations, and all content writes remain forbidden. See [product-tour and Guest-access verification](./product-tours-and-guest-access.md).
+
+
 ## Synthetic fixture
 
 Use the issue #49 running-instance setup first so the installation and `evidence@example.com` Content user exist. Start Elderflow against a disposable PostgreSQL database, then run:

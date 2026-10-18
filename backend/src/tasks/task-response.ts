@@ -1,11 +1,11 @@
-import { isE2eeKeyOperator } from '../e2ee/e2ee-role-policy';
+import { isProtectedTextReader } from '../e2ee/e2ee-role-policy';
 import { User } from '../users/user.entity';
 import { accountResponse, topicLabelResponse } from '../topics/topic-response';
 import { Task } from './task.entity';
 
 export const taskMeetingReference = (meeting: NonNullable<Task['meeting']>, viewer: User) => ({
   id: meeting.id,
-  protected: isE2eeKeyOperator(viewer.role) && Buffer.isBuffer(meeting.titleEnvelope)
+  protected: isProtectedTextReader(viewer.role) && Buffer.isBuffer(meeting.titleEnvelope)
     ? {
         titleEnvelope: meeting.titleEnvelope.toString('base64url'),
         titleCommitRevision: meeting.titleCommitRevision,
@@ -17,7 +17,7 @@ export const taskMeetingReference = (meeting: NonNullable<Task['meeting']>, view
 });
 
 export function taskResponse(task: Task, viewer: User) {
-  const canReadProtected = isE2eeKeyOperator(viewer.role);
+  const canReadProtected = isProtectedTextReader(viewer.role);
   return {
     id: task.id,
     topicId: task.topicId,
@@ -46,7 +46,7 @@ export function taskResponse(task: Task, viewer: User) {
 export type TaskResponse = ReturnType<typeof taskResponse>;
 
 export function taskSummaryResponse(task: Task, viewer: User) {
-  const canReadProtected = isE2eeKeyOperator(viewer.role)
+  const canReadProtected = isProtectedTextReader(viewer.role)
     && Buffer.isBuffer(task.titleEnvelope);
   return {
     id: task.id,

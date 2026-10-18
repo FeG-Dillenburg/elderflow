@@ -11,7 +11,7 @@ import {
 import { Topic } from '../topics/topic.entity';
 import { accountResponse, topicLabelResponse } from '../topics/topic-response';
 import { User } from '../users/user.entity';
-import { isE2eeKeyOperator } from '../e2ee/e2ee-role-policy';
+import { isProtectedTextReader } from '../e2ee/e2ee-role-policy';
 
 const dashboardTopicResponse = (topic: Topic, viewer: User) => ({
   ...topicLabelResponse(topic, viewer),
@@ -24,7 +24,7 @@ const dashboardTopicResponse = (topic: Topic, viewer: User) => ({
 const nextMeetingResponse = (meeting: Meeting | null, viewer: User) => meeting
   ? {
       id: meeting.id,
-      protected: isE2eeKeyOperator(viewer.role) && Buffer.isBuffer(meeting.titleEnvelope)
+      protected: isProtectedTextReader(viewer.role) && Buffer.isBuffer(meeting.titleEnvelope)
         ? {
             titleEnvelope: meeting.titleEnvelope.toString('base64url'),
             titleCommitRevision: meeting.titleCommitRevision,

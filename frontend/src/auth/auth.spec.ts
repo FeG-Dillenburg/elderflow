@@ -79,6 +79,6 @@ describe('authentication language synchronization', () => {
     expect(getSessionToken()).toBe('external-session-token');
     expect(auth.state.user).toEqual(user);
     expect(currentLanguage()).toBe('de');
-    expect(unlock).toHaveBeenCalledWith(user);
+    expect(unlock).toHaveBeenCalledWith(user, false);
   });
 });
