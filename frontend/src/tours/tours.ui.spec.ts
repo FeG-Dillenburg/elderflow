@@ -93,11 +93,14 @@ describe('Product tours through the visible UI', () => {
       if (type === 'person') click('Next');
       await settle();
       const popover = document.querySelector<HTMLElement>('.driver-popover')!;
+      expect(popover.style.visibility).toBe('hidden');
       const originalTop = parseFloat(popover.style.top);
       expect(Number.isFinite(originalTop)).toBe(true);
       await new Promise((resolve) => setTimeout(resolve, delay));
       top = 320;
       await vi.waitFor(() => expect(parseFloat(popover.style.top)).toBe(originalTop + 120));
+      await vi.waitFor(() => expect(popover.style.visibility).toBe('visible'));
+      expect(document.activeElement?.textContent).toBe('Next');
     }
   });
 
@@ -141,7 +144,7 @@ describe('Product tours through the visible UI', () => {
     openForm();
     await settle();
     expect(document.querySelector('.driver-popover-title')?.textContent).toBe('Themenart auswählen');
-    expect(document.activeElement?.textContent).toBe('Weiter');
+    await vi.waitFor(() => expect(document.activeElement?.textContent).toBe('Weiter'));
     click('Überspringen');
     await settle();
     expect(document.activeElement?.querySelector('[data-tour-id="topic-type-generic"]')).toBeTruthy();

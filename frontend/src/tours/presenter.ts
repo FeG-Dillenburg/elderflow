@@ -11,7 +11,6 @@ export class TourPresenter {
   private allowed: HTMLElement | null = null;
   private skip: (() => void) | null = null;
   private advance: (() => void) | null = null;
-  private refreshTimer: ReturnType<typeof setTimeout> | undefined;
   private layoutFrame: number | undefined;
   private returnFocus = document.activeElement as HTMLElement | null;
 
@@ -23,6 +22,7 @@ export class TourPresenter {
     this.skip = step.skippable ? skip : null;
     nextOption?.classList.add('tour-allowed-option');
     let previousLayout = '';
+    let highlightReady = false;
     this.driver = driver({
       animate: !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches,
       smoothScroll: false,
@@ -35,7 +35,7 @@ export class TourPresenter {
       onDestroyed: () => { this.popover = null; },
       // Driver ignores refreshes until its own highlight animation has finished.
       // Force another measurement on the following frame, even if layout is stable.
-      onHighlighted: () => { previousLayout = ''; },
+      onHighlighted: () => { highlightReady = true; previousLayout = ''; },
     });
     this.driver.highlight({
       element: target,
@@ -48,6 +48,8 @@ export class TourPresenter {
         onNextClick: advance,
         onPopoverRender: (popover) => {
           this.popover = popover.wrapper;
+          // Keep layout measurable without displaying an incorrectly anchored box.
+          popover.wrapper.style.visibility = 'hidden';
           popover.wrapper.setAttribute('role', 'dialog');
           popover.wrapper.setAttribute('aria-modal', 'true');
           popover.wrapper.setAttribute('aria-label', translate('tours.help'));
@@ -63,7 +65,6 @@ export class TourPresenter {
             button.onclick = skip;
             popover.footerButtons.prepend(button);
           }
-          queueMicrotask(() => popover.nextButton.focus());
         },
       },
     });
@@ -75,16 +76,13 @@ export class TourPresenter {
       if (layout !== previousLayout) {
         previousLayout = layout;
         this.driver?.refresh();
+      } else if (highlightReady && this.popover?.style.visibility === 'hidden') {
+        this.popover.style.visibility = 'visible';
+        this.popover.querySelector<HTMLButtonElement>('.driver-popover-next-btn')?.focus();
       }
       this.layoutFrame = requestAnimationFrame(trackLayout);
     };
     this.layoutFrame = requestAnimationFrame(trackLayout);
-    this.refreshTimer = setTimeout(() => {
-      if (this.popover && !this.popover.contains(document.activeElement)
-        && !this.allowed?.contains(document.activeElement)) {
-        this.popover.querySelector<HTMLButtonElement>('.driver-popover-next-btn')?.focus();
-      }
-    }, 350);
     window.addEventListener('keydown', this.keydown, true);
     window.addEventListener('focusin', this.focusin, true);
     for (const event of ['pointerdown', 'mousedown', 'click', 'submit']) {
@@ -93,7 +91,6 @@ export class TourPresenter {
   }
 
   hide(): void {
-    clearTimeout(this.refreshTimer);
     if (this.layoutFrame !== undefined) cancelAnimationFrame(this.layoutFrame);
     this.layoutFrame = undefined;
     window.removeEventListener('keydown', this.keydown, true);
