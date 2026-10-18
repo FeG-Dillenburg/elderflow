@@ -47,7 +47,7 @@ export interface MeetingWorkspaceCollaboration {
   readonly editingPaused?: boolean;
   readonly discardedChanges?: boolean;
   readonly collaborators: readonly MeetingWorkspaceCollaborator[];
-  subscribe?(listener: (change?: "state" | "document" | "presence") => void): () => void;
+  subscribe?(listener: (change?: "state" | "document" | "presence" | "structure") => void): () => void;
   close(): void | Promise<void>;
 }
 
@@ -247,6 +247,7 @@ export const createMeetingWorkspace = (
         }
         if (change !== "presence") syncActivity += 1;
         publish({ ...state, phase: completing ? "syncing" : collaboration.phase, pendingChanges: pending(), syncActivity, collaborators: collaboration.collaborators });
+        if (change === "structure") void workspace.refresh().catch(() => undefined);
         if (change === "document") {
           if (backend.readText && state.meeting) {
             try {
@@ -367,6 +368,7 @@ export const createMeetingWorkspace = (
       const currentGeneration = generation;
       const current = state.meeting;
       if (!current) throw new Error("MEETING_WORKSPACE_UNAVAILABLE");
+      if (state.phase === "locked") throw new Error("E2EE_PROTECTED_TEXT_LOCKED");
       const previousPhase = state.phase;
       let committed = false;
       completing = true;

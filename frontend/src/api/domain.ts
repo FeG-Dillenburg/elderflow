@@ -1,3 +1,5 @@
+import { completeWithMentions } from "../mentions/completion";
+import { hasMeaningfulRichText } from '../components/sanitize-rich-text';
 import type { SupportedLanguage } from '../i18n/language';
 import { localizeApiError, type ApiErrorPayload } from '../i18n/api-errors';
 import { formatDate, translate } from '../i18n';
@@ -214,6 +216,14 @@ export interface MeetingAppearanceTexts {
   meetingMinutes: VersionedMeetingText | null;
 }
 
+export interface PreparationHistoryAppearance {
+  appearanceId: string;
+  meetingId: string;
+  date: string;
+  beginTime: string;
+  documentRevision?: Pick<EncryptedWorkspace, 'documentId' | 'activeSnapshotId' | 'currentServerSequence'> | null;
+}
+
 export interface MeetingTopic {
   id: string;
   meetingId: string;
@@ -227,6 +237,7 @@ export interface MeetingTopic {
   meetingMinutes?: VersionedMeetingText | null;
   source?: AgendaAppearanceSource;
   contentEditedAt?: string | null;
+  topicStatusDecision?: "done" | "deferred" | null;
   deferredAt?: string | null;
   plannedDuration: number | null;
   status: string;
@@ -237,7 +248,10 @@ export interface MeetingTopic {
   godparentsSnapshot?: string | null;
   protectedSnapshot?: EncryptedTopicSnapshot | null;
   meeting?: Meeting;
-  previousAppearance?: ({ appearanceId: string; meetingId: string } & Partial<MeetingAppearanceTexts>) | null;
+  preparationHistory?: PreparationHistoryAppearance[];
+  preparationHistoryUnavailable?: boolean;
+  preparationUpdates?: TopicUpdate[];
+  previousAppearance?: ({ appearanceId: string; meetingId: string; date?: string; beginTime?: string } & Partial<MeetingAppearanceTexts>) | null;
 }
 
 export interface MeetingTopicAddition {
@@ -252,7 +266,13 @@ export interface MeetingTopicAddition {
 export type MeetingSuggestion = Topic & {
   isNew: boolean;
   previousSectionId: string | null;
-  previousAppearance: { id: string; meetingId: string } | null;
+  previousAppearance: {
+    id: string;
+    meetingId: string;
+    position: number;
+    date: string;
+    beginTime: string;
+  } | null;
 };
 
 export interface SkippedRecurrence {
@@ -323,6 +343,7 @@ export type TopicHistoryEntry =
       kind: 'meeting_appearance';
       effectiveAt: string;
       appearanceId: string | null;
+      topicStatusDecision?: 'done' | 'deferred' | null;
       deferredAt: string | null;
       meeting: TopicHistoryMeeting;
       section: Pick<AgendaSection, 'id' | 'name'> | null;
@@ -804,6 +825,64 @@ const unprotectMeeting = async (
   return meeting;
 };
 
+// Meeting dates and start times are local wall-clock values, as in the date/time inputs.
+const scheduledMeetingTime = (meeting: { date: string; beginTime: string }): number =>
+  new Date(`${meeting.date}T${meeting.beginTime}`).getTime();
+
+const loadPreparationHistory = async (
+  item: MeetingTopic,
+  loadPrior: (candidate: PreparationHistoryAppearance) => Promise<string>,
+  signal?: AbortSignal,
+): Promise<MeetingTopic> => {
+  if (item.topic?.type === 'person') {
+    return { ...item, previousAppearance: null, preparationUpdates: [] };
+  }
+  if (!item.preparationHistory) return item;
+  for (const candidate of item.preparationHistory) {
+    signal?.throwIfAborted();
+    try {
+      const sessionId = await loadPrior(candidate);
+      signal?.throwIfAborted();
+      const values = meetingDocumentSession.hydrateFragments(sessionId, [{
+        id: candidate.appearanceId,
+        person: false,
+      }]).appearances.get(candidate.appearanceId)!;
+      if (!hasMeaningfulRichText(values.preparationContext)
+        && !hasMeaningfulRichText(values.meetingMinutes)) continue;
+      const text = (value: string | null): VersionedMeetingText | null => value === null
+        ? null
+        : { id: candidate.appearanceId, text: value, version: 0 };
+      return {
+        ...item,
+        previousAppearance: {
+          ...candidate,
+          preparationContext: text(values.preparationContext),
+          personNote: null,
+          meetingMinutes: text(values.meetingMinutes),
+        },
+      };
+    } catch {
+      signal?.throwIfAborted();
+      // Unknown content must not be skipped as though it were a confirmed empty appearance.
+      return { ...item, previousAppearance: null, preparationHistoryUnavailable: true };
+    }
+  }
+  return { ...item, previousAppearance: null };
+};
+
+const preparationUpdates = (item: MeetingTopic, meeting: Meeting, now: number): TopicUpdate[] => {
+  if (item.topic?.type === 'person' || item.preparationHistoryUnavailable) return [];
+  const cutoff = Math.min(now, scheduledMeetingTime(meeting));
+  const previousTime = item.previousAppearance?.date && item.previousAppearance.beginTime
+    ? scheduledMeetingTime({ date: item.previousAppearance.date, beginTime: item.previousAppearance.beginTime })
+    : -Infinity;
+  const unique = new Map((item.topic?.updates ?? []).map((update) => [update.id, update]));
+  return [...unique.values()].filter((update) => {
+    const time = new Date(update.date).getTime();
+    return update.type === 'update' && time > previousTime && time <= cutoff;
+  }).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime() || a.id.localeCompare(b.id));
+};
+
 const unprotectDashboardTopic = async (
   response: EncryptedDashboardTopicSummary,
 ): Promise<DashboardTopicSummary> => {
@@ -1009,7 +1088,32 @@ export const api = {
       options,
     );
     if (meeting.agenda) {
-      meeting.agenda = await Promise.all(meeting.agenda.map(async (item) => {
+      const now = Date.now();
+      const priorLoads = new Map<string, Promise<string>>();
+      const loadPrior = (candidate: PreparationHistoryAppearance): Promise<string> => {
+        const { meetingId, documentRevision } = candidate;
+        if (documentRevision) {
+          const sessionId = `prior:${documentRevision.documentId}`;
+          if (meetingDocumentSession.hasWorkspaceRevision(sessionId, documentRevision)) {
+            return Promise.resolve(sessionId);
+          }
+        }
+        const existing = priorLoads.get(meetingId);
+        if (existing) return existing;
+        const pending = (async () => {
+          const workspace = await request<EncryptedWorkspace | null>(
+            `/api/meetings/${meetingId}/workspace`, { signal: options.signal },
+          );
+          if (!workspace) throw new Error('E2EE_PRIOR_DOCUMENT_UNAVAILABLE');
+          const sessionId = `prior:${workspace.documentId}`;
+          await meetingDocumentSession.load(sessionId, workspace);
+          return sessionId;
+        })();
+        priorLoads.set(meetingId, pending);
+        return pending;
+      };
+      meeting.agenda = await Promise.all(meeting.agenda.map(async (appearance) => {
+        const item = await loadPreparationHistory(appearance, loadPrior, options.signal);
         if (!item.topic) return item;
         const encrypted = item.topic as unknown as EncryptedTopicResponse;
         const encryptedUpdates = (item.topic as unknown as { updates?: EncryptedTopicUpdateResponse[] }).updates;
@@ -1019,6 +1123,7 @@ export const api = {
         topic.tasks = await Promise.all(
           (encryptedTasks ?? []).map((task) => unprotectTaskSummary(task)),
         ) as Task[];
+        item.preparationUpdates = preparationUpdates({ ...item, topic }, meeting, now);
         if (item.protectedSnapshot || meeting.status === 'completed') {
           const snapshot = await unprotectTopicSnapshot(item.topicId, item.protectedSnapshot ?? null);
           return {
@@ -1066,7 +1171,8 @@ export const api = {
     return saved;
   },
   completeMeeting: async (id: string) => {
-    const response = await request<EncryptedMeetingResponse>(`/api/meetings/${id}/complete`, { method: 'POST' });
+    const response = await completeWithMentions(id, (input) =>
+      request<EncryptedMeetingResponse>(`/api/meetings/${id}/complete`, { method: 'POST', body: JSON.stringify(input) }));
     const meeting = await unprotectMeeting(response);
     await reconcileAllRecurringTopics();
     return meeting;
@@ -1173,7 +1279,7 @@ export const api = {
     }
   },
   reorderMeetingTopics: (meetingId: string, items: Array<{ id: string; sectionId: string; position: number }>) => request<MeetingTopic[]>(`/api/meetings/${meetingId}/topics/order`, { method: 'PUT', body: JSON.stringify({ items }) }),
-  updateMeetingTopic: (meetingId: string, item: MeetingTopic, options?: { deferred?: boolean }) => request<MeetingTopic>(`/api/meetings/${meetingId}/topics/${item.id}`, { method: 'PUT', body: JSON.stringify({ sectionId: item.sectionId, position: item.position, plannedDuration: item.plannedDuration, status: item.status, deferred: options?.deferred }) }),
+  updateMeetingTopic: (meetingId: string, appearanceId: string, patch: MeetingTopicPatch) => request<MeetingTopic>(`/api/meetings/${meetingId}/topics/${appearanceId}`, { method: 'PUT', body: JSON.stringify({ plannedDuration: patch.plannedDuration, status: patch.status, deferred: patch.deferred, topicStatusDecision: patch.topicStatusDecision }) }),
   updateMeetingTopicFields: async (
     meetingId: string,
     itemId: string,
@@ -1262,4 +1368,9 @@ export const toLocalDate = (date: Date | null): string | null => {
   const month = String(date.getMonth() + 1).padStart(2, '0');
   const day = String(date.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
+};
+
+export type MeetingTopicPatch = Partial<Pick<MeetingTopic, 'plannedDuration' | 'status'>> & {
+  topicStatusDecision?: "done" | "deferred" | null;
+  deferred?: boolean;
 };

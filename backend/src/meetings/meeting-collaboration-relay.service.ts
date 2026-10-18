@@ -55,6 +55,7 @@ export class MeetingCollaborationRelayService implements OnApplicationBootstrap,
     this.httpServer = httpServer;
     httpServer.on("upgrade", this.upgrade);
     this.server.on("connection", (socket: Client) => this.connected(socket));
+    meetingCollaborationEvents.on("agenda-changed", this.agendaChanged);
     meetingCollaborationEvents.on("completed", this.meetingCompleted);
     meetingCollaborationEvents.on("compaction-released", this.compactionReleased);
     meetingCollaborationEvents.on("completion-barrier", this.completionBarrier);
@@ -63,6 +64,7 @@ export class MeetingCollaborationRelayService implements OnApplicationBootstrap,
 
   onApplicationShutdown(): void {
     this.httpServer?.off("upgrade", this.upgrade);
+    meetingCollaborationEvents.off("agenda-changed", this.agendaChanged);
     meetingCollaborationEvents.off("completed", this.meetingCompleted);
     meetingCollaborationEvents.off("compaction-released", this.compactionReleased);
     meetingCollaborationEvents.off("completion-barrier", this.completionBarrier);
@@ -265,6 +267,17 @@ export class MeetingCollaborationRelayService implements OnApplicationBootstrap,
       socket.close(4403, code);
     }
   }
+
+  private readonly agendaChanged = (event: { meetingId: string }): void => {
+    for (const room of this.rooms.values()) {
+      for (const socket of room) {
+        if (socket.collaboration?.meetingId === event.meetingId
+          && socket.readyState === WebSocket.OPEN) {
+          socket.send(JSON.stringify({ type: "agenda-changed" }));
+        }
+      }
+    }
+  };
 
   private readonly meetingCompleted = (event: MeetingCompletedEvent): void => {
     setTimeout(() => {

@@ -185,11 +185,21 @@ describe('Meeting completion lifecycle (e2e)', () => {
     }];
   });
 
+  const prepare = async () => {
+    const result = await request(app.getHttpServer())
+      .post(`/api/meetings/${MEETING_ID}/completion/prepare`)
+      .send({ proofEnvelope: "opaque-test-proof" }).expect(201);
+    return { ...result.body, proofEnvelope: "opaque-test-proof",
+      appearances: [{ appearanceId: APPEARANCE_ID, mentions: [] }] };
+  };
+
   it('rolls back snapshots and status together when completion fails', async () => {
     jest.spyOn(snapshots, 'apply').mockRejectedValueOnce(new Error('snapshot failed'));
+    const input = await prepare();
 
     await request(app.getHttpServer())
       .post(`/api/meetings/${MEETING_ID}/complete`)
+      .send(input)
       .expect(500);
 
     expect(state.meeting.status).toBe('in_progress');
@@ -197,8 +207,10 @@ describe('Meeting completion lifecycle (e2e)', () => {
   });
 
   it('atomically snapshots and completes once using a pessimistic Meeting lock', async () => {
+    const input = await prepare();
     await request(app.getHttpServer())
       .post(`/api/meetings/${MEETING_ID}/complete`)
+      .send(input)
       .expect(201)
       .expect(({ body }) => {
         expect(body.status).toBe('completed');
@@ -216,7 +228,8 @@ describe('Meeting completion lifecycle (e2e)', () => {
     }));
 
     await request(app.getHttpServer())
-      .post(`/api/meetings/${MEETING_ID}/complete`)
+      .post(`/api/meetings/${MEETING_ID}/completion/prepare`)
+      .send({ proofEnvelope: "opaque-test-proof" })
       .expect(409)
       .expect(({ body }) => expect(body.code).toBe('MEETING_COMPLETION_INVALID_STATUS'));
   });

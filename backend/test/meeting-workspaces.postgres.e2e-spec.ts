@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import { randomUUID } from 'node:crypto';
 import { INestApplication } from '@nestjs/common';
 import { HttpAdapterHost } from '@nestjs/core';
 import { Test } from '@nestjs/testing';
@@ -267,6 +268,50 @@ describeWithPostgres('Encrypted Meeting workspaces with PostgreSQL', () => {
       });
   });
 
+  it('preserves relative order when inserting a forgotten topic, then postponing and refreshing', async () => {
+    const original = await database.getRepository(Topic).findOneByOrFail({ id: topicId });
+    const additions = await database.getRepository(Topic).save([
+      { ...original, id: randomUUID() }, { ...original, id: randomUUID() },
+    ]);
+    const envelope = (clock: number) => signedUpdate(
+      clock, documentId, snapshotId, secondEpochId, secondNoncePrefix, secondSigningPrivateKey,
+    );
+    const second = await service.addTopic(meetingId, {
+      id: randomUUID(), mutationId: randomUUID(), topicId: additions[0].id,
+      sectionId, initialUpdateEnvelope: envelope(2),
+    }, viewer);
+    await service.reorderTopics(meetingId, [
+      { id: second.id, sectionId, position: 1 },
+      { id: appearanceId, sectionId, position: 2 },
+    ]);
+    const forgotten = await service.addTopic(meetingId, {
+      id: randomUUID(), mutationId: randomUUID(), topicId: additions[1].id,
+      sectionId, position: 2, initialUpdateEnvelope: envelope(3),
+    }, viewer);
+    await service.updateTopic(meetingId, appearanceId, { plannedDuration: 1 });
+    await service.updateTopic(meetingId, appearanceId, { deferred: true });
+    const refreshed = await service.findOne(meetingId, viewer);
+    expect(refreshed.agenda.map((item) => [item.id, item.position])).toEqual([
+      [second.id, 1], [forgotten.id, 2], [appearanceId, 3],
+    ]);
+    expect(refreshed.agenda[2]).toMatchObject({ plannedDuration: 1, status: 'planned' });
+    expect(refreshed.agenda[2].deferredAt).toBeTruthy();
+    await expect(service.reorderTopics(meetingId, [
+      { id: second.id, sectionId, position: 1 },
+      { id: appearanceId, sectionId, position: 2 },
+    ])).rejects.toMatchObject({ response: expect.objectContaining({ code: 'AGENDA_CHANGED' }) });
+    await expect(service.reorderTopics(meetingId, [
+      { id: second.id, sectionId, position: 1 },
+      { id: forgotten.id, sectionId, position: 1 },
+      { id: appearanceId, sectionId, position: 2 },
+    ])).rejects.toMatchObject({ response: expect.objectContaining({ code: 'AGENDA_POSITIONS_INVALID' }) });
+    await service.removeTopic(meetingId, second.id);
+    await service.removeTopic(meetingId, forgotten.id);
+    expect((await service.findOne(meetingId, viewer)).agenda[0]).toMatchObject({
+      id: appearanceId, position: 1, plannedDuration: 1,
+    });
+  });
+
   it('atomically moves recurrence structure with an independent target update', async () => {
     await database.getRepository(Topic).update(topicId, {
       type: 'recurring',
@@ -415,6 +460,30 @@ describeWithPostgres('Encrypted Meeting workspaces with PostgreSQL', () => {
       return { socket, wait, send: (frame: object) => socket.send(JSON.stringify(frame)) };
     }
 
+    let proofCounter = 0;
+    function signedProof(recordId: string, fieldId: number) {
+      const nonce = Buffer.alloc(24);
+      nonce.set(noncePrefix);
+      nonce.writeBigUInt64BE(BigInt(++proofCounter), 16);
+      const header = [uuidBytes(organizationId), 261, uuidBytes(recordId), fieldId,
+        uuidBytes(ockId), uuidBytes(epochId), proofCounter, nonce];
+      const ciphertext = Buffer.alloc(272, 7);
+      const signature = sodium.crypto_sign_detached(Buffer.concat([
+        Buffer.from('ElderFlow signed envelope v1\0'), Buffer.from(encoder.encode([1, 4, 1, header, ciphertext])),
+      ]), signingPrivateKey);
+      return Buffer.from(encoder.encode([1, 4, 1, header, ciphertext, signature])).toString('base64url');
+    }
+    async function completeOverHttp() {
+      const prepared = await request(app.getHttpServer()).post(`/api/meetings/${meetingId}/completion/prepare`)
+        .send({ proofEnvelope: signedProof(meetingId, 2) });
+      if (prepared.status !== 201) return prepared;
+      const appearances = await database.getRepository(MeetingTopic).findBy({ meetingId });
+      return request(app.getHttpServer()).post(`/api/meetings/${meetingId}/complete`).send({
+        ...prepared.body, proofEnvelope: signedProof(prepared.body.barrierId, 1),
+        appearances: appearances.map((appearance) => ({ appearanceId: appearance.id, mentions: [] })),
+      });
+    }
+
     async function settleClients(peers: Awaited<ReturnType<typeof connect>>[]) {
       for (const peer of peers) {
         const barrier = await peer.wait('completion-barrier');
@@ -429,7 +498,7 @@ describeWithPostgres('Encrypted Meeting workspaces with PostgreSQL', () => {
     it('settles an edit from A before B completes and rejects every later write', async () => {
       const a = await connect();
       const b = await connect();
-      const completion = request(app.getHttpServer()).post(`/api/meetings/${meetingId}/complete`).then((result) => result);
+      const completion = completeOverHttp();
       const barrier = await a.wait('completion-barrier');
       const envelope = signedUpdate(3);
       a.send({ type: 'update', envelope });
@@ -459,7 +528,7 @@ describeWithPostgres('Encrypted Meeting workspaces with PostgreSQL', () => {
     it('times out a non-draining client and keeps the Meeting in progress', async () => {
       const a = await connect();
       await connect();
-      const completion = request(app.getHttpServer()).post(`/api/meetings/${meetingId}/complete`).then((result) => result);
+      const completion = completeOverHttp();
       const barrier = await a.wait('completion-barrier');
       a.send({ type: 'completion-drained', barrierId: barrier.barrierId });
       const response = await completion;
@@ -473,12 +542,12 @@ describeWithPostgres('Encrypted Meeting workspaces with PostgreSQL', () => {
     it('aborts on disconnect and succeeds on a later retry', async () => {
       const a = await connect();
       const b = await connect();
-      const completion = request(app.getHttpServer()).post(`/api/meetings/${meetingId}/complete`).then((result) => result);
+      const completion = completeOverHttp();
       await a.wait('completion-barrier');
       b.socket.close();
       expect((await completion).body.code).toBe('MEETING_COMPLETION_RETRY');
       await a.wait('completion-released');
-      const retry = request(app.getHttpServer()).post(`/api/meetings/${meetingId}/complete`).then((result) => result);
+      const retry = completeOverHttp();
       await settleClients([a]);
       expect((await retry).status).toBe(201);
     }, 15_000);

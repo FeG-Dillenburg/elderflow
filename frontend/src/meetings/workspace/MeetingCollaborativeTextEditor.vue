@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useMentions } from "../../mentions/use-mentions";
 import Collaboration from "@tiptap/extension-collaboration";
 import CollaborationCaret from "@tiptap/extension-collaboration-caret";
 import { generateJSON, getSchema } from "@tiptap/core";
@@ -15,6 +16,7 @@ import { auth } from "../../auth/auth";
 import { createCollaboratorPresentation } from "../../e2ee/collaborator-presentation";
 import type { MeetingTextTarget } from "./core";
 import { tryUseMeetingWorkspace } from "./vue";
+import { preventAgendaCardDrop } from "../agenda-drag";
 import { meetingEditorBinding } from "./editor-binding";
 
 const props = withDefaults(defineProps<{
@@ -48,7 +50,7 @@ const workspaceReadOnly = computed(() => {
 });
 const editorReadOnly = computed(() => props.readonly || workspaceReadOnly.value);
 const binding = workspace ? meetingEditorBinding(workspace, props.target) : null;
-const extensions = meetingRichTextExtensions(Boolean(binding));
+const extensions = meetingRichTextExtensions(Boolean(binding), useMentions());
 const collaborator = computed(() => createCollaboratorPresentation(auth.state.user
   ? {
       id: auth.state.user.id,
@@ -94,10 +96,13 @@ const editor = binding ? useEditor({
       render: renderCollaborationCaret,
     }),
   ],
-  editorProps: { attributes: {
-    "aria-label": props.ariaLabel ?? props.placeholder ?? "",
-    ...(props.ariaDescription ? { "aria-description": props.ariaDescription } : {}),
-  } },
+  editorProps: {
+    handleDOMEvents: { drop: preventAgendaCardDrop },
+    attributes: {
+      "aria-label": props.ariaLabel ?? props.placeholder ?? "",
+      ...(props.ariaDescription ? { "aria-description": props.ariaDescription } : {}),
+    },
+  },
   onUpdate: ({ editor: current }) => {
     model.value = current.getHTML();
   },

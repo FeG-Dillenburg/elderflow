@@ -157,34 +157,21 @@ const addParticipant = async () => {
 const removeParticipant = async (userId: string) => {
   await operations.removeParticipant(userId);
 };
-const setTopicStatus = async (item: MeetingTopic, status: string) => {
+const setTopicStatus = async (
+  item: MeetingTopic,
+  topicStatusDecision: "done" | "deferred" | null,
+) => {
   error.value = "";
   try {
-    const wasDeferred = item.topic?.status === "deferred";
-    await operations.updateTopic(item.topicId, { status });
-    const appearanceStatus = status === "done"
-      ? "done"
-      : item.status === "done"
-        ? "planned"
-        : item.status;
-    const appearance = {
-      ...item,
-      status: appearanceStatus,
-    };
-    const deferred = status === "deferred" ? true : wasDeferred ? false : undefined;
-    if (deferred === undefined) {
-      await operations.updateAppearance(appearance);
-    } else {
-      await operations.updateAppearance(appearance, { deferred });
-    }
-    } catch {
+    await operations.updateAppearance(item.id, { topicStatusDecision });
+  } catch {
     error.value = t("meetingAgenda.topicStatusFailed");
   }
 };
 const toggleDeferred = (item: MeetingTopic) =>
-  setTopicStatus(item, item.topic?.status === "deferred" ? "open" : "deferred");
+  setTopicStatus(item, item.topicStatusDecision === "deferred" ? null : "deferred");
 const toggleDone = (item: MeetingTopic) =>
-  setTopicStatus(item, item.topic?.status === "done" ? "open" : "done");
+  setTopicStatus(item, item.topicStatusDecision === "done" ? null : "done");
 const move = async (
   items: MeetingTopic[],
   index: number,
@@ -253,6 +240,8 @@ const finishMeeting = async () => {
     finishError.value = e instanceof Error
       && e.message === "MEETING_WORKSPACE_PENDING_CHANGES"
       ? t("meetingAgenda.finishPendingChanges")
+      : e instanceof Error && ["E2EE_PROTECTED_TEXT_LOCKED", "MEETING_COMPLETION_RETRY"].includes(e.message)
+        ? t(`errors.codes.${e.message}`)
       : e instanceof Error ? e.message : t("meetingAgenda.finishFailed");
   } finally {
     finishing.value = false;
@@ -389,6 +378,13 @@ onMounted(async () => {
                 :toggle-deferred="() => toggleDeferred(item)"
                 :mark-done="() => toggleDone(item)"
               />
+              <p
+                v-if="item.topicStatusDecision"
+                class="topic-decision"
+                role="status"
+              >
+                {{ t(`meetingAgenda.${isCompleted ? 'recorded' : 'pending'}${item.topicStatusDecision === 'done' ? 'Done' : 'Deferred'}`) }}
+              </p>
               <div v-if="canEdit" class="topic-actions">
                 <Button
                   :disabled="itemIndex === 0"
@@ -416,7 +412,16 @@ onMounted(async () => {
           icon="pi pi-check-circle"
           :label="t('meetingAgenda.finish')"
           severity="success"
+          :disabled="protectedText.state.status !== 'unlocked'"
+          :title="protectedText.state.status !== 'unlocked' ? t('errors.codes.E2EE_PROTECTED_TEXT_LOCKED') : undefined"
           @click="finishVisible = true"
+        />
+        <Button
+          v-if="protectedText.state.status !== 'unlocked'"
+          :label="t('mentions.unlock')"
+          icon="pi pi-lock-open"
+          severity="secondary"
+          @click="protectedText.showUnlock()"
         />
       </div>
       <p
@@ -644,7 +649,7 @@ onMounted(async () => {
         />
         <Button
           aria-describedby="finish-meeting-description"
-          :disabled="finishing"
+          :disabled="finishing || protectedText.state.status !== 'unlocked'"
           icon="pi pi-check-circle"
           :label="t('meetingAgenda.confirmFinish')"
           :loading="finishing"
@@ -870,7 +875,16 @@ onMounted(async () => {
   align-items: start;
 }
 
+.topic-decision {
+  grid-column: 1;
+  color: #536f9f;
+  margin: 0.35rem 0 0;
+  font-size: 0.85rem;
+}
+
 .topic-actions {
+  grid-column: 2;
+  grid-row: 1;
   display: flex;
 }
 

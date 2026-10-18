@@ -101,6 +101,7 @@ export class TopicHistoryService {
       effectiveAt: this.meetingEffectiveAt(meeting),
       sortTime: this.meetingSortTime(meeting),
       appearanceId: appearance.id,
+      topicStatusDecision: appearance.topicStatusDecision ?? null,
       deferredAt: appearance.deferredAt?.toISOString() ?? null,
       meeting,
       section: appearance.section

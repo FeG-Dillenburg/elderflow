@@ -107,9 +107,10 @@ describe("New membership Topic renderers", () => {
 
     await ready.setProps({
       item: {
+        topicStatusDecision: "done",
         topic: {
           ...topic("nearly_finished"),
-          status: "done",
+          status: "open",
         },
       } as any,
     });

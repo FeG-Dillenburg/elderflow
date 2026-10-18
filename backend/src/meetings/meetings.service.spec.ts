@@ -1,3 +1,4 @@
+import { In, LessThan } from "typeorm";
 import { MeetingDocumentMutation } from "./meeting-document-mutation.entity";
 import { MeetingTopic } from "./meeting-topic.entity";
 import { MeetingsService } from "./meetings.service";
@@ -18,6 +19,7 @@ describe("MeetingsService encrypted transaction boundaries", () => {
     abortMeeting: jest.fn(),
     beginCompletion: jest.fn().mockResolvedValue({ barrierId: "completion", serverSequence: "7" }),
     claim: jest.fn(),
+    claimCompletionSubmission: jest.fn().mockReturnValue("document"),
     assertClaim: jest.fn(),
     complete: jest.fn(),
     fail: jest.fn(),
@@ -145,7 +147,7 @@ describe("MeetingsService encrypted transaction boundaries", () => {
     await expect(service.complete("meeting", {
       id: "superadmin",
       role: "superadmin",
-    } as never)).resolves.toEqual(expect.objectContaining({
+    } as never, { barrierId: "completion", documentId: "document", serverSequence: "7", proofEnvelope: "opaque", appearances: [] })).resolves.toEqual(expect.objectContaining({
       id: "meeting",
       status: "completed",
     }));
@@ -165,10 +167,10 @@ describe("MeetingsService encrypted transaction boundaries", () => {
       minuteTakerId: "minute-taker",
     });
 
-    await expect(service.complete("meeting", {
+    await expect(service.prepareCompletion("meeting", {
       id: "unassigned-admin",
       role: "admin",
-    } as never)).rejects.toThrow(
+    } as never, { proofEnvelope: "opaque" })).rejects.toThrow(
       "Only a Superadmin, the Meeting leader, or the Minute taker can complete this Meeting",
     );
 
@@ -188,6 +190,17 @@ describe("MeetingsService encrypted transaction boundaries", () => {
 
     expect(manager.save).not.toHaveBeenCalledWith(MeetingTopic, expect.anything());
     expect(manager.save).not.toHaveBeenCalledWith(MeetingDocumentMutation, expect.anything());
+  });
+
+  it("rejects insertion into an ambiguous section before writing an appearance", async () => {
+    manager.find.mockResolvedValue([{ id: "first", position: 1 }, { id: "second", position: 1 }]);
+    await expect(service.addTopic("meeting", {
+      id: "appearance", mutationId: "mutation", topicId: "topic", sectionId: "section",
+      initialUpdateEnvelope: "opaque",
+    } as never, user)).rejects.toMatchObject({
+      response: expect.objectContaining({ code: "AGENDA_POSITIONS_INVALID" }),
+    });
+    expect(documents.appendUpdate).not.toHaveBeenCalled();
   });
 
   it("records structure, opaque update, and idempotency marker in one transaction", async () => {
@@ -267,6 +280,44 @@ describe("MeetingsService encrypted transaction boundaries", () => {
     expect(documents.appendUpdate).not.toHaveBeenCalled();
   });
 
+  it("returns ordered preparation candidates without eagerly loading historical documents or person history", async () => {
+    const findOne = jest.fn().mockResolvedValue({ id: "meeting", date: "2026-11-01", beginTime: "19:00", status: "planned" });
+    const agenda = [
+      { id: "current", meetingId: "meeting", topicId: "topic", topic: { id: "topic", type: "generic" } },
+      { id: "person-current", meetingId: "meeting", topicId: "person", topic: { id: "person", type: "person" } },
+      { id: "other-current", meetingId: "meeting", topicId: "other-topic", topic: { id: "other-topic", type: "generic" } },
+    ];
+    const find = jest.fn()
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce(agenda)
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([
+        { id: "october", topicId: "topic", meetingId: "october-meeting", meeting: { date: "2026-10-01", beginTime: "19:00" } },
+        { id: "september", topicId: "topic", meetingId: "september-meeting", meeting: { date: "2026-09-01", beginTime: "19:00" } },
+        { id: "person-prior", topicId: "person", meetingId: "september-meeting", meeting: { date: "2026-09-01", beginTime: "19:00" } },
+      ]);
+    Object.assign(repository, { findOne, find });
+    documents.bootstrap.mockResolvedValue({ documentId: "document" });
+
+    const result = await service.findOne("meeting", user);
+
+    expect(result.agenda[0]).toMatchObject({ preparationHistory: [
+      { appearanceId: "october", meetingId: "october-meeting", date: "2026-10-01", beginTime: "19:00" },
+      { appearanceId: "september", meetingId: "september-meeting", date: "2026-09-01", beginTime: "19:00" },
+    ] });
+    expect(result.agenda[1]).toMatchObject({ preparationHistory: [], previousAppearance: null });
+    expect(result.agenda[2]).toMatchObject({ preparationHistory: [] });
+    expect(find.mock.calls[4][0]).toMatchObject({
+      where: [
+        { topicId: In(["topic", "other-topic"]), meeting: { date: LessThan("2026-11-01") } },
+        { topicId: In(["topic", "other-topic"]), meeting: { date: "2026-11-01", beginTime: LessThan("19:00") } },
+      ],
+      order: { meeting: { date: "DESC", beginTime: "DESC", id: "DESC" } },
+    });
+    expect(documents.bootstrap).toHaveBeenCalledTimes(1);
+  });
+
   it("marks first appearances as new and suggests the most recent earlier section", async () => {
     const firstTopic = {
       id: "first-topic",
@@ -289,10 +340,19 @@ describe("MeetingsService encrypted transaction boundaries", () => {
       .mockResolvedValueOnce([firstTopic, returningTopic])
       .mockResolvedValueOnce([
         {
+          id: "same-time-appearance",
+          meetingId: "aaa",
+          topicId: "returning-topic",
+          sectionId: "wrong-section",
+          position: 1,
+          meeting: { id: "aaa", date: "2026-09-15", beginTime: "19:00" },
+        },
+        {
           id: "later-appearance",
           meetingId: "prior-meeting",
           topicId: "returning-topic",
           sectionId: "later-section",
+          position: 4,
           meeting: { date: "2026-09-01", beginTime: "19:00" },
         },
         {
@@ -318,12 +378,51 @@ describe("MeetingsService encrypted transaction boundaries", () => {
         previousAppearance: {
           id: "later-appearance",
           meetingId: "prior-meeting",
+          position: 4,
+          date: "2026-09-01",
+          beginTime: "19:00",
         },
       }),
     ]);
     expect((repository as unknown as { find: jest.Mock }).find.mock.calls[2][0].order).toEqual({
       meeting: { date: "DESC", beginTime: "DESC", id: "DESC" },
     });
+  });
+
+  it("inserts a consecutive carry-over block ahead of existing recurrence appearances", async () => {
+    const stored = [
+      { id: "recurrence", topicId: "recurring", meetingId: "meeting", sectionId: "section", position: 1, source: "recurrence" },
+    ];
+    manager.findOne.mockImplementation(async (entity, options) => entity === Topic
+      ? { id: options.where.id, type: "person", status: "open" }
+      : { id: "meeting", status: "planned" });
+    manager.find.mockImplementation(async (entity, options) => entity === MeetingTopic
+      ? stored.filter((item) => item.sectionId === options.where.sectionId)
+        .sort((a, b) => a.position - b.position)
+      : []);
+    manager.save.mockImplementation(async (entity, input) => {
+      if (entity === MeetingTopic && !Array.isArray(input)) {
+        const appearance = input as typeof stored[number];
+        if (!stored.some((item) => item.id === appearance.id)) stored.push(appearance);
+      }
+      return input;
+    });
+
+    const result = await service.addTopics("meeting", {
+      initialUpdateEnvelope: "notes-update",
+      items: [
+        { id: "A", mutationId: "mutation-A", topicId: "A", sectionId: "section", position: 1 },
+        { id: "B", mutationId: "mutation-B", topicId: "B", sectionId: "section", position: 2 },
+        { id: "D", mutationId: "mutation-D", topicId: "D", sectionId: "section", position: 3 },
+      ],
+    }, user);
+
+    expect(result.map(({ topicId, position }) => [topicId, position])).toEqual([
+      ["A", 1], ["B", 2], ["D", 3],
+    ]);
+    expect(stored.find((item) => item.id === "recurrence")).toMatchObject({ position: 4, source: "recurrence" });
+    expect(documents.appendUpdate).toHaveBeenCalledWith(manager, user, "meeting", "notes-update");
+    manager.save.mockImplementation(async (_entity: unknown, input?: unknown) => input ?? _entity);
   });
 
   it("adds several Topic appearances with one encrypted document update in one transaction", async () => {

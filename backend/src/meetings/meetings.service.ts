@@ -1,3 +1,7 @@
+import { CompletionPrepareDto, CompletionSubmissionDto } from "./dto/completion.dto";
+import { MentionSnapshot } from "./mention-snapshot.entity";
+import { mentionRecordId } from "./mention-completion";
+import { permissionsByRole } from "../auth/permissions";
 import { HttpStatus, Injectable } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { createHash } from "node:crypto";
@@ -57,18 +61,33 @@ export class MeetingsService {
     private readonly compactions: MeetingCompactionCoordinator,
   ) {}
 
-  async complete(id: string, user: User) {
+  async prepareCompletion(id: string, user: User, input: CompletionPrepareDto) {
     const documentId = await this.dataSource.transaction(async (manager) => {
       const meeting = await manager.findOne(Meeting, { where: { id } });
       this.assertCompletionAllowed(meeting, user);
+      await this.scalars.validateWrite(manager, user, {
+        aggregateType: SCALAR_AGGREGATES.completion, recordId: id, fieldId: 2,
+      }, input.proofEnvelope, null);
       return (await manager.findOneByOrFail(MeetingDocument, { meetingId: id })).id;
     });
     const claim = await this.compactions.beginCompletion(id, documentId, user.id, async () => {
       const document = await this.meetings.manager.findOneByOrFail(MeetingDocument, { meetingId: id });
       return document.currentServerSequence;
     });
+    return { ...claim, documentId };
+  }
+
+  cancelCompletion(id: string, barrierId: string, user: User) {
+    this.compactions.cancelCompletion(id, barrierId, user.id);
+  }
+
+  async complete(id: string, user: User, input?: CompletionSubmissionDto) {
+    if (!input) throw codedHttpException(HttpStatus.CONFLICT, "E2EE_PROTECTED_TEXT_LOCKED", "An unlocked completion claim is required");
+    const documentId = this.compactions.claimCompletionSubmission(id, input.barrierId, user.id, input.serverSequence);
+    const claim = { barrierId: input.barrierId, serverSequence: input.serverSequence };
     try {
       const response = await this.dataSource.transaction(async (manager) => {
+        this.compactions.assertClaim(id, claim.barrierId);
         await manager.query("SET LOCAL lock_timeout = '5s'");
         await manager.query("SET LOCAL statement_timeout = '5s'");
         const meeting = await manager.findOne(Meeting, {
@@ -79,10 +98,51 @@ export class MeetingsService {
           throw codedHttpException(HttpStatus.FORBIDDEN, "MEETING_COMPLETION_FORBIDDEN", "Completion access changed");
         }
         this.assertCompletionAllowed(meeting, currentUser);
+        if (input.documentId !== documentId) throw codedHttpException(HttpStatus.CONFLICT, "MEETING_COMPLETION_RETRY", "Completion context changed");
+        await this.scalars.validateWrite(manager, currentUser, {
+          aggregateType: SCALAR_AGGREGATES.completion, recordId: claim.barrierId, fieldId: 1,
+        }, input.proofEnvelope, null);
         const appearances = await manager.find(MeetingTopic, {
           where: { meetingId: id },
           relations: { topic: { responsibleUser: true } },
         });
+        const submitted = new Map(input.appearances.map((entry) => [entry.appearanceId, entry]));
+        if (submitted.size !== appearances.length || submitted.size !== input.appearances.length
+          || appearances.some((appearance) => !submitted.has(appearance.id))) {
+          throw codedHttpException(HttpStatus.BAD_REQUEST, "E2EE_ENVELOPE_CONTEXT_INVALID", "Invalid appearance snapshots");
+        }
+        for (const appearance of appearances) {
+          const entries = submitted.get(appearance.id)!.mentions;
+          const seen = new Set<string>();
+          for (const entry of entries) {
+            this.compactions.assertClaim(id, claim.barrierId);
+            const key = `${entry.userId}:${entry.occurrence}`;
+            if (seen.has(key) || entry.id !== mentionRecordId(claim.barrierId, appearance.id, entry.userId, entry.occurrence)) {
+              throw codedHttpException(HttpStatus.BAD_REQUEST, "E2EE_ENVELOPE_CONTEXT_INVALID", "Invalid mention context");
+            }
+            seen.add(key);
+            const target = await manager.findOneBy(User, { id: entry.userId });
+            if (!target || target.archivedAt || target.role === "it-admin") {
+              throw codedHttpException(HttpStatus.BAD_REQUEST, "E2EE_ENVELOPE_CONTEXT_INVALID", "Mentioned user is not eligible");
+            }
+            const encrypted = await this.scalars.validateWrite(manager, currentUser, {
+              aggregateType: SCALAR_AGGREGATES.mention, recordId: entry.id, fieldId: 1,
+            }, entry.contextEnvelope, null);
+            await manager.insert(MentionSnapshot, {
+              id: entry.id, appearanceId: appearance.id, userId: entry.userId,
+              occurrence: entry.occurrence, contextEnvelope: encrypted.envelope,
+            });
+          }
+          appearance.mentionsCaptured = true;
+        }
+        // Lock Topics in a stable order across Meetings that share appearances.
+        for (const appearance of [...appearances].sort((left, right) => left.topicId.localeCompare(right.topicId))) {
+          if (!appearance.topicStatusDecision) continue;
+          await manager.update(Topic, appearance.topicId, { status: appearance.topicStatusDecision });
+          appearance.topic!.status = appearance.topicStatusDecision;
+          appearance.status = appearance.topicStatusDecision === "done" ? "done" : "planned";
+          appearance.deferredAt = appearance.topicStatusDecision === "deferred" ? new Date() : null;
+        }
         for (const appearance of appearances) {
           const topic = appearance.topic!;
           appearance.topicNameSnapshotEnvelope = topic.nameEnvelope;
@@ -106,7 +166,13 @@ export class MeetingsService {
         await manager.save(document);
         meeting.status = "completed";
         meeting.completedAt = new Date();
-        return meetingResponse(await manager.save(Meeting, meeting), user);
+        const saved = await manager.save(Meeting, meeting);
+        // Revalidate the author epoch after all writes, just before transaction commit.
+        await this.scalars.validateWrite(manager, currentUser, {
+          aggregateType: SCALAR_AGGREGATES.completion, recordId: claim.barrierId, fieldId: 1,
+        }, input.proofEnvelope, null);
+        this.compactions.assertClaim(id, claim.barrierId);
+        return meetingResponse(saved, user);
       });
       meetingCollaborationEvents.emit("completed", {
         meetingId: id,
@@ -117,6 +183,37 @@ export class MeetingsService {
       this.compactions.fail(id, claim.barrierId);
       throw error;
     }
+  }
+
+  async currentMentions(user: User) {
+    this.scalars.assertContentUser(user);
+    if (permissionsByRole[user.role].topics === "hide" || permissionsByRole[user.role].meetings === "hide") {
+      throw codedHttpException(HttpStatus.FORBIDDEN, "E2EE_PROTECTED_CIPHERTEXT_FORBIDDEN", "Content access required");
+    }
+    const rows = await this.dataSource.getRepository(MentionSnapshot).createQueryBuilder("mention")
+      .innerJoinAndSelect("mention.appearance", "appearance")
+      .innerJoinAndSelect("appearance.meeting", "meeting")
+      .innerJoinAndSelect("appearance.topic", "topic")
+      .where("mention.user_id = :userId", { userId: user.id })
+      .andWhere("meeting.status = 'completed'")
+      .andWhere((query) => `NOT EXISTS ${query.subQuery()
+        .select("1").from(MeetingTopic, "newer_appearance")
+        .innerJoin("newer_appearance.meeting", "newer")
+        .where("newer_appearance.topic_id = appearance.topic_id")
+        .andWhere("newer.status = 'completed'")
+        .andWhere("(newer.date, newer.begin_time, newer.id) > (meeting.date, meeting.begin_time, meeting.id)")
+        .getQuery()}`)
+      .orderBy("meeting.date", "DESC").addOrderBy("meeting.begin_time", "DESC")
+      .addOrderBy("meeting.id", "DESC").addOrderBy("mention.occurrence", "ASC")
+      .getMany();
+    return rows.map((row) => ({
+      id: row.id, appearanceId: row.appearanceId,
+      topicId: row.appearance!.topicId, meetingId: row.appearance!.meetingId,
+      date: row.appearance!.meeting!.date,
+      contextEnvelope: row.contextEnvelope.toString("base64url"),
+      topicNameEnvelope: row.appearance!.topicNameSnapshotEnvelope?.toString("base64url") ?? null,
+      meetingTitleEnvelope: row.appearance!.meeting!.titleEnvelope.toString("base64url"),
+    }));
   }
 
   private assertCompletionAllowed(meeting: Meeting | null, user: User): asserts meeting is Meeting {
@@ -226,6 +323,7 @@ export class MeetingsService {
         : Promise.resolve(null),
     ]);
     const topicIds = agenda.map((item) => item.topicId);
+    const historyTopicIds = agenda.filter((item) => item.topic?.type !== "person").map((item) => item.topicId);
     const [standaloneUpdates, tasks, earlierAppearances] = topicIds.length
       ? await Promise.all([
           this.updates.find({
@@ -239,30 +337,50 @@ export class MeetingsService {
             select: assignedTaskSummarySelect,
             order: { dueDate: "ASC" },
           }),
-          this.meetingTopics.find({
+          historyTopicIds.length ? this.meetingTopics.find({
             where: [
-              { topicId: In(topicIds), meeting: { date: LessThan(meeting.date) } },
+              { topicId: In(historyTopicIds), meeting: { date: LessThan(meeting.date) } },
               {
-                topicId: In(topicIds),
+                topicId: In(historyTopicIds),
                 meeting: { date: meeting.date, beginTime: LessThan(meeting.beginTime) },
               },
             ],
             relations: { meeting: true },
-            order: { meeting: { date: "DESC", beginTime: "DESC" } },
-          }),
+            order: { meeting: { date: "DESC", beginTime: "DESC", id: "DESC" } },
+          }) : Promise.resolve([]),
         ])
       : [[], [], []] as [TopicUpdate[], Task[], MeetingTopic[]];
-    const previousByTopic = new Map<string, MeetingTopic>();
-    for (const appearance of earlierAppearances) {
-      if (!previousByTopic.has(appearance.topicId)) previousByTopic.set(appearance.topicId, appearance);
-    }
-    const priorMeetingIds = isProtectedTextReader(user.role)
-      ? [...new Set([...previousByTopic.values()].map((item) => item.meetingId))]
+    const priorMeetingIds = [...new Set(earlierAppearances.map((item) => item.meetingId))];
+    const priorDocuments = isProtectedTextReader(user.role) && priorMeetingIds.length
+      ? await this.meetings.manager.find(MeetingDocument, {
+          where: { meetingId: In(priorMeetingIds) },
+          select: { meetingId: true, id: true, activeSnapshotId: true, currentServerSequence: true },
+        })
       : [];
-    const priorDocuments = (await Promise.all(
-      priorMeetingIds.map((priorMeetingId) =>
-        this.documents.bootstrap(this.meetings.manager, user, priorMeetingId)),
-    )).filter((value): value is NonNullable<typeof value> => value !== null);
+    const revisionsByMeeting = new Map(priorDocuments.map((document) => [document.meetingId, {
+      documentId: document.id,
+      activeSnapshotId: document.activeSnapshotId,
+      currentServerSequence: document.currentServerSequence,
+    }]));
+    const historyByTopic = new Map<string, Array<{
+      appearanceId: string;
+      meetingId: string;
+      date: string;
+      beginTime: string;
+      documentRevision: { documentId: string; activeSnapshotId: string | null; currentServerSequence: string } | null;
+    }>>();
+    for (const appearance of earlierAppearances) {
+      if (appearance.meetingId === id || !appearance.meeting) continue;
+      const history = historyByTopic.get(appearance.topicId) ?? [];
+      history.push({
+        appearanceId: appearance.id,
+        meetingId: appearance.meetingId,
+        date: appearance.meeting.date,
+        beginTime: appearance.meeting.beginTime,
+        documentRevision: revisionsByMeeting.get(appearance.meetingId) ?? null,
+      });
+      historyByTopic.set(appearance.topicId, history);
+    }
     return {
       ...meetingResponse(meeting, user),
       participants: participants.map((participant) => ({
@@ -279,16 +397,13 @@ export class MeetingsService {
           language: participant.user.language,
         } : null,
       })),
-      agenda: agenda.map((item) => this.appearanceResponse(
-        item,
-        standaloneUpdates,
-        tasks,
-        user,
-        previousByTopic.get(item.topicId),
-      )),
-      workspace: workspace
-        ? { ...workspace, priorDocuments }
-        : null,
+      agenda: agenda.map((item) => ({
+        ...this.appearanceResponse(item, standaloneUpdates, tasks, user),
+        preparationHistory: item.topic?.type === "person"
+          ? []
+          : historyByTopic.get(item.topicId) ?? [],
+      })),
+      workspace,
       collaboration: { available: meeting.status !== "completed" },
     };
   }
@@ -527,6 +642,13 @@ export class MeetingsService {
         where: { meetingId, sectionId: input.sectionId },
         order: { position: "ASC" },
       });
+      if (items.some((item, index) => item.position !== index + 1)) {
+        throw codedHttpException(
+          HttpStatus.CONFLICT,
+          "AGENDA_POSITIONS_INVALID",
+          "Positions must be consecutive and start at 1; reorder the agenda before inserting",
+        );
+      }
       const position = input.position ?? recurrencePosition ?? items.length + 1;
       if (position > items.length + 1) {
         throw codedHttpException(HttpStatus.BAD_REQUEST, "AGENDA_POSITION_INVALID", "Position must be within the agenda section");
@@ -587,16 +709,22 @@ export class MeetingsService {
   }
 
   async updateTopic(meetingId: string, id: string, input: UpdateMeetingTopicDto): Promise<MeetingTopic> {
-    return this.dataSource.transaction(async (manager) => {
+    const updated = await this.dataSource.transaction(async (manager) => {
       await lockedMutableMeeting(manager, meetingId);
       const item = await manager.findOneBy(MeetingTopic, { id, meetingId });
       if (!item) throw codedHttpException(HttpStatus.NOT_FOUND, "AGENDA_TOPIC_NOT_FOUND", "Agenda topic not found");
-      const { deferred, ...changes } = input;
-      Object.assign(item, changes);
+      const { deferred, status, plannedDuration, topicStatusDecision } = input;
+      if (topicStatusDecision !== undefined) item.topicStatusDecision = topicStatusDecision;
+      if (status !== undefined) item.status = status;
+      if (plannedDuration !== undefined) item.plannedDuration = plannedDuration;
       if (deferred === true && !item.deferredAt) item.deferredAt = new Date();
       if (deferred === false) item.deferredAt = null;
       return manager.save(MeetingTopic, item);
     });
+    if (input.topicStatusDecision !== undefined) {
+      meetingCollaborationEvents.emit("agenda-changed", { meetingId });
+    }
+    return updated;
   }
 
   async updateTopicFields(
@@ -725,16 +853,22 @@ export class MeetingsService {
           .filter((appearance) => appearance.topicId === topic.id);
         const previous = appearances.find((appearance) => Boolean(
           appearance.meeting
-          && [appearance.meeting.date, appearance.meeting.beginTime, appearance.meeting.id]
+          && [appearance.meeting.date, appearance.meeting.beginTime]
             .join("|")
-            < [meeting.date, meeting.beginTime, meeting.id].join("|"),
+            < [meeting.date, meeting.beginTime].join("|"),
         ));
         return {
           ...topicResponse(topic, user),
           isNew: appearances.length === 0,
           previousSectionId: previous?.sectionId ?? null,
           previousAppearance: previous
-            ? { id: previous.id, meetingId: previous.meetingId }
+            ? {
+              id: previous.id,
+              meetingId: previous.meetingId,
+              position: previous.position,
+              date: previous.meeting!.date,
+              beginTime: previous.meeting!.beginTime,
+            }
             : null,
         };
       });

@@ -452,7 +452,7 @@ describe("MeetingDocumentSession", () => {
     remote.lock();
   });
 
-  it("omits orphan fragments from a compacted snapshot", async () => {
+  it("preserves fragments absent from the current agenda in a compacted snapshot", async () => {
     await sodium.ready;
     const signing = sodium.crypto_sign_seed_keypair(new Uint8Array(32).fill(8), "uint8array");
     const restored = new MeetingDocumentSession();
@@ -481,11 +481,7 @@ describe("MeetingDocumentSession", () => {
       "Orphan",
     );
 
-    const compacted = await session.createCompaction(meetingId, [
-      "meeting/general-notes",
-      "meeting/opening-input",
-      `appearance/${retainedId}/minutes`,
-    ]);
+    const compacted = await session.createCompaction(meetingId);
     restored.unlock(keys);
     await restored.load(meetingId, {
       documentId: initial.documentId,
@@ -507,7 +503,10 @@ describe("MeetingDocumentSession", () => {
       { id: orphanId, person: false },
     ]).appearances;
     expect(fragments.get(retainedId)?.meetingMinutes).toBe("Retained");
-    expect(fragments.get(orphanId)?.meetingMinutes).toBe("");
+    expect(fragments.get(orphanId)?.meetingMinutes).toBe("Orphan");
+    // Retaining ciphertext does not recreate a removed appearance in the read model.
+    expect(restored.hydrateFragments(meetingId, [{ id: retainedId, person: false }])
+      .appearances.has(orphanId)).toBe(false);
     restored.lock();
   });
 

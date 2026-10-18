@@ -9,7 +9,8 @@ import { E2eeModule } from '../src/e2ee/e2ee.module';
 import { E2eeKeyState } from '../src/e2ee/e2ee-key-state.entity';
 import { AuthModule } from '../src/auth/auth.module';
 import { SessionService } from '../src/auth/session.service';
-import { TourProgress1720000020000 } from '../src/database/migrations/1720000020000-TourProgress';
+import { TourProgress1720000023000 } from '../src/database/migrations/1720000023000-TourProgress';
+import { migrations } from '../src/database/migrations';
 import { E2eeRecoveryCeremony } from '../src/e2ee/e2ee-recovery-ceremony.entity';
 import { ToursModule } from '../src/tours/tours.module';
 import { User } from '../src/users/user.entity';
@@ -48,7 +49,7 @@ postgres('Versioned tour progress through authenticated HTTP', () => {
     });
     // Apply to a populated installation; the existing identities must survive.
     const runner = database.createQueryRunner();
-    await new TourProgress1720000020000().up(runner);
+    await new TourProgress1720000023000().up(runner);
     await runner.release();
     app = module.createNestApplication();
     app.useGlobalPipes(new ValidationPipe({ transform: true, whitelist: true, forbidNonWhitelisted: true }));
@@ -67,6 +68,32 @@ postgres('Versioned tour progress through authenticated HTTP', () => {
     .post('/api/tours/events').auth(tokens[role], { type: 'bearer' })
     .send({ tourId: 'first-login', version: 1, event, stepId, ...extra });
   const list = (role: string) => request(app.getHttpServer()).get('/api/tours').auth(tokens[role], { type: 'bearer' });
+
+  it('applies the tour migration last when upgrading current main without changing existing users', async () => {
+    const upgradeSchema = `${schema}_upgrade`;
+    await admin.query(`CREATE SCHEMA "${upgradeSchema}"`);
+    const connect = (registered: typeof migrations) => new DataSource({
+      type: 'postgres', url: databaseUrl, schema: upgradeSchema, migrations: registered,
+      extra: { options: `-c search_path=${upgradeSchema},public` },
+    }).initialize();
+    let database: DataSource | undefined;
+    try {
+      database = await connect(migrations.filter((migration) => migration !== TourProgress1720000023000));
+      await database.runMigrations();
+      const [existingUser] = await database.query(`INSERT INTO users (email, first_name, last_name)
+        VALUES ('upgrade@example.com', 'Existing', 'User') RETURNING *`);
+      await database.destroy();
+      database = await connect(migrations);
+      const applied = await database.runMigrations();
+      expect(applied.map((migration) => migration.name)).toEqual(['TourProgress1720000023000']);
+      expect(await database.query('SELECT * FROM users WHERE id = $1', [existingUser.id])).toEqual([existingUser]);
+      expect(await database.query('SELECT * FROM tour_progress')).toEqual([]);
+      expect(await database.runMigrations()).toEqual([]);
+    } finally {
+      if (database?.isInitialized) await database.destroy();
+      await admin.query(`DROP SCHEMA "${upgradeSchema}" CASCADE`);
+    }
+  });
 
   it('preserves existing identities, records retries and keeps completion across replay and concurrent skips', async () => {
     await request(app.getHttpServer()).get('/api/auth/me').auth(tokens.user, { type: 'bearer' }).expect(200);

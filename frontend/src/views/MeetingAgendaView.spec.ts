@@ -278,6 +278,43 @@ describe("MeetingAgendaView", () => {
     await vm.removeParticipant("user-1");
     expect(api.removeParticipant).toHaveBeenCalledWith("meeting-1", "user-1");
   });
+  it("persists Done as a meeting-local decision without changing the Topic", async () => {
+    workspaceMeeting.status = "in_progress";
+    protectedText.state.status = "unlocked";
+    const wrapper = await view();
+    const vm: any = wrapper.vm;
+    const globalSave = vi.spyOn(api, "updateTopic").mockResolvedValue({} as any);
+    const localSave = vi.spyOn(api, "updateMeetingTopic").mockImplementation(async (_meetingId, _id, patch) => {
+      Object.assign(workspaceMeeting.agenda[0], patch);
+      return structuredClone(workspaceMeeting.agenda[0]);
+    });
+
+    await vm.toggleDone(vm.meeting.agenda[0]);
+
+    expect(localSave).toHaveBeenCalledWith("meeting-1", "item-1", { topicStatusDecision: "done" });
+    expect(globalSave).not.toHaveBeenCalled();
+    expect(vm.canWriteMinutes).toBe(true);
+    expect(wrapper.text()).toContain("Done in this Meeting; applies to the Topic when the Meeting finishes.");
+    const reloaded = await view();
+    expect((reloaded.vm as any).meeting.agenda[0].topicStatusDecision).toBe("done");
+    expect((reloaded.vm as any).meeting.agenda[0]).toMatchObject({
+      topicStatusDecision: "done", topic: { status: "open" },
+    });
+  });
+  it("does not resend retained structure when choosing a local decision", async () => {
+    const wrapper = await view();
+    const vm: any = wrapper.vm;
+    const stale = structuredClone(vm.meeting.agenda[0]);
+    Object.assign(workspaceMeeting.agenda[0], {
+      sectionId: "new-section", position: 2, plannedDuration: 1,
+    });
+    const save = vi.spyOn(api, "updateMeetingTopic").mockResolvedValue({} as any);
+    await vm.toggleDone(stale);
+    expect(save).toHaveBeenCalledWith("meeting-1", "item-1", { topicStatusDecision: "done" });
+    expect(vm.meeting.agenda[0]).toMatchObject({
+      sectionId: "new-section", position: 2, plannedDuration: 1,
+    });
+  });
   it("defers, toggles completion, moves, and saves a meeting with local date/time mapping", async () => {
     const wrapper = await view();
     const vm: any = wrapper.vm;
@@ -287,43 +324,16 @@ describe("MeetingAgendaView", () => {
     vi.spyOn(api, "reorderMeetingTopics").mockResolvedValue([]);
     const item = structuredClone(vm.meeting.agenda[0]);
     await vm.toggleDeferred(item);
-    expect(api.updateTopic).toHaveBeenCalledWith(
-      "topic-1",
-      expect.objectContaining({ status: "deferred" }),
-    );
-    expect(api.updateMeetingTopic).toHaveBeenLastCalledWith(
-      "meeting-1",
-      expect.anything(),
-      { deferred: true },
-    );
-    item.topic.status = "deferred";
+    expect(api.updateMeetingTopic).toHaveBeenLastCalledWith("meeting-1", "item-1", { topicStatusDecision: "deferred" });
+    item.topicStatusDecision = "deferred";
     await vm.toggleDeferred(item);
-    expect(api.updateTopic).toHaveBeenLastCalledWith(
-      "topic-1",
-      expect.objectContaining({ status: "open" }),
-    );
-    expect(api.updateMeetingTopic).toHaveBeenLastCalledWith(
-      "meeting-1",
-      expect.anything(),
-      { deferred: false },
-    );
+    expect(api.updateMeetingTopic).toHaveBeenLastCalledWith("meeting-1", "item-1", { topicStatusDecision: null });
     await vm.toggleDone(item);
-    expect(api.updateTopic).toHaveBeenLastCalledWith(
-      "topic-1",
-      expect.objectContaining({ status: "done" }),
-    );
-    expect(api.updateMeetingTopic).toHaveBeenCalled();
-    item.topic.status = "done";
-    item.status = "done";
+    expect(api.updateMeetingTopic).toHaveBeenLastCalledWith("meeting-1", "item-1", { topicStatusDecision: "done" });
+    item.topicStatusDecision = "done";
     await vm.toggleDone(item);
-    expect(api.updateTopic).toHaveBeenLastCalledWith(
-      "topic-1",
-      expect.objectContaining({ status: "open" }),
-    );
-    expect(api.updateMeetingTopic).toHaveBeenLastCalledWith(
-      "meeting-1",
-      expect.objectContaining({ status: "planned" }),
-    );
+    expect(api.updateMeetingTopic).toHaveBeenLastCalledWith("meeting-1", "item-1", { topicStatusDecision: null });
+    expect(api.updateTopic).not.toHaveBeenCalled();
     const other = { ...item, id: "item-2", position: 2 };
     await vm.move([item, other], 0, 1);
     expect(api.reorderMeetingTopics).toHaveBeenCalledWith(
@@ -383,14 +393,14 @@ describe("MeetingAgendaView", () => {
   it("reports a localized Topic status failure without updating the Meeting appearance", async () => {
     const wrapper = await view();
     const vm: any = wrapper.vm;
-    vi.spyOn(api, "updateTopic").mockRejectedValueOnce(new Error("Database detail"));
-    vi.spyOn(api, "updateMeetingTopic").mockResolvedValue({} as any);
+    vi.spyOn(api, "updateTopic").mockResolvedValue({} as any);
+    vi.spyOn(api, "updateMeetingTopic").mockRejectedValueOnce(new Error("Database detail"));
 
     await vm.toggleDone(vm.meeting.agenda[0]);
 
     expect(wrapper.text()).toContain("Unable to change the Topic status");
     expect(wrapper.text()).not.toContain("Database detail");
-    expect(api.updateMeetingTopic).not.toHaveBeenCalled();
+    expect(api.updateTopic).not.toHaveBeenCalled();
   });
   it("excludes Person Topics from planned section duration", async () => {
     const personMeeting = structuredClone(meeting);
@@ -543,12 +553,14 @@ describe("MeetingAgendaView", () => {
   });
 
   it("prevents duplicate completion, reports failure, and switches successful completion to read-only", async () => {
+    protectedText.state.status = "unlocked";
     const activeMeeting = structuredClone(meeting);
     activeMeeting.status = "in_progress";
     activeMeeting.meetingLeaderId = "leader";
     const completedMeeting = structuredClone(activeMeeting);
     completedMeeting.status = "completed";
     auth.setUser(authenticatedUser("leader"));
+    protectedText.state.status = "unlocked";
     workspaceMeeting = activeMeeting;
     const complete = vi.spyOn(api, "completeMeeting");
     let rejectCompletion!: (reason: Error) => void;

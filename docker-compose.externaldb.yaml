@@ -1,0 +1,25 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      NODE_ENV: production
+      PORT: 8080
+      DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL to the external PostgreSQL connection URL.}
+      AUTH_SESSION_SECRET: ${AUTH_SESSION_SECRET:?Set a unique secret of at least 32 characters.}
+      AUTH_PROVIDER_SECRETS_KEY: ${AUTH_PROVIDER_SECRETS_KEY:-}
+      DEV_AUTH_BYPASS: "false"
+    expose:
+      - "8080"
+    restart: unless-stopped
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:8080/health').then((response) => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))"
+      interval: 30s
+      timeout: 5s
+      start_period: 30s
+      retries: 3

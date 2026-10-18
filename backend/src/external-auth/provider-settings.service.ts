@@ -75,14 +75,10 @@ export class ProviderSettingsService {
       provider.clientId = provider.clientId ?? (input.clientId?.trim() || null);
       provider.publicBaseUrl = input.publicBaseUrl?.replace(/\/$/, '') ?? null;
     }
-    if (input.type === 'oidc') {
-      if (input.clientSecret !== undefined && input.clientSecret !== null && input.clientSecret !== '') {
-        if (!this.secrets.available) throw codedHttpException(HttpStatus.SERVICE_UNAVAILABLE, 'AUTH_PROVIDER_SECRET_KEY_UNAVAILABLE', 'Provider secret key is unavailable');
-        provider.clientSecretEnvelope = this.secrets.encrypt(input.clientSecret);
-      } else if (input.removeClientSecret) {
-        provider.clientSecretEnvelope = null;
-      }
-    } else {
+    if (input.clientSecret !== undefined && input.clientSecret !== null && input.clientSecret !== '') {
+      if (!this.secrets.available) throw codedHttpException(HttpStatus.SERVICE_UNAVAILABLE, 'AUTH_PROVIDER_SECRET_KEY_UNAVAILABLE', 'Provider secret key is unavailable');
+      provider.clientSecretEnvelope = this.secrets.encrypt(input.clientSecret);
+    } else if (input.removeClientSecret) {
       provider.clientSecretEnvelope = null;
     }
     const previousFingerprint = provider.testedFingerprint;

@@ -107,15 +107,13 @@ describe("Meeting workspace contract", () => {
     expect(backend.revokeAccess).not.toHaveBeenCalled();
   });
 
-  it("allows a locked authorized requester to complete without a local provider", async () => {
+  it("blocks completion while Protected text is locked", async () => {
     const { backend } = setup(meeting({ status: "in_progress" }), false);
     const workspace = createMeetingWorkspace("meeting-1", backend);
     await workspace.open();
-    await workspace.complete();
-    expect(backend.complete).toHaveBeenCalledWith("meeting-1");
-    expect(backend.connect).not.toHaveBeenCalled();
-    expect(workspace.state.meeting?.status).toBe("completed");
-    expect(workspace.text({ kind: "general_notes" }).editable).toBe(false);
+    await expect(workspace.complete()).rejects.toThrow("E2EE_PROTECTED_TEXT_LOCKED");
+    expect(backend.complete).not.toHaveBeenCalled();
+    expect(workspace.state.meeting?.status).toBe("in_progress");
   });
 
   it("blocks voluntary close with pending changes and closes after acknowledgement", async () => {
@@ -244,6 +242,27 @@ describe("Meeting workspace contract", () => {
 
     expect(workspace.state.phase).toBe("unavailable");
     expect(workspace.state.meeting).toBeNull();
+  });
+
+  it("refreshes remote decisions while minutes stay editable and pending text remains present", async () => {
+    let loaded = meeting({ status: "in_progress" });
+    let notify!: Parameters<NonNullable<MeetingWorkspaceCollaboration["subscribe"]>>[0];
+    const { collaboration } = setup(loaded);
+    Object.assign(collaboration, { pending: true });
+    collaboration.subscribe = (listener) => { notify = listener; return () => undefined; };
+    const workspace = createMeetingWorkspace("meeting-1", {
+      load: async () => ({ meeting: loaded, unlocked: true }),
+      connect: async () => collaboration,
+      complete: vi.fn(),
+    });
+    await workspace.open();
+    loaded = { ...loaded, agenda: loaded.agenda!.map((item) => ({ ...item, topicStatusDecision: "done" })) };
+    notify("structure");
+    await vi.waitFor(() => expect(workspace.state.meeting?.agenda?.[0].topicStatusDecision).toBe("done"));
+    expect(workspace.text({ kind: "meeting_minutes_text", appearanceId: "generic-appearance" }).value).toBe("Minutes");
+    expect(workspace.text({ kind: "meeting_minutes_text", appearanceId: "generic-appearance" }).editable).toBe(true);
+    expect(workspace.state.pendingChanges).toBe(true);
+    await workspace.close({ discard: true });
   });
 
   it("publishes remote edits, collaborator presence, and temporary offline state", async () => {

@@ -236,6 +236,8 @@ export class EncryptedMeetingCollaborationProvider extends EventTarget {
         encodeAwarenessUpdate(this.awareness, clients),
         socket,
       );
+      // Structural notifications may have been missed while disconnected.
+      this.dispatchEvent(new Event("agenda-changed"));
       return;
     }
     if (frame.type === "acknowledged") {
@@ -290,6 +292,10 @@ export class EncryptedMeetingCollaborationProvider extends EventTarget {
         }),
         MEETING_COLLABORATION_ORIGIN,
       );
+      return;
+    }
+    if (frame.type === "agenda-changed") {
+      this.dispatchEvent(new Event("agenda-changed"));
       return;
     }
     if (frame.type === "parent-changed") {

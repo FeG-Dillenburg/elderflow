@@ -17,6 +17,8 @@ describe("MeetingPreparationContext", () => {
           previousAppearance: {
             appearanceId: "previous",
             meetingId: "previous-meeting",
+            date: "2026-08-01",
+            beginTime: "19:00",
             preparationContext: {
               id: "previous",
               text: "<p>Earlier preparation</p><script>alert(1)</script>",
@@ -71,10 +73,25 @@ describe("MeetingPreparationContext", () => {
     });
 
     expect(wrapper.text()).toContain("Previous Meeting");
+    expect(wrapper.text()).toContain("8/1/26");
     expect(wrapper.text()).toContain("Earlier preparation");
     expect(wrapper.text()).toContain("Earlier minutes");
     expect(wrapper.text()).toContain("First standalone update");
     expect(wrapper.text()).toContain("Second standalone update");
     expect(wrapper.html()).not.toContain("<script>");
   });
+  it("never displays previous notes or standalone updates for a Person Topic", () => {
+    const wrapper = mount(MeetingPreparationContext, {
+      props: { item: {
+        id: "person", meetingId: "meeting", topicId: "person", sectionId: "section",
+        position: 1, plannedDuration: null, status: "planned",
+        personNote: { id: "person", text: "Current person note", version: 0 },
+        previousAppearance: { appearanceId: "prior", meetingId: "prior-meeting",
+          personNote: { id: "prior", text: "Private historical person note", version: 0 } },
+        topic: { id: "person", type: "person", updates: [{ id: "update", text: "Person update" }] } as never,
+      } },
+    });
+    expect(wrapper.text()).toBe("");
+  });
+
 });

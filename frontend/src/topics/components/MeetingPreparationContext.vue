@@ -4,44 +4,50 @@ import { useI18n } from "vue-i18n";
 import type { MeetingTopic } from "../../api/domain";
 import { formatUser } from "../../api/domain";
 import { formatDate } from "../../i18n";
-import { sanitizeRichText } from "../../components/sanitize-rich-text";
+import { hasMeaningfulRichText, sanitizeRichText } from "../../components/sanitize-rich-text";
 
 defineOptions({ name: "MeetingPreparationContext" });
 const props = defineProps<{ item: MeetingTopic }>();
 const { t } = useI18n();
 const safe = sanitizeRichText;
 const previous = computed(() => props.item.previousAppearance);
-const updates = computed(() => props.item.topic?.updates ?? []);
-const hasPreviousContent = computed(() => Boolean(
-  previous.value?.preparationContext?.text
-  || previous.value?.personNote?.text
-  || previous.value?.meetingMinutes?.text,
-));
+const updates = computed(() => props.item.preparationUpdates ?? props.item.topic?.updates ?? []);
+const eligible = computed(() => props.item.topic?.type !== "person");
+const hasPreviousContent = computed(() =>
+  hasMeaningfulRichText(previous.value?.preparationContext?.text)
+  || hasMeaningfulRichText(previous.value?.meetingMinutes?.text),
+);
+const previousDate = computed(() => previous.value?.date
+  ? `${previous.value.date}T${previous.value.beginTime ?? "00:00"}`
+  : null);
 </script>
 
 <template>
   <div
-    v-if="hasPreviousContent || updates.length"
+    v-if="eligible && (hasPreviousContent || updates.length || item.preparationHistoryUnavailable)"
     class="meeting-preparation-context"
   >
     <section v-if="hasPreviousContent" class="context-group">
-      <h4>{{ t("meetingPreparation.previousMeeting") }}</h4>
+      <div class="context-heading">
+        <h4>{{ t("meetingPreparation.previousMeeting") }}</h4>
+        <small v-if="previousDate">
+          {{ formatDate(previousDate, { dateStyle: "short", timeStyle: "short" }) }}
+        </small>
+      </div>
       <div
-        v-if="previous?.personNote?.text"
-        class="context-entry"
-        v-html="safe(previous.personNote.text)"
-      />
-      <div
-        v-if="previous?.preparationContext?.text"
+        v-if="hasMeaningfulRichText(previous?.preparationContext?.text)"
         class="context-entry previous-preparation"
-        v-html="safe(previous.preparationContext.text)"
+        v-html="safe(previous?.preparationContext?.text)"
       />
       <div
-        v-if="previous?.meetingMinutes?.text"
+        v-if="hasMeaningfulRichText(previous?.meetingMinutes?.text)"
         class="context-entry previous-minutes"
-        v-html="safe(previous.meetingMinutes.text)"
+        v-html="safe(previous?.meetingMinutes?.text)"
       />
     </section>
+    <p v-if="item.preparationHistoryUnavailable" class="context-entry">
+      {{ t("meetingPreparation.historyUnavailable") }}
+    </p>
     <section v-if="updates.length" class="context-group">
       <h4>{{ t("meetingPreparation.standaloneUpdates") }}</h4>
       <article v-for="update in updates" :key="update.id" class="context-entry update">
@@ -67,6 +73,13 @@ const hasPreviousContent = computed(() => Boolean(
 .context-group {
   display: grid;
   gap: 0.4rem;
+}
+
+.context-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.2rem 0.5rem;
 }
 
 h4 {

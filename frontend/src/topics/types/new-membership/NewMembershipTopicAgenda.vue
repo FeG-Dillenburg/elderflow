@@ -44,12 +44,12 @@ const saveCurrentMinutes = (text: string | null) =>
       v-if="
         canEdit &&
         (item.topic?.membershipStatusSignal === 'nearly_finished' ||
-          item.topic?.status === 'done')
+          item.topicStatusDecision === 'done')
       "
       class="lifecycle-actions"
     >
       <TopicDoneButton
-        :done="item.topic?.status === 'done'"
+        :done="item.topicStatusDecision === 'done'"
         size="small"
         @toggle="markDone"
       />

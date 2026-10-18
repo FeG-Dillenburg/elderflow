@@ -3,6 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { api } from "../api/domain";
 import { createMeetingWorkspace, meetingRouteFactoryKey } from "../meetings/workspace";
 import { createMeetingRouteOperations } from "../meetings/workspace/production-adapter";
+import MeetingAgendaView from "./MeetingAgendaView.vue";
+import PrimeVue from "primevue/config";
 import MeetingPreparationView from "./MeetingPreparationView.vue";
 
 enableAutoUnmount(afterEach);
@@ -26,7 +28,7 @@ const stubs = {
   Tag: true,
   RichTextEditor: true,
   Draggable: {
-    props: ["list", "group", "itemKey", "handle", "sort"],
+    props: ["list", "group", "itemKey", "handle", "sort", "setData"],
     template: '<div class="draggable"><slot v-for="(element, index) in list" name="item" :element="element" :index="index" /><slot name="footer" /></div>',
   },
 };
@@ -116,6 +118,27 @@ describe("MeetingPreparationView", () => {
     await flushPromises();
     return wrapper;
   };
+  it("marks agenda and suggestion drags without exposing card text", async () => {
+    const wrapper = await view();
+    await (wrapper.vm as any).toggleFutureTopics();
+    await flushPromises();
+    const sources = wrapper.findAllComponents(stubs.Draggable);
+    expect(sources).toHaveLength(4);
+    for (const source of sources) {
+      const values = new Map<string, string>([["text/plain", "Old card text"]]);
+      const dataTransfer = {
+        clearData: () => values.clear(),
+        setData: (type: string, value: string) => values.set(type, value),
+      };
+      const card = document.createElement("article");
+      card.textContent = "Topic name BIUA 🔗 Private note";
+      expect(source.props("setData")).toBeTypeOf("function");
+      source.props("setData")(dataTransfer, card);
+      expect([...values.keys()]).toEqual(["application/x-elderflow-agenda-card"]);
+      expect([...values.values()].join("")).not.toContain("Private note");
+    }
+  });
+
   it("loads, groups ordered agenda items, and records loading errors", async () => {
     const wrapper = await view();
     const vm: any = wrapper.vm;
@@ -438,6 +461,48 @@ describe("MeetingPreparationView", () => {
       "A preserved recurring appearance conflicts with this change",
     );
   });
+  it("preserves one minute and reordered topics through the active agenda and preparation round trip", async () => {
+    workspaceMeeting.status = "in_progress";
+    workspaceMeeting.agenda[0].position = 1;
+    workspaceMeeting.agenda[1].position = 2;
+    vi.spyOn(api, "updateMeetingTopic").mockImplementation(async (_meeting, id, patch) => {
+      const item = workspaceMeeting.agenda.find((item: any) => item.id === id);
+      Object.assign(item, patch);
+      return structuredClone(item);
+    });
+    const preparation = () => mount(MeetingPreparationView, {
+      shallow: true,
+      global: {
+        plugins: [PrimeVue],
+        stubs: { ...stubs, InputNumber: false, InputText: false },
+        provide: { [meetingRouteFactoryKey as symbol]: meetingRouteFactory },
+      },
+    });
+    let wrapper = preparation();
+    await flushPromises();
+    const vm: any = wrapper.vm;
+    // Retain this appearance while another client updates unrelated fields.
+    const stale = vm.grouped[1].items[0];
+    workspaceMeeting.agenda[0].status = "done";
+    await vm.saveDuration(stale, 1);
+    expect(api.updateMeetingTopic).toHaveBeenCalledWith("meeting-1", "item-2", { plannedDuration: 1 });
+    expect((wrapper.findAll('input[role="spinbutton"]')[0].element as HTMLInputElement).value).toBe("1 min.");
+    wrapper.unmount();
+    const agenda = mount(MeetingAgendaView, {
+      shallow: true,
+      global: { stubs, provide: { [meetingRouteFactoryKey as symbol]: meetingRouteFactory } },
+    });
+    await flushPromises();
+    expect((agenda.vm as any).meeting.agenda[0]).toMatchObject({
+      id: "item-2", position: 1, plannedDuration: 1, status: "done",
+    });
+    agenda.unmount();
+    wrapper = preparation();
+    await flushPromises();
+    expect((wrapper.vm as any).grouped[1].items.map((item: any) => item.id)).toEqual(["item-2", "item-1"]);
+    expect((wrapper.findAll('input[role="spinbutton"]')[0].element as HTMLInputElement).value).toBe("1 min.");
+  });
+
   it("saves positive durations and clears zero or missing durations", async () => {
     const wrapper = await view();
     const vm: any = wrapper.vm;
@@ -447,13 +512,11 @@ describe("MeetingPreparationView", () => {
     await wrapper.vm.$nextTick();
     expect(wrapper.findAll("input-number-stub")[0].attributes("invalid")).toBe("true");
     await vm.saveDuration(item, 20);
-    expect(api.updateMeetingTopic).toHaveBeenCalledWith("meeting-1", expect.objectContaining({
-      id: "item-1",
+    expect(api.updateMeetingTopic).toHaveBeenCalledWith("meeting-1", "item-1", expect.objectContaining({
       plannedDuration: 20,
     }));
     await vm.saveDuration(item, 0);
-    expect(api.updateMeetingTopic).toHaveBeenLastCalledWith("meeting-1", expect.objectContaining({
-      id: "item-1",
+    expect(api.updateMeetingTopic).toHaveBeenLastCalledWith("meeting-1", "item-1", expect.objectContaining({
       plannedDuration: null,
     }));
     expect(item.plannedDuration).toBeNull();

@@ -1,3 +1,5 @@
+import { auth } from "../auth/auth";
+import { mentionUuid } from "../mentions/extraction";
 import DOMPurify from "dompurify";
 
 const ALLOWED_STYLE_PROPERTIES = new Set(["color", "background-color"]);
@@ -16,5 +18,27 @@ export function sanitizeRichText(html: string | null | undefined): string {
     }
     if (!element.style.length) element.removeAttribute("style");
   }
+  for (const element of template.content.querySelectorAll<HTMLElement>(".mention, .mention-own")) {
+    element.classList.remove("mention", "mention-own");
+  }
+  for (const element of template.content.querySelectorAll<HTMLElement>('[data-type="mention"]')) {
+    const id = element.dataset.id ?? "";
+    element.removeAttribute("style");
+    element.removeAttribute("data-is-mine");
+    element.className = "";
+    if (mentionUuid.test(id)) {
+      element.className = id === auth.state.user?.id ? "mention mention-own" : "mention";
+    } else {
+      element.removeAttribute("data-type");
+      element.removeAttribute("data-id");
+    }
+  }
   return template.innerHTML;
+}
+
+
+export function hasMeaningfulRichText(html: string | null | undefined): boolean {
+  const template = document.createElement("template");
+  template.innerHTML = sanitizeRichText(html);
+  return Boolean(template.content.textContent?.replace(/[\s\u200B-\u200D\uFEFF]/g, ""));
 }

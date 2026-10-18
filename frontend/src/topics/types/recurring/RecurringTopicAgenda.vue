@@ -54,13 +54,13 @@ const saveCurrentMinutes = (text: string | null) =>
       />
       <div v-if="canEdit" class="topic-footer">
         <Button
-          :aria-pressed="item.topic?.status === 'deferred'"
+          :aria-pressed="item.topicStatusDecision === 'deferred'"
           :label="
-            item.topic?.status === 'deferred'
+            item.topicStatusDecision === 'deferred'
               ? t('meetingAgenda.deferred')
               : t('meetingAgenda.defer')
           "
-          :severity="item.topic?.status === 'deferred' ? 'danger' : 'secondary'"
+          :severity="item.topicStatusDecision === 'deferred' ? 'danger' : 'secondary'"
           text
           @click="toggleDeferred"
         />

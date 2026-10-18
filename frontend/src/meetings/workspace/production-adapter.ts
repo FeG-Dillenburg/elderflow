@@ -6,6 +6,7 @@ import {
   type MeetingParticipant,
   type MeetingTopic,
   type MeetingTopicAddition,
+  type MeetingTopicPatch,
   type StructuralTopicFieldPatch,
   type Topic,
 } from "../../api/domain";
@@ -62,12 +63,15 @@ const collaborationFor = (meetingId: string): MeetingWorkspaceCollaboration => {
         if (provider.status === "discarded" && provider.terminalCode !== "MEETING_COMPLETED_IMMUTABLE") protectedText.lock("authorization-loss");
       };
       provider.addEventListener("status", stateChanged);
+      const agendaChanged = () => listener("structure");
+      provider.addEventListener("agenda-changed", agendaChanged);
       const presenceChanged = () => listener("presence");
       provider.awareness.on("change", presenceChanged);
       const documentChanged = () => listener("document");
       provider.document?.on("updateV2", documentChanged);
       return () => {
         provider.removeEventListener("status", stateChanged);
+        provider.removeEventListener("agenda-changed", agendaChanged);
         provider.awareness.off("change", presenceChanged);
         provider.document?.off("updateV2", documentChanged);
       };
@@ -137,7 +141,7 @@ export interface MeetingRouteOperations {
   addTopics(inputs: MeetingTopicAddition[]): Promise<MeetingTopic[]>;
   removeTopic(appearanceId: string): Promise<void>;
   reorderAgenda(items: Array<{ id: string; sectionId: string; position: number }>): Promise<MeetingTopic[]>;
-  updateAppearance(item: MeetingTopic, options?: { deferred?: boolean }): Promise<MeetingTopic>;
+  updateAppearance(appearanceId: string, patch: MeetingTopicPatch): Promise<MeetingTopic>;
   updateTopicFields(appearanceId: string, input: StructuralTopicFieldPatch): Promise<Topic>;
   updateTopic(topicId: string, input: Partial<import("../../api/domain").TopicInput>): Promise<Topic>;
 }
@@ -169,9 +173,8 @@ export const createMeetingRouteOperations = (
     addTopics: (inputs) => mutate(() => api.addMeetingTopics(meetingId, inputs)),
     removeTopic: (appearanceId) => mutate(() => api.removeMeetingTopic(meetingId, appearanceId)),
     reorderAgenda: (items) => mutate(() => api.reorderMeetingTopics(meetingId, items)),
-    updateAppearance: (item, options) => mutate(() => options
-      ? api.updateMeetingTopic(meetingId, item, options)
-      : api.updateMeetingTopic(meetingId, item)),
+    updateAppearance: (appearanceId, patch) => mutate(() =>
+      api.updateMeetingTopic(meetingId, appearanceId, patch)),
     updateTopicFields: (appearanceId, input) => mutate(() =>
       api.updateMeetingTopicFields(meetingId, appearanceId, input)),
     updateTopic: (topicId, input) => mutate(() => api.updateTopic(topicId, input)),

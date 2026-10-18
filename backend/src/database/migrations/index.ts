@@ -1,4 +1,6 @@
-import { TourProgress1720000020000 } from './1720000020000-TourProgress';
+import { TourProgress1720000023000 } from './1720000023000-TourProgress';
+import { ChurchToolsClientSecrets1720000022000 } from './1720000022000-ChurchToolsClientSecrets';
+import { MentionSnapshots1720000021000 } from "./1720000021000-MentionSnapshots";
 import { CreateUsers1720000000000 } from './1720000000000-CreateUsers';
 import { CreateAgendaDomain1720000001000 } from './1720000001000-CreateAgendaDomain';
 import { ArchiveUsers1720000002000 } from './1720000002000-ArchiveUsers';
@@ -19,6 +21,8 @@ import { MeetingCollaboration1720000016000 } from './1720000016000-MeetingCollab
 import { MeetingMutationCompaction1720000017000 } from './1720000017000-MeetingMutationCompaction';
 import { KeyRotationCeremonies1720000018000 } from './1720000018000-KeyRotationCeremonies';
 import { ExternalAuthentication1720000019000 } from './1720000019000-ExternalAuthentication';
+
+import { MeetingTopicStatusDecisions1720000020000 } from './1720000020000-MeetingTopicStatusDecisions';
 
 export const migrations = [
   CreateUsers1720000000000,
@@ -41,5 +45,8 @@ export const migrations = [
   MeetingMutationCompaction1720000017000,
   KeyRotationCeremonies1720000018000,
   ExternalAuthentication1720000019000,
-  TourProgress1720000020000,
+  MeetingTopicStatusDecisions1720000020000,
+  MentionSnapshots1720000021000,
+  ChurchToolsClientSecrets1720000022000,
+  TourProgress1720000023000,
 ];

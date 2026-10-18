@@ -1,5 +1,6 @@
 import { flushPromises, mount } from '@vue/test-utils';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import PrimeVue from 'primevue/config';
 import { externalAuthApi } from '../api/external-auth';
 import { auth } from '../auth/auth';
 import { installation } from '../installation';
@@ -67,7 +68,7 @@ describe('AuthenticationSettingsView', () => {
     await wrapper.get('select').setValue('churchtools');
     expect(wrapper.text()).toContain('ChurchTools installation URL');
     expect(wrapper.text()).not.toContain('Issuer URL');
-    expect(wrapper.text()).not.toContain('Client secret');
+    expect(wrapper.text()).toContain('Client secret');
   });
 
   it('loads active-user link status immediately after the first provider save', async () => {
@@ -86,20 +87,21 @@ describe('AuthenticationSettingsView', () => {
     expect(wrapper.text()).toContain('Unlinked');
   });
 
-  it('never displays a saved secret and exposes explicit replace/remove controls', async () => {
-    vi.mocked(externalAuthApi.settings).mockResolvedValue(providerSettings({ clientSecretConfigured: true }));
+  it.each(['oidc', 'churchtools'])('%s never displays a saved secret and exposes explicit replace/remove controls', async (type) => {
+    vi.mocked(externalAuthApi.settings).mockResolvedValue(providerSettings({ type, clientSecretConfigured: true }));
     const wrapper = mount(AuthenticationSettingsView, { global: { plugins: [router], stubs } });
     await flushPromises();
 
-    expect(wrapper.text()).toContain('Replace client secret');
-    expect(wrapper.text()).toContain('Remove the saved client secret');
+    expect(wrapper.text()).toContain('Client secret (optional)');
+    expect(wrapper.text()).toContain('A client secret is saved. Leave this field unchanged to keep it.');
+    expect(wrapper.get('input[type="password"]').attributes('placeholder')).toBe('••••••••');
     expect((wrapper.get('input[type="password"]').element as HTMLInputElement).value).toBe('');
     expect(wrapper.html()).not.toContain('clientSecretEnvelope');
   });
 
-  it('emits explicit secret replacement and removal requests without exposing the saved value', async () => {
-    vi.mocked(externalAuthApi.settings).mockResolvedValue(providerSettings({ clientSecretConfigured: true }));
-    vi.spyOn(externalAuthApi, 'save').mockResolvedValue(providerSettings({ clientSecretConfigured: true }));
+  it.each(['oidc', 'churchtools'])('%s emits explicit secret replacement and removal requests without exposing the saved value', async (type) => {
+    vi.mocked(externalAuthApi.settings).mockResolvedValue(providerSettings({ type, clientSecretConfigured: true }));
+    vi.spyOn(externalAuthApi, 'save').mockResolvedValue(providerSettings({ type, clientSecretConfigured: true }));
     const wrapper = mount(AuthenticationSettingsView, { global: { plugins: [router], stubs } });
     await flushPromises();
 
@@ -112,13 +114,60 @@ describe('AuthenticationSettingsView', () => {
     }));
 
     await wrapper.get('input[type="password"]').setValue('');
-    await wrapper.get('input[type="checkbox"]').setValue(true);
+    await wrapper.get('button[aria-label="Clear client secret"]').trigger('click');
+    expect(wrapper.text()).toContain('The saved client secret will be removed when you save.');
     await wrapper.get('form').trigger('submit');
     await flushPromises();
     expect(externalAuthApi.save).toHaveBeenLastCalledWith(expect.objectContaining({
       clientSecret: undefined,
       removeClientSecret: true,
     }));
+  });
+
+  it('preserves the saved secret without submitting masked dots and defers clearing until Save', async () => {
+    vi.mocked(externalAuthApi.settings).mockResolvedValue(providerSettings({ clientSecretConfigured: true }));
+    vi.spyOn(externalAuthApi, 'save').mockResolvedValue(providerSettings({ clientSecretConfigured: true }));
+    const wrapper = mount(AuthenticationSettingsView, { global: { plugins: [router], stubs } });
+    await flushPromises();
+
+    await wrapper.get('form').trigger('submit');
+    await flushPromises();
+    expect(externalAuthApi.save).toHaveBeenLastCalledWith(expect.objectContaining({
+      clientSecret: undefined, removeClientSecret: false,
+    }));
+    vi.mocked(externalAuthApi.save).mockClear();
+    await wrapper.get('button[aria-label="Clear client secret"]').trigger('click');
+    expect(externalAuthApi.save).not.toHaveBeenCalled();
+    expect(wrapper.get('input[type="password"]').attributes('placeholder')).toBe('');
+    expect(wrapper.text()).toContain('The saved client secret will be removed when you save.');
+
+    await wrapper.get('input[type="password"]').setValue('new-secret');
+    expect(wrapper.text()).not.toContain('The saved client secret will be removed when you save.');
+    await wrapper.get('form').trigger('submit');
+    await flushPromises();
+    expect(externalAuthApi.save).toHaveBeenLastCalledWith(expect.objectContaining({
+      clientSecret: 'new-secret', removeClientSecret: false,
+    }));
+  });
+
+  it('shows saved placeholder dots with the real Password control and reveals only a typed replacement', async () => {
+    vi.mocked(externalAuthApi.settings).mockResolvedValue(providerSettings({ clientSecretConfigured: true }));
+    const wrapper = mount(AuthenticationSettingsView, {
+      global: { plugins: [router, PrimeVue], stubs: { ...stubs, Password: false, InputText: false } },
+    });
+    await flushPromises();
+    const input = wrapper.get('#client-secret');
+    expect((input.element as HTMLInputElement).value).toBe('');
+    expect(input.attributes('placeholder')).toBe('••••••••');
+    expect(wrapper.find('[data-pc-section="unmaskicon"]').exists()).toBe(false);
+
+    await input.setValue('new-secret');
+    await wrapper.get('[data-pc-section="unmaskicon"]').trigger('click');
+    expect(input.attributes('type')).toBe('text');
+    expect((input.element as HTMLInputElement).value).toBe('new-secret');
+    await wrapper.get('button[aria-label="Clear client secret"]').trigger('click');
+    expect((input.element as HTMLInputElement).value).toBe('');
+    expect(wrapper.text()).toContain('The saved client secret will be removed when you save.');
   });
 
   it('copies the fixed callback URL', async () => {

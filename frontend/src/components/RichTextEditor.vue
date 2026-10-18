@@ -1,8 +1,10 @@
 <script setup lang="ts">
+import { useMentions } from "../mentions/use-mentions";
 import { useEditor } from "@tiptap/vue-3";
 import { computed, onBeforeUnmount, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { meetingRichTextExtensions } from "./meeting-rich-text-extensions";
+import { preventAgendaCardDrop } from "../meetings/agenda-drag";
 import RichTextEditorFrame from "./RichTextEditorFrame.vue";
 
 const props = withDefaults(defineProps<{
@@ -25,7 +27,7 @@ const model = defineModel<string>({ default: "" });
 const emit = defineEmits<{ blur: [] }>();
 const { t } = useI18n();
 const resolvedPlaceholder = computed(() => props.placeholder ?? t("editor.placeholder"));
-const extensions = meetingRichTextExtensions(false);
+const extensions = meetingRichTextExtensions(false, useMentions());
 
 const editor = useEditor({
   content: model.value,
@@ -33,10 +35,13 @@ const editor = useEditor({
   extensions: [
     ...extensions,
   ],
-  editorProps: { attributes: {
-    "aria-label": props.ariaLabel ?? resolvedPlaceholder.value,
-    ...(props.ariaDescription ? { "aria-description": props.ariaDescription } : {}),
-  } },
+  editorProps: {
+    handleDOMEvents: { drop: preventAgendaCardDrop },
+    attributes: {
+      "aria-label": props.ariaLabel ?? resolvedPlaceholder.value,
+      ...(props.ariaDescription ? { "aria-description": props.ariaDescription } : {}),
+    },
+  },
   onUpdate: ({ editor: current }) => {
     model.value = current.getHTML();
   },

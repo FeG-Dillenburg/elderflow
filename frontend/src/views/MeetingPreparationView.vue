@@ -4,6 +4,7 @@ import { computed } from "vue";
 import { useI18n } from "vue-i18n";
 import { RouterLink, useRoute, useRouter } from "vue-router";
 import Draggable from "vuedraggable";
+import { setAgendaDragData } from "../meetings/agenda-drag";
 import Button from "primevue/button";
 import DatePicker from "primevue/datepicker";
 import { tours } from "../tours/tours";
@@ -308,8 +309,7 @@ const saveDuration = async (item: MeetingTopic, duration: number | null) => {
     .catch(() => undefined)
     .then(async () => {
       try {
-        await operations.updateAppearance({
-          ...item,
+        await operations.updateAppearance(item.id, {
           plannedDuration: normalizedDuration,
         });
       } catch (cause) {
@@ -469,6 +469,7 @@ const saveDetails = async () => {
               :list="group.items"
               :group="agendaGroup"
               item-key="id"
+              :set-data="setAgendaDragData"
               handle=".drag-handle"
               :disabled="pending || readOnly"
               class="agenda-drop-zone"
@@ -577,6 +578,7 @@ const saveDetails = async () => {
               :group="suggestionGroup"
               :clone="cloneSuggestion"
               item-key="id"
+              :set-data="setAgendaDragData"
               handle=".drag-handle"
               :sort="false"
               :disabled="pending"
