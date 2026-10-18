@@ -26,6 +26,7 @@ const firstSteps = [
   ['dashboard-overview', 'dashboard-heading', undefined, 'right', true],
   ['meetings-navigation', 'nav-meetings', undefined, 'right', true],
   ['topics-navigation', 'nav-topics', undefined, 'right', true],
+  ['mentions-navigation', 'nav-my-mentions', undefined, 'right', true],
   ['profile-settings', 'nav-profile', undefined, 'top', true],
   ['sign-out', 'nav-sign-out', undefined, 'top', false],
 ] as const;

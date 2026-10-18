@@ -86,7 +86,8 @@ async function show(attempt: Attempt): Promise<void> {
     candidate.target && attempt.context?.root.querySelector(`[data-tour-id="${candidate.target}"]`));
   const nextOption = next?.target
     ? attempt.context?.root.querySelector<HTMLElement>(`[data-tour-id="${next.target}"]`)?.closest<HTMLButtonElement>('button') ?? null : null;
-  attempt.presenter.show(step, element, nextOption,
+  const advanceTarget = step.id === 'protected-text-passphrase' ? element ?? null : nextOption;
+  attempt.presenter.show(step, element, advanceTarget,
     attempt.index === attempt.definition.steps.length - 1,
     () => { void advance(attempt); }, () => { void finish(attempt, false); });
 }

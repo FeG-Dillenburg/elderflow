@@ -9,10 +9,11 @@ const de = {
     steps: {
       welcome: 'Entdecke Elderflow mit dieser Einführung. Wir beginnen mit dem Schutz deiner vertraulichen Inhalte.',
       'protected-text-encryption': 'Vertrauliche Inhalte in Elderflow sind Ende-zu-Ende-verschlüsselt. Gib das gemeinsame Verschlüsselungspasswort ein, um sie auf diesem Gerät anzuzeigen.',
-      'protected-text-passphrase': 'Gib das Verschlüsselungspasswort ein, das du erhalten hast. Wähle Weiter, um zu entsperren oder ohne Entsperren fortzufahren. Die Tour wartet auf dich.',
+      'protected-text-passphrase': 'Gib das Verschlüsselungspasswort ein, das du erhalten hast. Klicke in das Passwortfeld oder wähle Weiter, um zu entsperren oder ohne Entsperren fortzufahren. Die Tour wartet auf dich.',
       'dashboard-overview': 'Das Dashboard zeigt die wichtigen Informationen, die gerade relevant sind.',
       'meetings-navigation': 'Hier findest du alle vergangenen und bevorstehenden Sitzungen.',
       'topics-navigation': 'Hier siehst du aktuelle Themen und kannst mit entsprechender Berechtigung neue hinzufügen.',
+      "mentions-navigation": "Hier siehst Du alle Themen, in denen Du erwähnt wurdest.",
       'profile-settings': 'In deinem Profil kannst du persönliche Angaben und Einstellungen wie die Sprache ändern.',
       'sign-out': 'Hier kannst du dich abmelden und deine aktuelle Sitzung beenden.',
       'topic-type-generic': 'Elderflow unterstützt vier Themenarten. Sie teilen Felder wie Name und Text und haben jeweils eigene Funktionen. Allgemeine Themen sind für gewöhnliche Anliegen gedacht. Wähle Person oder Weiter.',

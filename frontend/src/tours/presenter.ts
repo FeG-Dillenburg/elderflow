@@ -29,6 +29,7 @@ export class TourPresenter {
       disableActiveInteraction: false,
       popoverClass: 'elderflow-tour',
       overlayOpacity: 0.65,
+      stagePadding: step.target?.startsWith('nav-') ? 2 : 10,
       onDestroyed: () => { this.popover = null; },
     });
     this.driver.highlight({

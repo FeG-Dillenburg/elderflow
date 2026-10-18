@@ -122,7 +122,7 @@ describe('Product tours through the visible UI', () => {
     expect(document.activeElement?.querySelector('[data-tour-id="topic-type-generic"]')).toBeTruthy();
   });
 
-  it('offers Welcome only after login, waits for unlock, and preserves the requested return route', async () => {
+  it.each(['Next', 'password field'])('offers Welcome after login, waits for unlock via %s, and explains mentions', async (unlockAction) => {
     installation.setupRequired = false;
     auth.completeInitialization(null);
     await router.push('/login?redirect=/meetings');
@@ -136,6 +136,12 @@ describe('Product tours through the visible UI', () => {
     landing.dataset.tourId = 'dashboard-heading';
     landing.textContent = 'Dashboard';
     document.body.append(landing);
+    for (const id of ['nav-meetings', 'nav-topics', 'nav-my-mentions']) {
+      const link = document.createElement('a');
+      link.dataset.tourId = id;
+      link.textContent = id;
+      document.body.append(link);
+    }
     await settle();
     expect(document.querySelector('.driver-popover')).toBeNull();
     await login.get('form').trigger('submit');
@@ -152,7 +158,8 @@ describe('Product tours through the visible UI', () => {
     click('Next');
     await settle();
     expect(document.querySelector('.driver-popover-title')?.textContent).toBe('Enter encryption password');
-    click('Next');
+    if (unlockAction === 'Next') click('Next');
+    else document.querySelector<HTMLInputElement>('[data-tour-id="unlock-passphrase"]')!.click();
     await settle();
     expect(document.querySelector('.driver-popover')).toBeNull();
     expect(document.activeElement?.getAttribute('data-tour-id')).toBe('unlock-passphrase');
@@ -160,6 +167,12 @@ describe('Product tours through the visible UI', () => {
     await settle();
     expect(document.querySelector('.driver-popover-description')?.textContent).toContain('dashboard');
     expect(document.querySelector('.driver-popover')?.getAttribute('aria-labelledby')).toBeNull();
+    for (let step = 0; step < 3; step += 1) {
+      click('Next');
+      await settle();
+    }
+    expect(document.querySelector('[data-tour-id="nav-my-mentions"]')?.classList.contains('driver-active-element')).toBe(true);
+    expect(document.querySelector('.driver-popover-description')?.textContent).toBe('Here you can see all topics where you were mentioned.');
     click('Skip');
     await settle();
     expect(router.currentRoute.value.path).toBe('/meetings');

@@ -21,10 +21,11 @@ export default {
   "steps": {
     "welcome": "Let’s explore Elderflow together. Start with the protection of your confidential content.",
     "protected-text-encryption": "Confidential content in Elderflow is end-to-end encrypted. Enter the shared encryption password to display it on this device.",
-    "protected-text-passphrase": "Enter the encryption password you received. Choose Next to unlock, or continue without unlocking. The tour will wait for you.",
+    "protected-text-passphrase": "Enter the encryption password you received. Click the password field or choose Next to unlock, or continue without unlocking. The tour will wait for you.",
     "dashboard-overview": "The dashboard shows the important information that is currently relevant.",
     "meetings-navigation": "Find all past and upcoming meetings here.",
     "topics-navigation": "See current topics and, if you have permission, add new ones.",
+      "mentions-navigation": "Here you can see all topics where you were mentioned.",
     "profile-settings": "Change your personal information and settings, including your language, in your profile.",
     "sign-out": "Use this button to log out and close your current session.",
     "topic-type-generic": "Elderflow supports four topic types. They share fields such as name and text, with additional behavior for each type. Generic is for ordinary topics. Select Person or choose Next to continue.",
