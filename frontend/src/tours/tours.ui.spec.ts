@@ -81,20 +81,24 @@ describe('Product tours through the visible UI', () => {
     expect(tourApi.record).toHaveBeenCalledWith(expect.objectContaining({ tourId: 'new-topic-dialog', event: 'complete', stepId: 'topic-type-recurring' }), expect.any(AbortSignal));
     expect(draft.type).toBe('generic');
   });
-  it('repositions the highlight when a dialog moves after its opening transition without a window resize', async () => {
+  it.each([100, 450])('repositions the popover when the dialog moves at %sms without a window resize', async (delay) => {
     const { form } = openForm();
-    await settle();
-    const option = form.get('[data-tour-id="topic-type-generic"]').element;
-    let top = 200;
-    vi.spyOn(option, 'getBoundingClientRect').mockImplementation(() => ({
-      x: 100, y: top, top, left: 100, right: 200, bottom: top + 30, width: 100, height: 30,
-      toJSON: () => ({}),
-    }));
-    await new Promise((resolve) => setTimeout(resolve, 450));
-    const originalPath = document.querySelector('.driver-overlay path')?.getAttribute('d');
-    expect(originalPath).toBeTruthy();
-    top = 320;
-    await vi.waitFor(() => expect(document.querySelector('.driver-overlay path')?.getAttribute('d')).not.toBe(originalPath));
+    for (const type of ['generic', 'person']) {
+      const option = form.get(`[data-tour-id="topic-type-${type}"]`).element;
+      let top = 200;
+      vi.spyOn(option, 'getBoundingClientRect').mockImplementation(() => ({
+        x: 100, y: top, top, left: 100, right: 200, bottom: top + 30, width: 100, height: 30,
+        toJSON: () => ({}),
+      }));
+      if (type === 'person') click('Next');
+      await settle();
+      const popover = document.querySelector<HTMLElement>('.driver-popover')!;
+      const originalTop = parseFloat(popover.style.top);
+      expect(Number.isFinite(originalTop)).toBe(true);
+      await new Promise((resolve) => setTimeout(resolve, delay));
+      top = 320;
+      await vi.waitFor(() => expect(parseFloat(popover.style.top)).toBe(originalTop + 120));
+    }
   });
 
   it('blocks unrelated controls, supports keyboard Escape, and retries on the next dialog opening', async () => {

@@ -22,6 +22,7 @@ export class TourPresenter {
     this.advance = advance;
     this.skip = step.skippable ? skip : null;
     nextOption?.classList.add('tour-allowed-option');
+    let previousLayout = '';
     this.driver = driver({
       animate: !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches,
       smoothScroll: false,
@@ -32,6 +33,9 @@ export class TourPresenter {
       overlayOpacity: 0.65,
       stagePadding: step.target?.startsWith('nav-') ? 2 : 10,
       onDestroyed: () => { this.popover = null; },
+      // Driver ignores refreshes until its own highlight animation has finished.
+      // Force another measurement on the following frame, even if layout is stable.
+      onHighlighted: () => { previousLayout = ''; },
     });
     this.driver.highlight({
       element: target,
@@ -64,7 +68,6 @@ export class TourPresenter {
       },
     });
     // Dialog recentering, transitions and wrapped text can move targets without a resize.
-    let previousLayout = '';
     const trackLayout = () => {
       const rect = target?.getBoundingClientRect();
       const popover = this.popover?.getBoundingClientRect();
