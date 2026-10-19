@@ -66,7 +66,7 @@ afterEach(() => {
 });
 
 describe('Deployment updates through login and profile UI', () => {
-  it.each(['local', 'external', 'restore'])('holds unlock and tours until Continue for %s sessions', async (kind) => {
+  it.each(['local', 'external', 'restore'])('holds unlock and tours until acknowledgement for %s sessions', async (kind) => {
     if (kind === 'local') await auth.login(user.email, 'password');
     else if (kind === 'external') await auth.completeExternal('code');
     else auth.completeInitialization(user, true);
@@ -80,7 +80,7 @@ describe('Deployment updates through login and profile UI', () => {
     await settle();
     expect(deploymentUpdates.state.visible).toBe(true);
     expect(request).toHaveBeenCalledTimes(1);
-    button('Continue').click();
+    button('Awesome!').click();
     await settle();
     expect(request).toHaveBeenLastCalledWith('/api/deployment-updates/acknowledge', expect.objectContaining({
       body: JSON.stringify({ ids: [announcement.id] }),
@@ -93,12 +93,12 @@ describe('Deployment updates through login and profile UI', () => {
     await auth.login(user.email, 'password');
     await settle();
     vi.mocked(request).mockRejectedValueOnce(new Error('offline'));
-    button('Continue').click();
+    button('Awesome!').click();
     await settle();
     expect(document.querySelector('[role="alert"]')?.textContent).toContain('could not be saved');
     expect(protectedText.showUnlock).not.toHaveBeenCalled();
     vi.mocked(request).mockResolvedValueOnce(undefined);
-    button('Continue').click();
+    button('Awesome!').click();
     await settle();
     expect(protectedText.showUnlock).toHaveBeenCalledOnce();
     expect(request).toHaveBeenCalledTimes(3);
@@ -114,7 +114,7 @@ describe('Deployment updates through login and profile UI', () => {
     expect(document.querySelectorAll('[role="dialog"] li')).toHaveLength(1000);
     expect(document.querySelector('[role="dialog"]')?.textContent).toContain('1 more unread updates');
     vi.mocked(request).mockResolvedValueOnce(undefined);
-    button('Continue').click();
+    button('Awesome!').click();
     await settle();
     const firstAcknowledgement = JSON.parse(vi.mocked(request).mock.calls[1][1]?.body as string);
     expect(firstAcknowledgement.ids).toHaveLength(1000);
@@ -122,7 +122,7 @@ describe('Deployment updates through login and profile UI', () => {
     expect(document.querySelectorAll('[role="dialog"] li')).toHaveLength(1);
     expect(protectedText.showUnlock).not.toHaveBeenCalled();
     vi.mocked(request).mockRejectedValueOnce(new Error('offline'));
-    button('Continue').click();
+    button('Awesome!').click();
     await settle();
     expect(document.querySelector('[role="alert"]')?.textContent).toContain('could not be saved');
     expect(request).toHaveBeenLastCalledWith('/api/deployment-updates/acknowledge', expect.objectContaining({
@@ -136,7 +136,7 @@ describe('Deployment updates through login and profile UI', () => {
     expect(document.querySelectorAll('[role="dialog"] li')).toHaveLength(1);
     expect(protectedText.showUnlock).not.toHaveBeenCalled();
     vi.mocked(request).mockResolvedValueOnce(undefined);
-    button('Continue').click();
+    button('Awesome!').click();
     await settle();
     expect(protectedText.showUnlock).toHaveBeenCalledOnce();
   });
@@ -164,7 +164,7 @@ describe('Deployment updates through login and profile UI', () => {
     auth.completeInitialization({ ...user, role: 'it-admin' }, true);
     await settle();
     expect(deploymentUpdates.state.visible).toBe(true);
-    button('Continue').click();
+    button('Awesome!').click();
     await settle();
     expect(tourApi.list).not.toHaveBeenCalled();
     expect(protectedText.showUnlock).not.toHaveBeenCalled();
@@ -191,7 +191,7 @@ describe('Deployment updates through login and profile UI', () => {
     await settle();
     let finish!: () => void;
     vi.mocked(request).mockReturnValueOnce(new Promise((resolve) => { finish = () => resolve(undefined); }));
-    button('Continue').click();
+    button('Awesome!').click();
     await settle();
     const signal = vi.mocked(request).mock.calls[1][1]?.signal;
     auth.logout();
@@ -226,6 +226,7 @@ describe('Deployment updates through login and profile UI', () => {
     expect(dialog.textContent).toContain('18.10.2026');
     expect(dialog.textContent).toContain('Neue Funktion');
     expect(dialog.textContent).toContain('beim Anmelden');
+    expect(button('Super!')).toBeTruthy();
     expect(dialog.querySelector('li span')?.getAttribute('aria-hidden')).toBe('true');
     expect(request).toHaveBeenCalledTimes(1);
   });

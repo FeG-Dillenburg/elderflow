@@ -1,16 +1,16 @@
 const de = {
   deploymentUpdates: {
     listLabel: "Bereitgestellte Neuigkeiten",
-    moreUnread: "Nach Weiter folgen noch {count} ungelesene Neuigkeiten.",
+    moreUnread: "Nach „Super!“ folgen noch {count} ungelesene Neuigkeiten.",
     title: "Neuigkeiten in ElderFlow",
-    continue: "Weiter",
+    continue: "Super!",
     close: "Schließen",
     retry: "Erneut versuchen",
     profileAction: "Letzte Neuigkeiten",
     loading: "Neuigkeiten werden geladen…",
     empty: "Es wurden noch keine Neuigkeiten bereitgestellt.",
     unavailable: "Neuigkeiten konnten nicht geladen werden. Du kannst ElderFlow weiter nutzen und es im Profil erneut versuchen.",
-    acknowledgeFailed: "Deine Bestätigung konnte nicht gespeichert werden. Bitte versuche es erneut mit Weiter.",
+    acknowledgeFailed: "Deine Bestätigung konnte nicht gespeichert werden. Bitte versuche es erneut mit „Super!“.",
     historyFailed: "Die letzten Neuigkeiten konnten nicht geladen werden. Bitte versuche es erneut.",
     fallback: "ElderFlow wurde aktualisiert.",
     categories: {

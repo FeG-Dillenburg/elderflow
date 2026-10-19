@@ -1,16 +1,16 @@
 export default {
   deploymentUpdates: {
     listLabel: "Deployed updates",
-    moreUnread: "{count} more unread updates will follow after Continue.",
+    moreUnread: "{count} more unread updates will follow after you select “Awesome!”.",
     title: "What’s new in ElderFlow",
-    continue: "Continue",
+    continue: "Awesome!",
     close: "Close",
     retry: "Retry",
     profileAction: "Recent updates",
     loading: "Loading updates…",
     empty: "No updates have been deployed yet.",
     unavailable: "Updates could not be loaded. You can continue using ElderFlow and retry from your profile.",
-    acknowledgeFailed: "Your acknowledgement could not be saved. Please try Continue again.",
+    acknowledgeFailed: "Your acknowledgement could not be saved. Please select “Awesome!” again.",
     historyFailed: "Recent updates could not be loaded. Please try again.",
     fallback: "ElderFlow has been updated.",
     categories: {
