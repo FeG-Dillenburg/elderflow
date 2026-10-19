@@ -26,10 +26,11 @@ if (context.installation) {
   installation.defaultLanguage = context.installation.defaultLanguage;
 }
 installation.ready = true;
-auth.completeInitialization(context.user);
+auth.completeInitialization(context.user, true);
 if (hadSession && !context.user) clearSessionToken();
 setLanguage(context.language);
-if (context.user) await protectedText.offerUnlock(context.user, !isProviderTestReturn(window.location));
+if (context.user) await protectedText.offerUnlock(context.user, false);
+if (isProviderTestReturn(window.location)) auth.state.loginPending = false;
 
 const app = createApp(App)
   .use(router)

@@ -43,3 +43,9 @@ Used by `/wayfinder`. The **map** is a single issue with **child** issues as tic
 - **Frontier query**: list the map's open children (`gh issue list --state open`, scoped to the map's sub-issues / task list), drop any with an open blocker (`issue_dependencies_summary.blocked_by > 0`, or an open issue in the `Blocked by` line) or an assignee; first in map order wins.
 - **Claim**: `gh issue edit <n> --add-assignee @me` — the session's first write.
 - **Resolve**: `gh issue comment <n> --body "<answer>"`, then `gh issue close <n>`, then append a context pointer (gist + link) to the map's Decisions-so-far.
+
+## Deployment announcements in tickets and PRs
+
+Every new feature, improvement, or bug-fix ticket and its implementing PR must include a user-facing deployment announcement: a stable backend manifest entry, its category, and matching English/German catalog text. A ticket may explicitly authorize omission for work without user-visible effects. If it does not, obtain Daniel's agreement before omitting the announcement; agents must not decide that exception silently.
+
+State the intended announcement category or explicitly agreed omission when creating a ticket. Add the manifest entry and matching translations in its implementing PR, following [the contributor guide](deployment-announcements.md). Creating tickets or PRs never registers announcements in a live database. Do not retrofit historical commits or existing tickets in bulk.

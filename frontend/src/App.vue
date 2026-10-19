@@ -6,6 +6,8 @@ import { auth } from "./auth/auth";
 import { roleLabel } from "./auth/roles";
 import router from "./router";
 import { useI18n } from "vue-i18n";
+import DeploymentUpdatesDialog from "./deployment-updates/DeploymentUpdatesDialog.vue";
+import { deploymentUpdates } from "./deployment-updates/deployment-updates";
 import TourHost from "./tours/TourHost.vue";
 import ToursHelp from "./tours/ToursHelp.vue";
 import { isE2eeKeyOperator } from "./e2ee/roles";
@@ -105,6 +107,7 @@ function toggleProtectedText(): void {
 
 <template>
   <TourHost />
+  <DeploymentUpdatesDialog />
   <div v-if="auth.state.user && !isSetupRoute" class="app-shell">
     <aside class="sidebar">
       <div class="brand">
@@ -186,7 +189,7 @@ function toggleProtectedText(): void {
             type="button"
             class="protected-text-control"
             :class="`status-${protectedText.state.status}`"
-            :disabled="protectedText.state.status === 'unlocking'"
+            :disabled="protectedText.state.status === 'unlocking' || deploymentUpdates.state.blocking || deploymentUpdates.state.visible"
             :aria-label="
               protectedText.state.status === 'unlocked'
                 ? t('e2ee.lockProtectedText')

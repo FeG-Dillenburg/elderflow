@@ -1,3 +1,4 @@
+import { DeploymentUpdatesModule } from './deployment-updates/deployment-updates.module';
 import { ToursModule } from './tours/tours.module';
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
@@ -63,6 +64,7 @@ import { ExternalAuthModule } from './external-auth/external-auth.module';
     E2eeModule,
     ExternalAuthModule,
     ToursModule,
+    DeploymentUpdatesModule,
   ],
   controllers: [AppController],
   providers: [

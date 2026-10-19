@@ -7,7 +7,7 @@ import { clearSessionToken, getSessionToken, setSessionToken } from './session';
 import { protectedText } from '../e2ee/protected-text';
 import { externalAuthApi } from '../api/external-auth';
 
-const state = reactive<{ user: AuthUser | null; ready: boolean; loginPending: boolean }>({ user: null, ready: false, loginPending: false });
+const state = reactive<{ user: AuthUser | null; ready: boolean; loginPending: boolean; sessionRestored: boolean }>({ user: null, ready: false, loginPending: false, sessionRestored: false });
 let initialization: Promise<void> | null = null;
 
 async function acceptSession(result: { token: string; user: AuthUser }): Promise<void> {
@@ -21,6 +21,7 @@ async function acceptSession(result: { token: string; user: AuthUser }): Promise
     browserLanguages: navigator.languages,
   }));
   await protectedText.offerUnlock(result.user, false);
+  state.sessionRestored = false;
   state.loginPending = true;
 }
 
@@ -31,7 +32,12 @@ export const auth = {
     if (state.ready) return;
     if (!initialization) {
       initialization = api.me()
-        .then(async (user) => { state.user = user; await protectedText.offerUnlock(user); })
+        .then(async (user) => {
+          state.user = user;
+          await protectedText.offerUnlock(user, false);
+          state.sessionRestored = true;
+          state.loginPending = true;
+        })
         .catch(() => { clearSessionToken(); state.user = null; })
         .finally(() => { state.ready = true; });
     }
@@ -61,9 +67,10 @@ export const auth = {
     if (state.user && state.user.id !== user.id) protectedText.lock('identity-change');
     state.user = user;
   },
-  completeInitialization(user: AuthUser | null): void {
+  completeInitialization(user: AuthUser | null, restoredSession = false): void {
     state.user = user;
-    state.loginPending = false;
+    state.sessionRestored = restoredSession;
+    state.loginPending = restoredSession && Boolean(user);
     state.ready = true;
   },
   permission(category: PermissionCategory): PermissionLevel {

@@ -1,4 +1,28 @@
 const de = {
+  deploymentUpdates: {
+    listLabel: "Bereitgestellte Neuigkeiten",
+    moreUnread: "Nach Weiter folgen noch {count} ungelesene Neuigkeiten.",
+    title: "Neuigkeiten in ElderFlow",
+    continue: "Weiter",
+    close: "Schließen",
+    retry: "Erneut versuchen",
+    profileAction: "Letzte Neuigkeiten",
+    loading: "Neuigkeiten werden geladen…",
+    empty: "Es wurden noch keine Neuigkeiten bereitgestellt.",
+    unavailable: "Neuigkeiten konnten nicht geladen werden. Du kannst ElderFlow weiter nutzen und es im Profil erneut versuchen.",
+    acknowledgeFailed: "Deine Bestätigung konnte nicht gespeichert werden. Bitte versuche es erneut mit Weiter.",
+    historyFailed: "Die letzten Neuigkeiten konnten nicht geladen werden. Bitte versuche es erneut.",
+    fallback: "ElderFlow wurde aktualisiert.",
+    categories: {
+      feature: "Neue Funktion",
+      improvement: "Verbesserung",
+      bugfix: "Fehlerbehebung",
+    },
+    entries: {
+      "deployment-updates-dialog": "Du siehst jetzt beim Anmelden die bereitgestellten Änderungen und kannst die letzten Neuigkeiten in deinem Profil erneut öffnen.",
+    },
+  },
+
   tours: {
     godparentsTitle: "Paten",
     help: 'Hilfe / Touren', firstLogin: 'Erste Anmeldung', newTopic: 'Dialog „Neues Thema“',
