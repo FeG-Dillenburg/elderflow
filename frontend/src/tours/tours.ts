@@ -1,4 +1,5 @@
 import { nextTick, reactive, watch, type WatchStopHandle } from 'vue';
+import { deploymentUpdates } from '../deployment-updates/deployment-updates';
 import { auth } from '../auth/auth';
 import type { Router } from 'vue-router';
 import { protectedText } from '../e2ee/protected-text';
@@ -193,6 +194,7 @@ function enqueue(id: TourId, options: { manual?: boolean; context?: TopicContext
 }
 
 function reset(): void {
+  deploymentUpdates.reset();
   generation += 1;
   sessionAbort.abort();
   sessionAbort = new AbortController();
@@ -244,7 +246,14 @@ export const tours = {
       () => {
         if (!auth.state.loginPending || router.currentRoute.value.meta.public || !auth.state.user) return;
         auth.state.loginPending = false;
-        void firstLogin();
+        const currentGeneration = generation;
+        const restored = auth.state.sessionRestored;
+        void deploymentUpdates.beforeLogin().then(() => {
+          if (currentGeneration !== generation || !auth.state.user) return;
+          if (restored) {
+            if (protectedText.isEligible(auth.state.user)) protectedText.showUnlock();
+          } else void firstLogin();
+        });
       }, { flush: 'post', immediate: true },
     );
     const stopRoute = router.afterEach(() => {
@@ -268,6 +277,7 @@ export const tours = {
     };
   },
   topicOpened(context: TopicContext): () => void {
+    if (deploymentUpdates.state.blocking || deploymentUpdates.state.visible) return () => undefined;
     const manual = manualTopic;
     manualTopic = false;
     enqueue('new-topic-dialog', { context, manual });
@@ -280,7 +290,7 @@ export const tours = {
     if (active?.definition.id === 'first-login') void finish(active, false, false);
   },
   async replay(id: TourId): Promise<void> {
-    if (state.activeId) return;
+    if (state.activeId || deploymentUpdates.state.blocking || deploymentUpdates.state.visible) return;
     if (id === 'first-login') { await firstLogin(true); return; }
     await router.push('/topics');
     manualTopic = true;

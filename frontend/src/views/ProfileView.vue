@@ -7,6 +7,9 @@ import Password from "primevue/password";
 import Select from "primevue/select";
 import { useI18n } from "vue-i18n";
 import { api } from "../api/domain";
+import { deploymentUpdates } from "../deployment-updates/deployment-updates";
+import { protectedText } from "../e2ee/protected-text";
+import { tours } from "../tours/tours";
 import { auth } from "../auth/auth";
 import { roleLabel } from "../auth/roles";
 import { installation } from "../installation";
@@ -59,6 +62,12 @@ async function submit(): Promise<void> {
     <p class="eyebrow">{{ t("profile.eyebrow") }}</p>
     <h1>{{ t("profile.title") }}</h1>
     <p class="description">{{ t("profile.description") }}</p>
+    <Button
+      :label="t('deploymentUpdates.profileAction')"
+      icon="pi pi-megaphone"
+      :disabled="deploymentUpdates.state.blocking || Boolean(tours.state.activeId) || protectedText.state.promptVisible"
+      @click="deploymentUpdates.history()"
+    />
     <form class="profile-card" @submit.prevent="submit">
       <Message v-if="message" :severity="message.severity" :closable="false">
         {{ message.text }}
