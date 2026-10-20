@@ -1,15 +1,15 @@
 <script setup lang="ts">
 import type { Editor } from "@tiptap/vue-3";
 import { useI18n } from "vue-i18n";
-import Bold from "@primeicons/vue/bold";
-import Italic from "@primeicons/vue/italic";
-import Underline from "@primeicons/vue/underline";
-import TextColor from "@primeicons/vue/text-color";
-import Highlighter from "@primeicons/vue/highlighter";
-import BlockQuote from "@primeicons/vue/block-quote";
-import ListOl from "@primeicons/vue/list-ol";
-import List from "@primeicons/vue/list";
-import Link from "@primeicons/vue/link";
+import {
+  Bold,
+  Italic,
+  Underline,
+  Baseline,
+  Highlighter,
+  Quote,
+  ListOrdered,
+} from "@lucide/vue";
 
 const props = defineProps<{ editor?: Editor | null }>();
 const { t } = useI18n();
@@ -51,7 +51,7 @@ const setLink = () => {
     </button>
     <label :title="t('editor.textColor')">
       <span aria-hidden="true">
-        <TextColor :size="16" />
+        <Baseline :size="16" />
       </span>
       <input
         type="color"
@@ -77,7 +77,7 @@ const setLink = () => {
       :title="t('editor.blockquote')"
       @click="editor?.chain().focus().toggleBlockquote().run()"
     >
-      <BlockQuote :size="16" aria-hidden="true" />
+      <Quote :size="16" aria-hidden="true" />
     </button>
     <button
       type="button"
@@ -85,7 +85,7 @@ const setLink = () => {
       :title="t('editor.orderedList')"
       @click="editor?.chain().focus().toggleOrderedList().run()"
     >
-      <ListOl :size="16" aria-hidden="true" />
+      <ListOrdered :size="16" aria-hidden="true" />
     </button>
     <button
       type="button"
@@ -93,7 +93,7 @@ const setLink = () => {
       :title="t('editor.bulletList')"
       @click="editor?.chain().focus().toggleBulletList().run()"
     >
-      <List :size="16" aria-hidden="true" />
+      <i class="pi pi-list" aria-hidden="true" />
     </button>
     <button
       type="button"
@@ -101,7 +101,7 @@ const setLink = () => {
       :title="t('editor.link')"
       @click="setLink"
     >
-      <Link :size="16" aria-hidden="true" />
+      <i class="pi pi-link" aria-hidden="true" />
     </button>
     <slot />
   </div>

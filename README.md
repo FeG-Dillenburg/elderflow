@@ -92,13 +92,7 @@ pnpm db:seed:dev
 
 Create local environment files by copying `backend/.env.example` and `frontend/.env.example` if you are not using the root development command.
 
-## Editor icon license
-
-The text editor uses SVG icons from `@primeicons/vue` 8, which requires a valid [PrimeUI license](https://primeui.dev/licenses). The rest of the application continues to use the existing PrimeIcons 7 icon font.
-
-Set `VITE_PRIMEUI_LICENSE_KEY` in `frontend/.env` for local development, then restart Vite. For production builds, provide it in the build environment. Both Docker Compose configurations forward this variable as a Docker build argument; direct image builds accept `--build-arg VITE_PRIMEUI_LICENSE_KEY`. Rebuild the frontend or image when the key changes; setting a runtime variable on an already-built image does not update the bundled key.
-
-The frontend registers the key through PrimeUI's official license manager before mounting the app. The key is included in the browser bundle; keep it out of version control and do not publish it for others to reuse. Eligible Community License holders must renew annually. Obtain the appropriate key through PrimeUI; this repository does not supply one.
+The editor combines PrimeIcons 7 with SVG formatting icons from the open-source `@lucide/vue` package. It requires no license key or additional deployment configuration. Lucide's license notices ship with the frontend at `/licenses/lucide.txt`.
 
 ## Local authentication
 
