@@ -1,6 +1,7 @@
 import { enableAutoUnmount, flushPromises, mount } from "@vue/test-utils";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { api } from "../api/domain";
+import { auth } from "../auth/auth";
 import { createMeetingWorkspace, meetingRouteFactoryKey } from "../meetings/workspace";
 import { createMeetingRouteOperations } from "../meetings/workspace/production-adapter";
 import MeetingAgendaView from "./MeetingAgendaView.vue";
@@ -397,6 +398,10 @@ describe("MeetingPreparationView", () => {
     ]);
   });
   it("removes and creates an agenda topic safely", async () => {
+    const previousUser = auth.state.user;
+    auth.state.user = { id: "leader", role: "user" } as any;
+    workspaceMeeting.meetingLeaderId = "leader";
+    onTestFinished(() => { auth.state.user = previousUser; });
     const wrapper = await view();
     const vm: any = wrapper.vm;
     vi.spyOn(api, "removeMeetingTopic").mockResolvedValue(undefined);

@@ -31,6 +31,7 @@ import {
 } from "../api/domain";
 import { dateInputFormat, formatDate } from "../i18n";
 import { assignableUsers } from "../auth/roles";
+import { auth } from "../auth/auth";
 import {
   saveMeetingTopicField,
 } from "../topics/meetingTopicEdits";
@@ -57,6 +58,9 @@ const { t } = useI18n();
 const id = route.params.id as string;
 const { workspace, operations } = useMeetingRoute(id, (opening) => load(opening));
 const meeting = computed(() => workspace.state.meeting as Meeting | null);
+const createsAgendaTopic = computed(() => Boolean(
+  auth.state.user?.id && auth.state.user.id === meeting.value?.meetingLeaderId,
+));
 const readOnly = computed(() => meeting.value?.status === "completed");
 const sections = ref<AgendaSection[]>([]);
 const suggestions = ref<MeetingSuggestion[]>([]);
@@ -347,8 +351,11 @@ const createAndAdd = async () => {
       followUpDate: toLocalDate(form.followUpDate),
     }));
     const sectionId = form.defaultSectionId || sections.value[0]?.id;
-    if (sectionId)
+    if (createsAgendaTopic.value && sectionId) {
       await operations.addTopic({ topicId: topic.id, sectionId, topic });
+    } else if (topic.type === "recurring") {
+      await workspace.refresh();
+    }
   });
   if (succeeded) newVisible.value = false;
 };
@@ -806,7 +813,9 @@ const saveDetails = async () => {
       v-if="!readOnly"
       v-model:visible="newVisible"
       :style="{ width: '46rem', maxWidth: 'calc(100vw - 2rem)' }"
-      :header="t('meetingPreparation.createAndAddTitle')"
+      :header="createsAgendaTopic
+        ? t('meetingPreparation.createAndAddTitle')
+        : t('topics.createTitle')"
       :modal="tours.state.activeId !== 'new-topic-dialog'"
     >
       <Message v-if="error" class="topic-create-error" severity="error" role="alert">
@@ -835,7 +844,9 @@ const saveDetails = async () => {
         />
         <Button
           form="new-topic"
-          :label="t('meetingPreparation.createAndAdd')"
+          :label="createsAgendaTopic
+            ? t('meetingPreparation.createAndAdd')
+            : t('topics.createTitle')"
           :loading="pending"
           type="submit"
         />
