@@ -92,8 +92,6 @@ pnpm db:seed:dev
 
 Create local environment files by copying `backend/.env.example` and `frontend/.env.example` if you are not using the root development command.
 
-The editor combines PrimeIcons 7 with SVG formatting icons from the open-source `@lucide/vue` package. It requires no license key or additional deployment configuration. Lucide's license notices ship with the frontend at `/licenses/lucide.txt`.
-
 ## Local authentication
 
 Sign in with one of the development seed users below. Their shared development password is `password123!`:
