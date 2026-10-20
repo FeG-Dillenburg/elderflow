@@ -50,9 +50,18 @@ const { t } = useI18n();
 <style scoped>
 .topic-heading {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 0.7rem;
+}
+
+.topic-heading ~ :deep(.meeting-preparation-context) {
+  margin-top: 0.4rem;
+  margin-bottom: 0.4rem;
+}
+
+.topic-heading ~ :deep(.paired-meeting-texts) {
+  margin-top: 0.4rem;
 }
 
 .topic-name {
