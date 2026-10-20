@@ -378,13 +378,6 @@ onMounted(async () => {
                 :toggle-deferred="() => toggleDeferred(item)"
                 :mark-done="() => toggleDone(item)"
               />
-              <p
-                v-if="item.topicStatusDecision"
-                class="topic-decision"
-                role="status"
-              >
-                {{ t(`meetingAgenda.${isCompleted ? 'recorded' : 'pending'}${item.topicStatusDecision === 'done' ? 'Done' : 'Deferred'}`) }}
-              </p>
               <div v-if="canEdit" class="topic-actions">
                 <Button
                   :disabled="itemIndex === 0"
@@ -873,13 +866,6 @@ onMounted(async () => {
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 0.5rem;
   align-items: start;
-}
-
-.topic-decision {
-  grid-column: 1;
-  color: #536f9f;
-  margin: 0.35rem 0 0;
-  font-size: 0.85rem;
 }
 
 .topic-actions {
