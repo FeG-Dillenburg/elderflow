@@ -3,5 +3,6 @@
   { "id": "german-default-meeting-title", "category": "improvement" },
   { "id": "preparation-topic-header-controls", "category": "improvement" },
   { "id": "leader-topic-creation-agenda", "category": "improvement" },
-  { "id": "editor-toolbar-icons", "category": "improvement" }
+  { "id": "editor-toolbar-icons", "category": "improvement" },
+  { "id": "editor-right-arrow-shortcut", "category": "feature" }
 ]

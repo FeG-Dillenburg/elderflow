@@ -19,6 +19,7 @@ const de = {
       bugfix: "Fehlerbehebung",
     },
     entries: {
+      "editor-right-arrow-shortcut": "Der Texteditor wandelt --> automatisch in → um.",
       "editor-toolbar-icons": "Der Texteditor nutzt jetzt schönere Icons 😊",
       "leader-topic-creation-agenda": "Neue Themen werden nur dann direkt zur Agenda hinzugefügt, wenn die Sitzungsleitung sie erstellt. Bei anderen Benutzern entscheidet die Sitzungsleitung über die Aufnahme.",
       "preparation-topic-header-controls": "Bedienelemente für Themen in der Sitzungsvorbereitung sind jetzt neben dem Titel und ermöglichen so mehr Platz für die Themeninhalte.",
