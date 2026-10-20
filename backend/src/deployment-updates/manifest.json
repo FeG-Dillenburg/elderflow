@@ -1,4 +1,5 @@
 [
   { "id": "deployment-updates-dialog", "category": "feature" },
-  { "id": "german-default-meeting-title", "category": "improvement" }
+  { "id": "german-default-meeting-title", "category": "improvement" },
+  { "id": "preparation-topic-header-controls", "category": "improvement" }
 ]

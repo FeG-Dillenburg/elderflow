@@ -478,7 +478,9 @@ const saveDetails = async () => {
               @change="onAgendaChange(group, $event)"
             >
               <template #item="{ element: item }">
-                <article>
+                <article
+                  :class="{ 'standard-preparation': topicUsesPlannedDuration(item.topic?.type ?? '') }"
+                >
                   <button
                     v-if="!readOnly"
                     class="drag-handle"
@@ -498,30 +500,56 @@ const saveDetails = async () => {
                       :meeting-status="meeting.status"
                       :users="responsibleUserOptions"
                       :save-field="saveMeetingTopicField(operations, item)"
-                    />
+                    >
+                      <template v-if="topicUsesPlannedDuration(item.topic.type)">
+                        <div v-if="!readOnly" class="item-actions">
+                          <div class="duration-control">
+                            <InputNumber
+                              :model-value="item.plannedDuration"
+                              :aria-label="t('meetingPreparation.duration')"
+                              :disabled="pending"
+                              :invalid="item.plannedDuration === null"
+                              :min="0"
+                              :step="5"
+                              :suffix="` ${t('common.minuteShort')}`"
+                              show-buttons
+                              size="small"
+                              @update:model-value="saveDuration(item, $event)"
+                            />
+                          </div>
+                          <Button
+                            :disabled="pending"
+                            :aria-label="item.source === 'recurrence'
+                              ? t('recurringTopic.skip')
+                              : t('meetingPreparation.remove')"
+                            :title="item.source === 'recurrence'
+                              ? t('recurringTopic.skip')
+                              : t('meetingPreparation.remove')"
+                            icon="pi pi-times"
+                            rounded
+                            severity="danger"
+                            text
+                            @click="remove(item)"
+                          />
+                        </div>
+                        <div
+                          v-else
+                          class="topic-duration"
+                        >
+                          {{ item.plannedDuration ?? 0 }}
+                          {{ t("common.minuteShort") }}
+                        </div>
+                      </template>
+                    </TopicTypeRenderer>
                     <small v-if="item.topic?.followUpDate">
                       {{ t("topics.followUp") }}
                         {{ formatDate(`${item.topic.followUpDate}T12:00:00`) }}
                     </small>
                   </div>
-                  <div v-if="!readOnly" class="item-actions">
-                    <div
-                      v-if="topicUsesPlannedDuration(item.topic?.type ?? '')"
-                      class="duration-control"
-                    >
-                      <InputNumber
-                        :model-value="item.plannedDuration"
-                        :aria-label="t('meetingPreparation.duration')"
-                        :disabled="pending"
-                        :invalid="item.plannedDuration === null"
-                        :min="0"
-                        :step="5"
-                        :suffix="` ${t('common.minuteShort')}`"
-                        show-buttons
-                        size="small"
-                        @update:model-value="saveDuration(item, $event)"
-                      />
-                    </div>
+                  <div
+                    v-if="!readOnly && !topicUsesPlannedDuration(item.topic?.type ?? '')"
+                    class="item-actions"
+                  >
                     <Button
                       :disabled="pending"
                       :aria-label="item.source === 'recurrence'
@@ -536,13 +564,6 @@ const saveDetails = async () => {
                       text
                       @click="remove(item)"
                     />
-                  </div>
-                  <div
-                    v-else-if="topicUsesPlannedDuration(item.topic?.type ?? '')"
-                    class="topic-duration"
-                  >
-                    {{ item.plannedDuration ?? 0 }}
-                    {{ t("common.minuteShort") }}
                   </div>
                 </article>
               </template>
@@ -922,8 +943,12 @@ const saveDetails = async () => {
 .topic-content {
   min-width: 0;
 }
+.standard-preparation .topic-content {
+  grid-column: 2 / -1;
+}
 .item-actions {
   display: flex;
+  flex-shrink: 0;
   align-items: center;
   justify-content: flex-end;
   gap: 0.25rem;

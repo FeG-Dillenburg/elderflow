@@ -19,6 +19,7 @@ const de = {
       bugfix: "Fehlerbehebung",
     },
     entries: {
+      "preparation-topic-header-controls": "Bedienelemente für Themen in der Sitzungsvorbereitung sind jetzt neben dem Titel und ermöglichen so mehr Platz für die Themeninhalte.",
       "german-default-meeting-title": "Sitzungen ohne Titel heißen jetzt GL-Sitzung",
       "deployment-updates-dialog": "Du siehst jetzt beim Anmelden die bereitgestellten Änderungen und kannst die letzten Neuigkeiten in deinem Profil erneut öffnen.",
     },

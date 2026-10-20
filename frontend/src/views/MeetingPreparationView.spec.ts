@@ -27,6 +27,9 @@ const stubs = {
   Select: true,
   Tag: true,
   RichTextEditor: true,
+  TopicTypeRenderer: {
+    template: '<div><slot /></div>',
+  },
   Draggable: {
     props: ["list", "group", "itemKey", "handle", "sort", "setData"],
     template: '<div class="draggable"><slot v-for="(element, index) in list" name="item" :element="element" :index="index" /><slot name="footer" /></div>',
