@@ -19,6 +19,7 @@ export default {
       bugfix: "Bug fix",
     },
     entries: {
+      "german-default-meeting-title": "Meetings without a title are now called GL-Sitzung in German.",
       "deployment-updates-dialog": "You can now see deployed changes when you sign in and reopen recent updates from your profile.",
     },
   },
