@@ -3,6 +3,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        VITE_PRIMEUI_LICENSE_KEY: ${VITE_PRIMEUI_LICENSE_KEY:-}
     environment:
       NODE_ENV: production
       PORT: 8080

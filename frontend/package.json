@@ -12,6 +12,8 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@primeicons/vue": "8.0.2",
+    "@primeui/license-manager": "1.1.0",
     "@primeuix/themes": "1.2.3",
     "@tiptap/core": "3.30.5",
     "@tiptap/extension-collaboration": "3.30.5",

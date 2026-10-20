@@ -14,6 +14,8 @@ COPY backend backend
 COPY frontend frontend
 COPY docs docs
 
+ARG VITE_PRIMEUI_LICENSE_KEY
+
 RUN pnpm --filter @elderflow/backend build \
   && pnpm --filter @elderflow/frontend build \
   && pnpm --filter @elderflow/backend --prod deploy --legacy /app/backend

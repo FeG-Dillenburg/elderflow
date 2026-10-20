@@ -1,6 +1,7 @@
 import { createApp } from 'vue';
 import PrimeVue from 'primevue/config';
 import Aura from '@primeuix/themes/aura';
+import { registerLicense } from '@primeui/license-manager';
 import 'primeicons/primeicons.css';
 import App from './App.vue';
 import router from './router';
@@ -12,6 +13,9 @@ import { loadApplicationContext } from './i18n/initialize';
 import { installation } from './installation';
 import { protectedText } from './e2ee/protected-text';
 import { isProviderTestReturn } from './auth/provider-test-return';
+
+const primeUiLicense = import.meta.env.VITE_PRIMEUI_LICENSE_KEY?.trim();
+if (primeUiLicense) registerLicense({ primeui: primeUiLicense });
 
 const hadSession = Boolean(getSessionToken());
 const context = await loadApplicationContext({

@@ -19,6 +19,7 @@ export default {
       bugfix: "Bug fix",
     },
     entries: {
+      "editor-toolbar-icons": "The text editor now uses nicer icons 😊",
       "leader-topic-creation-agenda": "New topics are added directly to the agenda only when created by the meeting leader. For topics created by other users, the meeting leader decides whether to include them.",
       "preparation-topic-header-controls": "Topic controls in meeting preparation now sit beside the title, leaving more room for topic content.",
       "german-default-meeting-title": "Meetings without a title are now called GL-Sitzung in German.",
