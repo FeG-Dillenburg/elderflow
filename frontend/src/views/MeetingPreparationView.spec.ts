@@ -268,7 +268,7 @@ describe("MeetingPreparationView", () => {
     expect(wrapper.find('[aria-label="Agenda section"]').exists()).toBe(false);
     expect(wrapper.find('[aria-label="Move up"]').exists()).toBe(false);
     expect(wrapper.find('[aria-label="Move down"]').exists()).toBe(false);
-    expect(wrapper.findAll('[aria-label="Remove"]')).toHaveLength(2);
+    expect(wrapper.findAll('[aria-label="Remove from agenda"]')).toHaveLength(2);
     expect(wrapper.text()).toContain("25 min.");
     const durations = wrapper.findAll("input-number-stub");
     expect(durations).toHaveLength(2);
@@ -549,7 +549,7 @@ describe("MeetingPreparationView", () => {
 
     expect(wrapper.findAll('button[aria-label="Drag topic"]')).toHaveLength(0);
     expect(wrapper.findAll('input-number-stub')).toHaveLength(0);
-    expect(wrapper.findAll('[aria-label="Remove"]')).toHaveLength(0);
+    expect(wrapper.findAll('[aria-label="Remove from agenda"]')).toHaveLength(0);
     expect(wrapper.find("aside").exists()).toBe(false);
     expect(wrapper.find("dialog-stub").exists()).toBe(false);
   });
