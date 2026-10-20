@@ -31,6 +31,7 @@ import {
 } from "../api/domain";
 import { dateInputFormat, formatDate } from "../i18n";
 import { assignableUsers } from "../auth/roles";
+import { auth } from "../auth/auth";
 import {
   saveMeetingTopicField,
 } from "../topics/meetingTopicEdits";
@@ -57,6 +58,9 @@ const { t } = useI18n();
 const id = route.params.id as string;
 const { workspace, operations } = useMeetingRoute(id, (opening) => load(opening));
 const meeting = computed(() => workspace.state.meeting as Meeting | null);
+const createsAgendaTopic = computed(() => Boolean(
+  auth.state.user?.id && auth.state.user.id === meeting.value?.meetingLeaderId,
+));
 const readOnly = computed(() => meeting.value?.status === "completed");
 const sections = ref<AgendaSection[]>([]);
 const suggestions = ref<MeetingSuggestion[]>([]);
@@ -347,8 +351,11 @@ const createAndAdd = async () => {
       followUpDate: toLocalDate(form.followUpDate),
     }));
     const sectionId = form.defaultSectionId || sections.value[0]?.id;
-    if (sectionId)
+    if (createsAgendaTopic.value && sectionId) {
       await operations.addTopic({ topicId: topic.id, sectionId, topic });
+    } else if (topic.type === "recurring") {
+      await workspace.refresh();
+    }
   });
   if (succeeded) newVisible.value = false;
 };
@@ -478,7 +485,9 @@ const saveDetails = async () => {
               @change="onAgendaChange(group, $event)"
             >
               <template #item="{ element: item }">
-                <article>
+                <article
+                  :class="{ 'standard-preparation': topicUsesPlannedDuration(item.topic?.type ?? '') }"
+                >
                   <button
                     v-if="!readOnly"
                     class="drag-handle"
@@ -498,30 +507,56 @@ const saveDetails = async () => {
                       :meeting-status="meeting.status"
                       :users="responsibleUserOptions"
                       :save-field="saveMeetingTopicField(operations, item)"
-                    />
+                    >
+                      <template v-if="topicUsesPlannedDuration(item.topic.type)">
+                        <div v-if="!readOnly" class="item-actions">
+                          <div class="duration-control">
+                            <InputNumber
+                              :model-value="item.plannedDuration"
+                              :aria-label="t('meetingPreparation.duration')"
+                              :disabled="pending"
+                              :invalid="item.plannedDuration === null"
+                              :min="0"
+                              :step="5"
+                              :suffix="` ${t('common.minuteShort')}`"
+                              show-buttons
+                              size="small"
+                              @update:model-value="saveDuration(item, $event)"
+                            />
+                          </div>
+                          <Button
+                            :disabled="pending"
+                            :aria-label="item.source === 'recurrence'
+                              ? t('recurringTopic.skip')
+                              : t('meetingPreparation.remove')"
+                            :title="item.source === 'recurrence'
+                              ? t('recurringTopic.skip')
+                              : t('meetingPreparation.remove')"
+                            icon="pi pi-times"
+                            rounded
+                            severity="danger"
+                            text
+                            @click="remove(item)"
+                          />
+                        </div>
+                        <div
+                          v-else
+                          class="topic-duration"
+                        >
+                          {{ item.plannedDuration ?? 0 }}
+                          {{ t("common.minuteShort") }}
+                        </div>
+                      </template>
+                    </TopicTypeRenderer>
                     <small v-if="item.topic?.followUpDate">
                       {{ t("topics.followUp") }}
                         {{ formatDate(`${item.topic.followUpDate}T12:00:00`) }}
                     </small>
                   </div>
-                  <div v-if="!readOnly" class="item-actions">
-                    <div
-                      v-if="topicUsesPlannedDuration(item.topic?.type ?? '')"
-                      class="duration-control"
-                    >
-                      <InputNumber
-                        :model-value="item.plannedDuration"
-                        :aria-label="t('meetingPreparation.duration')"
-                        :disabled="pending"
-                        :invalid="item.plannedDuration === null"
-                        :min="0"
-                        :step="5"
-                        :suffix="` ${t('common.minuteShort')}`"
-                        show-buttons
-                        size="small"
-                        @update:model-value="saveDuration(item, $event)"
-                      />
-                    </div>
+                  <div
+                    v-if="!readOnly && !topicUsesPlannedDuration(item.topic?.type ?? '')"
+                    class="item-actions"
+                  >
                     <Button
                       :disabled="pending"
                       :aria-label="item.source === 'recurrence'
@@ -536,13 +571,6 @@ const saveDetails = async () => {
                       text
                       @click="remove(item)"
                     />
-                  </div>
-                  <div
-                    v-else-if="topicUsesPlannedDuration(item.topic?.type ?? '')"
-                    class="topic-duration"
-                  >
-                    {{ item.plannedDuration ?? 0 }}
-                    {{ t("common.minuteShort") }}
                   </div>
                 </article>
               </template>
@@ -785,7 +813,9 @@ const saveDetails = async () => {
       v-if="!readOnly"
       v-model:visible="newVisible"
       :style="{ width: '46rem', maxWidth: 'calc(100vw - 2rem)' }"
-      :header="t('meetingPreparation.createAndAddTitle')"
+      :header="createsAgendaTopic
+        ? t('meetingPreparation.createAndAddTitle')
+        : t('topics.createTitle')"
       :modal="tours.state.activeId !== 'new-topic-dialog'"
     >
       <Message v-if="error" class="topic-create-error" severity="error" role="alert">
@@ -814,7 +844,9 @@ const saveDetails = async () => {
         />
         <Button
           form="new-topic"
-          :label="t('meetingPreparation.createAndAdd')"
+          :label="createsAgendaTopic
+            ? t('meetingPreparation.createAndAdd')
+            : t('topics.createTitle')"
           :loading="pending"
           type="submit"
         />
@@ -922,8 +954,12 @@ const saveDetails = async () => {
 .topic-content {
   min-width: 0;
 }
+.standard-preparation .topic-content {
+  grid-column: 2 / -1;
+}
 .item-actions {
   display: flex;
+  flex-shrink: 0;
   align-items: center;
   justify-content: flex-end;
   gap: 0.25rem;

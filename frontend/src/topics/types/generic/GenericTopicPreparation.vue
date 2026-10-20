@@ -21,10 +21,13 @@ const { t } = useI18n();
 
 <template>
   <div>
-    <RouterLink :to="`/topics/${topic.id}`" class="topic-name">
-      <strong>{{ topic.name }}</strong>
-      <i class="pi pi-arrow-up-right topic-link-icon" aria-hidden="true" />
-    </RouterLink>
+    <div class="topic-heading">
+      <RouterLink :to="`/topics/${topic.id}`" class="topic-name">
+        <strong>{{ topic.name }}</strong>
+        <i class="pi pi-arrow-up-right topic-link-icon" aria-hidden="true" />
+      </RouterLink>
+      <slot />
+    </div>
     <small v-if="showType">
       {{ t(`topicTypes.${topic.type}`) }}
       <template v-if="topic.followUpDate">
@@ -45,7 +48,25 @@ const { t } = useI18n();
 </template>
 
 <style scoped>
+.topic-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.7rem;
+}
+
+.topic-heading ~ :deep(.meeting-preparation-context) {
+  margin-top: 0.4rem;
+  margin-bottom: 0.4rem;
+}
+
+.topic-heading ~ :deep(.paired-meeting-texts) {
+  margin-top: 0.4rem;
+}
+
 .topic-name {
+  min-width: 0;
+  overflow-wrap: anywhere;
   color: inherit;
   cursor: pointer !important;
   text-decoration: none;

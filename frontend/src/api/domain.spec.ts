@@ -10,6 +10,7 @@ import {
   meetingCollaboration,
 } from "../e2ee/meeting-collaboration";
 import { scalarSession } from "../e2ee/scalar-session";
+import { currentLanguage, setLanguage } from "../i18n";
 
 const response = (body: unknown, options: Partial<Response> = {}) =>
   ({
@@ -651,6 +652,25 @@ describe("domain API client", () => {
       }),
     );
   });
+  it("labels untitled German meetings as GL-Sitzung while preserving English and custom titles", () => {
+    const previousLanguage = currentLanguage();
+    try {
+      setLanguage("de");
+      expect(meetingLabel({ title: null, date: "2026-07-15" })).toBe(
+        "GL-Sitzung – 15.7.2026",
+      );
+      expect(meetingLabel({ title: "Council", date: "2026-07-15" })).toBe("Council");
+
+      setLanguage("en");
+      expect(meetingLabel({ title: null, date: "2026-07-15" })).toBe(
+        "Leadership meeting - 7/15/2026",
+      );
+      expect(meetingLabel({ title: "Council", date: "2026-07-15" })).toBe("Council");
+    } finally {
+      setLanguage(previousLanguage);
+    }
+  });
+
   it("formats users and meetings and retains the local calendar date", () => {
     expect(formatUser()).toBe("Unassigned");
     expect(formatUser({ firstName: "Ada", lastName: "Lovelace" } as any)).toBe(

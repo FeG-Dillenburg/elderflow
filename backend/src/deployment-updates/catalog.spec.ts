@@ -2,7 +2,9 @@ import { announcementManifest, validateManifest } from './catalog';
 
 describe('Packaged deployment announcement manifest', () => {
   it('ships the initial feature and accepts all supported categories', () => {
-    expect(announcementManifest).toEqual([{ id: 'deployment-updates-dialog', category: 'feature' }]);
+    expect(announcementManifest).toEqual(expect.arrayContaining([
+      { id: 'deployment-updates-dialog', category: 'feature' },
+    ]));
     expect(validateManifest([{ id: 'fix', category: 'bugfix' }, { id: 'improve', category: 'improvement' }])).toHaveLength(2);
   });
 

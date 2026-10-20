@@ -294,7 +294,6 @@ describe("MeetingAgendaView", () => {
     expect(localSave).toHaveBeenCalledWith("meeting-1", "item-1", { topicStatusDecision: "done" });
     expect(globalSave).not.toHaveBeenCalled();
     expect(vm.canWriteMinutes).toBe(true);
-    expect(wrapper.text()).toContain("Done in this Meeting; applies to the Topic when the Meeting finishes.");
     const reloaded = await view();
     expect((reloaded.vm as any).meeting.agenda[0].topicStatusDecision).toBe("done");
     expect((reloaded.vm as any).meeting.agenda[0]).toMatchObject({

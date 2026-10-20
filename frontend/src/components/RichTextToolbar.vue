@@ -1,6 +1,15 @@
 <script setup lang="ts">
 import type { Editor } from "@tiptap/vue-3";
 import { useI18n } from "vue-i18n";
+import {
+  Bold,
+  Italic,
+  Underline,
+  Baseline,
+  Highlighter,
+  Quote,
+  ListOrdered,
+} from "@lucide/vue";
 
 const props = defineProps<{ editor?: Editor | null }>();
 const { t } = useI18n();
@@ -22,7 +31,7 @@ const setLink = () => {
       :title="t('editor.bold')"
       @click="editor?.chain().focus().toggleBold().run()"
     >
-      <strong>B</strong>
+      <Bold :size="16" aria-hidden="true" />
     </button>
     <button
       type="button"
@@ -30,7 +39,7 @@ const setLink = () => {
       :title="t('editor.italic')"
       @click="editor?.chain().focus().toggleItalic().run()"
     >
-      <em>I</em>
+      <Italic :size="16" aria-hidden="true" />
     </button>
     <button
       type="button"
@@ -38,10 +47,12 @@ const setLink = () => {
       :title="t('editor.underline')"
       @click="editor?.chain().focus().toggleUnderline().run()"
     >
-      <u>U</u>
+      <Underline :size="16" aria-hidden="true" />
     </button>
     <label :title="t('editor.textColor')">
-      <span aria-hidden="true">A</span>
+      <span aria-hidden="true">
+        <Baseline :size="16" />
+      </span>
       <input
         type="color"
         value="#24344d"
@@ -50,7 +61,9 @@ const setLink = () => {
       >
     </label>
     <label :title="t('editor.highlightColor')">
-      <span aria-hidden="true">▰</span>
+      <span aria-hidden="true">
+        <Highlighter :size="16" />
+      </span>
       <input
         type="color"
         value="#fff59d"
@@ -64,7 +77,7 @@ const setLink = () => {
       :title="t('editor.blockquote')"
       @click="editor?.chain().focus().toggleBlockquote().run()"
     >
-      ❝
+      <Quote :size="16" aria-hidden="true" />
     </button>
     <button
       type="button"
@@ -72,7 +85,7 @@ const setLink = () => {
       :title="t('editor.orderedList')"
       @click="editor?.chain().focus().toggleOrderedList().run()"
     >
-      1.
+      <ListOrdered :size="16" aria-hidden="true" />
     </button>
     <button
       type="button"
@@ -80,7 +93,7 @@ const setLink = () => {
       :title="t('editor.bulletList')"
       @click="editor?.chain().focus().toggleBulletList().run()"
     >
-      •
+      <i class="pi pi-list" aria-hidden="true" />
     </button>
     <button
       type="button"
@@ -88,7 +101,7 @@ const setLink = () => {
       :title="t('editor.link')"
       @click="setLink"
     >
-      🔗
+      <i class="pi pi-link" aria-hidden="true" />
     </button>
     <slot />
   </div>
@@ -122,6 +135,10 @@ const setLink = () => {
 .toolbar button:focus-visible,
 .toolbar label:hover {
   background: #e8eef8;
+}
+
+.toolbar label > span {
+  display: flex;
 }
 
 .toolbar input[type="color"] {

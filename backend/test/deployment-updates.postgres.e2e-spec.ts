@@ -9,6 +9,7 @@ import { SessionService } from '../src/auth/session.service';
 import { migrations } from '../src/database/migrations';
 import { DeploymentUpdates1720000024000 } from '../src/database/migrations/1720000024000-DeploymentUpdates';
 import { DeploymentUpdatesModule } from '../src/deployment-updates/deployment-updates.module';
+import { announcementManifest } from '../src/deployment-updates/catalog';
 import { DeploymentUpdatesService } from '../src/deployment-updates/deployment-updates.service';
 import { E2eeRecoveryCeremony } from '../src/e2ee/e2ee-recovery-ceremony.entity';
 import { User } from '../src/users/user.entity';
@@ -80,13 +81,16 @@ postgres('Deployment announcements on an existing installation', () => {
   const history = (name: string) => request(app.getHttpServer()).get('/api/deployment-updates/history')
     .auth(tokens[name], { type: 'bearer' });
 
-  it('upgrades populated main forward-only and existing users receive the first database-dated entry', async () => {
+  it('upgrades populated main forward-only and existing users receive every packaged database-dated entry', async () => {
     expect(await database.query('SELECT * FROM users WHERE id = $1', [oldUser.id])).toEqual([oldUser]);
     expect(await database.runMigrations()).toEqual([]);
     const entries = (await unread('existing').expect(200)).body as Announcement[];
-    expect(entries).toHaveLength(1);
-    expect(entries[0]).toMatchObject({ identifier: 'deployment-updates-dialog', category: 'feature' });
-    expect(Date.parse(entries[0].registeredAt)).toBeGreaterThan(Date.now() - 60000);
+    expect(entries).toHaveLength(announcementManifest.length);
+    expect(entries).toEqual(expect.arrayContaining(announcementManifest.map((entry) =>
+      expect.objectContaining({ identifier: entry.id, category: entry.category }))));
+    for (const entry of entries) {
+      expect(Date.parse(entry.registeredAt)).toBeGreaterThan(Date.now() - 60000);
+    }
     await expect(new DeploymentUpdates1720000024000().down()).rejects.toThrow('forward-only');
   });
 
@@ -95,7 +99,7 @@ postgres('Deployment announcements on an existing installation', () => {
       await newUser(role, role);
       const replies = await Promise.all([unread(role).expect(200), unread(role).expect(200)]);
       expect(replies.map((reply) => reply.body)).toEqual([[], []]);
-      expect((await history(role).expect(200)).body).toHaveLength(1);
+      expect((await history(role).expect(200)).body).toHaveLength(announcementManifest.length);
     }
   });
 
@@ -107,7 +111,7 @@ postgres('Deployment announcements on an existing installation', () => {
     expect((await unread('existing').expect(200)).body.map((entry: Announcement) => entry.identifier)).toEqual(['later-change']);
     expect((await unread('guest').expect(200)).body.map((entry: Announcement) => entry.identifier)).toEqual(['later-change']);
     const latest = (await history('existing').expect(200)).body;
-    expect(latest).toHaveLength(2);
+    expect(latest).toHaveLength(announcementManifest.length + 1);
     expect((await unread('existing').expect(200)).body).toHaveLength(1);
   });
 
@@ -129,7 +133,7 @@ postgres('Deployment announcements on an existing installation', () => {
       [{ id: 'never-insert', category: 'feature' }, { id: 'never-insert', category: 'bugfix' }],
       null, [null], [{ id: '', category: 'feature' }],
     ]) await expect(updates.register(manifest)).rejects.toThrow(/manifest|Invalid|Duplicate/);
-    expect((await history('existing').expect(200)).body).toHaveLength(2);
+    expect((await history('existing').expect(200)).body).toHaveLength(announcementManifest.length + 1);
   });
 
   it('requires authentication and validates bounded UUID sets without accepting another identity', async () => {

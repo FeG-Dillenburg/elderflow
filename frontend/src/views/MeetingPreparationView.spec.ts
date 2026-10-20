@@ -1,6 +1,7 @@
 import { enableAutoUnmount, flushPromises, mount } from "@vue/test-utils";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { api } from "../api/domain";
+import { auth } from "../auth/auth";
 import { createMeetingWorkspace, meetingRouteFactoryKey } from "../meetings/workspace";
 import { createMeetingRouteOperations } from "../meetings/workspace/production-adapter";
 import MeetingAgendaView from "./MeetingAgendaView.vue";
@@ -27,6 +28,9 @@ const stubs = {
   Select: true,
   Tag: true,
   RichTextEditor: true,
+  TopicTypeRenderer: {
+    template: '<div><slot /></div>',
+  },
   Draggable: {
     props: ["list", "group", "itemKey", "handle", "sort", "setData"],
     template: '<div class="draggable"><slot v-for="(element, index) in list" name="item" :element="element" :index="index" /><slot name="footer" /></div>',
@@ -265,7 +269,7 @@ describe("MeetingPreparationView", () => {
     expect(wrapper.find('[aria-label="Agenda section"]').exists()).toBe(false);
     expect(wrapper.find('[aria-label="Move up"]').exists()).toBe(false);
     expect(wrapper.find('[aria-label="Move down"]').exists()).toBe(false);
-    expect(wrapper.findAll('[aria-label="Remove"]')).toHaveLength(2);
+    expect(wrapper.findAll('[aria-label="Remove from agenda"]')).toHaveLength(2);
     expect(wrapper.text()).toContain("25 min.");
     const durations = wrapper.findAll("input-number-stub");
     expect(durations).toHaveLength(2);
@@ -394,6 +398,10 @@ describe("MeetingPreparationView", () => {
     ]);
   });
   it("removes and creates an agenda topic safely", async () => {
+    const previousUser = auth.state.user;
+    auth.state.user = { id: "leader", role: "user" } as any;
+    workspaceMeeting.meetingLeaderId = "leader";
+    onTestFinished(() => { auth.state.user = previousUser; });
     const wrapper = await view();
     const vm: any = wrapper.vm;
     vi.spyOn(api, "removeMeetingTopic").mockResolvedValue(undefined);
@@ -546,7 +554,7 @@ describe("MeetingPreparationView", () => {
 
     expect(wrapper.findAll('button[aria-label="Drag topic"]')).toHaveLength(0);
     expect(wrapper.findAll('input-number-stub')).toHaveLength(0);
-    expect(wrapper.findAll('[aria-label="Remove"]')).toHaveLength(0);
+    expect(wrapper.findAll('[aria-label="Remove from agenda"]')).toHaveLength(0);
     expect(wrapper.find("aside").exists()).toBe(false);
     expect(wrapper.find("dialog-stub").exists()).toBe(false);
   });
