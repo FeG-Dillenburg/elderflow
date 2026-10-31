@@ -524,7 +524,7 @@ const saveDetails = async () => {
                 :ref="(element) => setAgendaHost(item.id, element)"
                 class="agenda-item-host"
               />
-              <div v-if="insertionAtEnd(group)" class="insertion-line" />
+              <div v-if="insertionAtEnd(group)" class="insertion-line" aria-hidden="true" />
               <p v-if="!group.items.length" class="empty">
                 {{ t("meetingPreparation.noTopics") }}
               </p>
@@ -1008,6 +1008,7 @@ const saveDetails = async () => {
   font-weight: 600;
 }
 .agenda-drop-zone {
+  position: relative;
   min-height: 3.25rem;
 }
 .section article {
@@ -1180,6 +1181,15 @@ const saveDetails = async () => {
   height: 3px;
   border-radius: 2px;
   background: #3867c8;
+}
+/* Drop feedback must not move the bounds used to choose its own destination.
+   An in-flow line also changes margin collapsing around the empty placeholder. */
+.insertion-line {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  pointer-events: none;
 }
 .insertion-before::before {
   position: absolute;

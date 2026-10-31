@@ -1,0 +1,106 @@
+<!doctype html>
+<!-- Browser layout regression: start the frontend dev server and open
+     /tests/preparation-drop-layout.html. It runs automatically, without API access.
+     Uses production drag logic and styles because jsdom cannot measure layout. -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>Agenda drop layout regression</title>
+    <style>
+      body { font: 16px system-ui; margin: 32px; }
+      * { box-sizing: border-box; }
+      main { max-width: 640px; }
+      pre { white-space: pre-wrap; }
+    </style>
+  </head>
+  <body>
+    <h1>Empty agenda drop target</h1>
+    <p id="result">Running…</p>
+    <div id="app"></div>
+    <details><summary>Frame measurements</summary><pre id="frames"></pre></details>
+    <script type="module">
+      import { createApp, ref, nextTick, onMounted, h } from 'vue';
+      import source from '../src/views/MeetingPreparationView.vue?raw';
+      import { usePreparationDrag } from '../src/meetings/usePreparationDrag.ts';
+
+      const style = document.createElement('style');
+      style.textContent = source.match(/<style scoped>([\s\S]*?)<\/style>/)[1];
+      document.head.append(style);
+
+      createApp({
+        setup() {
+          const root = ref(null);
+          const { target, start, cancel } = usePreparationDrag(root, ref(false), async () => true);
+
+          onMounted(async () => {
+            try {
+              const zone = root.value.querySelector('[data-agenda-section]');
+              const section = root.value.querySelector('.section');
+              const followingSection = root.value.querySelectorAll('.section')[1];
+              const handle = root.value.querySelector('button');
+              // Synthetic pointer events cannot acquire native pointer capture.
+              // The layout regression exercises the document-level drag listeners.
+              handle.setPointerCapture = () => {};
+              const pointer = (type, x, y, element = document) => {
+                element.dispatchEvent(new PointerEvent(type, {
+                  button: 0, pointerId: 1, clientX: x, clientY: y, bubbles: true,
+                }));
+              };
+              const measure = () => ({
+                sectionHeight: section.getBoundingClientRect().height,
+                zoneTop: zone.getBoundingClientRect().top,
+                zoneHeight: zone.getBoundingClientRect().height,
+                followingTop: followingSection.getBoundingClientRect().top,
+              });
+
+              pointer('pointerdown', 20, 20, handle);
+              pointer('pointermove', 40, 40);
+              await nextTick();
+              const initial = measure();
+              // One pixel inside the bottom boundary: layout feedback used to move
+              // this stationary pointer outside/inside the target on alternate frames.
+              const bounds = zone.getBoundingClientRect();
+              pointer('pointermove', bounds.left + 24, bounds.bottom - 1);
+              const samples = [];
+              for (let index = 0; index < 12; index++) {
+                await new Promise(requestAnimationFrame);
+                await nextTick();
+                samples.push({ ...measure(), target: target.value?.sectionId ?? null });
+              }
+              const passed = samples.every(sample =>
+                Object.entries(initial).every(([key, value]) => sample[key] === value)
+                && sample.target === 'empty',
+              );
+              document.getElementById('result').textContent = passed
+                ? 'PASS: section bounds and the selected destination stay stable for 12 stationary-pointer frames.'
+                : 'FAIL: section bounds or the destination changed beneath a stationary pointer.';
+              document.getElementById('frames').textContent = JSON.stringify({ initial, samples }, null, 2);
+            } catch (error) {
+              document.getElementById('result').textContent = `FAIL: ${error.message}`;
+            } finally {
+              cancel();
+            }
+          });
+
+          return () => h('div', { ref: root }, [
+            h('button', {
+              onPointerdown: event => start(event, {
+                kind: 'suggestion', id: 'candidate', title: 'Candidate',
+              }),
+            }, 'Drag candidate'),
+            h('main', { class: 'agenda-compacting' }, [
+              h('section', { class: 'section' }, [
+                h('h2', 'Empty section'),
+                h('div', { class: 'agenda-drop-zone', 'data-agenda-section': 'empty' }, [
+                  target.value?.sectionId === 'empty' ? h('div', { class: 'insertion-line' }) : null,
+                  h('p', { class: 'empty' }, 'No topics yet.'),
+                ]),
+              ]),
+              h('section', { class: 'section' }, [h('h2', 'Following section')]),
+            ]),
+          ]);
+        },
+      }).mount('#app');
+    </script>
+  </body>
+</html>
