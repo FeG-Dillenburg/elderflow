@@ -16,7 +16,7 @@ type TopicFormDraft = {
   [Key in Exclude<keyof TopicInput, "followUpDate">]?: TopicInput[Key];
 } & { name: string; type: TopicType; followUpDate: Date | null };
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   id: string;
   modelValue: TopicFormDraft;
   users: User[];
@@ -25,13 +25,33 @@ const props = defineProps<{
   typeLocked?: boolean;
   sectionRequired?: boolean;
   initializeDefaults?: boolean;
+  defaultsReady?: boolean;
   active?: boolean;
   tourEnabled?: boolean;
   error?: string;
-}>();
+}>(), { defaultsReady: true });
 const emit = defineEmits<{ change: [patch: Partial<TopicFormDraft>] }>();
 const { t } = useI18n();
 const root = ref<HTMLElement | null>(null);
+const sectionForType = (type: TopicType) =>
+  props.sections.find((section) => section.defaultTopicType === type)?.id ?? null;
+const selectType = (type: TopicType) => {
+  if (props.typeLocked || type === props.modelValue.type) return;
+  emit("change", { type, defaultSectionId: sectionForType(type) });
+};
+let defaultsInitialized = false;
+const selectSection = (defaultSectionId: string | null) => {
+  defaultsInitialized = true;
+  emit("change", { defaultSectionId });
+};
+watch([() => props.active, () => props.defaultsReady], ([active, ready]) => {
+  if (!active) defaultsInitialized = false;
+  else if (props.initializeDefaults && ready !== false && !defaultsInitialized) {
+    defaultsInitialized = true;
+    emit("change", { defaultSectionId: sectionForType(props.modelValue.type) });
+  }
+}, { immediate: true });
+
 let stopTour: (() => void) | undefined;
 watch([root, () => props.active, () => props.tourEnabled], ([element, visible, enabled]) => {
   stopTour?.();
@@ -39,7 +59,7 @@ watch([root, () => props.active, () => props.tourEnabled], ([element, visible, e
   if (element && visible && enabled) {
     stopTour = tours.topicOpened({
       root: element,
-      select: (type) => emit("change", { type }),
+      select: selectType,
       isOpen: () => Boolean(props.active && element.isConnected),
     });
   }
@@ -58,7 +78,7 @@ const hasFollowUp = computed(() =>
       :types="types"
       :disabled="typeLocked"
       :aria-describedby="typeLocked ? `${id}-type-lock-help` : undefined"
-      @update:model-value="emit('change', { type: $event })"
+      @update:model-value="selectType"
     />
     <small v-if="typeLocked" :id="`${id}-type-lock-help`" class="field-help">
       {{ t("topicEdit.typeLocked") }}
@@ -89,7 +109,7 @@ const hasFollowUp = computed(() =>
             :aria-label="t('topics.defaultSection')"
             :required="sectionRequired"
             :show-clear="!sectionRequired"
-            @update:model-value="emit('change', { defaultSectionId: $event })"
+            @update:model-value="selectSection($event ?? null)"
           />
         </label>
         <label v-if="hasFollowUp">

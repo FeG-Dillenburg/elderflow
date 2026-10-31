@@ -59,7 +59,7 @@ describe("MeetingsView", () => {
     const vm: any = wrapper.vm;
     vi.spyOn(api, "createMeeting").mockResolvedValue({ id: "meeting-1" } as any);
     vi.mocked(api.sections).mockResolvedValue([
-      { id: "fallback", name: "Fallback", position: 1, isDefault: true },
+      { id: "fallback", name: "Fallback", position: 1, defaultTopicType: null },
     ]);
     vi.mocked(api.meetingSuggestions)
       .mockResolvedValueOnce([
@@ -111,7 +111,7 @@ describe("MeetingsView", () => {
     const vm: any = wrapper.vm;
     vi.spyOn(api, "createMeeting").mockResolvedValue({ id: "meeting-1" } as any);
     vi.mocked(api.sections).mockResolvedValue([
-      { id: "fallback", name: "Fallback", position: 1, isDefault: true },
+      { id: "fallback", name: "Fallback", position: 1, defaultTopicType: null },
     ]);
     const topic = (id: string, position: number | null, overrides = {}) => ({
       id,

@@ -74,7 +74,7 @@ export interface AgendaSection {
   id: string;
   name: string;
   position: number;
-  isDefault: boolean;
+  defaultTopicType: TopicType | null;
 }
 
 interface TopicBase {
@@ -1023,8 +1023,9 @@ export const api = {
     };
   },
   sections: () => request<AgendaSection[]>('/api/agenda-sections'),
-  createSection: (input: Omit<AgendaSection, 'id'>) => request<AgendaSection>('/api/agenda-sections', { method: 'POST', body: JSON.stringify(input) }),
-  updateSection: (id: string, input: Omit<AgendaSection, 'id'>) => request<AgendaSection>(`/api/agenda-sections/${id}`, { method: 'PUT', body: JSON.stringify(input) }),
+  createSection: (input: Pick<AgendaSection, 'name' | 'defaultTopicType'>) => request<AgendaSection>('/api/agenda-sections', { method: 'POST', body: JSON.stringify(input) }),
+  reorderSections: (ids: string[]) => request<AgendaSection[]>('/api/agenda-sections/order', { method: 'PUT', body: JSON.stringify({ ids }) }),
+  updateSection: (id: string, input: Pick<AgendaSection, 'name' | 'defaultTopicType'>) => request<AgendaSection>(`/api/agenda-sections/${id}`, { method: 'PUT', body: JSON.stringify(input) }),
   deleteSection: (id: string) => request<void>(`/api/agenda-sections/${id}`, { method: 'DELETE' }),
   topics: async (filters: Record<string, string | undefined> = {}) => Promise.all(
     (await request<EncryptedTopicResponse[]>(`/api/topics${query(filters)}`)).map((topic) => unprotectTopic(topic)),

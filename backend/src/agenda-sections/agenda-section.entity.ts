@@ -1,3 +1,4 @@
+import type { TopicType } from '../topics/topic.entity';
 import { Column, Entity, PrimaryGeneratedColumn } from 'typeorm';
 
 @Entity({ name: 'agenda_sections' })
@@ -11,6 +12,6 @@ export class AgendaSection {
   @Column({ type: 'integer' })
   position: number;
 
-  @Column({ name: 'is_default', type: 'boolean', default: false })
-  isDefault: boolean;
+  @Column({ name: 'default_topic_type', type: 'text', nullable: true, unique: true })
+  defaultTopicType: TopicType | null;
 }

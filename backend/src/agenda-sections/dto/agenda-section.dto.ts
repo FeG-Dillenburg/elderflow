@@ -1,14 +1,13 @@
-import { IsBoolean, IsInt, IsNotEmpty, IsString, Min } from 'class-validator';
+import { IsIn, IsNotEmpty, IsOptional, IsString, Matches } from 'class-validator';
+import { TOPIC_TYPES, TopicType } from '../../topics/topic.entity';
 
 export class AgendaSectionDto {
   @IsString()
   @IsNotEmpty()
+  @Matches(/\S/)
   name: string;
 
-  @IsInt()
-  @Min(1)
-  position: number;
-
-  @IsBoolean()
-  isDefault: boolean;
+  @IsOptional()
+  @IsIn(TOPIC_TYPES)
+  defaultTopicType?: TopicType | null;
 }

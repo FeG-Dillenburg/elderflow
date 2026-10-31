@@ -66,6 +66,23 @@ describe("TopicsView", () => {
     );
     expect(vm.visible).toBe(false);
   });
+  it("preselects the configured section when opening a new Topic and persists an override", async () => {
+    vi.spyOn(api, "sections").mockResolvedValue([
+      { id: "mapped", name: "Discussion", position: 1, defaultTopicType: "generic" },
+      { id: "override", name: "Other", position: 2, defaultTopicType: null },
+    ]);
+    const wrapper = await view();
+    const vm: any = wrapper.vm;
+    vm.open();
+    await flushPromises();
+    expect(vm.form.defaultSectionId).toBe("mapped");
+    vm.form.defaultSectionId = "override";
+    vm.form.name = "Individual placement";
+    vi.spyOn(api, "createTopic").mockResolvedValue({} as any);
+    await vm.create();
+    expect(api.createTopic).toHaveBeenCalledWith(expect.objectContaining({ defaultSectionId: "override" }));
+    wrapper.unmount();
+  });
   it("keeps section selection available for every type and omits membership and recurring follow-up dates", async () => {
     const wrapper = await view();
     const form = wrapper.find("#topic-form");

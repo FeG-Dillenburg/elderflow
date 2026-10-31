@@ -133,7 +133,7 @@ describeWithPostgres('Meeting completion with PostgreSQL (integration)', () => {
     const section = await database.getRepository(AgendaSection).save({
       name: 'Main',
       position: 1,
-      isDefault: true,
+      defaultTopicType: null,
     });
     const topic = await database.getRepository(Topic).save({
       nameEnvelope: Buffer.from([1]),

@@ -95,7 +95,7 @@ describeWithPostgres('Topics with PostgreSQL (integration)', () => {
     const section = await database.getRepository(AgendaSection).save({
       name: 'Reports',
       position: 1,
-      isDefault: true,
+      defaultTopicType: null,
     });
     const meeting = await database.getRepository(Meeting).save({
       titleEnvelope: Buffer.from([1]),

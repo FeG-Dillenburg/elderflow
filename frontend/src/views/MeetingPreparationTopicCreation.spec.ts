@@ -31,6 +31,7 @@ describe("creating topics from meeting preparation", () => {
   let meeting: Meeting;
   let topics: Array<Record<string, any>>;
   let agenda: MeetingTopic[];
+  let sectionDelay: Promise<void> | undefined;
 
   beforeEach(async () => {
     const statusTarget = document.createElement("div");
@@ -53,6 +54,7 @@ describe("creating topics from meeting preparation", () => {
       id: meetingId, title: "Council", date: "2026-10-20", beginTime: "19:30",
       status: "planned", meetingLeaderId: leaderId, agenda: [],
     } as unknown as Meeting;
+    sectionDelay = undefined;
     topics = [];
     agenda = [];
     auth.state.user = { id: memberId, role: "user", permissions: { topics: "manage", meetings: "manage" } } as any;
@@ -60,7 +62,8 @@ describe("creating topics from meeting preparation", () => {
       const url = new URL(path, "http://localhost");
       let result: unknown;
       if (url.pathname === "/api/agenda-sections") {
-        result = [{ id: sectionId, name: "Discussion", position: 1, isDefault: true }];
+        await sectionDelay;
+        result = [{ id: sectionId, name: "Discussion", position: 1, defaultTopicType: "generic" }];
       } else if (url.pathname === `/api/meetings/${meetingId}`) {
         result = { ...meeting, agenda };
       } else if (url.pathname === "/api/user-directory") {
@@ -154,6 +157,19 @@ describe("creating topics from meeting preparation", () => {
     return wrapper;
   }
 
+  it("applies the mapped section when creation opens before references arrive", async () => {
+    let finishSections!: () => void;
+    sectionDelay = new Promise<void>((resolve) => { finishSections = resolve; });
+    const wrapper = await openCreationDialog();
+    finishSections();
+    await flushPromises();
+    await wrapper.get('#new-topic input[required]').setValue("Delayed default");
+    await wrapper.get("#new-topic").trigger("submit");
+    await flushPromises();
+    await vi.waitFor(() => expect(topics).toHaveLength(1));
+    expect(topics[0]!.defaultSectionId).toBe(sectionId);
+  });
+
   it.each(["user", "admin", "superadmin"])("creates a non-leader %s's topic as a suggestion without adding it to the agenda", async (role) => {
     auth.state.user!.role = role as "user" | "admin" | "superadmin";
     meeting.minuteTakerId = memberId;
@@ -163,6 +179,7 @@ describe("creating topics from meeting preparation", () => {
     await flushPromises();
 
     await vi.waitFor(() => expect(wrapper.find('[role="dialog"]').exists()).toBe(false));
+    expect(topics[0]!.defaultSectionId).toBe(sectionId);
     expect(wrapper.get("aside").text()).toContain("A new discussion");
     expect(wrapper.get("main").text()).not.toContain("A new discussion");
   });

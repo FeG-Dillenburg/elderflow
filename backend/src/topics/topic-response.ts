@@ -33,7 +33,7 @@ export function topicResponse(topic: Topic, viewer: User) {
           id: topic.defaultSection.id,
           name: topic.defaultSection.name,
           position: topic.defaultSection.position,
-          isDefault: topic.defaultSection.isDefault,
+          defaultTopicType: topic.defaultSection.defaultTopicType,
         }
       : null,
     defaultPosition: topic.defaultPosition,
