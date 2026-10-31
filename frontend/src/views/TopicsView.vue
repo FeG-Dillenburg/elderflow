@@ -291,6 +291,7 @@ onMounted(load);
           :sections="sections"
           tour-enabled
           :active="visible"
+          :defaults-ready="!loading"
           :error="createError"
           initialize-defaults
           @change="Object.assign(form, $event)"

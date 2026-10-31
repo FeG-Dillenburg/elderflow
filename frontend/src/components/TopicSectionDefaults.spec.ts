@@ -1,6 +1,7 @@
 import { mount } from "@vue/test-utils";
 import { describe, expect, it } from "vitest";
 import TopicFormFields from "./TopicFormFields.vue";
+import Select from "primevue/select";
 import TopicTypeRadioGroup from "../topics/components/TopicTypeRadioGroup.vue";
 
 const sections = [
@@ -20,6 +21,27 @@ describe("shared Topic section defaults", () => {
     expect(wrapper.emitted("change")?.at(-1)).toEqual([{ type: "person", defaultSectionId: "people" }]);
     wrapper.getComponent(TopicTypeRadioGroup).vm.$emit("update:modelValue", "recurring");
     expect(wrapper.emitted("change")?.at(-1)).toEqual([{ type: "recurring", defaultSectionId: null }]);
+    wrapper.unmount();
+  });
+  it("waits for section references before applying a creation default", async () => {
+    const wrapper = mount(TopicFormFields, {
+      props: { id: "loading", modelValue: { name: "Example", type: "generic", followUpDate: null }, users: [], sections: [], active: true, initializeDefaults: true, defaultsReady: false },
+      shallow: true,
+    });
+    expect(wrapper.emitted("change")).toBeUndefined();
+    await wrapper.setProps({ sections, defaultsReady: true });
+    expect(wrapper.emitted("change")?.[0]).toEqual([{ defaultSectionId: "general" }]);
+    wrapper.unmount();
+  });
+  it("preserves an explicit selection made before references finish loading", async () => {
+    const wrapper = mount(TopicFormFields, {
+      props: { id: "loading", modelValue: { name: "Example", type: "generic", followUpDate: null }, users: [], sections: [], active: true, initializeDefaults: true, defaultsReady: false },
+      shallow: true,
+      global: { stubs: { TopicTypeRenderer: { template: "<div><slot /></div>" } } },
+    });
+    wrapper.getComponent(Select).vm.$emit("update:modelValue", "individual");
+    await wrapper.setProps({ sections, defaultsReady: true });
+    expect(wrapper.emitted("change")).toEqual([[{ defaultSectionId: "individual" }]]);
     wrapper.unmount();
   });
   it.each([null, "individual"])("preserves an existing Topic section %s on open", (section) => {
