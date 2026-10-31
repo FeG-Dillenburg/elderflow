@@ -149,7 +149,7 @@ describe("creating topics from meeting preparation", () => {
       },
     });
     await flushPromises();
-    await wrapper.get('[aria-label="Create new topic"]').trigger("click");
+    await wrapper.get('[aria-label="Create topic"]').trigger("click");
     await flushPromises();
     return wrapper;
   }

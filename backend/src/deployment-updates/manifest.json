@@ -4,5 +4,7 @@
   { "id": "preparation-topic-header-controls", "category": "improvement" },
   { "id": "leader-topic-creation-agenda", "category": "improvement" },
   { "id": "editor-toolbar-icons", "category": "improvement" },
-  { "id": "editor-right-arrow-shortcut", "category": "feature" }
+  { "id": "editor-right-arrow-shortcut", "category": "feature" },
+  { "id": "meeting-preparation-reordering-and-topic-picker", "category": "improvement" },
+  { "id": "meeting-preparation-meeting-notes", "category": "improvement" }
 ]

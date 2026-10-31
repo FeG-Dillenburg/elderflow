@@ -1,7 +1,6 @@
 <script lang="ts" setup>
 import { computed, onMounted, reactive, ref } from "vue";
 import { RouterLink, useRoute } from "vue-router";
-import DOMPurify from "dompurify";
 import Button from "primevue/button";
 import DatePicker from "primevue/datepicker";
 import Dialog from "primevue/dialog";
@@ -9,7 +8,7 @@ import InputText from "primevue/inputtext";
 import Message from "primevue/message";
 import Select from "primevue/select";
 import Tag from "primevue/tag";
-import { sanitizeRichText } from "../components/sanitize-rich-text";
+import MeetingNotes from "../components/MeetingNotes.vue";
 import TopicTypeRenderer from "../topics/TopicTypeRenderer.vue";
 import {
   topicAgendaClass,
@@ -186,11 +185,6 @@ const move = async (
     position: item.id === current.id ? other.position : item.id === other.id ? current.position : item.position,
   })));
 };
-const safe = sanitizeRichText;
-const hasRichText = (html: string | null | undefined) =>
-  DOMPurify.sanitize(html ?? "", { ALLOWED_TAGS: [] })
-    .replace(/&nbsp;|&#160;/gi, " ")
-    .trim().length > 0;
 const timeToDate = (value: string) => {
   const [hours, minutes] = value.split(":").map(Number);
   const date = new Date();
@@ -308,34 +302,10 @@ onMounted(async () => {
           </span>
         </span>
       </div>
-      <section
-        v-if="
-          hasRichText(meeting.openingInput) || hasRichText(meeting.generalNotes)
-        "
-        :aria-label="t('meetingAgenda.notes')"
-        class="meeting-notes"
-      >
-        <div v-if="hasRichText(meeting.openingInput)" class="meeting-note">
-          <p class="meeting-note-label">
-            <i class="pi pi-play-circle" />
-            {{ t("meetingAgenda.opening") }}
-          </p>
-          <div
-            class="meeting-note-content"
-            v-html="safe(meeting.openingInput)"
-          />
-        </div>
-        <div v-if="hasRichText(meeting.generalNotes)" class="meeting-note">
-          <p class="meeting-note-label">
-            <i class="pi pi-file-edit" />
-            {{ t("meetingAgenda.generalNotes") }}
-          </p>
-          <div
-            class="meeting-note-content"
-            v-html="safe(meeting.generalNotes)"
-          />
-        </div>
-      </section>
+      <MeetingNotes
+        :opening-input="meeting.openingInput"
+        :general-notes="meeting.generalNotes"
+      />
       <main class="document">
         <section
           v-for="(group, sectionIndex) in grouped"
@@ -719,39 +689,6 @@ onMounted(async () => {
   display: flex;
   flex-wrap: wrap;
   gap: 0.3rem;
-}
-
-.meeting-notes {
-  display: grid;
-  gap: 0.8rem;
-  margin-top: 1rem;
-}
-
-.meeting-note {
-  padding: 1rem 1.2rem;
-  border-left: 3px solid #7996c8;
-  background: #eef3fa;
-}
-
-.meeting-note-label {
-  display: flex;
-  align-items: center;
-  gap: 0.45rem;
-  margin: 0 0 0.55rem;
-  color: #536f9f;
-  font-size: 0.75rem;
-  font-weight: 800;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
-
-.meeting-note-content {
-  color: #344258;
-  line-height: 1.55;
-}
-
-.meeting-note-content :deep(p) {
-  margin: 0.35rem 0;
 }
 
 .document {

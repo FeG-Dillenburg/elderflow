@@ -18,6 +18,7 @@ vi.mock("vue-router", () => ({
 
 const stubs = {
   Teleport: true,
+  MeetingNotes: false,
   Button: {
     props: ["label", "disabled", "loading"],
     template:
