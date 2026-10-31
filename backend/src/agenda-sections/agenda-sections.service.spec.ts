@@ -1,51 +1,57 @@
-import { NotFoundException } from "@nestjs/common";
-import { AgendaSection } from "./agenda-section.entity";
-import { AgendaSectionsService } from "./agenda-sections.service";
+import { ConflictException, NotFoundException } from '@nestjs/common';
+import { AgendaSectionsService } from './agenda-sections.service';
+import { AgendaSection } from './agenda-section.entity';
 
-describe("AgendaSectionsService", () => {
+describe('AgendaSectionsService', () => {
+  let rows: AgendaSection[];
   const repository = {
-    find: jest.fn(),
-    create: jest.fn(),
-    save: jest.fn(),
-    findOneBy: jest.fn(),
-    delete: jest.fn(),
+    find: jest.fn(async () => rows.map((row) => ({ ...row })).sort((a, b) => a.position - b.position)),
+    create: jest.fn((input) => ({ id: 'created', ...input })),
+    save: jest.fn(async (input) => {
+      for (const row of Array.isArray(input) ? input : [input]) {
+        rows = [...rows.filter((existing) => existing.id !== row.id), { ...row }];
+      }
+      return input;
+    }),
+    delete: jest.fn(async (id) => {
+      const affected = rows.some((row) => row.id === id) ? 1 : 0;
+      rows = rows.filter((row) => row.id !== id);
+      return { affected };
+    }),
+    manager: { transaction: jest.fn() },
   };
   const service = new AgendaSectionsService(repository as any);
-  beforeEach(() => jest.clearAllMocks());
-  it("lists sections in position order", async () => {
-    repository.find.mockResolvedValue([]);
-    await service.findAll();
-    expect(repository.find).toHaveBeenCalledWith({
-      order: { position: "ASC" },
-    });
+  beforeEach(() => {
+    jest.clearAllMocks();
+    rows = [
+      { id: 'a', name: 'Opening', position: 3, defaultTopicType: 'person' },
+      { id: 'b', name: 'Discussion', position: 9, defaultTopicType: null },
+    ];
+    repository.manager.transaction.mockImplementation(async (work) => work({
+      query: async () => [], getRepository: () => repository,
+    }));
   });
-  it("creates and saves a section", async () => {
-    const section = { id: "section" } as AgendaSection;
-    repository.create.mockReturnValue(section);
-    repository.save.mockResolvedValue(section);
-    await expect(
-      service.create({ name: "Start", position: 1, isDefault: true }),
-    ).resolves.toBe(section);
+  it('appends new sections and preserves existing mappings', async () => {
+    await expect(service.create({ name: 'End' })).resolves.toMatchObject({ position: 10, defaultTopicType: null });
+    expect(await service.findAll()).toHaveLength(3);
   });
-  it("merges updates into an existing section", async () => {
-    const section = { id: "section", name: "Old" } as AgendaSection;
-    repository.findOneBy.mockResolvedValue(section);
-    repository.save.mockImplementation(async (v: AgendaSection) => v);
-    await expect(
-      service.update("section", { name: "New", position: 2, isDefault: false }),
-    ).resolves.toMatchObject({ name: "New", position: 2 });
+  it('rejects stealing a mapping but allows keeping, clearing, and releasing it', async () => {
+    await expect(service.update('b', { name: 'Discussion', defaultTopicType: 'person' })).rejects.toThrow(ConflictException);
+    await expect(service.update('a', { name: 'People', defaultTopicType: 'person' })).resolves.toMatchObject({ defaultTopicType: 'person' });
+    await service.update('a', { name: 'People', defaultTopicType: null });
+    await expect(service.update('b', { name: 'Discussion', defaultTopicType: 'person' })).resolves.toMatchObject({ defaultTopicType: 'person' });
   });
-  it("rejects missing updates and removals", async () => {
-    repository.findOneBy.mockResolvedValue(null);
-    await expect(service.update("x", {} as any)).rejects.toThrow(
-      NotFoundException,
-    );
-    repository.delete.mockResolvedValue({ affected: 0 });
-    await expect(service.remove("x")).rejects.toThrow(NotFoundException);
+  it('normalizes the complete order and rejects stale, duplicate, and unknown membership', async () => {
+    await expect(service.reorder(['b', 'a'])).resolves.toMatchObject([{ id: 'b', position: 1 }, { id: 'a', position: 2 }]);
+    for (const ids of [['a'], ['a', 'a'], ['a', 'unknown']]) {
+      await expect(service.reorder(ids)).rejects.toThrow(ConflictException);
+      expect((await service.findAll()).map((row) => row.id)).toEqual(['b', 'a']);
+    }
   });
-  it("removes an existing section", async () => {
-    repository.delete.mockResolvedValue({ affected: 1 });
-    await expect(service.remove("section")).resolves.toBeUndefined();
-    expect(repository.delete).toHaveBeenCalledWith("section");
+  it('normalizes after deletion and rejects missing sections', async () => {
+    await service.remove('a');
+    expect(await service.findAll()).toMatchObject([{ id: 'b', position: 1 }]);
+    await expect(service.remove('missing')).rejects.toThrow(NotFoundException);
+    await expect(service.update('missing', { name: 'Missing' })).rejects.toThrow(NotFoundException);
   });
 });

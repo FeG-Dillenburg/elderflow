@@ -60,7 +60,7 @@ describe("creating topics from meeting preparation", () => {
       const url = new URL(path, "http://localhost");
       let result: unknown;
       if (url.pathname === "/api/agenda-sections") {
-        result = [{ id: sectionId, name: "Discussion", position: 1, isDefault: true }];
+        result = [{ id: sectionId, name: "Discussion", position: 1, defaultTopicType: "generic" }];
       } else if (url.pathname === `/api/meetings/${meetingId}`) {
         result = { ...meeting, agenda };
       } else if (url.pathname === "/api/user-directory") {
@@ -163,6 +163,7 @@ describe("creating topics from meeting preparation", () => {
     await flushPromises();
 
     await vi.waitFor(() => expect(wrapper.find('[role="dialog"]').exists()).toBe(false));
+    expect(topics[0]!.defaultSectionId).toBe(sectionId);
     expect(wrapper.get("aside").text()).toContain("A new discussion");
     expect(wrapper.get("main").text()).not.toContain("A new discussion");
   });

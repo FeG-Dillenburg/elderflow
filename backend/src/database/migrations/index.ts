@@ -1,3 +1,4 @@
+import { AgendaSectionDefaults1720000025000 } from './1720000025000-AgendaSectionDefaults';
 import { DeploymentUpdates1720000024000 } from './1720000024000-DeploymentUpdates';
 import { TourProgress1720000023000 } from './1720000023000-TourProgress';
 import { ChurchToolsClientSecrets1720000022000 } from './1720000022000-ChurchToolsClientSecrets';
@@ -51,4 +52,5 @@ export const migrations = [
   ChurchToolsClientSecrets1720000022000,
   TourProgress1720000023000,
   DeploymentUpdates1720000024000,
+  AgendaSectionDefaults1720000025000,
 ];

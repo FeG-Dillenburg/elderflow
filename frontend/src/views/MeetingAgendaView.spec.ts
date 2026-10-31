@@ -132,7 +132,7 @@ describe("MeetingAgendaView", () => {
       };
     });
     vi.spyOn(api, "sections").mockResolvedValue([
-      { id: "section-1", name: "Main", position: 1, isDefault: true },
+      { id: "section-1", name: "Main", position: 1, defaultTopicType: null },
     ]);
     vi.spyOn(api, "userDirectory").mockResolvedValue([]);
   });

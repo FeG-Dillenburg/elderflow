@@ -1,3 +1,4 @@
+import { AgendaSectionOrderDto } from './dto/agenda-section-order.dto';
 import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Post, Put } from '@nestjs/common';
 import { AgendaSectionDto } from './dto/agenda-section.dto';
 import { AgendaSection } from './agenda-section.entity';
@@ -15,6 +16,11 @@ export class AgendaSectionsController {
 
   @Post()
   create(@Body() input: AgendaSectionDto): Promise<AgendaSection> { return this.service.create(input); }
+
+  @Put('order')
+  reorder(@Body() input: AgendaSectionOrderDto): Promise<AgendaSection[]> {
+    return this.service.reorder(input.ids);
+  }
 
   @Put(':id')
   update(@Param('id', ParseUUIDPipe) id: string, @Body() input: AgendaSectionDto): Promise<AgendaSection> {

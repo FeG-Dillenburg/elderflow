@@ -100,8 +100,8 @@ describe("MeetingPreparationView", () => {
       return { meeting: structuredClone(workspaceMeeting), unlocked: false, collaborative: false };
     });
     vi.spyOn(api, "sections").mockResolvedValue([
-      { id: "first", name: "First", position: 1, isDefault: true },
-      { id: "second", name: "Second", position: 2, isDefault: false },
+      { id: "first", name: "First", position: 1, defaultTopicType: null },
+      { id: "second", name: "Second", position: 2, defaultTopicType: null },
     ]);
     vi.spyOn(api, "meetingSuggestions").mockResolvedValue([
       {

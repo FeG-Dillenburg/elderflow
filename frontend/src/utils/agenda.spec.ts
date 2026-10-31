@@ -5,8 +5,8 @@ import type { AgendaSection, MeetingTopic } from "../api/domain";
 describe("buildNumberedAgenda", () => {
   it("numbers sections and topics according to their stored positions", () => {
     const sections = [
-      { id: "urgent", name: "Urgent", position: 2, isDefault: true },
-      { id: "opening", name: "Opening", position: 1, isDefault: true },
+      { id: "urgent", name: "Urgent", position: 2, defaultTopicType: null },
+      { id: "opening", name: "Opening", position: 1, defaultTopicType: null },
     ] as AgendaSection[];
     const agenda = [
       { id: "second", sectionId: "opening", position: 2 },
@@ -29,8 +29,8 @@ describe("buildNumberedAgenda", () => {
 
   it("does not mutate inputs, keeps empty sections, and omits unknown sections", () => {
     const sections = [
-      { id: "two", name: "Two", position: 2, isDefault: false },
-      { id: "one", name: "One", position: 1, isDefault: true },
+      { id: "two", name: "Two", position: 2, defaultTopicType: null },
+      { id: "one", name: "One", position: 1, defaultTopicType: null },
     ] as AgendaSection[];
     const agenda = [
       { id: "later", sectionId: "one", position: 9 },

@@ -1,126 +1,266 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from "vue";
 import Button from "primevue/button";
-import Checkbox from "primevue/checkbox";
-import InputNumber from "primevue/inputnumber";
+import Dialog from "primevue/dialog";
 import InputText from "primevue/inputtext";
 import Message from "primevue/message";
+import Select from "primevue/select";
+import { useI18n } from "vue-i18n";
 import { api, type AgendaSection } from "../api/domain";
 import { auth } from "../auth/auth";
-import { useI18n } from "vue-i18n";
+import { canonicalTopicTypes, topicTypeTranslationKey, type TopicType } from "../topics/topicTypes";
+import { usePreparationDrag } from "../meetings/usePreparationDrag";
 
-const canManage = computed(
-  () => !auth.state.user || auth.canManage("contentSettings"),
-);
-const sections = ref<AgendaSection[]>([]),
-  error = ref(""),
-  saving = ref(false);
-const draft = reactive({ name: "", position: 1, isDefault: true });
 const { t } = useI18n();
+const canManage = computed(() => auth.canManage("contentSettings"));
+const sections = ref<AgendaSection[]>([]);
+const error = ref("");
+const saving = ref(false);
+const loading = ref(true);
+const orderReady = ref(false);
+const visible = ref(false);
+const editingId = ref<string | null>(null);
+const draft = reactive({ name: "", defaultTopicType: null as TopicType | null });
+const list = ref<HTMLElement | null>(null);
+const disabled = computed(() => !canManage.value || saving.value || loading.value || !orderReady.value);
+const typeOptions = computed(() => canonicalTopicTypes.map((value) => ({
+  value,
+  label: t(topicTypeTranslationKey(value)),
+  disabled: sections.value.some((section) => section.id !== editingId.value && section.defaultTopicType === value),
+})));
+
 const load = async () => {
+  loading.value = true;
   try {
     sections.value = await api.sections();
+    orderReady.value = true;
   } catch (e) {
-    error.value =
-      e instanceof Error ? e.message : t("agendaSections.loadFailed");
+    orderReady.value = false;
+    error.value = e instanceof Error && e.message ? e.message : t("agendaSections.loadFailed");
+  } finally {
+    loading.value = false;
   }
 };
-const save = async (section: AgendaSection) => {
+const open = (section?: AgendaSection) => {
+  if (disabled.value) return;
+  editingId.value = section?.id ?? null;
+  Object.assign(draft, { name: section?.name ?? "", defaultTopicType: section?.defaultTopicType ?? null });
+  error.value = "";
+  visible.value = true;
+};
+const save = async () => {
+  if (disabled.value || !draft.name.trim()) return;
   saving.value = true;
+  error.value = "";
   try {
-    await api.updateSection(section.id, {
-      name: section.name,
-      position: section.position,
-      isDefault: section.isDefault,
-    });
+    const input = { name: draft.name.trim(), defaultTopicType: draft.defaultTopicType };
+    if (editingId.value) await api.updateSection(editingId.value, input);
+    else await api.createSection(input);
+    visible.value = false;
     await load();
   } catch (e) {
-    error.value =
-      e instanceof Error ? e.message : t("agendaSections.saveFailed");
+    error.value = e instanceof Error && e.message ? e.message : t("agendaSections.saveFailed");
+    await load();
   } finally {
     saving.value = false;
   }
 };
-const create = async () => {
-  await api.createSection(draft);
-  Object.assign(draft, {
-    name: "",
-    position: sections.value.length + 1,
-    isDefault: true,
-  });
-  await load();
-};
 const remove = async (id: string) => {
+  if (disabled.value) return;
+  saving.value = true;
+  error.value = "";
   try {
     await api.deleteSection(id);
     await load();
   } catch (e) {
-    error.value =
-      e instanceof Error && e.message
-        ? e.message
-        : t("agendaSections.deleteFailed");
+    error.value = e instanceof Error && e.message ? e.message : t("agendaSections.deleteFailed");
+  } finally {
+    saving.value = false;
   }
+};
+const reorder = async (ordered: AgendaSection[]) => {
+  if (disabled.value) return false;
+  const previous = sections.value;
+  sections.value = ordered;
+  saving.value = true;
+  error.value = "";
+  try {
+    sections.value = await api.reorderSections(ordered.map((section) => section.id));
+    return true;
+  } catch (e) {
+    sections.value = previous;
+    error.value = e instanceof Error && e.message ? e.message : t("agendaSections.reorderFailed");
+    await load();
+    return false;
+  } finally {
+    saving.value = false;
+  }
+};
+const move = (index: number, offset: number) => {
+  const ordered = [...sections.value];
+  const destination = index + offset;
+  if (destination < 0 || destination >= ordered.length) return;
+  const [section] = ordered.splice(index, 1);
+  ordered.splice(destination, 0, section!);
+  return reorder(ordered);
+};
+const { floating, pointer, target, start } = usePreparationDrag(list, disabled, async (source, destination) => {
+  const ordered = sections.value.filter((section) => section.id !== source.id);
+  const section = sections.value.find((section) => section.id === source.id);
+  if (!section) return false;
+  ordered.splice(destination.index, 0, section);
+  return reorder(ordered);
+});
+const dropBefore = (id: string) => {
+  const remaining = sections.value.filter((section) => section.id !== floating.value?.id);
+  return floating.value && target.value?.index === remaining.findIndex((section) => section.id === id);
 };
 onMounted(load);
 </script>
+
 <template>
-  <section class="page">
+  <section ref="list" class="page">
     <header>
       <p class="eyebrow">{{ t("agendaSections.eyebrow") }}</p>
       <h1>{{ t("agendaSections.title") }}</h1>
       <p>{{ t("agendaSections.description") }}</p>
     </header>
-    <Message v-if="error" severity="error">{{ error }}</Message>
-    <div class="section-list">
-      <article v-for="section in sections" :key="section.id">
-        <InputNumber
-          v-model="section.position"
-          class="position-input"
-          :min="1"
-          show-buttons
-        />
-        <InputText v-model="section.name" />
-        <label>
-          <Checkbox v-model="section.isDefault" binary />
-          {{ t("common.default") }}
-        </label>
-        <Button
+    <Message v-if="error && !visible" severity="error" role="alert">{{ error }}</Message>
+    <p v-if="loading" role="status">{{ t("agendaSections.loading") }}</p>
+    <Button
+      v-if="!orderReady && !loading"
+      :label="t('agendaSections.retry')"
+      @click="load"
+    />
+    <Button
+      v-if="canManage"
+      :label="t('agendaSections.add')"
+      :aria-label="t('agendaSections.add')"
+      icon="pi pi-plus"
+      :disabled="disabled"
+      @click="open()"
+    />
+    <div class="section-list" data-agenda-section="sections" :aria-busy="saving">
+      <article
+        v-for="(section, index) in sections"
+        :key="section.id"
+        :data-agenda-item="section.id"
+        :class="{ 'drop-before': dropBefore(section.id), 'drag-source': floating?.id === section.id }"
+      >
+        <button
           v-if="canManage"
-          icon="pi pi-save"
-          text
-          :aria-label="t('common.save')"
-          :loading="saving"
-          @click="save(section)"
-        />
-        <Button
-          v-if="canManage"
-          icon="pi pi-trash"
-          severity="danger"
-          text
-          :aria-label="t('common.delete')"
-          @click="remove(section.id)"
-        />
+          type="button"
+          class="drag-handle"
+          :disabled="disabled"
+          :aria-label="t('agendaSections.drag', { name: section.name })"
+          @pointerdown="start($event, { kind: 'agenda', id: section.id, title: section.name })"
+          @dragstart.prevent
+        >
+          <i class="pi pi-bars" aria-hidden="true" />
+        </button>
+        <strong>{{ section.name }}</strong>
+        <span v-if="section.defaultTopicType" class="type-badge">
+          {{ t(topicTypeTranslationKey(section.defaultTopicType)) }}
+        </span>
+        <div v-if="canManage" class="actions">
+          <Button
+            icon="pi pi-arrow-up"
+            text
+            :aria-label="t('agendaSections.moveUp', { name: section.name })"
+            :disabled="disabled || index === 0"
+            @click="move(index, -1)"
+          />
+          <Button
+            icon="pi pi-arrow-down"
+            text
+            :aria-label="t('agendaSections.moveDown', { name: section.name })"
+            :disabled="disabled || index === sections.length - 1"
+            @click="move(index, 1)"
+          />
+          <Button
+            icon="pi pi-pencil"
+            text
+            :aria-label="t('agendaSections.editAction', { name: section.name })"
+            :disabled="disabled"
+            @click="open(section)"
+          />
+          <Button
+            icon="pi pi-trash"
+            severity="danger"
+            text
+            :aria-label="t('agendaSections.deleteAction', { name: section.name })"
+            :disabled="disabled"
+            @click="remove(section.id)"
+          />
+        </div>
       </article>
-      <form v-if="canManage" class="new-section" @submit.prevent="create">
-        <InputNumber v-model="draft.position" class="position-input" :min="1" />
-        <InputText
-          v-model="draft.name"
-          :placeholder="t('agendaSections.newName')"
-          required
-        />
-        <label>
-          <Checkbox v-model="draft.isDefault" binary />
-          {{ t("common.default") }}
-        </label>
-        <Button
-          :label="t('agendaSections.add')"
-          icon="pi pi-plus"
-          type="submit"
-        />
-      </form>
+      <div
+        v-if="floating && target?.index === sections.length - 1"
+        class="drop-end"
+        aria-hidden="true"
+      />
     </div>
+    <p v-if="!loading && !sections.length">{{ t("agendaSections.empty") }}</p>
+    <p v-if="saving" role="status">{{ t("agendaSections.saving") }}</p>
+    <div
+      v-if="floating"
+      class="drag-preview"
+      :style="{ left: `${pointer.x + 16}px`, top: `${pointer.y + 16}px` }"
+      aria-hidden="true"
+    >
+      {{ floating.title }}
+    </div>
+    <Dialog
+      v-model:visible="visible"
+      modal
+      :header="t(editingId ? 'agendaSections.edit' : 'agendaSections.add')"
+      :closable="!saving"
+      :close-on-escape="!saving"
+      :style="{ width: '30rem', maxWidth: 'calc(100vw - 2rem)' }"
+    >
+      <form class="section-form" @submit.prevent="save">
+        <Message v-if="error" severity="error" role="alert">{{ error }}</Message>
+        <label for="section-name">{{ t("common.name") }}</label>
+        <InputText
+          id="section-name"
+          v-model="draft.name"
+          name="section-name"
+          autofocus
+          required
+          :disabled="saving"
+        />
+        <label for="section-type">{{ t("agendaSections.defaultTopicType") }}</label>
+        <Select
+          v-model="draft.defaultTopicType"
+          input-id="section-type"
+          :options="typeOptions"
+          option-label="label"
+          option-value="value"
+          option-disabled="disabled"
+          show-clear
+          :disabled="saving"
+          :placeholder="t('agendaSections.noType')"
+        />
+        <div class="dialog-actions">
+          <Button
+            :label="t('common.cancel')"
+            :aria-label="t('common.cancel')"
+            severity="secondary"
+            :disabled="saving"
+            @click="visible = false"
+          />
+          <Button
+            type="submit"
+            :label="t('common.save')"
+            :loading="saving"
+            :disabled="disabled || !draft.name.trim()"
+          />
+        </div>
+      </form>
+    </Dialog>
   </section>
 </template>
+
 <style scoped>
 .page {
   max-width: 950px;
@@ -150,13 +290,13 @@ header > p:last-child {
 .section-list {
   display: grid;
   gap: 0.55rem;
+  margin-top: 1rem;
 }
 
-.section-list article,
-.new-section {
-  display: grid;
-  grid-template-columns: 5.5rem minmax(0, 1fr) 120px auto auto;
+.section-list article {
+  display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 0.65rem;
   padding: 0.7rem;
   border: 1px solid #e2e6ec;
@@ -164,36 +304,64 @@ header > p:last-child {
   background: #fff;
 }
 
-.position-input {
-  width: 100%;
-  min-width: 0;
-}
-
-.position-input :deep(input) {
-  width: 100%;
-  min-width: 0;
-}
-
-.section-list label {
+.actions {
   display: flex;
-  align-items: center;
-  gap: 0.45rem;
+  margin-left: auto;
+}
+
+.type-badge {
+  padding: 0.2rem 0.5rem;
+  border-radius: 0.4rem;
+  background: #eef3fa;
   font-size: 0.84rem;
 }
 
-.new-section {
-  margin-top: 0.6rem;
-  background: #eef3fa;
+.drag-handle {
+  touch-action: none;
+  cursor: grab;
+  border: none;
+  background: transparent;
+  padding: 0.5rem;
+  color: inherit;
 }
 
-@media (max-width: 700px) {
-  .section-list article,
-  .new-section {
-    grid-template-columns: 5.5rem minmax(0, 1fr);
-  }
+.drag-handle:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
 
-  .section-list label {
-    grid-column: span 2;
-  }
+.drag-source {
+  opacity: 0.45;
+}
+
+.section-list .drop-before {
+  border-top: 3px solid var(--p-primary-color);
+}
+
+.drop-end {
+  border-top: 3px solid var(--p-primary-color);
+}
+
+.drag-preview {
+  position: fixed;
+  z-index: 3000;
+  pointer-events: none;
+  background: var(--p-content-background);
+  border: 1px solid var(--p-primary-color);
+  border-radius: 0.7rem;
+  padding: 0.7rem;
+  box-shadow: 0 0.5rem 1.5rem #0002;
+}
+
+.section-form {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.65rem;
+  margin-top: 1rem;
 }
 </style>
