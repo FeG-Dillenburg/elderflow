@@ -15,6 +15,7 @@ import { useI18n } from "vue-i18n";
 import { formatDate, formatTime } from "../i18n";
 import { auth } from "../auth/auth";
 import { protectedText } from "../e2ee/protected-text";
+import { isE2eeKeyOperator } from "../e2ee/roles";
 import { deploymentUpdates } from "../deployment-updates/deployment-updates";
 import { tours } from "../tours/tours";
 import { currentMentions, type CurrentMention } from "../mentions/current";
@@ -50,7 +51,7 @@ const mentionsLoading = ref(false);
 const mentionsError = ref(false);
 const mentionsHasMore = ref(false);
 const mentionsEligible = computed(() =>
-  protectedText.isEligible(auth.state.user)
+  isE2eeKeyOperator(auth.state.user)
   && auth.canView("topics")
   && auth.canView("meetings"),
 );

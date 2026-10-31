@@ -210,9 +210,9 @@ describe("personal dashboard", () => {
     mounted.splice(mounted.indexOf(wrapper), 1);
     expect(secondSignal.aborted).toBe(true);
   });
-  it.each(["it-admin", "hidden"])("hides confidential actions for %s", async (kind) => {
-    auth.completeInitialization({ ...user, role: kind === "it-admin" ? "it-admin" : "user",
-      permissions: { ...user.permissions, topics: "hide" } });
+  it.each(["it-admin", "guest", "hidden"])("hides confidential actions for %s", async (kind) => {
+    auth.completeInitialization({ ...user, role: kind === "hidden" ? "user" : kind,
+      permissions: { ...user.permissions, topics: kind === "hidden" ? "hide" : "view" } });
     const wrapper = dashboard();
     await flushPromises();
     expect(wrapper.find(".newest-mentions").exists()).toBe(false);
