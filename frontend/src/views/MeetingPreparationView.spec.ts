@@ -21,6 +21,7 @@ vi.mock("vue-router", () => ({
 }));
 const stubs = {
   Teleport: false,
+  MeetingNotes: false,
   Button: true,
   Dialog: true,
   InputNumber: true,
@@ -349,6 +350,28 @@ describe("MeetingPreparationView", () => {
     ]);
     expect(individual).not.toHaveBeenCalled();
     expect(wrapper.find(".add-selected-topics").exists()).toBe(false);
+  });
+
+  it.each(["planned", "in_progress", "completed"])("shows both meeting notes above agenda sections in a %s Meeting", async (status) => {
+    workspaceMeeting.status = status;
+    workspaceMeeting.openingInput = '<p>Welcome <strong>everyone</strong></p>';
+    workspaceMeeting.generalNotes = '<p>Bring your notes</p><img src="x" onerror="alert(1)">';
+    const wrapper = await view();
+    const notes = wrapper.get('section[aria-label="Meeting notes"]');
+    expect(notes.findAll(".meeting-note-label").map((label) => label.text()))
+      .toEqual(["Opening / input", "General notes"]);
+    expect(notes.get("strong").text()).toBe("everyone");
+    expect(notes.text()).toContain("Bring your notes");
+    expect(notes.html()).not.toContain("onerror");
+    const agenda = wrapper.get("main").element;
+    expect(notes.element.compareDocumentPosition(agenda) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it.each([null, "<p>&nbsp;</p>", "<script>alert(1)</script>"])("omits empty or unsafe-only meeting notes (%s)", async (content) => {
+    workspaceMeeting.openingInput = content;
+    workspaceMeeting.generalNotes = content;
+    const wrapper = await view();
+    expect(wrapper.find(".meeting-notes").exists()).toBe(false);
   });
 
   it("loads, groups ordered agenda items, and records loading errors", async () => {

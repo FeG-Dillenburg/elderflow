@@ -18,6 +18,7 @@ import Select from "primevue/select";
 import Tag from "primevue/tag";
 import TopicTypeRenderer from "../topics/TopicTypeRenderer.vue";
 import TopicFormFields from "../components/TopicFormFields.vue";
+import MeetingNotes from "../components/MeetingNotes.vue";
 import {
   api,
   formatUser,
@@ -206,6 +207,7 @@ const normalize = (groups: AgendaGroup[] = grouped.value) =>
 watch(() => workspace.state.meeting, () => {
   cancelDrag();
   initialiseGroups();
+  void nextTick(fitTopicPanel);
 });
 
 const withOperation = async (action: () => Promise<unknown>) => {
@@ -496,6 +498,11 @@ const saveDetails = async () => {
           </RouterLink>
         </div>
       </header>
+      <MeetingNotes
+        class="preparation-meeting-notes"
+        :opening-input="meeting.openingInput"
+        :general-notes="meeting.generalNotes"
+      />
       <div :class="['layout', { 'layout-read-only': readOnly }]">
         <main
           :class="{ 'agenda-compacting': draggedTopic }"
@@ -970,6 +977,9 @@ const saveDetails = async () => {
 .suggestions-heading p {
   margin: 0.45rem 0 0;
   color: #68758a;
+}
+.preparation-meeting-notes {
+  margin: 0 0 1.25rem;
 }
 .layout {
   display: grid;

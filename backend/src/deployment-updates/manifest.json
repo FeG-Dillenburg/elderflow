@@ -6,5 +6,5 @@
   { "id": "editor-toolbar-icons", "category": "improvement" },
   { "id": "editor-right-arrow-shortcut", "category": "feature" },
   { "id": "meeting-preparation-reordering-and-topic-picker", "category": "improvement" },
-  { "id": "meeting-preparation-empty-section-drag-stability", "category": "bugfix" }
+  { "id": "meeting-preparation-meeting-notes", "category": "improvement" }
 ]
