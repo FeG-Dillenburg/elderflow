@@ -62,6 +62,7 @@ const createsAgendaTopic = computed(() => Boolean(
 ));
 const readOnly = computed(() => meeting.value?.status === "completed");
 const sections = ref<AgendaSection[]>([]);
+const sectionDefaultsReady = ref(false);
 const suggestions = ref<MeetingSuggestion[]>([]);
 const futureSuggestions = ref<MeetingSuggestion[]>([]);
 const showFutureTopics = ref(false);
@@ -158,6 +159,7 @@ const load = async (opening: Promise<void>) => {
           : Promise.resolve([]),
       ]);
     sections.value = loadedSections;
+    sectionDefaultsReady.value = true;
     suggestions.value = loadedSuggestions;
     futureSuggestions.value = loadedFutureSuggestions;
     users.value = loadedUsers;
@@ -906,6 +908,7 @@ const saveDetails = async () => {
           :sections="sections"
           tour-enabled
           :active="newVisible"
+          :defaults-ready="sectionDefaultsReady"
           :error="error"
           initialize-defaults
           section-required
