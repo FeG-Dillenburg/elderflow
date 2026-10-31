@@ -185,12 +185,12 @@ export class MeetingsService {
     }
   }
 
-  async currentMentions(user: User) {
+  async currentMentions(user: User, limit?: number) {
     this.scalars.assertContentUser(user);
     if (permissionsByRole[user.role].topics === "hide" || permissionsByRole[user.role].meetings === "hide") {
       throw codedHttpException(HttpStatus.FORBIDDEN, "E2EE_PROTECTED_CIPHERTEXT_FORBIDDEN", "Content access required");
     }
-    const rows = await this.dataSource.getRepository(MentionSnapshot).createQueryBuilder("mention")
+    const query = this.dataSource.getRepository(MentionSnapshot).createQueryBuilder("mention")
       .innerJoinAndSelect("mention.appearance", "appearance")
       .innerJoinAndSelect("appearance.meeting", "meeting")
       .innerJoinAndSelect("appearance.topic", "topic")
@@ -205,7 +205,9 @@ export class MeetingsService {
         .getQuery()}`)
       .orderBy("meeting.date", "DESC").addOrderBy("meeting.begin_time", "DESC")
       .addOrderBy("meeting.id", "DESC").addOrderBy("mention.occurrence", "ASC")
-      .getMany();
+      .addOrderBy("mention.id", "ASC");
+    if (limit !== undefined) query.limit(limit);
+    const rows = await query.getMany();
     return rows.map((row) => ({
       id: row.id, appearanceId: row.appearanceId,
       topicId: row.appearance!.topicId, meetingId: row.appearance!.meetingId,

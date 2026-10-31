@@ -2,12 +2,13 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { Meeting } from '../meetings/meeting.entity';
 import { Task } from '../tasks/task.entity';
+import { TopicUpdate } from '../topics/topic-update.entity';
 import { Topic } from '../topics/topic.entity';
 import { DashboardController } from './dashboard.controller';
 import { DashboardService } from './dashboard.service';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Meeting, Task, Topic])],
+  imports: [TypeOrmModule.forFeature([Meeting, Task, Topic, TopicUpdate])],
   controllers: [DashboardController],
   providers: [DashboardService],
 })

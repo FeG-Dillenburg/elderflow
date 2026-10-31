@@ -470,6 +470,25 @@ describeWithPostgres('Meeting completion with PostgreSQL (integration)', () => {
     expect(await service.currentMentions(leader)).toEqual([expect.objectContaining({ meetingId: tie.id })]);
   });
 
+  it("bounds the same authorized current-mention projection without changing lifecycle rules", async () => {
+    await cryptoClient.complete(meeting.id, [leader.id]);
+    const repo = database.getRepository(MentionSnapshot);
+    const original = await repo.findOneByOrFail({ userId: leader.id });
+    for (let occurrence = 1; occurrence < 8; occurrence++) {
+      await repo.save({ ...original, id: randomUUID(), occurrence });
+    }
+    expect(await service.currentMentions(leader, 9)).toHaveLength(8);
+    await repo.save({ ...original, id: randomUUID(), occurrence: 8 });
+    await repo.save({ ...original, id: randomUUID(), occurrence: 9 });
+    const full = await service.currentMentions(leader);
+    const bounded = await service.currentMentions(leader, 9);
+    expect(bounded).toHaveLength(9);
+    expect(bounded).toEqual(full.slice(0, 9));
+    expect(bounded.slice(0, 8)).toEqual(full.slice(0, 8));
+    await expect(service.currentMentions({ ...leader, role: 'it-admin' }, 9)).rejects.toThrow();
+    expect(await service.currentMentions({ ...leader, id: randomUUID() }, 9)).toEqual([]);
+  });
+
   it("rolls back mention rows together with failed completion and permits a clean retry", async () => {
     jest.spyOn(snapshots, 'apply').mockRejectedValueOnce(new Error('snapshot failed'));
     await expect(cryptoClient.complete(meeting.id, [leader.id])).rejects.toThrow('snapshot failed');

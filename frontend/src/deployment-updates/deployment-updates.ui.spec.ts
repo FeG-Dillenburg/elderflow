@@ -10,6 +10,7 @@ import { protectedText } from '../e2ee/protected-text';
 import { formatDate, setLanguage } from '../i18n';
 import { tours } from '../tours/tours';
 import { tourApi } from '../tours/tour-api';
+import DashboardView from '../views/DashboardView.vue';
 import ProfileView from '../views/ProfileView.vue';
 import DeploymentUpdatesDialog from './DeploymentUpdatesDialog.vue';
 import { deploymentUpdates, type DeploymentAnnouncement } from './deployment-updates';
@@ -65,7 +66,7 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-describe('Deployment updates through login and profile UI', () => {
+describe('Deployment updates through login and dashboard UI', () => {
   it.each(['local', 'external', 'restore'])('holds unlock and tours until acknowledgement for %s sessions', async (kind) => {
     if (kind === 'local') await auth.login(user.email, 'password');
     else if (kind === 'external') await auth.completeExternal('code');
@@ -231,11 +232,15 @@ describe('Deployment updates through login and profile UI', () => {
     expect(request).toHaveBeenCalledTimes(1);
   });
 
-  it('opens profile history with loading, retry and empty states and closes without acknowledgement', async () => {
+  it('opens dashboard history with loading, retry and empty states and closes without acknowledgement', async () => {
     auth.completeInitialization(user);
     let finish!: (entries: DeploymentAnnouncement[]) => void;
     vi.mocked(request).mockReturnValueOnce(new Promise((resolve) => { finish = resolve; }));
-    mounted.push(mount(ProfileView, { attachTo: document.body, global: { plugins: [PrimeVue] } }));
+    vi.spyOn(api, 'dashboard').mockResolvedValue({ currentMeeting: null, nextMeeting: null, myOpenTasks: [], overdueTasks: [], followUpTopics: [], recentTopics: [] });
+    const profile = mount(ProfileView, { global: { plugins: [PrimeVue] } });
+    expect(profile.text()).not.toContain('Recent updates');
+    profile.unmount();
+    mounted.push(mount(DashboardView, { attachTo: document.body, global: { plugins: [PrimeVue] } }));
     button('Recent updates').click();
     await settle();
     expect(document.querySelector('[role="dialog"]')?.textContent).toContain('Loading updates');
