@@ -20,6 +20,7 @@ vi.mock("vue-router", () => ({
   useRouter: () => ({ push: routerPush }),
 }));
 const stubs = {
+  Teleport: false,
   Button: true,
   Dialog: true,
   InputNumber: true,
@@ -29,12 +30,9 @@ const stubs = {
   Tag: true,
   RichTextEditor: true,
   TopicTypeRenderer: {
-    template: '<div><slot /></div>',
+    template: '<div><textarea aria-label="Draft note" /><div contenteditable="true" tabindex="0">Draft selection</div><slot /></div>',
   },
-  Draggable: {
-    props: ["list", "group", "itemKey", "handle", "sort", "setData"],
-    template: '<div class="draggable"><slot v-for="(element, index) in list" name="item" :element="element" :index="index" /><slot name="footer" /></div>',
-  },
+
 };
 const meeting: any = {
   id: "meeting-1",
@@ -114,33 +112,243 @@ describe("MeetingPreparationView", () => {
     ] as any);
     vi.spyOn(api, "userDirectory").mockResolvedValue([]);
   });
-  const view = async () => {
+  const view = async (attach = false) => {
     const wrapper = mount(MeetingPreparationView, {
+      ...(attach ? { attachTo: document.body } : {}),
       shallow: true,
       global: { stubs, provide: { [meetingRouteFactoryKey as symbol]: meetingRouteFactory } },
     });
     await flushPromises();
     return wrapper;
   };
-  it("marks agenda and suggestion drags without exposing card text", async () => {
+  it("compacts only after a deliberate handle drag and preserves editor DOM on Escape", async () => {
     const wrapper = await view();
-    await (wrapper.vm as any).toggleFutureTopics();
+    const reorder = vi.spyOn(api, "reorderMeetingTopics").mockResolvedValue([]);
+    const editor = wrapper.get("textarea").element;
+    await wrapper.get("textarea").setValue("Unsaved draft");
+    const handle = wrapper.get("main .drag-handle");
+    handle.element.dispatchEvent(new MouseEvent("pointerdown", { button: 0, clientX: 50, clientY: 80, bubbles: true }));
+    document.dispatchEvent(new MouseEvent("pointermove", { clientX: 52, clientY: 81 }));
+    await wrapper.vm.$nextTick();
+    expect(wrapper.find(".agenda-compacting").exists()).toBe(false);
+    document.dispatchEvent(new MouseEvent("pointermove", { clientX: 70, clientY: 100 }));
+    await wrapper.vm.$nextTick();
+    expect(wrapper.find(".agenda-compacting").exists()).toBe(true);
+    expect(wrapper.get("textarea").element).toBe(editor);
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+    await wrapper.vm.$nextTick();
+    expect(wrapper.find(".agenda-compacting").exists()).toBe(false);
+    expect(wrapper.get("textarea").element).toBe(editor);
+    expect((editor as HTMLTextAreaElement).value).toBe("Unsaved draft");
+    expect(reorder).not.toHaveBeenCalled();
+    expect((wrapper.vm as any).grouped[1].items.map((item: any) => item.id))
+      .toEqual(["item-1", "item-2"]);
+  });
+
+  const pointer = (type: string, x: number, y: number, element: EventTarget = document) => {
+    element.dispatchEvent(new MouseEvent(type, { button: 0, clientX: x, clientY: y, bubbles: true }));
+  };
+  const emptyDestination = (wrapper: Awaited<ReturnType<typeof view>>) => {
+    vi.spyOn(wrapper.get('[data-agenda-section="first"]').element, "getBoundingClientRect")
+      .mockReturnValue({ left: 0, right: 300, top: 0, bottom: 200, height: 200 } as DOMRect);
+  };
+
+  it("does not add a sidebar drag when compaction alone places a section under the pointer", async () => {
+    const wrapper = await view();
+    const add = vi.spyOn(api, "addMeetingTopic").mockResolvedValue({} as any);
+    emptyDestination(wrapper);
+    pointer("pointerdown", 20, 20, wrapper.get("aside .drag-handle").element);
+    pointer("pointermove", 50, 60);
+    await wrapper.vm.$nextTick();
+    expect(wrapper.find(".agenda-compacting").exists()).toBe(true);
+    expect(wrapper.find(".drop-destination").exists()).toBe(false);
+    pointer("pointerup", 50, 60);
     await flushPromises();
-    const sources = wrapper.findAllComponents(stubs.Draggable);
-    expect(sources).toHaveLength(4);
-    for (const source of sources) {
-      const values = new Map<string, string>([["text/plain", "Old card text"]]);
-      const dataTransfer = {
-        clearData: () => values.clear(),
-        setData: (type: string, value: string) => values.set(type, value),
-      };
-      const card = document.createElement("article");
-      card.textContent = "Topic name BIUA 🔗 Private note";
-      expect(source.props("setData")).toBeTypeOf("function");
-      source.props("setData")(dataTransfer, card);
-      expect([...values.keys()]).toEqual(["application/x-elderflow-agenda-card"]);
-      expect([...values.values()].join("")).not.toContain("Private note");
-    }
+    expect(add).not.toHaveBeenCalled();
+    expect(wrapper.find(".agenda-compacting").exists()).toBe(false);
+  });
+
+  it("adds a sidebar topic to an empty section only after movement establishes its insertion line", async () => {
+    const wrapper = await view();
+    const add = vi.spyOn(api, "addMeetingTopic").mockResolvedValue({} as any);
+    emptyDestination(wrapper);
+    pointer("pointerdown", 20, 20, wrapper.get("aside .drag-handle").element);
+    pointer("pointermove", 50, 60);
+    await wrapper.vm.$nextTick();
+    pointer("pointermove", 70, 80);
+    await wrapper.vm.$nextTick();
+    expect(wrapper.find(".insertion-line").exists()).toBe(true);
+    expect(wrapper.get(".drop-destination h2").text()).toContain("First");
+    pointer("pointerup", 70, 80);
+    await flushPromises();
+    expect(add).toHaveBeenCalledWith("meeting-1", expect.objectContaining({
+      topicId: "topic-3", sectionId: "first", position: 1,
+    }));
+    expect(wrapper.find(".agenda-compacting").exists()).toBe(false);
+  });
+
+  it.each(["pointercancel", "blur"])("restores the unchanged agenda after an interrupted drag (%s)", async (event) => {
+    const wrapper = await view();
+    const reorder = vi.spyOn(api, "reorderMeetingTopics").mockResolvedValue([]);
+    pointer("pointerdown", 20, 20, wrapper.get("main .drag-handle").element);
+    pointer("pointermove", 50, 60);
+    await wrapper.vm.$nextTick();
+    (event === "blur" ? window : document).dispatchEvent(new Event(event));
+    await flushPromises();
+    expect(wrapper.find(".agenda-compacting").exists()).toBe(false);
+    expect(reorder).not.toHaveBeenCalled();
+  });
+
+  it("restores full content and original order when a deliberate cross-section drag fails", async () => {
+    const wrapper = await view();
+    vi.spyOn(api, "reorderMeetingTopics").mockRejectedValue(new Error("Reorder failed"));
+    const draft = wrapper.get("textarea").element;
+    await wrapper.get("textarea").setValue("Unsent membership correction");
+    emptyDestination(wrapper);
+    pointer("pointerdown", 20, 20, wrapper.get("main .drag-handle").element);
+    pointer("pointermove", 50, 60);
+    await wrapper.vm.$nextTick();
+    pointer("pointermove", 70, 80);
+    pointer("pointerup", 70, 80);
+    await flushPromises();
+    expect(wrapper.find(".agenda-compacting").exists()).toBe(false);
+    expect((wrapper.vm as any).error).toBe("Reorder failed");
+    expect(wrapper.get("textarea").element).toBe(draft);
+    expect((draft as HTMLTextAreaElement).value).toBe("Unsent membership correction");
+    expect(wrapper.findAll('[data-agenda-section="first"] article')).toHaveLength(0);
+    expect(wrapper.findAll('[data-agenda-section="second"] article')).toHaveLength(2);
+  });
+
+  it("keeps unsaved editor contents and focus when a topic moves to another section", async () => {
+    const wrapper = await view(true);
+    const draft = wrapper.get("textarea").element as HTMLTextAreaElement;
+    await wrapper.get("textarea").setValue("Unsent correction");
+    const richText = wrapper.get('[contenteditable="true"]').element as HTMLElement;
+    richText.focus();
+    const range = document.createRange();
+    range.setStart(richText.firstChild!, 6);
+    range.setEnd(richText.firstChild!, 15);
+    window.getSelection()!.removeAllRanges();
+    window.getSelection()!.addRange(range);
+    vi.spyOn(api, "reorderMeetingTopics").mockImplementation(async (_meeting, order) => {
+      for (const position of order) {
+        Object.assign(workspaceMeeting.agenda.find((item: any) => item.id === position.id), position);
+      }
+      return workspaceMeeting.agenda;
+    });
+    emptyDestination(wrapper);
+    pointer("pointerdown", 20, 20, wrapper.get("main .drag-handle").element);
+    pointer("pointermove", 50, 60);
+    await wrapper.vm.$nextTick();
+    pointer("pointermove", 70, 80);
+    pointer("pointerup", 70, 80);
+    await flushPromises();
+    expect(wrapper.get('[data-agenda-section="first"] textarea').element).toBe(draft);
+    expect(draft.value).toBe("Unsent correction");
+    expect(document.activeElement).toBe(richText);
+    expect(window.getSelection()!.toString()).toBe("selection");
+    expect(wrapper.find(".agenda-compacting").exists()).toBe(false);
+  });
+
+  it("scrolls at the page edge only while compact agenda targets remain below the viewport", async () => {
+    const wrapper = await view(true);
+    let frame: FrameRequestCallback | undefined;
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      frame = callback;
+      return 1;
+    });
+    const scrollingElement = Object.getOwnPropertyDescriptor(document, "scrollingElement");
+    const elementFromPoint = Object.getOwnPropertyDescriptor(document, "elementFromPoint");
+    Object.defineProperty(document, "scrollingElement", { configurable: true, value: document.documentElement });
+    Object.defineProperty(document, "elementFromPoint", {
+      configurable: true,
+      value: () => wrapper.get(".agenda-drop-zone").element,
+    });
+    onTestFinished(() => {
+      if (scrollingElement) Object.defineProperty(document, "scrollingElement", scrollingElement);
+      else delete (document as any).scrollingElement;
+      if (elementFromPoint) Object.defineProperty(document, "elementFromPoint", elementFromPoint);
+      else delete (document as any).elementFromPoint;
+      document.documentElement.scrollTop = 0;
+    });
+    const lastZone = vi.spyOn(wrapper.findAll(".agenda-drop-zone")[1].element, "getBoundingClientRect")
+      .mockReturnValue({ left: 0, right: 300, top: 0, bottom: 500 } as DOMRect);
+    pointer("pointerdown", 20, 20, wrapper.get("aside .drag-handle").element);
+    pointer("pointermove", 50, 60);
+    await wrapper.vm.$nextTick();
+    pointer("pointermove", 70, window.innerHeight - 10);
+    frame!(0);
+    expect(document.documentElement.scrollTop).toBe(0);
+    lastZone.mockReturnValue({ left: 0, right: 300, top: 0, bottom: 1500 } as DOMRect);
+    frame!(16);
+    expect(document.documentElement.scrollTop).toBe(12);
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+    await flushPromises();
+    expect(document.documentElement.scrollTop).toBe(0);
+  });
+
+  it("cancels an active drag when the Meeting becomes completed", async () => {
+    const wrapper = await view();
+    const reorder = vi.spyOn(api, "reorderMeetingTopics").mockResolvedValue([]);
+    pointer("pointerdown", 20, 20, wrapper.get("main .drag-handle").element);
+    pointer("pointermove", 50, 60);
+    await wrapper.vm.$nextTick();
+    workspaceMeeting.status = "completed";
+    await (wrapper.vm as any).workspace.refresh();
+    await flushPromises();
+    pointer("pointerup", 50, 60);
+    expect(wrapper.find(".agenda-compacting").exists()).toBe(false);
+    expect(wrapper.find("aside").exists()).toBe(false);
+    expect(reorder).not.toHaveBeenCalled();
+  });
+
+  it("restores a long agenda's scroll position and focused input when dragging is canceled", async () => {
+    const wrapper = mount(MeetingPreparationView, {
+      attachTo: document.body,
+      shallow: true,
+      global: { stubs, provide: { [meetingRouteFactoryKey as symbol]: meetingRouteFactory } },
+    });
+    await flushPromises();
+    const editor = wrapper.get("textarea").element as HTMLTextAreaElement;
+    editor.focus();
+    const scroller = wrapper.element as HTMLElement;
+    scroller.style.overflowY = "auto";
+    scroller.scrollTop = 900;
+    pointer("pointerdown", 20, 20, wrapper.get("main .drag-handle").element);
+    pointer("pointermove", 50, 60);
+    await wrapper.vm.$nextTick();
+    scroller.scrollTop = 150;
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+    await flushPromises();
+    expect(scroller.scrollTop).toBe(900);
+    expect(document.activeElement).toBe(editor);
+    scroller.scrollTop = 0;
+  });
+
+  it("collects several candidates with distinct destinations before one batch submission", async () => {
+    vi.mocked(api.meetingSuggestions).mockResolvedValue([
+      { id: "topic-3", name: "One", type: "generic", defaultSectionId: "first" },
+      { id: "topic-4", name: "Two", type: "generic", defaultSectionId: "second" },
+    ] as any);
+    const wrapper = await view();
+    const batch = vi.spyOn(api, "addMeetingTopics").mockResolvedValue([]);
+    const individual = vi.spyOn(api, "addMeetingTopic").mockResolvedValue({} as any);
+    const buttons = wrapper.findAllComponents({ name: "Button" })
+      .filter((button) => button.attributes("class")?.includes("select-topic-button"));
+    expect(buttons).toHaveLength(2);
+    for (const button of buttons) await button.trigger("click");
+    expect(batch).not.toHaveBeenCalled();
+    expect(individual).not.toHaveBeenCalled();
+    expect(wrapper.get(".add-selected-topics").attributes("label")).toContain("(2)");
+    await wrapper.get(".add-selected-topics").trigger("click");
+    await flushPromises();
+    expect(batch).toHaveBeenCalledTimes(1);
+    expect(batch).toHaveBeenCalledWith("meeting-1", [
+      expect.objectContaining({ topicId: "topic-3", sectionId: "first" }),
+      expect.objectContaining({ topicId: "topic-4", sectionId: "second" }),
+    ]);
+    expect(individual).not.toHaveBeenCalled();
+    expect(wrapper.find(".add-selected-topics").exists()).toBe(false);
   });
 
   it("loads, groups ordered agenda items, and records loading errors", async () => {
@@ -258,12 +466,9 @@ describe("MeetingPreparationView", () => {
     expect(vm.visibleSuggestionLists).toHaveLength(1);
     expect(api.meetingSuggestions).toHaveBeenCalledTimes(2);
   });
-  it("configures writable agenda and clone-only suggestion drag lists with handles", async () => {
+  it("keeps the original drag handles, agenda sections, and duration controls", async () => {
     const wrapper = await view();
-    const vm: any = wrapper.vm;
-    expect(wrapper.findAll(".draggable")).toHaveLength(3);
-    expect(vm.agendaGroup).toMatchObject({ name: "agenda-topics", pull: true, put: true });
-    expect(vm.suggestionGroup).toMatchObject({ name: "agenda-topics", pull: "clone", put: false });
+    expect(wrapper.findAll(".agenda-drop-zone")).toHaveLength(2);
     expect(wrapper.findAll('button[aria-label="Drag topic"]')).toHaveLength(3);
     expect(wrapper.text()).toContain("No topics yet.");
     expect(wrapper.find('[aria-label="Agenda section"]').exists()).toBe(false);
@@ -366,32 +571,16 @@ describe("MeetingPreparationView", () => {
     expect(vm.selectedSections.future).toBe("first");
     expect(vm.sectionFor(vm.futureSuggestions[0])).toBe("first");
   });
-  it("adds a dragged suggestion at the target section and exact one-based position", async () => {
-    const wrapper = await view();
-    const vm: any = wrapper.vm;
-    vi.spyOn(api, "addMeetingTopic").mockResolvedValue({} as any);
-    const target = vm.grouped[0];
-    const clone = vm.cloneSuggestion(vm.suggestions[0]);
-    target.items.push(clone);
-    await vm.onAgendaChange(target, { added: { element: clone, newIndex: 0 } });
-    expect(api.addMeetingTopic).toHaveBeenCalledWith("meeting-1", {
-      topicId: "topic-3",
-      sectionId: "first",
-      position: 1,
-      topic: expect.objectContaining({ id: "topic-3" }),
-    });
-    expect(target.items).toHaveLength(0);
-    expect(vm.suggestions).toHaveLength(1);
-  });
   it("persists an existing topic moved across sections with normalized positions", async () => {
     const wrapper = await view();
-    const vm: any = wrapper.vm;
     vi.spyOn(api, "reorderMeetingTopics").mockResolvedValue([] as any);
-    const source = vm.grouped[1];
-    const target = vm.grouped[0];
-    const [moved] = source.items.splice(0, 1);
-    target.items.push(moved);
-    await vm.onAgendaChange(target, { added: { element: moved, newIndex: 0 } });
+    emptyDestination(wrapper);
+    pointer("pointerdown", 20, 20, wrapper.get("main .drag-handle").element);
+    pointer("pointermove", 50, 60);
+    await wrapper.vm.$nextTick();
+    pointer("pointermove", 70, 80);
+    pointer("pointerup", 70, 80);
+    await flushPromises();
     expect(api.reorderMeetingTopics).toHaveBeenCalledWith("meeting-1", [
       { id: "item-1", sectionId: "first", position: 1 },
       { id: "item-2", sectionId: "second", position: 1 },

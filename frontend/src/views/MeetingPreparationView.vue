@@ -1,10 +1,12 @@
 <script lang="ts" setup>
-import { reactive, ref, watch } from "vue";
-import { computed } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, shallowReactive, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { RouterLink, useRoute, useRouter } from "vue-router";
-import Draggable from "vuedraggable";
-import { setAgendaDragData } from "../meetings/agenda-drag";
+import {
+  usePreparationDrag,
+  type PreparationDragSource,
+  type PreparationDropTarget,
+} from "../meetings/usePreparationDrag";
 import Button from "primevue/button";
 import DatePicker from "primevue/datepicker";
 import { tours } from "../tours/tours";
@@ -47,10 +49,6 @@ interface AgendaGroup {
   section: AgendaSection;
   items: MeetingTopic[];
 }
-
-type SuggestionClone = Topic & {
-  temporaryKey: string;
-};
 
 const route = useRoute();
 const router = useRouter();
@@ -105,9 +103,6 @@ const statusOptions = computed(() =>
     label: t(`labels.${value}`),
   })),
 );
-const agendaGroup = { name: "agenda-topics", pull: true, put: true };
-const suggestionGroup = { name: "agenda-topics", pull: "clone", put: false };
-let temporaryKey = 0;
 const durationSaveQueues = new Map<string, Promise<void>>();
 const visibleSuggestionLists = computed(() => showFutureTopics.value
   ? [suggestions.value, futureSuggestions.value]
@@ -199,8 +194,8 @@ const toggleFutureTopics = async () => {
   }
 };
 
-const normalize = () =>
-  grouped.value.flatMap((group) =>
+const normalize = (groups: AgendaGroup[] = grouped.value) =>
+  groups.flatMap((group) =>
     group.items.map((item, index) => ({
       id: item.id,
       sectionId: group.section.id,
@@ -208,7 +203,10 @@ const normalize = () =>
     })),
   );
 
-watch(() => workspace.state.meeting, () => initialiseGroups());
+watch(() => workspace.state.meeting, () => {
+  cancelDrag();
+  initialiseGroups();
+});
 
 const withOperation = async (action: () => Promise<unknown>) => {
   if (pending.value) return false;
@@ -232,42 +230,85 @@ const withOperation = async (action: () => Promise<unknown>) => {
   return succeeded;
 };
 
-const persistOrder = async () => {
-  await withOperation(() => operations.reorderAgenda(normalize()));
+const topicPanel = ref<HTMLElement | null>(null);
+const availablePanelHeight = ref<string>();
+const fitTopicPanel = () => {
+  if (!topicPanel.value) return;
+  const top = Math.max(0, topicPanel.value.getBoundingClientRect().top);
+  availablePanelHeight.value = `${Math.max(120, window.innerHeight - top - 16)}px`;
 };
-
-const isSuggestionClone = (
-  item: MeetingTopic | SuggestionClone,
-): item is SuggestionClone => "temporaryKey" in item;
-
-const cloneSuggestion = (topic: Topic): SuggestionClone => ({
-  ...topic,
-  temporaryKey: `suggestion-${topic.id}-${++temporaryKey}`,
+watch(topicPanel, () => {
+  void nextTick(fitTopicPanel);
+});
+onMounted(() => {
+  window.addEventListener("scroll", fitTopicPanel, true);
+  window.addEventListener("resize", fitTopicPanel);
+});
+onBeforeUnmount(() => {
+  window.removeEventListener("scroll", fitTopicPanel, true);
+  window.removeEventListener("resize", fitTopicPanel);
 });
 
-const onAgendaChange = async (
-  group: AgendaGroup,
-  event: {
-    added?: { element: SuggestionClone; newIndex: number };
-    moved?: unknown;
-  },
-) => {
-  if (pending.value) return;
-  if (event.added && isSuggestionClone(event.added.element)) {
-    const [temporary] = group.items.splice(event.added.newIndex, 1);
-    if (!temporary) return;
-    await withOperation(() =>
-      operations.addTopic({
-        topicId: temporary.id,
-        sectionId: group.section.id,
-        position: event.added!.newIndex + 1,
-        topic: temporary as unknown as SuggestionClone,
-      }),
-    );
-    return;
+const preparationRoot = ref<HTMLElement | null>(null);
+const dragDisabled = computed(() => pending.value || readOnly.value);
+const commitDrag = async (source: PreparationDragSource, target: PreparationDropTarget) => {
+  if (dragDisabled.value) return false;
+  const destination = grouped.value.find((group) => group.section.id === target.sectionId);
+  if (!destination) return false;
+  if (source.kind === "suggestion") {
+    const topic = visibleSuggestionLists.value.flat().find((topic) => topic.id === source.id);
+    if (!topic) return false;
+    return withOperation(() => operations.addTopic({
+      topicId: topic.id,
+      sectionId: destination.section.id,
+      position: target.index + 1,
+      topic,
+    }));
   }
-  if (event.moved || event.added) await persistOrder();
+  const proposed = grouped.value.map((group) => ({ ...group, items: [...group.items] }));
+  const origin = proposed.find((group) => group.items.some((item) => item.id === source.id));
+  const proposedDestination = proposed.find((group) => group.section.id === target.sectionId)!;
+  const index = origin?.items.findIndex((item) => item.id === source.id) ?? -1;
+  if (!origin || index < 0) return false;
+  if (origin === proposedDestination && index === target.index) return true;
+  const [item] = origin.items.splice(index, 1);
+  proposedDestination.items.splice(target.index, 0, item!);
+  return withOperation(() => operations.reorderAgenda(normalize(proposed)));
 };
+const {
+  floating: draggedTopic,
+  pointer: dragPointer,
+  target: dropTarget,
+  agendaHeight,
+  start: startDrag,
+  cancel: cancelDrag,
+} = usePreparationDrag(preparationRoot, dragDisabled, commitDrag);
+
+// Renderers have one stable keyed parent. Teleport moves their DOM between section
+// hosts without discarding local drafts, failed-save values, or collaboration bindings.
+const agendaItems = computed(() => grouped.value.flatMap((group) => group.items));
+const agendaHosts = shallowReactive<Record<string, HTMLElement>>({});
+const setAgendaHost = (id: string, element: unknown) => {
+  // Keep the previous target until the replacement host mounts during a section move.
+  if (element instanceof HTMLElement) agendaHosts[id] = element;
+};
+watch(agendaItems, (items) => {
+  const ids = new Set(items.map((item) => item.id));
+  for (const id of Object.keys(agendaHosts)) {
+    if (!ids.has(id)) delete agendaHosts[id];
+  }
+});
+const groupFor = (item: MeetingTopic) => grouped.value.find((group) =>
+  group.items.some((candidate) => candidate.id === item.id),
+)!;
+
+const insertionBefore = (group: AgendaGroup, item: MeetingTopic) => {
+  if (dropTarget.value?.sectionId !== group.section.id) return false;
+  const items = group.items.filter((candidate) => candidate.id !== draggedTopic.value?.id);
+  return items.indexOf(item) === dropTarget.value.index;
+};
+const insertionAtEnd = (group: AgendaGroup) => dropTarget.value?.sectionId === group.section.id
+  && dropTarget.value.index === group.items.filter((item) => item.id !== draggedTopic.value?.id).length;
 
 const selectedTopics = computed(() => visibleSuggestionLists.value
   .flat()
@@ -420,7 +461,7 @@ const saveDetails = async () => {
 </script>
 
 <template>
-  <section class="page">
+  <section ref="preparationRoot" class="page">
     <MeetingWorkspaceStatus />
     <Message v-if="error" severity="error">{{ error }}</Message>
     <template v-if="meeting">
@@ -456,11 +497,15 @@ const saveDetails = async () => {
         </div>
       </header>
       <div :class="['layout', { 'layout-read-only': readOnly }]">
-        <main>
+        <main
+          :class="{ 'agenda-compacting': draggedTopic }"
+          :style="draggedTopic ? { minHeight: `${agendaHeight}px` } : undefined"
+        >
           <section
             v-for="group in grouped"
             :key="group.section.id"
             class="section"
+            :class="{ 'drop-destination': dropTarget?.sectionId === group.section.id }"
           >
             <h2>
               {{ group.section.name }}
@@ -472,153 +517,56 @@ const saveDetails = async () => {
                 <Tag :value="String(group.items.length)" severity="secondary" />
               </span>
             </h2>
-            <Draggable
-              :list="group.items"
-              :group="agendaGroup"
-              item-key="id"
-              :set-data="setAgendaDragData"
-              handle=".drag-handle"
-              :disabled="pending || readOnly"
-              class="agenda-drop-zone"
-              ghost-class="drag-ghost"
-              chosen-class="drag-chosen"
-              @change="onAgendaChange(group, $event)"
-            >
-              <template #item="{ element: item }">
-                <article
-                  :class="{ 'standard-preparation': topicUsesPlannedDuration(item.topic?.type ?? '') }"
-                >
-                  <button
-                    v-if="!readOnly"
-                    class="drag-handle"
-                    type="button"
-                    :aria-label="t('meetingPreparation.drag')"
-                    :title="t('meetingPreparation.drag')"
-                  >
-                    <span v-for="dot in 6" :key="dot" />
-                  </button>
-                  <div v-if="item.topic" class="topic-content">
-                    <TopicTypeRenderer
-                      :type="item.topic.type"
-                      context="preparation"
-                      :topic="item.topic"
-                      :item="item"
-                      :read-only="readOnly"
-                      :meeting-status="meeting.status"
-                      :users="responsibleUserOptions"
-                      :save-field="saveMeetingTopicField(operations, item)"
-                    >
-                      <template v-if="topicUsesPlannedDuration(item.topic.type)">
-                        <div v-if="!readOnly" class="item-actions">
-                          <div class="duration-control">
-                            <InputNumber
-                              :model-value="item.plannedDuration"
-                              :aria-label="t('meetingPreparation.duration')"
-                              :disabled="pending"
-                              :invalid="item.plannedDuration === null"
-                              :min="0"
-                              :step="5"
-                              :suffix="` ${t('common.minuteShort')}`"
-                              show-buttons
-                              size="small"
-                              @update:model-value="saveDuration(item, $event)"
-                            />
-                          </div>
-                          <Button
-                            :disabled="pending"
-                            :aria-label="item.source === 'recurrence'
-                              ? t('recurringTopic.skip')
-                              : t('meetingPreparation.remove')"
-                            :title="item.source === 'recurrence'
-                              ? t('recurringTopic.skip')
-                              : t('meetingPreparation.remove')"
-                            icon="pi pi-times"
-                            rounded
-                            severity="danger"
-                            text
-                            @click="remove(item)"
-                          />
-                        </div>
-                        <div
-                          v-else
-                          class="topic-duration"
-                        >
-                          {{ item.plannedDuration ?? 0 }}
-                          {{ t("common.minuteShort") }}
-                        </div>
-                      </template>
-                    </TopicTypeRenderer>
-                    <small v-if="item.topic?.followUpDate">
-                      {{ t("topics.followUp") }}
-                        {{ formatDate(`${item.topic.followUpDate}T12:00:00`) }}
-                    </small>
-                  </div>
-                  <div
-                    v-if="!readOnly && !topicUsesPlannedDuration(item.topic?.type ?? '')"
-                    class="item-actions"
-                  >
-                    <Button
-                      :disabled="pending"
-                      :aria-label="item.source === 'recurrence'
-                        ? t('recurringTopic.skip')
-                        : t('meetingPreparation.remove')"
-                      :title="item.source === 'recurrence'
-                        ? t('recurringTopic.skip')
-                        : t('meetingPreparation.remove')"
-                      icon="pi pi-times"
-                      rounded
-                      severity="danger"
-                      text
-                      @click="remove(item)"
-                    />
-                  </div>
-                </article>
-              </template>
-              <template #footer>
-                <p v-if="!group.items.length" class="empty">
-                  {{ t("meetingPreparation.noTopics") }}
-                </p>
-              </template>
-            </Draggable>
+            <div class="agenda-drop-zone" :data-agenda-section="group.section.id">
+              <div
+                v-for="item in group.items"
+                :key="item.id"
+                :ref="(element) => setAgendaHost(item.id, element)"
+                class="agenda-item-host"
+              />
+              <div v-if="insertionAtEnd(group)" class="insertion-line" />
+              <p v-if="!group.items.length" class="empty">
+                {{ t("meetingPreparation.noTopics") }}
+              </p>
+            </div>
           </section>
         </main>
-        <aside v-if="!readOnly">
+        <aside v-if="!readOnly" ref="topicPanel" :style="{ maxHeight: availablePanelHeight }">
           <div class="suggestions-heading">
             <div>
               <h2>{{ t("meetingPreparation.addTopics") }}</h2>
               <p>{{ t("meetingPreparation.suggestions") }}</p>
             </div>
             <Button
-              :aria-label="t('meetingPreparation.createTopic')"
+              :aria-label="t('topics.createTitle')"
+              :label="t('topics.createTitle')"
               class="create-topic-button"
               icon="pi pi-plus"
-              rounded
+              size="small"
               @click="newVisible = true"
             />
           </div>
-          <template
-            v-for="(suggestionList, suggestionListIndex) in visibleSuggestionLists"
-            :key="suggestionListIndex === 0 ? 'due' : 'future'"
-          >
-            <Draggable
-              :class="{ 'future-suggestions': suggestionListIndex === 1 }"
-              :list="suggestionList"
-              :group="suggestionGroup"
-              :clone="cloneSuggestion"
-              item-key="id"
-              :set-data="setAgendaDragData"
-              handle=".drag-handle"
-              :sort="false"
-              :disabled="pending"
+          <div class="suggestions-list">
+            <template
+              v-for="(suggestionList, suggestionListIndex) in visibleSuggestionLists"
+              :key="suggestionListIndex === 0 ? 'due' : 'future'"
             >
-              <template #item="{ element: topic }">
-                <article class="suggestion">
+              <div :class="{ 'future-suggestions': suggestionListIndex === 1 }">
+                <article
+                  v-for="topic in suggestionList"
+                  :key="topic.id"
+                  class="suggestion"
+                  :class="{ 'suggestion-selected': isSelected(topic) }"
+                >
                   <div class="suggestion-title">
                     <button
                       class="drag-handle"
                       type="button"
                       :aria-label="t('meetingPreparation.drag')"
                       :title="t('meetingPreparation.drag')"
+                      :disabled="pending"
+                      @pointerdown="startDrag($event, { kind: 'suggestion', id: topic.id, title: topic.name })"
+                      @dragstart.prevent
                     >
                       <span v-for="dot in 6" :key="dot" />
                     </button>
@@ -639,6 +587,9 @@ const saveDetails = async () => {
                   </div>
                   <Select
                     v-model="selectedSections[topic.id]"
+                    :aria-label="t('meetingPreparation.chooseSection')"
+                    :disabled="pending"
+                    size="small"
                     :options="sections"
                     :placeholder="
                       topic.defaultSection?.name ||
@@ -649,37 +600,43 @@ const saveDetails = async () => {
                   />
                   <Button
                     :icon="isSelected(topic) ? 'pi pi-minus' : 'pi pi-plus'"
-                    :label="isSelected(topic)
+                    :aria-label="isSelected(topic)
                       ? t('meetingPreparation.removeFromPreselection')
                       : t('meetingPreparation.markForAgenda')"
+                    :title="isSelected(topic)
+                      ? t('meetingPreparation.removeFromPreselection')
+                      : t('meetingPreparation.markForAgenda')"
+                    :aria-pressed="isSelected(topic)"
+                    class="select-topic-button"
+                    size="small"
                     outlined
                     :disabled="pending"
                     :severity="isSelected(topic) ? 'secondary' : undefined"
                     @click="toggleSelected(topic)"
                   />
                 </article>
-              </template>
-            </Draggable>
-            <p v-if="!suggestionList.length" class="empty">
-              {{
-                suggestionListIndex === 0
-                  ? t("meetingPreparation.allAdded")
-                  : t("meetingPreparation.noFutureTopics")
-              }}
-            </p>
-            <Button
-              v-if="suggestionListIndex === 0"
-              class="future-topics-toggle"
-              :label="showFutureTopics
-                ? t('meetingPreparation.hideFutureTopics')
-                : t('meetingPreparation.showFutureTopics')"
-              :loading="futureTopicsLoading"
-              :disabled="pending || futureTopicsLoading"
-              severity="secondary"
-              outlined
-              @click="toggleFutureTopics"
-            />
-          </template>
+              </div>
+              <p v-if="!suggestionList.length" class="empty">
+                {{
+                  suggestionListIndex === 0
+                    ? t("meetingPreparation.allAdded")
+                    : t("meetingPreparation.noFutureTopics")
+                }}
+              </p>
+              <Button
+                v-if="suggestionListIndex === 0"
+                class="future-topics-toggle"
+                :label="showFutureTopics
+                  ? t('meetingPreparation.hideFutureTopics')
+                  : t('meetingPreparation.showFutureTopics')"
+                :loading="futureTopicsLoading"
+                :disabled="pending || futureTopicsLoading"
+                severity="secondary"
+                outlined
+                @click="toggleFutureTopics"
+              />
+            </template>
+          </div>
           <Button
             v-if="selectedTopics.length"
             class="add-selected-topics"
@@ -694,6 +651,119 @@ const saveDetails = async () => {
         </aside>
       </div>
     </template>
+    <template v-for="item in agendaItems" :key="item.id">
+      <Teleport v-if="agendaHosts[item.id]" :to="agendaHosts[item.id]">
+        <article
+          :data-agenda-item="item.id"
+          :data-topic-id="item.topicId"
+          :class="{
+            'standard-preparation': topicUsesPlannedDuration(item.topic?.type ?? ''),
+            'insertion-before': insertionBefore(groupFor(item), item),
+            'drag-source': draggedTopic?.kind === 'agenda' && draggedTopic.id === item.id,
+          }"
+        >
+          <button
+            v-if="!readOnly"
+            class="drag-handle"
+            type="button"
+            :aria-label="t('meetingPreparation.drag')"
+            :title="t('meetingPreparation.drag')"
+            :disabled="pending"
+            @pointerdown="startDrag($event, { kind: 'agenda', id: item.id, title: item.topic?.name ?? '' })"
+            @dragstart.prevent
+          >
+            <span v-for="dot in 6" :key="dot" />
+          </button>
+          <span v-if="draggedTopic" class="compact-topic-title">{{ item.topic?.name }}</span>
+          <div v-show="!draggedTopic" v-if="item.topic" class="topic-content">
+            <TopicTypeRenderer
+              :type="item.topic.type"
+              context="preparation"
+              :topic="item.topic"
+              :item="item"
+              :read-only="readOnly"
+              :meeting-status="meeting?.status"
+              :users="responsibleUserOptions"
+              :save-field="saveMeetingTopicField(operations, item)"
+            >
+              <template v-if="topicUsesPlannedDuration(item.topic.type)">
+                <div v-if="!readOnly" class="item-actions">
+                  <div class="duration-control">
+                    <InputNumber
+                      :model-value="item.plannedDuration"
+                      :aria-label="t('meetingPreparation.duration')"
+                      :disabled="pending"
+                      :invalid="item.plannedDuration === null"
+                      :min="0"
+                      :step="5"
+                      :suffix="` ${t('common.minuteShort')}`"
+                      show-buttons
+                      size="small"
+                      @update:model-value="saveDuration(item, $event)"
+                    />
+                  </div>
+                  <Button
+                    :disabled="pending"
+                    :aria-label="item.source === 'recurrence'
+                      ? t('recurringTopic.skip')
+                      : t('meetingPreparation.remove')"
+                    :title="item.source === 'recurrence'
+                      ? t('recurringTopic.skip')
+                      : t('meetingPreparation.remove')"
+                    icon="pi pi-times"
+                    rounded
+                    severity="danger"
+                    text
+                    @click="remove(item)"
+                  />
+                </div>
+                <div
+                  v-else
+                  class="topic-duration"
+                >
+                  {{ item.plannedDuration ?? 0 }}
+                  {{ t("common.minuteShort") }}
+                </div>
+              </template>
+            </TopicTypeRenderer>
+            <small v-if="item.topic?.followUpDate">
+              {{ t("topics.followUp") }}
+                {{ formatDate(`${item.topic.followUpDate}T12:00:00`) }}
+            </small>
+          </div>
+          <div
+            v-show="!draggedTopic"
+            v-if="!readOnly && !topicUsesPlannedDuration(item.topic?.type ?? '')"
+            class="item-actions"
+          >
+            <Button
+              :disabled="pending"
+              :aria-label="item.source === 'recurrence'
+                ? t('recurringTopic.skip')
+                : t('meetingPreparation.remove')"
+              :title="item.source === 'recurrence'
+                ? t('recurringTopic.skip')
+                : t('meetingPreparation.remove')"
+              icon="pi pi-times"
+              rounded
+              severity="danger"
+              text
+              @click="remove(item)"
+            />
+          </div>
+        </article>
+      </Teleport>
+    </template>
+    <Teleport to="body">
+      <div
+        v-if="draggedTopic"
+        class="floating-topic"
+        :style="{ left: `${dragPointer.x + 12}px`, top: `${dragPointer.y + 12}px` }"
+        aria-hidden="true"
+      >
+        {{ draggedTopic.title }}
+      </div>
+    </Teleport>
     <Dialog
       v-if="!readOnly"
       v-model:visible="detailsVisible"
@@ -948,7 +1018,7 @@ const saveDetails = async () => {
   padding: 0.7rem 0;
   border-bottom: 1px solid #edf0f4;
 }
-.section article:last-child {
+.agenda-item-host:last-of-type article {
   border: 0;
 }
 .topic-content {
@@ -1010,13 +1080,6 @@ const saveDetails = async () => {
   border-radius: 50%;
   background: #718096;
 }
-.drag-ghost {
-  opacity: 0.35;
-  background: #dbeafe;
-}
-.drag-chosen {
-  box-shadow: 0 0 0 2px #93c5fd;
-}
 .suggestions-heading,
 .suggestion-title {
   display: flex;
@@ -1027,14 +1090,14 @@ const saveDetails = async () => {
   margin-bottom: 0.8rem;
 }
 .create-topic-button {
-  flex: 0 0 2.5rem;
-  width: 2.5rem;
-  height: 2.5rem;
-  padding: 0;
+  flex-shrink: 0;
 }
 .layout aside {
   position: sticky;
   top: calc(2.6rem + 1rem);
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100dvh - 5rem);
   min-width: 0;
   padding: 1rem;
   border: 1px solid #d8e0ec;
@@ -1043,9 +1106,11 @@ const saveDetails = async () => {
 }
 .suggestion {
   display: grid;
-  gap: 0.55rem;
-  margin-bottom: 0.7rem;
-  padding: 0.8rem;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.35rem 0.5rem;
+  margin-bottom: 0.45rem;
+  padding: 0.55rem;
   border-radius: 0.6rem;
   background: #fff;
 }
@@ -1054,13 +1119,90 @@ const saveDetails = async () => {
   margin: 0.2rem 0 0.7rem;
 }
 .suggestion-title {
+  grid-column: 1 / -1;
+  min-width: 0;
   justify-content: flex-start;
   gap: 0.45rem;
+}
+.suggestion-title > div {
+  flex: 1;
+  min-width: 0;
 }
 .suggestion :deep(.p-select) {
   width: 100%;
   min-width: 0;
   max-width: 100%;
+}
+.suggestions-list {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+.suggestions-heading {
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  flex-shrink: 0;
+}
+.add-selected-topics {
+  flex-shrink: 0;
+  margin-top: 0.5rem;
+}
+.suggestion-selected {
+  box-shadow: inset 0 0 0 2px #3867c8;
+}
+.select-topic-button {
+  width: 2rem;
+  height: 2rem;
+}
+.agenda-compacting {
+  overflow-anchor: none;
+}
+.agenda-compacting article {
+  position: relative;
+  min-height: 2.75rem;
+  padding: 0.5rem 0;
+}
+.compact-topic-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.drag-source {
+  opacity: 0.4;
+}
+.drop-destination {
+  border-color: #3867c8;
+}
+.insertion-before::before,
+.insertion-line {
+  display: block;
+  height: 3px;
+  border-radius: 2px;
+  background: #3867c8;
+}
+.insertion-before::before {
+  position: absolute;
+  top: -2px;
+  right: 0;
+  left: 0;
+  content: "";
+}
+.floating-topic {
+  position: fixed;
+  z-index: 10000;
+  max-width: min(24rem, 70vw);
+  overflow: hidden;
+  padding: 0.6rem 0.85rem;
+  border: 1px solid #3867c8;
+  border-radius: 0.5rem;
+  background: #fff;
+  box-shadow: 0 4px 16px #17243a33;
+  color: #17243a;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  pointer-events: none;
 }
 .empty {
   color: #8490a3;

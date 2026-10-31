@@ -20,6 +20,7 @@ export default {
     },
     entries: {
       "editor-right-arrow-shortcut": "The text editor now automatically converts --> to →.",
+      "meeting-preparation-reordering-and-topic-picker": "Preparing meetings is easier: agenda topics temporarily become compact while dragging, and the topic list is denser and scrolls independently.",
       "editor-toolbar-icons": "The text editor now uses nicer icons 😊",
       "leader-topic-creation-agenda": "New topics are added directly to the agenda only when created by the meeting leader. For topics created by other users, the meeting leader decides whether to include them.",
       "preparation-topic-header-controls": "Topic controls in meeting preparation now sit beside the title, leaving more room for topic content.",
