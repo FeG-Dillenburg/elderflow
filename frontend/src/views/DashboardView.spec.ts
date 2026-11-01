@@ -148,7 +148,7 @@ describe("personal dashboard", () => {
   });
   it.each([0, 1, 8, 9])("shows a bounded list of %s mentions and detects More", async (count) => {
     vi.mocked(currentMentions).mockResolvedValue(Array.from({ length: count }, (_, index) => ({
-      id: `${index}`, topicName: `Topic ${index}`, context: `Sentence ${index}`,
+      id: `${index}`, done: false, topicName: `Topic ${index}`, context: `Sentence ${index}`,
       meetingTitle: "Council", date: "2026-10-12", topicId: "topic", meetingId: "meeting", appearanceId: "appearance",
     })));
     protectedText.state.status = "unlocked";
@@ -161,7 +161,7 @@ describe("personal dashboard", () => {
       expect(link.attributes("aria-label")).toContain("Topic");
     }
     expect(card.find(".mentions-more").exists()).toBe(count > 8);
-    expect(currentMentions).toHaveBeenCalledWith(expect.any(AbortSignal), 9);
+    expect(currentMentions).toHaveBeenCalledWith(expect.any(AbortSignal), 9, true);
     if (!count) expect(card.text()).toContain("no current mentions");
   });
   it("keeps current Meeting, next Meeting, mentions and other cards in DOM order", async () => {
@@ -245,7 +245,7 @@ describe("personal dashboard", () => {
     protectedText.state.promptVisible = false;
     setLanguage("de");
     vi.mocked(currentMentions).mockResolvedValue(Array.from({ length: 9 }, (_, index) => ({
-      id: `${index}`, topicName: "Thema", meetingTitle: "Sitzung", context: "Text", date: "2026-10-12",
+      id: `${index}`, done: false, topicName: "Thema", meetingTitle: "Sitzung", context: "Text", date: "2026-10-12",
     })) as any);
     protectedText.state.status = "unlocked";
     await flushPromises();

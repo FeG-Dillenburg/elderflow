@@ -8,5 +8,6 @@
   { "id": "meeting-preparation-reordering-and-topic-picker", "category": "improvement" },
   { "id": "meeting-preparation-meeting-notes", "category": "improvement" },
   { "id": "agenda-section-type-defaults", "category": "improvement" },
-  { "id": "personal-dashboard", "category": "improvement" }
+  { "id": "personal-dashboard", "category": "improvement" },
+  { "id": "resolve-mentions", "category": "feature" }
 ]

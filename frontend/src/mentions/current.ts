@@ -5,6 +5,7 @@ import { SCALAR_AGGREGATES } from "../e2ee/scalar-registry";
 
 export interface CurrentMention {
   id: string;
+  done: boolean;
   appearanceId: string;
   topicId: string;
   meetingId: string;
@@ -18,9 +19,9 @@ interface EncryptedMention extends Omit<CurrentMention, "topicName" | "meetingTi
   topicNameEnvelope: string | null;
   meetingTitleEnvelope: string;
 }
-export async function currentMentions(signal?: AbortSignal, limit?: number): Promise<CurrentMention[]> {
+export async function currentMentions(signal?: AbortSignal, limit?: number, openOnly = false): Promise<CurrentMention[]> {
   if (!scalarSession.isUnlocked()) throw new Error("E2EE_PROTECTED_TEXT_LOCKED");
-  const rows = await request<EncryptedMention[]>(`/api/meetings/my-mentions${limit === undefined ? "" : `?limit=${limit}`}`, { signal });
+  const rows = await request<EncryptedMention[]>(`/api/meetings/my-mentions?openOnly=${openOnly}${limit === undefined ? "" : `&limit=${limit}`}`, { signal });
   signal?.throwIfAborted();
   const decrypted = await Promise.all(rows.map(async (row) => {
     signal?.throwIfAborted();
@@ -37,10 +38,23 @@ export async function currentMentions(signal?: AbortSignal, limit?: number): Pro
     }, base64UrlToBytes(row.meetingTitleEnvelope));
     signal?.throwIfAborted();
     return {
+      done: row.done ?? false,
       id: row.id, appearanceId: row.appearanceId, topicId: row.topicId, meetingId: row.meetingId, date: row.date,
       topicName: topicName ?? "", meetingTitle: meetingTitle ?? "", context: context.context,
     };
   }));
   signal?.throwIfAborted();
   return decrypted;
+}
+
+export function setMentionState(id: string, done: boolean, signal?: AbortSignal) {
+  return request<{ id: string; done: boolean }>(`/api/mentions/${id}/state`, {
+    method: "PUT", body: JSON.stringify({ done }), signal,
+  });
+}
+
+export function resolveMentionWithComment(id: string, comment: { id: string; textEnvelope: string }, signal?: AbortSignal) {
+  return request<{ id: string; done: boolean }>(`/api/mentions/${id}/done-and-comment`, {
+    method: "POST", body: JSON.stringify(comment), signal,
+  });
 }

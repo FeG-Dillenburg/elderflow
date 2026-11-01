@@ -1,3 +1,7 @@
+import { MentionWorkflowController } from "./mention-workflow.controller";
+import { MentionState, MentionCommentOperation } from "./mention-state.entity";
+import { MentionWorkflowService } from "./mention-workflow.service";
+import { TopicsModule } from "../topics/topics.module";
 import { MentionSnapshot } from "./mention-snapshot.entity";
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
@@ -29,6 +33,8 @@ import { MeetingCompactionCoordinator } from './meeting-compaction-coordinator';
   imports: [
     TypeOrmModule.forFeature([
       MentionSnapshot,
+      MentionState,
+      MentionCommentOperation,
       Meeting,
       MeetingUser,
       MeetingTopic,
@@ -43,15 +49,17 @@ import { MeetingCompactionCoordinator } from './meeting-compaction-coordinator';
       AgendaSection,
       SkippedRecurrence,
     ]),
+    TopicsModule,
     RecurrenceModule,
     E2eeModule,
   ],
-  controllers: [MeetingsController],
+  controllers: [MeetingsController, MentionWorkflowController],
   providers: [
     MeetingSnapshotRegistry,
     MeetingDocumentService,
     NewMembershipSnapshotContributor,
     MeetingsService,
+    MentionWorkflowService,
     MeetingCollaborationTicketService,
     MeetingCompactionCoordinator,
     MeetingCollaborationRelayService,

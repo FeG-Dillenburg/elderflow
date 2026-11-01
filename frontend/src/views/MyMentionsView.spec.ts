@@ -36,6 +36,17 @@ it("decrypts current assignments and removes all plaintext immediately when lock
   await vi.waitFor(() => expect(wrapper.text()).toContain("Private assignment sentence."));
   expect(wrapper.find(`a[href="/topics/${topicId}"]`).text()).toBe("Private Topic");
   expect(wrapper.find(`a[href="/meetings/${meetingId}"]`).text()).toContain("Private Meeting");
+  const done = wrapper.find('button[aria-label="Mark as done"]');
+  expect(done.exists()).toBe(true);
+  vi.mocked(globalThis.fetch).mockResolvedValueOnce(new Response(JSON.stringify({ id, done: true })));
+  await done.trigger("click");
+  await flushPromises();
+  expect(wrapper.find('button[aria-label="Reopen"]').exists()).toBe(true);
+  expect(wrapper.find('button[aria-label="Mark as done"]').exists()).toBe(false);
+  vi.mocked(globalThis.fetch).mockResolvedValueOnce(new Response(JSON.stringify({ id, done: false })));
+  await wrapper.find('button[aria-label="Reopen"]').trigger("click");
+  await flushPromises();
+  expect(wrapper.find('button[aria-label="Mark as done"]').exists()).toBe(true);
   protectedText.state.status = "locked";
   scalarSession.lock();
   await flushPromises();

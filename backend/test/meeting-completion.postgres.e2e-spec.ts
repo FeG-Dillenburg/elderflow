@@ -1,3 +1,7 @@
+import { MentionWorkflowService } from "../src/meetings/mention-workflow.service";
+import { MentionState, MentionCommentOperation } from "../src/meetings/mention-state.entity";
+import { MentionWorkflow1720000026000 } from "../src/database/migrations/1720000026000-MentionWorkflow";
+import { TopicsService } from "../src/topics/topics.service";
 import { completionFixture } from "./completion-fixture";
 import { MentionSnapshot } from "../src/meetings/mention-snapshot.entity";
 import { E2eeKeyState } from "../src/e2ee/e2ee-key-state.entity";
@@ -41,6 +45,7 @@ describeWithPostgres('Meeting completion with PostgreSQL (integration)', () => {
   let admin: DataSource;
   let database: DataSource;
   let service: MeetingsService;
+  let workflow: MentionWorkflowService;
   let snapshots: MeetingSnapshotRegistry;
   const coordinator = new MeetingCompactionCoordinator();
   let leader: User;
@@ -57,7 +62,7 @@ describeWithPostgres('Meeting completion with PostgreSQL (integration)', () => {
       url: databaseUrl,
       schema,
       entities: [
-        MentionSnapshot, E2eeKeyState, E2eeClientEpoch, E2eeScalarWrite,
+        MentionSnapshot, MentionState, MentionCommentOperation, E2eeKeyState, E2eeClientEpoch, E2eeScalarWrite,
         User, AgendaSection, Topic, TopicUpdate, Meeting, MeetingUser, MeetingTopic,
         Task, SkippedRecurrence, MeetingDocument, MeetingDocumentSnapshot,
         MeetingDocumentUpdate, MeetingDocumentMutation,
@@ -66,6 +71,10 @@ describeWithPostgres('Meeting completion with PostgreSQL (integration)', () => {
     });
     await database.initialize();
     snapshots = new MeetingSnapshotRegistry();
+    workflow = new MentionWorkflowService(database, new TopicsService(
+      database.getRepository(Topic), database.getRepository(TopicUpdate),
+      database.getRepository(MeetingTopic), new RecurrenceService(), new E2eeScalarService(),
+    ));
     service = new MeetingsService(
       database,
       database.getRepository(Meeting),
@@ -432,9 +441,12 @@ describeWithPostgres('Meeting completion with PostgreSQL (integration)', () => {
     await runner.connect();
     try {
       await runner.query(`SET search_path TO "${schema}"`);
+      await runner.query('DROP TABLE mention_comment_operations');
+      await runner.query('DROP TABLE mention_states');
       await runner.query('DROP TABLE mention_snapshots');
       await runner.query('ALTER TABLE meeting_topics DROP COLUMN mentions_captured');
       await new MentionSnapshots1720000021000().up(runner);
+      await new MentionWorkflow1720000026000().up(runner);
     } finally {
       await runner.query('RESET search_path');
       await runner.release();
@@ -461,8 +473,13 @@ describeWithPostgres('Meeting completion with PostgreSQL (integration)', () => {
     const older = await addMeeting('2020-01-01');
     await cryptoClient.complete(older.id, [leader.id]);
     expect(await service.currentMentions(leader)).toEqual([expect.objectContaining({ meetingId: meeting.id })]);
+    const [prior] = await service.currentMentions(leader);
+    await workflow.setState(prior.id, true, leader);
     const newer = await addMeeting('2030-01-01');
     await cryptoClient.complete(newer.id);
+    await expect(workflow.setState(prior.id, false, leader)).rejects.toMatchObject({
+      response: expect.objectContaining({ code: 'MENTION_STALE' }),
+    });
     expect(await service.currentMentions(leader)).toEqual([]);
     expect(await database.getRepository(MentionSnapshot).count()).toBe(2);
     const tie = await addMeeting('2030-01-01', 'ffffffff-ffff-4fff-bfff-ffffffffffff');
@@ -487,6 +504,152 @@ describeWithPostgres('Meeting completion with PostgreSQL (integration)', () => {
     expect(bounded.slice(0, 8)).toEqual(full.slice(0, 8));
     await expect(service.currentMentions({ ...leader, role: 'it-admin' }, 9)).rejects.toThrow();
     expect(await service.currentMentions({ ...leader, id: randomUUID() }, 9)).toEqual([]);
+  });
+
+  it("persists only the owner's workflow state, keeps snapshots immutable, and upgrades existing mentions as Open", async () => {
+    await cryptoClient.complete(meeting.id, [leader.id]);
+    const [mention] = await service.currentMentions(leader);
+    const snapshotsBefore = await database.getRepository(MentionSnapshot).find();
+    const meetingBefore = await database.getRepository(Meeting).findOneByOrFail({ id: meeting.id });
+    const runner = database.createQueryRunner();
+    await runner.connect();
+    try {
+      await runner.query(`SET search_path TO "${schema}"`);
+      await runner.query('DROP TABLE mention_comment_operations');
+      await runner.query('DROP TABLE mention_states');
+      await new MentionWorkflow1720000026000().up(runner);
+    } finally {
+      await runner.query('RESET search_path');
+      await runner.release();
+    }
+    expect(await service.currentMentions(leader)).toEqual([expect.objectContaining({ id: mention.id, done: false })]);
+    await expect(workflow.setState(mention.id, true, { ...leader, id: randomUUID() })).rejects.toThrow();
+    await workflow.setState(mention.id, true, leader);
+    await workflow.setState(mention.id, true, leader);
+    expect(await service.currentMentions(leader, 9, true)).toEqual([]);
+    expect(await service.currentMentions(leader)).toEqual([expect.objectContaining({ done: true })]);
+    await workflow.setState(mention.id, false, leader);
+    expect(await service.currentMentions(leader, 9, true)).toHaveLength(1);
+    expect(await database.getRepository(MentionSnapshot).find()).toEqual(snapshotsBefore);
+    expect(await database.getRepository(Meeting).findOneByOrFail({ id: meeting.id })).toEqual(meetingBefore);
+  });
+
+  it("atomically adds one encrypted standalone Update and retries without completing a reopened mention", async () => {
+    await cryptoClient.complete(meeting.id, [leader.id]);
+    const [mention] = await service.currentMentions(leader);
+    const id = randomUUID();
+    const comment = { id, textEnvelope: cryptoClient.envelope(id, 257) };
+    await workflow.setState(mention.id, true, leader, comment);
+    await workflow.setState(mention.id, true, leader, comment);
+    expect(await service.currentMentions(leader)).toEqual([expect.objectContaining({ done: true })]);
+    const updates = await database.getRepository(TopicUpdate).find();
+    expect(updates).toEqual([expect.objectContaining({ id, topicId: mention.topicId, createdById: leader.id, type: 'update' })]);
+    expect(updates[0].textEnvelope).toEqual(Buffer.from(comment.textEnvelope, 'base64url'));
+    const conflictingId = randomUUID();
+    await expect(workflow.setState(mention.id, true, leader, {
+      id: conflictingId, textEnvelope: cryptoClient.envelope(conflictingId, 257),
+    })).rejects.toMatchObject({ response: expect.objectContaining({ code: 'MENTION_ALREADY_DONE' }) });
+    await workflow.setState(mention.id, false, leader);
+    expect(await workflow.setState(mention.id, true, leader, comment)).toMatchObject({ done: false });
+    expect(await database.getRepository(TopicUpdate).find()).toEqual(updates);
+    expect(await service.currentMentions(leader, 9, true)).toHaveLength(1);
+  });
+
+  it("rolls back the Update and scalar ledger if the state write fails, then safely retries", async () => {
+    await cryptoClient.complete(meeting.id, [leader.id]);
+    const [mention] = await service.currentMentions(leader);
+    const id = randomUUID();
+    const comment = { id, textEnvelope: cryptoClient.envelope(id, 257) };
+    await database.query(`ALTER TABLE "${schema}".mention_states ADD CONSTRAINT fail_state CHECK (NOT done)`);
+    try {
+      await expect(workflow.setState(mention.id, true, leader, comment)).rejects.toThrow();
+      expect(await database.getRepository(TopicUpdate).count()).toBe(0);
+      expect(await database.getRepository(MentionCommentOperation).count()).toBe(0);
+      expect(await service.currentMentions(leader)).toEqual([expect.objectContaining({ done: false })]);
+    } finally {
+      await database.query(`ALTER TABLE "${schema}".mention_states DROP CONSTRAINT fail_state`);
+    }
+    await workflow.setState(mention.id, true, leader, comment);
+    expect(await database.getRepository(TopicUpdate).count()).toBe(1);
+  });
+
+  it("serializes competing comment operations so exactly one succeeds", async () => {
+    await cryptoClient.complete(meeting.id, [leader.id]);
+    const [mention] = await service.currentMentions(leader);
+    const comments = [randomUUID(), randomUUID()].map((id) => ({ id, textEnvelope: cryptoClient.envelope(id, 257) }));
+    const results = await Promise.allSettled(comments.map((comment) => workflow.setState(mention.id, true, leader, comment)));
+    expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
+    expect(results.filter((result) => result.status === 'rejected')).toEqual([
+      expect.objectContaining({ reason: expect.objectContaining({ response: expect.objectContaining({ code: 'MENTION_ALREADY_DONE' }) }) }),
+    ]);
+    expect(await database.getRepository(TopicUpdate).count()).toBe(1);
+    expect(await database.getRepository(MentionCommentOperation).count()).toBe(1);
+  });
+
+  it("rechecks currentness after waiting for a replacing Meeting and rejects its stale comment", async () => {
+    await cryptoClient.complete(meeting.id, [leader.id]);
+    const [mention] = await service.currentMentions(leader);
+    const next = await database.getRepository(Meeting).save({ ...meeting, id: randomUUID(), date: '2030-01-01', status: 'in_progress' });
+    await database.getRepository(MeetingDocument).save({
+      id: randomUUID(), activeSnapshotId: randomUUID(), meetingId: next.id,
+      currentServerSequence: '0', envelopeFormat: 1, cryptoSuite: 1, meetingCodec: 2,
+    });
+    await database.getRepository(MeetingTopic).save({ ...appearance, id: randomUUID(), meetingId: next.id });
+    const input = await cryptoClient.prepare(next.id, [leader.id]);
+    let reached!: () => void;
+    let release!: () => void;
+    const reachedSnapshot = new Promise<void>((resolve) => { reached = resolve; });
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const originalApply = snapshots.apply.bind(snapshots);
+    const spy = jest.spyOn(snapshots, 'apply').mockImplementationOnce(async (...args) => {
+      reached();
+      await gate;
+      return originalApply(...args);
+    });
+    const completion = service.complete(next.id, leader, input);
+    await reachedSnapshot;
+    const id = randomUUID();
+    const resolving = workflow.setState(mention.id, true, leader, { id, textEnvelope: cryptoClient.envelope(id, 257) });
+    // Observe the rejection immediately so it never becomes an unhandled promise.
+    const rejected = expect(resolving).rejects.toMatchObject({ response: expect.objectContaining({ code: 'MENTION_STALE' }) });
+    release();
+    await completion;
+    await rejected;
+    spy.mockRestore();
+    expect(await database.getRepository(TopicUpdate).count()).toBe(0);
+    expect(await service.currentMentions(leader)).toEqual([expect.objectContaining({ meetingId: next.id, done: false })]);
+  });
+
+  it("filters Open before the dashboard limit even when Done mentions sort first", async () => {
+    await cryptoClient.complete(meeting.id, [leader.id]);
+    const repo = database.getRepository(MentionSnapshot);
+    const original = await repo.findOneByOrFail({ userId: leader.id });
+    await workflow.setState(original.id, true, leader);
+    for (let occurrence = 1; occurrence <= 9; occurrence++) {
+      await repo.save({ ...original, id: randomUUID(), occurrence });
+    }
+    expect(await service.currentMentions(leader, 9, true)).toHaveLength(9);
+    expect((await service.currentMentions(leader, 9, true)).every((row) => !row.done)).toBe(true);
+    const open = await service.currentMentions(leader, 9, true);
+    await workflow.setState(open[0].id, true, leader);
+    expect(await service.currentMentions(leader, 9, true)).toHaveLength(8);
+  });
+
+  it("rejects invalid ciphertext, revoked epochs, and comment writes by readers without changing workflow state", async () => {
+    await cryptoClient.complete(meeting.id, [leader.id]);
+    const [mention] = await service.currentMentions(leader);
+    await expect(workflow.setState(mention.id, true, leader, { id: randomUUID(), textEnvelope: 'invalid' })).rejects.toThrow();
+    await database.getRepository(User).update(leader.id, { role: 'guest' });
+    await expect(workflow.setState(mention.id, true, leader)).rejects.toThrow();
+    await expect(service.currentMentions({ ...leader, role: 'guest' })).rejects.toThrow();
+    const id = randomUUID();
+    const comment = { id, textEnvelope: cryptoClient.envelope(id, 257) };
+    await expect(workflow.setState(mention.id, true, leader, comment)).rejects.toThrow();
+    await database.getRepository(User).update(leader.id, { role: 'user' });
+    await database.getRepository(E2eeClientEpoch).update(cryptoClient.epochId, { revokedAt: new Date() });
+    await expect(workflow.setState(mention.id, true, leader, comment)).rejects.toThrow();
+    expect(await service.currentMentions(leader)).toEqual([expect.objectContaining({ done: false })]);
+    expect(await database.getRepository(TopicUpdate).count()).toBe(0);
   });
 
   it("rolls back mention rows together with failed completion and permits a clean retry", async () => {

@@ -1,6 +1,6 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { FindOptionsWhere, In, Repository } from 'typeorm';
+import { EntityManager, FindOptionsWhere, In, Repository } from 'typeorm';
 import { User } from '../users/user.entity';
 import { DiscriminatedTopicDto, TopicUpdateDto } from './dto/topic.dto';
 import { TOPIC_TYPES, Topic, TopicType } from './topic.entity';
@@ -230,51 +230,54 @@ export class TopicsService {
 
   async addUpdate(topicId: string, input: TopicUpdateDto, user: User) {
     this.scalars.assertContentUser(user);
-    return this.topics.manager.transaction(async (manager) => {
-      const topic = await manager.getRepository(Topic).findOne({
-        where: { id: topicId },
-        relations: { responsibleUser: true, defaultSection: true },
-      });
-      if (!topic) throw codedHttpException(HttpStatus.NOT_FOUND, 'TOPIC_NOT_FOUND', 'Topic not found');
-      const updates = manager.getRepository(TopicUpdate);
-      const existing = await updates.findOne({
-        where: { id: input.id },
-        relations: { createdBy: true },
-      });
-      const scalar = await this.scalars.validateWrite(
-        manager,
-        user,
-        {
-          aggregateType: SCALAR_AGGREGATES.update,
-          recordId: input.id,
-          fieldId: UPDATE_SCALAR_FIELDS.text,
-        },
-        input.textEnvelope,
-        existing?.textCommitRevision ?? null,
-      );
-      if (existing) {
-        if (!scalar.duplicate
-          || existing.topicId !== topicId
-          || existing.type !== (input.type ?? 'update')) {
-          throw codedHttpException(
-            HttpStatus.CONFLICT,
-            'TOPIC_UPDATE_RETRY_MISMATCH',
-            'Topic Update identifier was retried with different content',
-          );
-        }
-        return topicUpdateResponse(existing, user);
-      }
-      const update = await updates.save(updates.create({
-        id: input.id,
-        topicId,
-        createdById: user.id,
-        date: new Date(),
-        type: input.type ?? 'update',
-        textEnvelope: scalar.envelope,
-        textCommitRevision: scalar.commitRevision,
-      }));
-      return topicUpdateResponse(update, user);
+    return this.topics.manager.transaction((manager) => this.addUpdateInTransaction(manager, topicId, input, user));
+  }
+
+  async addUpdateInTransaction(manager: EntityManager, topicId: string, input: TopicUpdateDto, user: User) {
+    this.scalars.assertContentUser(user);
+    const topic = await manager.getRepository(Topic).findOne({
+      where: { id: topicId },
+      relations: { responsibleUser: true, defaultSection: true },
     });
+    if (!topic) throw codedHttpException(HttpStatus.NOT_FOUND, 'TOPIC_NOT_FOUND', 'Topic not found');
+    const updates = manager.getRepository(TopicUpdate);
+    const existing = await updates.findOne({
+      where: { id: input.id },
+      relations: { createdBy: true },
+    });
+    const scalar = await this.scalars.validateWrite(
+      manager,
+      user,
+      {
+        aggregateType: SCALAR_AGGREGATES.update,
+        recordId: input.id,
+        fieldId: UPDATE_SCALAR_FIELDS.text,
+      },
+      input.textEnvelope,
+      existing?.textCommitRevision ?? null,
+    );
+    if (existing) {
+      if (existing.createdById !== user.id || !scalar.duplicate
+        || existing.topicId !== topicId
+        || existing.type !== (input.type ?? 'update')) {
+        throw codedHttpException(
+          HttpStatus.CONFLICT,
+          'TOPIC_UPDATE_RETRY_MISMATCH',
+          'Topic Update identifier was retried with different content',
+        );
+      }
+      return topicUpdateResponse(existing, user);
+    }
+    const update = await updates.save(updates.create({
+      id: input.id,
+      topicId,
+      createdById: user.id,
+      date: new Date(),
+      type: input.type ?? 'update',
+      textEnvelope: scalar.envelope,
+      textCommitRevision: scalar.commitRevision,
+    }));
+    return topicUpdateResponse(update, user);
   }
 
   private async validateTopicScalars(
