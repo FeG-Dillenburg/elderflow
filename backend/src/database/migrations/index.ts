@@ -1,3 +1,4 @@
+import { MentionWorkflow1720000026000 } from "./1720000026000-MentionWorkflow";
 import { AgendaSectionDefaults1720000025000 } from './1720000025000-AgendaSectionDefaults';
 import { DeploymentUpdates1720000024000 } from './1720000024000-DeploymentUpdates';
 import { TourProgress1720000023000 } from './1720000023000-TourProgress';
@@ -53,4 +54,5 @@ export const migrations = [
   TourProgress1720000023000,
   DeploymentUpdates1720000024000,
   AgendaSectionDefaults1720000025000,
+  MentionWorkflow1720000026000,
 ];

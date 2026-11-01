@@ -68,7 +68,7 @@ async function loadMentions(): Promise<void> {
   mentionsController = current;
   mentionsLoading.value = true;
   try {
-    const rows = await currentMentions(current.signal, 9);
+    const rows = await currentMentions(current.signal, 9, true);
     if (current.signal.aborted) return;
     mentions.value = rows.slice(0, 8);
     mentionsHasMore.value = rows.length > 8;

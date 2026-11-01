@@ -63,11 +63,12 @@ export class MeetingsController {
   myMentions(
     @CurrentUser() user: User,
     @Query("limit", new ParseIntPipe({ optional: true })) limit?: number,
+    @Query("openOnly", new DefaultValuePipe(false), ParseBoolPipe) openOnly?: boolean,
   ) {
     if (limit !== undefined && (limit < 1 || limit > 9)) {
       throw new BadRequestException("Mention limit must be between 1 and 9");
     }
-    return this.service.currentMentions(user, limit);
+    return this.service.currentMentions(user, limit, openOnly);
   }
 
   @Post(":id/completion/prepare")

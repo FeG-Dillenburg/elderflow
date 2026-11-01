@@ -1,3 +1,5 @@
+import { currentMentionQuery } from "./current-mention-query";
+import { MentionState } from "./mention-state.entity";
 import { CompletionPrepareDto, CompletionSubmissionDto } from "./dto/completion.dto";
 import { MentionSnapshot } from "./mention-snapshot.entity";
 import { mentionRecordId } from "./mention-completion";
@@ -137,6 +139,7 @@ export class MeetingsService {
         }
         // Lock Topics in a stable order across Meetings that share appearances.
         for (const appearance of [...appearances].sort((left, right) => left.topicId.localeCompare(right.topicId))) {
+          await manager.findOne(Topic, { where: { id: appearance.topicId }, lock: { mode: "pessimistic_write" } });
           if (!appearance.topicStatusDecision) continue;
           await manager.update(Topic, appearance.topicId, { status: appearance.topicStatusDecision });
           appearance.topic!.status = appearance.topicStatusDecision;
@@ -185,30 +188,17 @@ export class MeetingsService {
     }
   }
 
-  async currentMentions(user: User, limit?: number) {
+  async currentMentions(user: User, limit?: number, openOnly = false) {
     this.scalars.assertContentUser(user);
     if (permissionsByRole[user.role].topics === "hide" || permissionsByRole[user.role].meetings === "hide") {
       throw codedHttpException(HttpStatus.FORBIDDEN, "E2EE_PROTECTED_CIPHERTEXT_FORBIDDEN", "Content access required");
     }
-    const query = this.dataSource.getRepository(MentionSnapshot).createQueryBuilder("mention")
-      .innerJoinAndSelect("mention.appearance", "appearance")
-      .innerJoinAndSelect("appearance.meeting", "meeting")
-      .innerJoinAndSelect("appearance.topic", "topic")
-      .where("mention.user_id = :userId", { userId: user.id })
-      .andWhere("meeting.status = 'completed'")
-      .andWhere((query) => `NOT EXISTS ${query.subQuery()
-        .select("1").from(MeetingTopic, "newer_appearance")
-        .innerJoin("newer_appearance.meeting", "newer")
-        .where("newer_appearance.topic_id = appearance.topic_id")
-        .andWhere("newer.status = 'completed'")
-        .andWhere("(newer.date, newer.begin_time, newer.id) > (meeting.date, meeting.begin_time, meeting.id)")
-        .getQuery()}`)
-      .orderBy("meeting.date", "DESC").addOrderBy("meeting.begin_time", "DESC")
-      .addOrderBy("meeting.id", "DESC").addOrderBy("mention.occurrence", "ASC")
-      .addOrderBy("mention.id", "ASC");
+    const query = currentMentionQuery(this.dataSource.manager, user);
+    if (openOnly) query.andWhere("COALESCE(workflow.done, false) = false");
     if (limit !== undefined) query.limit(limit);
     const rows = await query.getMany();
     return rows.map((row) => ({
+      done: (row as MentionSnapshot & { workflow?: MentionState }).workflow?.done ?? false,
       id: row.id, appearanceId: row.appearanceId,
       topicId: row.appearance!.topicId, meetingId: row.appearance!.meetingId,
       date: row.appearance!.meeting!.date,

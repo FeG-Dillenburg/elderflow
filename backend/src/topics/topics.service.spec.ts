@@ -203,6 +203,7 @@ describe("TopicsService encrypted contracts", () => {
       type: "update",
       textEnvelope: Buffer.from([1]),
       textCommitRevision: "3",
+      createdById: viewer.id,
     });
     scalars.validateWrite.mockResolvedValue({
       envelope: Buffer.from([1]),
