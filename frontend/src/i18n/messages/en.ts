@@ -19,6 +19,7 @@ export default {
       bugfix: "Bug fix",
     },
     entries: {
+      "encrypted-topic-revision-save-fix": "Fixed an incorrect unlock error when saving encrypted Topic fields, including godparents and membership process status.",
       "saved-topic-fields-live-refresh": "Saved Topic fields now update automatically for other users viewing the Agenda, including membership status, godparents, and responsible users.",
       "resolve-mentions": "You can now mark mentions as done, reopen them, or resolve them while posting an update to the linked Topic.",
       "personal-dashboard": "Your dashboard now greets you personally, shows your newest mentions, and highlights Topic updates made outside Meetings.",

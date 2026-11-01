@@ -96,3 +96,27 @@ ciphertext, and foreign-key rollback. Component/provider suites cover draft
 retention, untouched fields, coalescing, reconnect invalidation, and existing
 completion/compaction/security lifecycle behavior. This is an integration harness,
 not a manual two-browser verification.
+
+
+### HTTP-boundary regression
+
+The initial saved-field integration harness bypassed the global HTTP interceptor.
+Its revision metadata used plaintext field names (`godparents`, `description`,
+and `membershipProcessStatus`), so the recursive plaintext guard rejected those
+numeric revisions as legacy content with `E2EE_PROTECTED_TEXT_WRITE_REQUIRED`.
+The frontend now serializes revision metadata using explicit `*CommitRevision`
+properties; the backend DTO and locked revision checks use those same properties.
+The plaintext guard remains unchanged. The cross-boundary frontend test feeds
+actual serialized patches through that guard for all four scalar fields. The
+PostgreSQL harness now sends the encrypted save through the real Topics controller,
+production plaintext interceptor, and strict DTO validation before checking
+second-user decryption and workspace updates.
+
+
+A two-browser follow-up on the Planned Meeting preparation screen verified both
+membership process status and godparents: a normal User saved temporary markers
+in Safari and the Superadmin session in the in-app browser displayed them without
+reload. The Superadmin then restored the original values and Safari displayed
+those restores without reload. Both browsers remained unlocked and connected;
+no unlock-required error appeared. The original values were restored after the
+verification.

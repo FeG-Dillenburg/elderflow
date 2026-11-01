@@ -19,6 +19,7 @@ const de = {
       bugfix: "Fehlerbehebung",
     },
     entries: {
+      "encrypted-topic-revision-save-fix": "Eine fälschliche Entsperraufforderung beim Speichern verschlüsselter Themenfelder, etwa Paten und Mitgliedschaftsprozessstatus, wurde behoben.",
       "saved-topic-fields-live-refresh": "Gespeicherte Themenfelder werden jetzt bei anderen Personen in der Tagesordnung automatisch aktualisiert, etwa Aufnahmestatus, Paten und Zuständigkeit.",
       "resolve-mentions": "Du kannst Erwähnungen jetzt erledigen, wieder öffnen oder zusammen mit einer Aktualisierung zum verknüpften Thema abschließen.",
       "personal-dashboard": "Dein Dashboard begrüßt dich jetzt persönlich, zeigt deine neuesten Erwähnungen und hebt Themenaktualisierungen außerhalb von Sitzungen hervor.",

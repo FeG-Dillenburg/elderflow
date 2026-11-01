@@ -1,7 +1,7 @@
 /// <reference lib="es2022.error" />
 import 'dotenv/config';
 import { randomUUID } from 'node:crypto';
-import { INestApplication } from '@nestjs/common';
+import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { HttpAdapterHost } from '@nestjs/core';
 import { Test } from '@nestjs/testing';
 import { once } from 'node:events';
@@ -39,6 +39,9 @@ import { Task } from '../src/tasks/task.entity';
 import { TopicUpdate } from '../src/topics/topic-update.entity';
 import { Topic } from '../src/topics/topic.entity';
 import { User } from '../src/users/user.entity';
+import { TopicsController } from '../src/topics/topics.controller';
+import { TopicHistoryService } from '../src/topics/topic-history.service';
+import { ProtectedTextBoundaryInterceptor } from '../src/e2ee/protected-text-boundary.interceptor';
 import { TopicsService } from '../src/topics/topics.service';
 import { ScalarSession } from '../../frontend/src/e2ee/scalar-session';
 import { createMeetingWorkspace } from '../../frontend/src/meetings/workspace/core';
@@ -401,20 +404,29 @@ describeWithPostgres('Encrypted Meeting workspaces with PostgreSQL', () => {
     let relay: MeetingCollaborationRelayService;
     let tickets: MeetingCollaborationTicketService;
     let currentUser: User;
+    let topics: TopicsService;
     const clients: WebSocket[] = [];
 
     beforeAll(async () => {
       currentUser = await database.getRepository(User).findOneByOrFail({ id: userId });
       tickets = new MeetingCollaborationTicketService(database.getRepository(MeetingCollaborationTicket));
+      topics = new TopicsService(database.getRepository(Topic), database.getRepository(TopicUpdate),
+        database.getRepository(MeetingTopic), new RecurrenceService(), new E2eeScalarService());
+      const history = new TopicHistoryService(database.getRepository(Topic), database.getRepository(TopicUpdate),
+        database.getRepository(MeetingTopic), database.getRepository(SkippedRecurrence));
       const module = await Test.createTestingModule({
-        controllers: [MeetingsController],
+        controllers: [MeetingsController, TopicsController],
         providers: [
           { provide: MeetingsService, useValue: service },
+          { provide: TopicsService, useValue: topics },
+          { provide: TopicHistoryService, useValue: history },
           { provide: MeetingCollaborationTicketService, useValue: tickets },
         ],
       }).compile();
       app = module.createNestApplication({ logger: false });
       app.use(raw({ type: isE2eeMediaType, limit: '17mb' }));
+      app.useGlobalInterceptors(new ProtectedTextBoundaryInterceptor());
+      app.useGlobalPipes(new ValidationPipe({ transform: true, whitelist: true, forbidNonWhitelisted: true }));
       app.use((req: { user: User }, _res: unknown, next: () => void) => {
         req.user = currentUser;
         next();
@@ -466,8 +478,6 @@ describeWithPostgres('Encrypted Meeting workspaces with PostgreSQL', () => {
 
     it('refreshes the second client workspace from committed Topic fields without reloading', async () => {
       await database.getRepository(MeetingTopic).save({ id: appearanceId, meetingId, topicId, sectionId, position: 1, source: 'manual' });
-      const topics = new TopicsService(database.getRepository(Topic), database.getRepository(TopicUpdate),
-        database.getRepository(MeetingTopic), new RecurrenceService(), new E2eeScalarService());
       const keys = { organizationId, ockId, clientEpochId: epochId, noncePrefix,
         contentKey: new Uint8Array(32).fill(73), signingPrivateKey };
       const writer = new ScalarSession();
@@ -542,8 +552,10 @@ describeWithPostgres('Encrypted Meeting workspaces with PostgreSQL', () => {
         const current = await topics.findOne(topicId, viewer);
         const revision = current.protected!.godparentsCommitRevision;
         const envelope = await encrypt('Saved by A');
-        await topics.update(topicId, { protected: { godparentsEnvelope: envelope },
-          expectedRevisions: { godparents: revision } } as never, viewer);
+        const response = await request(app.getHttpServer()).put(`/api/topics/${topicId}`)
+          .send({ protected: { godparentsEnvelope: envelope }, expectedRevisions: { godparentsCommitRevision: revision } });
+        expect(response.body).not.toMatchObject({ code: 'E2EE_PROTECTED_TEXT_WRITE_REQUIRED' });
+        expect(response.status).toBe(200);
         await b.wait('topic-changed');
         await a.wait('topic-changed');
         await shared.wait('topic-changed');
@@ -553,7 +565,7 @@ describeWithPostgres('Encrypted Meeting workspaces with PostgreSQL', () => {
         expect(workspace.state.meeting?.agenda?.find((item) => item.id === appearanceId)?.topic?.godparents).toBe('Saved by A');
         // Stale encrypted drafts, rejected ciphertext, and database rollback never announce a save.
         await expect(topics.update(topicId, { protected: { godparentsEnvelope: Buffer.from(await reader.encrypt(context, 'Stale draft')).toString('base64url') },
-          expectedRevisions: { godparents: revision } } as never, secondViewer)).rejects.toMatchObject({
+          expectedRevisions: { godparentsCommitRevision: revision } } as never, secondViewer)).rejects.toMatchObject({
           response: expect.objectContaining({ code: 'TOPIC_FIELDS_CHANGED' }),
         });
         await expect(topics.update(topicId, { protected: { godparentsEnvelope: 'invalid' } } as never, viewer)).rejects.toThrow();

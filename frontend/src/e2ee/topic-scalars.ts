@@ -112,8 +112,16 @@ export async function protectTopicPatch(
     description: _description,
     membershipProcessStatus: _membershipProcessStatus,
     godparents: _godparents,
+    expectedRevisions,
     ...structural
   } = input;
+  if (expectedRevisions) {
+    Object.assign(structural, {
+      expectedRevisions: Object.fromEntries(Object.entries(TOPIC_SCALAR_FIELDS)
+        .filter(([name]) => expectedRevisions[name as TopicScalarName] !== undefined)
+        .map(([name, field]) => [field.revisionProperty, expectedRevisions[name as TopicScalarName]])),
+    });
+  }
   return Object.keys(protectedFields).length
     ? { ...structural, protected: protectedFields }
     : structural;

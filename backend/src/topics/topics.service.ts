@@ -148,8 +148,8 @@ export class TopicsService {
           'Topic type changes require fresh encrypted membership scalars',
         );
       }
-      for (const [name, field] of Object.entries(TOPIC_SCALAR_FIELDS)) {
-        const expected = input.expectedRevisions?.[name as keyof TopicExpectedRevisionsDto];
+      for (const field of Object.values(TOPIC_SCALAR_FIELDS)) {
+        const expected = input.expectedRevisions?.[field.revisionProperty];
         if (input.protected?.[field.envelopeProperty] && expected !== undefined
           && expected !== String(topic[field.revisionProperty])
           && input.protected[field.envelopeProperty] !== topic[field.envelopeProperty].toString("base64url")) {

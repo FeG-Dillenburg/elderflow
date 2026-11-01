@@ -68,10 +68,10 @@ export class TopicDto {
 }
 
 export class TopicExpectedRevisionsDto {
-  @IsOptional() @Matches(/^[0-9]+$/) name?: string;
-  @IsOptional() @Matches(/^[0-9]+$/) description?: string;
-  @IsOptional() @Matches(/^[0-9]+$/) membershipProcessStatus?: string;
-  @IsOptional() @Matches(/^[0-9]+$/) godparents?: string;
+  @IsOptional() @Matches(/^[0-9]+$/) nameCommitRevision?: string;
+  @IsOptional() @Matches(/^[0-9]+$/) descriptionCommitRevision?: string;
+  @IsOptional() @Matches(/^[0-9]+$/) membershipProcessStatusCommitRevision?: string;
+  @IsOptional() @Matches(/^[0-9]+$/) godparentsCommitRevision?: string;
 }
 
 export class TopicPatchDto {
