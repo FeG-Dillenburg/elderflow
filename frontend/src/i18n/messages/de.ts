@@ -19,7 +19,7 @@ const de = {
       bugfix: "Fehlerbehebung",
     },
     entries: {
-      "saved-topic-fields-live-refresh": "Gespeicherte Themenfelder werden jetzt bei anderen Personen in der Tagesordnung automatisch aktualisiert, etwa Aufnahmestatus, Paten und Zuständigkeit.",
+      "saved-topic-fields-live-refresh": "Gespeicherte Themenfelder werden jetzt während Sitzungen automatisch bei anderen Personen aktualisiert.",
       "resolve-mentions": "Du kannst Erwähnungen jetzt erledigen, wieder öffnen oder zusammen mit einer Aktualisierung zum verknüpften Thema abschließen.",
       "personal-dashboard": "Dein Dashboard begrüßt dich jetzt persönlich, zeigt deine neuesten Erwähnungen und hebt Themenaktualisierungen außerhalb von Sitzungen hervor.",
       "agenda-section-type-defaults": "Tagesordnungsabschnitte lassen sich jetzt per Drag-and-drop sortieren, im Dialog bearbeiten und als Standard für Themenarten festlegen.",

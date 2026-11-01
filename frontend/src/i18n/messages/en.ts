@@ -19,7 +19,7 @@ export default {
       bugfix: "Bug fix",
     },
     entries: {
-      "saved-topic-fields-live-refresh": "Saved Topic fields now update automatically for other users viewing the Agenda, including membership status, godparents, and responsible users.",
+      "saved-topic-fields-live-refresh": "Saved Topic fields now update automatically for other users during Meetings.",
       "resolve-mentions": "You can now mark mentions as done, reopen them, or resolve them while posting an update to the linked Topic.",
       "personal-dashboard": "Your dashboard now greets you personally, shows your newest mentions, and highlights Topic updates made outside Meetings.",
       "agenda-section-type-defaults": "Agenda sections now support drag-and-drop ordering, dialog editing, and default sections for Topic types.",
