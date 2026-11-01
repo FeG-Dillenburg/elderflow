@@ -17,6 +17,8 @@
 
 Every new feature, improvement, or bug-fix ticket and its implementing PR must include a user-facing deployment announcement: a stable backend manifest entry, its category, and matching English/German catalog text. A ticket may explicitly authorize omission for work without user-visible effects. If it does not, obtain Daniel's agreement before omitting the announcement; agents must not decide that exception silently.
 
+Bug fixes needed to complete or correct an incomplete or buggy feature/improvement during implementation do not receive a separate deployment announcement unless the user explicitly requests one. They are covered by the original feature/improvement announcement, including fixes made in follow-up commits or tickets. This is a standing exception; no additional approval is needed to omit the extra announcement.
+
 Ticket creation states the intended category or agreed omission; implementation adds the entry and translations in the same PR. Ticket creation must not change a live database. This also applies to documentation, test, and internal refactor PRs under the agreed exception rule. See `docs/agents/deployment-announcements.md`.
 
 ## Internationalization

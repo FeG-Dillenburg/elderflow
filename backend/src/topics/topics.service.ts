@@ -2,12 +2,13 @@ import { HttpStatus, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { EntityManager, FindOptionsWhere, In, Repository } from 'typeorm';
 import { User } from '../users/user.entity';
-import { DiscriminatedTopicDto, TopicUpdateDto } from './dto/topic.dto';
+import { DiscriminatedTopicDto, TopicUpdateDto, TopicExpectedRevisionsDto } from './dto/topic.dto';
 import { TOPIC_TYPES, Topic, TopicType } from './topic.entity';
 import { codedHttpException } from '../errors/coded-http.exception';
 import { TopicUpdate } from './topic-update.entity';
 import { MeetingTopic } from '../meetings/meeting-topic.entity';
 import { Meeting } from '../meetings/meeting.entity';
+import { meetingCollaborationEvents } from '../meetings/meeting-collaboration-events';
 import { normalizedMembershipTopicState } from './membership-topic-state';
 import { RecurrenceService } from '../recurrence/recurrence.service';
 import { SkippedRecurrence } from '../recurrence/skipped-recurrence.entity';
@@ -110,9 +111,9 @@ export class TopicsService {
     });
   }
 
-  async update(id: string, input: Partial<DiscriminatedTopicDto>, user: User) {
+  async update(id: string, input: Partial<DiscriminatedTopicDto> & { expectedRevisions?: TopicExpectedRevisionsDto }, user: User) {
     this.scalars.assertContentUser(user);
-    return this.topics.manager.transaction(async (manager) => {
+    const saved = await this.topics.manager.transaction(async (manager) => {
       const topics = manager.getRepository(Topic);
       const topic = await topics.findOne({
         where: { id },
@@ -147,10 +148,18 @@ export class TopicsService {
           'Topic type changes require fresh encrypted membership scalars',
         );
       }
+      for (const field of Object.values(TOPIC_SCALAR_FIELDS)) {
+        const expected = input.expectedRevisions?.[field.revisionProperty];
+        if (input.protected?.[field.envelopeProperty] && expected !== undefined
+          && expected !== String(topic[field.revisionProperty])
+          && input.protected[field.envelopeProperty] !== topic[field.envelopeProperty].toString("base64url")) {
+          throw codedHttpException(HttpStatus.CONFLICT, 'TOPIC_FIELDS_CHANGED', 'Topic fields changed; review before retrying');
+        }
+      }
       const encrypted = input.protected
         ? await this.validateTopicScalars(manager, user, id, input.protected, topic)
         : {};
-      const { protected: _protected, ...structural } = input;
+      const { protected: _protected, expectedRevisions: _expectedRevisions, ...structural } = input;
       const saved = await topics.save(Object.assign(
         topic,
         structural,
@@ -161,6 +170,8 @@ export class TopicsService {
       if (saved.type === 'recurring') await this.recurrence.validate(manager, saved);
       return topicResponse(saved, user);
     });
+    meetingCollaborationEvents.emit("topic-changed", { topicId: id });
+    return saved;
   }
 
   private assertSupportedType(type: string): asserts type is TopicType {

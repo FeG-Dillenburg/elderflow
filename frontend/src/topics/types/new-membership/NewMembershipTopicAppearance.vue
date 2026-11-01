@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, reactive, ref } from "vue";
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import { RouterLink } from "vue-router";
 import Select from "primevue/select";
 import { useI18n } from "vue-i18n";
@@ -40,10 +40,25 @@ const selectionState = reactive<Record<string, "idle" | "saving" | "saved" | "er
 const selectionErrors = reactive<Record<string, string>>({});
 const queued: Record<string, unknown> = {};
 const saving = new Set<string>();
+const persistedVersions = { membershipStatusSignal: 0, responsibleUserId: 0 };
+
+const applyPersistedSelection = (field: "membershipStatusSignal" | "responsibleUserId") => {
+  if (field === "membershipStatusSignal") signal.value = liveTopic.value.membershipStatusSignal ?? "new";
+  else responsibleUserId.value = liveTopic.value.responsibleUserId;
+};
+
+for (const field of ["membershipStatusSignal", "responsibleUserId"] as const) {
+  watch(() => liveTopic.value[field], () => {
+    persistedVersions[field] += 1;
+    if (saving.has(field) || selectionState[field] === "error" || Object.hasOwn(queued, field)) return;
+    applyPersistedSelection(field);
+  });
+}
 
 const drainSelection = async (field: "membershipStatusSignal" | "responsibleUserId") => {
   if (saving.has(field)) return;
   saving.add(field);
+  const initialPersistedVersion = persistedVersions[field];
   while (Object.prototype.hasOwnProperty.call(queued, field)) {
     const value = queued[field];
     delete queued[field];
@@ -60,6 +75,9 @@ const drainSelection = async (field: "membershipStatusSignal" | "responsibleUser
     }
   }
   saving.delete(field);
+  if (selectionState[field] !== "error" && persistedVersions[field] !== initialPersistedVersion) {
+    applyPersistedSelection(field);
+  }
 };
 const saveSelection = (field: "membershipStatusSignal" | "responsibleUserId", value: unknown) => {
   queued[field] = value;
@@ -153,7 +171,8 @@ const saveCurrentMinutes = (text: string | null) =>
             hide-label
             :value="liveTopic.godparents"
             :label="t('newMembershipTopic.godparents')"
-            :save="(value) => saveField({ godparents: value })"
+            :revision="liveTopic.scalarRevisions?.godparents"
+            :save="(value, revision) => saveField({ godparents: value, expectedRevisions: { godparents: revision } })"
           />
           <strong v-else>{{ display.godparents || t("common.none") }}</strong>
         </div>
@@ -202,7 +221,8 @@ const saveCurrentMinutes = (text: string | null) =>
             hide-label
             :value="liveTopic.membershipProcessStatus"
             :label="t('common.status')"
-            :save="(value) => saveField({ membershipProcessStatus: value })"
+            :revision="liveTopic.scalarRevisions?.membershipProcessStatus"
+            :save="(value, revision) => saveField({ membershipProcessStatus: value, expectedRevisions: { membershipProcessStatus: revision } })"
           />
           <strong v-else>{{ display.processStatus || t("common.none") }}</strong>
         </div>

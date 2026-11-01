@@ -2,6 +2,8 @@
 
 Every user-visible feature, improvement, and bug fix ships with an announcement in the same PR. Tickets state the intended category (`feature`, `improvement`, or `bugfix`) or an explicitly authorized omission. Work without user-visible effects, including documentation, tests, and internal refactors, may omit announcements only when the ticket explicitly permits it or Daniel agrees. See [the issue workflow](issue-tracker.md).
 
+Bug fixes needed to complete or correct an incomplete or buggy feature/improvement during implementation do not receive a separate deployment announcement unless the user explicitly requests one. They are covered by the original feature/improvement announcement, including fixes made in follow-up commits or tickets. This is a standing exception; no additional approval is needed to omit the extra announcement.
+
 1. Append an entry to `backend/src/deployment-updates/manifest.json` with a descriptive, unique, stable `id` and supported `category`.
 2. Add matching `deploymentUpdates.entries.<id>` copy to both frontend I18n catalogs. Keep old keys so stored history remains readable. A new language requires only catalog additions.
 3. Run catalog-parity tests, backend/frontend tests, and builds.

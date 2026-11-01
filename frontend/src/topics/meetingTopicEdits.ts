@@ -3,6 +3,7 @@ import {
   type StructuralTopicFieldPatch,
   type Topic,
   type TopicFieldPatch,
+  type TopicInput,
 } from "../api/domain";
 import type { MeetingRouteOperations } from "../meetings/workspace";
 
@@ -16,7 +17,10 @@ export const saveMeetingTopicField =
     if (patch.membershipStatusSignal !== undefined) {
       structuralPatch.membershipStatusSignal = patch.membershipStatusSignal;
     }
-    const protectedPatch: Partial<TopicFieldPatch> = {};
+    const protectedPatch: Partial<TopicInput> = {};
+    if ("expectedRevisions" in patch && patch.expectedRevisions) {
+      protectedPatch.expectedRevisions = patch.expectedRevisions;
+    }
     if (patch.membershipProcessStatus !== undefined) {
       protectedPatch.membershipProcessStatus = patch.membershipProcessStatus;
     }

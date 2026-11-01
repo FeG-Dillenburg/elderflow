@@ -1,5 +1,6 @@
-import { mount } from "@vue/test-utils";
+import { flushPromises, mount } from "@vue/test-utils";
 import { describe, expect, it, vi } from "vitest";
+import Select from "primevue/select";
 import NewMembershipTopicAgenda from "./NewMembershipTopicAgenda.vue";
 import NewMembershipTopicAppearance from "./NewMembershipTopicAppearance.vue";
 import NewMembershipTopicDetail from "./NewMembershipTopicDetail.vue";
@@ -163,6 +164,28 @@ describe("New membership Topic renderers", () => {
 
     expect(wrapper.text()).toContain("Membership class booked");
     expect(wrapper.find(".signal-icon").attributes("aria-label")).toContain("Attention");
+  });
+
+  it("refreshes untouched selections while preserving an in-flight selection", async () => {
+    let finish!: () => void;
+    const saveField = vi.fn(() => new Promise<void>((resolve) => { finish = resolve; }));
+    const wrapper = mount(NewMembershipTopicAppearance, {
+      shallow: true,
+      props: { item: { topic: topic("new") } as any, canEdit: true, users: [], saveField: saveField as any },
+      global: { stubs: { RouterLink: { template: "<a><slot /></a>" } } },
+    });
+    await wrapper.setProps({ item: { topic: { ...topic("paused"), responsibleUserId: "remote-user" } } as any });
+    expect(wrapper.find(".status-value").attributes("data-signal")).toBe("paused");
+    expect(wrapper.findComponent(Select).props("modelValue")).toBe("remote-user");
+    await wrapper.find(".signal-trigger").trigger("click");
+    await wrapper.findAll('[role="menuitemradio"]')[3].trigger("click");
+    await wrapper.setProps({ item: { topic: { ...topic("in_progress"), responsibleUserId: "another-user" } } as any });
+    expect(wrapper.find(".status-value").attributes("data-signal")).toBe("attention");
+    expect(wrapper.findComponent(Select).props("modelValue")).toBe("another-user");
+    finish();
+    await flushPromises();
+    expect(wrapper.find(".status-value").attributes("data-signal")).toBe("in_progress");
+    wrapper.unmount();
   });
 
   it("combines process status and the icon-only signal picker in one colored field", async () => {

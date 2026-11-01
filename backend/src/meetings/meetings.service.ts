@@ -725,7 +725,7 @@ export class MeetingsService {
     input: UpdateTopicFieldsDto,
     user: User,
   ): Promise<TopicResponse> {
-    return this.dataSource.transaction(async (manager) => {
+    const saved = await this.dataSource.transaction(async (manager) => {
       await lockedMutableMeeting(manager, meetingId);
       const appearance = await manager.findOneBy(MeetingTopic, { id, meetingId });
       if (!appearance) throw codedHttpException(HttpStatus.NOT_FOUND, "AGENDA_TOPIC_NOT_FOUND", "Agenda topic not found");
@@ -737,6 +737,8 @@ export class MeetingsService {
       Object.assign(topic, input, normalizedMembershipTopicState(topic.type, { ...topic, ...input }));
       return topicResponse(await manager.save(Topic, topic), user);
     });
+    meetingCollaborationEvents.emit("topic-changed", { topicId: saved.id });
+    return saved;
   }
 
   async removeTopic(meetingId: string, id: string): Promise<void> {

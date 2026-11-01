@@ -776,11 +776,14 @@ describe("EncryptedMeetingCollaborationProvider", () => {
         return { parentChanged: false };
       },
     );
+    const invalidated = vi.fn();
+    provider.addEventListener("agenda-changed", invalidated);
     await provider.connect();
     sockets[0].open();
     sockets[0].receive({ type: "authenticated" });
     await settle();
     expect(provider.status).toBe("online");
+    expect(invalidated).toHaveBeenCalledTimes(1);
     vi.spyOn(window, "setTimeout").mockImplementation((handler: TimerHandler) => {
       queueMicrotask(() => (handler as () => void)());
       return 1 as any;
@@ -800,6 +803,14 @@ describe("EncryptedMeetingCollaborationProvider", () => {
       await Promise.resolve();
     }
     expect(provider.status).toBe("online");
+    // Reauthentication catches up scalar saves missed while disconnected.
+    for (let index = 0; index < 30 && invalidated.mock.calls.length < 2; index += 1) await Promise.resolve();
+    expect(invalidated).toHaveBeenCalledTimes(2);
+    const before = Y.encodeStateAsUpdate(document);
+    sockets[1].receive({ type: "topic-changed", topicId: "topic" });
+    for (let index = 0; index < 10; index += 1) await Promise.resolve();
+    expect(invalidated).toHaveBeenCalledTimes(3);
+    expect(Y.encodeStateAsUpdate(document)).toEqual(before);
     provider.destroy();
     document.destroy();
   });

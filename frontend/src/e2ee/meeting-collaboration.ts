@@ -294,7 +294,7 @@ export class EncryptedMeetingCollaborationProvider extends EventTarget {
       );
       return;
     }
-    if (frame.type === "agenda-changed") {
+    if (frame.type === "agenda-changed" || frame.type === "topic-changed") {
       this.dispatchEvent(new Event("agenda-changed"));
       return;
     }

@@ -10,7 +10,8 @@ const props = defineProps<{
   multiline?: boolean;
   hideLabel?: boolean;
   compact?: boolean;
-  save: (value: string | null) => Promise<unknown>;
+  revision?: string;
+  save: (value: string | null, revision?: string) => Promise<unknown>;
 }>();
 const { t } = useI18n();
 const localValue = ref(props.value ?? "");
@@ -20,11 +21,17 @@ const error = ref("");
 let timer: ReturnType<typeof setTimeout> | undefined;
 let queued: string | null | undefined;
 let saving = false;
+let baselineVersion = 0;
+let draftRevision = props.revision;
 
-watch(() => props.value, (value) => {
+watch(() => [props.value, props.revision] as const, ([value, revision]) => {
   const next = value ?? "";
-  if (localValue.value === persistedValue.value) localValue.value = next;
+  if (!saving && localValue.value === persistedValue.value) {
+    localValue.value = next;
+    draftRevision = revision;
+  }
   persistedValue.value = next;
+  baselineVersion += 1;
 });
 
 const drain = async () => {
@@ -36,9 +43,11 @@ const drain = async () => {
     saving = true;
     state.value = "saving";
     error.value = "";
+    const version = baselineVersion;
     try {
-      await props.save(value);
-      persistedValue.value = value ?? "";
+      await props.save(value, draftRevision);
+      if (version === baselineVersion) persistedValue.value = value ?? "";
+      if (persistedValue.value === (value ?? "")) draftRevision = props.revision;
       state.value = "saved";
     } catch (cause) {
       error.value = cause instanceof Error ? cause.message : t("newMembershipTopic.saveFailed");
@@ -54,6 +63,10 @@ const save = () => {
   if (timer) clearTimeout(timer);
   queued = localValue.value.trim() ? localValue.value : null;
   void drain();
+};
+const retry = () => {
+  draftRevision = props.revision;
+  save();
 };
 const schedule = () => {
   state.value = "idle";
@@ -93,7 +106,7 @@ onBeforeUnmount(() => {
       <template v-if="state === 'saving'">{{ t("newMembershipTopic.saving") }}</template>
       <template v-else-if="state === 'saved'">{{ t("newMembershipTopic.saved") }}</template>
       <template v-else-if="state === 'error'">
-        {{ error }} <button type="button" @click="save">{{ t("newMembershipTopic.retry") }}</button>
+        {{ error }} <button type="button" @click="retry">{{ t("newMembershipTopic.retry") }}</button>
       </template>
     </small>
   </label>

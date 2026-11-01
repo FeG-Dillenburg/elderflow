@@ -112,8 +112,16 @@ export async function protectTopicPatch(
     description: _description,
     membershipProcessStatus: _membershipProcessStatus,
     godparents: _godparents,
+    expectedRevisions,
     ...structural
   } = input;
+  if (expectedRevisions) {
+    Object.assign(structural, {
+      expectedRevisions: Object.fromEntries(Object.entries(TOPIC_SCALAR_FIELDS)
+        .filter(([name]) => expectedRevisions[name as TopicScalarName] !== undefined)
+        .map(([name, field]) => [field.revisionProperty, expectedRevisions[name as TopicScalarName]])),
+    });
+  }
   return Object.keys(protectedFields).length
     ? { ...structural, protected: protectedFields }
     : structural;
@@ -322,6 +330,9 @@ function projectedTopic(
   const { protected: _protected, ...structural } = response;
   return {
     ...structural,
+    scalarRevisions: response.protected ? Object.fromEntries(
+      Object.entries(TOPIC_SCALAR_FIELDS).map(([name, field]) => [name, response.protected?.[field.revisionProperty]]),
+    ) : undefined,
     name,
     description,
     membershipProcessStatus: response.type === "new_membership" ? membershipProcessStatus : null,

@@ -77,7 +77,10 @@ export interface AgendaSection {
   defaultTopicType: TopicType | null;
 }
 
+export type TopicScalarRevisions = Partial<Record<"name" | "description" | "membershipProcessStatus" | "godparents", string>>;
+
 interface TopicBase {
+  scalarRevisions?: TopicScalarRevisions;
   id: string;
   name: string;
   description: string | null;
@@ -132,6 +135,7 @@ export type Topic = TopicBase & (
 );
 
 interface TopicInputBase {
+  expectedRevisions?: TopicScalarRevisions;
   name: string;
   description: string | null;
   status: string;
@@ -401,7 +405,7 @@ export type StructuralTopicFieldPatch = Partial<Pick<
   'responsibleUserId' | 'membershipStatusSignal'
 >>;
 
-type ProtectedTopicFieldPatch = Partial<Pick<
+type ProtectedTopicFieldPatch = { expectedRevisions?: TopicScalarRevisions } & Partial<Pick<
   Topic,
   'membershipProcessStatus' | 'godparents'
 >>;

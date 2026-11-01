@@ -1,3 +1,5 @@
+import { hkdfSha256, toArrayBuffer, uuidToBytes } from "./crypto-primitives";
+export { hkdfSha256, uuidToBytes } from "./crypto-primitives";
 import { Decoder, Encoder } from 'cbor-x';
 import sodium from 'libsodium-wrappers-sumo';
 import { base64UrlToBytes, bytesToBase64Url, PASSPHRASE_KDF } from './protocol';
@@ -64,30 +66,10 @@ interface RecoveryWrapperResult {
 
 export const deterministicCbor = (value: unknown): Uint8Array => Uint8Array.from(encoder.encode(value));
 
-export function uuidToBytes(value: string): Uint8Array {
-  const hex = value.replaceAll('-', '').toLowerCase();
-  if (!/^[0-9a-f]{32}$/.test(hex)) throw new Error('E2EE_UUID_INVALID');
-  return Uint8Array.from(hex.match(/.{2}/g)!.map((byte) => Number.parseInt(byte, 16)));
-}
-
 export function bytesToUuid(value: Uint8Array): string {
   if (value.length !== 16) throw new Error('E2EE_UUID_INVALID');
   const hex = [...value].map((byte) => byte.toString(16).padStart(2, '0')).join('');
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
-}
-
-export async function hkdfSha256(
-  inputKeyMaterial: Uint8Array,
-  salt: Uint8Array,
-  info: Uint8Array,
-): Promise<Uint8Array> {
-  const key = await crypto.subtle.importKey('raw', toArrayBuffer(inputKeyMaterial), 'HKDF', false, ['deriveBits']);
-  const bits = await crypto.subtle.deriveBits(
-    { name: 'HKDF', hash: 'SHA-256', salt: toArrayBuffer(salt), info: toArrayBuffer(info) },
-    key,
-    256,
-  );
-  return new Uint8Array(bits);
 }
 
 export function encodeRecoverySecret(secret: Uint8Array): string {
@@ -788,8 +770,4 @@ function constantTimeEqual(left: Uint8Array, right: Uint8Array): boolean {
   let difference = 0;
   for (let index = 0; index < left.length; index += 1) difference |= left[index] ^ right[index];
   return difference === 0;
-}
-
-function toArrayBuffer(value: Uint8Array): ArrayBuffer {
-  return Uint8Array.from(value).buffer;
 }
