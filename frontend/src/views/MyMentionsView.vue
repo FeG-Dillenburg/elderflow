@@ -195,7 +195,7 @@ onBeforeUnmount(() => controller?.abort());
             </div>
             <div class="row-actions" @click.stop>
               <Button
-                v-tooltip="t(row.done ? 'mentions.reopen' : 'mentions.markDone')"
+                v-tooltip.left="t(row.done ? 'mentions.reopen' : 'mentions.markDone')"
                 :aria-label="t(row.done ? 'mentions.reopen' : 'mentions.markDone')"
                 :icon="row.done ? 'pi pi-undo' : 'pi pi-check'"
                 :disabled="pending.has(row.id)"
@@ -205,7 +205,7 @@ onBeforeUnmount(() => controller?.abort());
               />
               <span
                 v-if="!row.done"
-                v-tooltip="t(canComment ? 'mentions.doneAndComment' : 'mentions.commentDenied')"
+                v-tooltip.left="t(canComment ? 'mentions.doneAndComment' : 'mentions.commentDenied')"
                 :tabindex="canComment ? undefined : 0"
                 :aria-label="canComment ? undefined : t('mentions.commentDenied')"
               >
@@ -324,13 +324,23 @@ h2 {
 }
 
 .mention-content {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr) minmax(0, 1.3fr);
+  align-items: center;
+  gap: 1rem;
+  flex: 1;
   min-width: 0;
+}
+
+.mention-content .context {
+  margin: 0;
 }
 
 .topic-link,
 .meeting-link {
   color: #607dae;
   text-decoration: none;
+  overflow-wrap: anywhere;
 }
 
 .context {
@@ -347,6 +357,8 @@ h2 {
 
 .row-actions {
   flex-shrink: 0;
+  justify-content: flex-end;
+  min-width: 6.75rem;
 }
 
 .unlock-prompt {
@@ -387,6 +399,10 @@ h2 {
 }
 
 @media (max-width: 650px) {
+  .mention-content {
+    grid-template-columns: 1fr;
+  }
+
   .mention-row {
     align-items: flex-start;
     flex-direction: column;
