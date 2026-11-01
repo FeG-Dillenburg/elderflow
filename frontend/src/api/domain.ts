@@ -220,7 +220,15 @@ export interface MeetingAppearanceTexts {
   meetingMinutes: VersionedMeetingText | null;
 }
 
-export interface PreparationHistoryAppearance {
+export interface AppearancePostponement {
+  deferredAt?: string | null;
+  topicStatusDecision?: "done" | "deferred" | null;
+}
+
+export const isAppearancePostponed = (appearance?: AppearancePostponement | null): boolean =>
+  Boolean(appearance?.deferredAt || appearance?.topicStatusDecision === 'deferred');
+
+export interface PreparationHistoryAppearance extends AppearancePostponement {
   appearanceId: string;
   meetingId: string;
   date: string;
@@ -255,7 +263,7 @@ export interface MeetingTopic {
   preparationHistory?: PreparationHistoryAppearance[];
   preparationHistoryUnavailable?: boolean;
   preparationUpdates?: TopicUpdate[];
-  previousAppearance?: ({ appearanceId: string; meetingId: string; date?: string; beginTime?: string } & Partial<MeetingAppearanceTexts>) | null;
+  previousAppearance?: (AppearancePostponement & { appearanceId: string; meetingId: string; date?: string; beginTime?: string } & Partial<MeetingAppearanceTexts>) | null;
 }
 
 export interface MeetingTopicAddition {
@@ -270,7 +278,7 @@ export interface MeetingTopicAddition {
 export type MeetingSuggestion = Topic & {
   isNew: boolean;
   previousSectionId: string | null;
-  previousAppearance: {
+  previousAppearance: AppearancePostponement & {
     id: string;
     meetingId: string;
     position: number;
@@ -670,31 +678,41 @@ const initialMeetingTopicText = async (
   input: MeetingTopicAddition,
 ): Promise<string> => {
   if (!input.topic) return '';
-  const person = input.topic?.type === 'person';
-  if (input.topic.type === 'recurring') return input.topic.description ?? '';
-
+  const person = input.topic.type === 'person';
+  // Recurrence movement keeps its existing initialization and provenance contract.
+  if (input.sourceAppearance && input.topic.type === 'recurring') {
+    return input.topic.description ?? '';
+  }
   const suggestion = input.topic as Partial<MeetingSuggestion>;
-  let priorAppearance = input.sourceAppearance ?? suggestion.previousAppearance;
+  let priorAppearance: ({ id: string; meetingId: string } & AppearancePostponement) | null | undefined =
+    input.sourceAppearance ?? suggestion.previousAppearance;
   if (suggestion.isNew === undefined && !priorAppearance) {
     priorAppearance = (await api.topicAppearances(
       input.topicId,
       { beforeMeetingId: meetingId },
     ))[0];
   }
-  const firstAppearance = suggestion.isNew ?? !priorAppearance;
-  if (firstAppearance) return input.topic.description ?? '';
-  if (person && priorAppearance) {
-    const priorWorkspace = await request<EncryptedWorkspace | null>(
-      `/api/meetings/${priorAppearance.meetingId}/workspace`,
-    );
-    if (priorWorkspace) {
-      const sessionId = `copy-forward:${priorAppearance.meetingId}`;
+  if (priorAppearance && (person || isAppearancePostponed(priorAppearance))) {
+    const sessionId = `copy-forward:${priorAppearance.meetingId}:${crypto.randomUUID()}`;
+    try {
+      const priorWorkspace = await request<EncryptedWorkspace | null>(
+        `/api/meetings/${priorAppearance.meetingId}/workspace`,
+      );
+      if (!priorWorkspace) throw new Error('E2EE_PRIOR_DOCUMENT_UNAVAILABLE');
       await meetingDocumentSession.load(sessionId, priorWorkspace);
-      return meetingDocumentSession.hydrateFragments(sessionId, [{
+      const values = meetingDocumentSession.hydrateFragments(sessionId, [{
         id: priorAppearance.id,
-        person: true,
-      }]).appearances.get(priorAppearance.id)?.personNote ?? '';
+        person,
+      }]).appearances.get(priorAppearance.id)!;
+      return (person ? values.personNote : values.preparationContext) ?? '';
+    } catch {
+      throw new Error(translate('meetingPreparation.copyUnavailable'));
+    } finally {
+      meetingDocumentSession.discard(sessionId);
     }
+  }
+  if (input.topic.type === 'recurring' || (suggestion.isNew ?? !priorAppearance)) {
+    return input.topic.description ?? '';
   }
   return '';
 };

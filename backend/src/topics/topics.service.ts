@@ -338,7 +338,7 @@ export class TopicsService {
   async getAppearances(topicId: string, user: User, beforeMeetingId?: string) {
     await this.findOneEntity(topicId);
     const appearances = await this.appearances.find({
-      where: { topicId }, relations: { meeting: true, section: true }, order: { meeting: { date: 'DESC' } },
+      where: { topicId }, relations: { meeting: true, section: true }, order: { meeting: { date: 'DESC', beginTime: 'DESC', id: 'DESC' } },
     });
     const target = beforeMeetingId
       ? await this.topics.manager.findOneBy(Meeting, { id: beforeMeetingId })

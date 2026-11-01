@@ -10,5 +10,6 @@
   { "id": "agenda-section-type-defaults", "category": "improvement" },
   { "id": "personal-dashboard", "category": "improvement" },
   { "id": "resolve-mentions", "category": "feature" },
-  { "id": "saved-topic-fields-live-refresh", "category": "improvement" }
+  { "id": "saved-topic-fields-live-refresh", "category": "improvement" },
+  { "id": "postponed-topic-preparation", "category": "improvement" }
 ]

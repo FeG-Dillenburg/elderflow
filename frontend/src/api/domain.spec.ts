@@ -702,7 +702,8 @@ describe("encrypted preparation history", () => {
 
   async function setup(text: string, minutes = "", options: {
     unavailable?: "missing" | "corrupt";
-    type?: "generic" | "person";
+    type?: "generic" | "person" | "new_membership" | "recurring";
+    postponed?: boolean;
     olderPreparation?: string;
   } = {}) {
     const type = options.type ?? "generic";
@@ -731,9 +732,13 @@ describe("encrypted preparation history", () => {
     const septemberWorkspace = await workspace(september, "september", options.olderPreparation ?? "<p>September context</p>", "");
     const dates = ["2026-09-01T18:59:00", "2026-09-01T19:00:00", "2026-09-01T19:01:00", "2026-11-01T19:00:00", "2026-11-01T19:01:00"];
     const fetch = vi.fn().mockImplementation(async (url: string) => {
+      if (url === `/api/topics/topic/appearances?beforeMeetingId=${current}`) return response([
+        { id: "october", meetingId: october, deferredAt: options.postponed === false ? null : "2026-10-01T20:00:00Z" },
+        { id: "september", meetingId: september, topicStatusDecision: "deferred" },
+      ]);
       if (url === `/api/meetings/${current}`) return response({ id: current, protected: null, date: "2026-11-01", beginTime: "19:00", status: "planned", workspace: currentWorkspace,
         agenda: [{ id: "current", meetingId: current, topicId: "topic", status: "planned", preparationHistory: [
-          { appearanceId: "october", meetingId: october, date: "2026-10-01", beginTime: "19:00", status: "deferred", documentRevision: { documentId: octoberWorkspace.documentId, activeSnapshotId: octoberWorkspace.activeSnapshotId, currentServerSequence: octoberWorkspace.currentServerSequence } },
+          { appearanceId: "october", meetingId: october, date: "2026-10-01", beginTime: "19:00", deferredAt: options.postponed === false ? null : "2026-10-01T20:00:00Z", documentRevision: { documentId: octoberWorkspace.documentId, activeSnapshotId: octoberWorkspace.activeSnapshotId, currentServerSequence: octoberWorkspace.currentServerSequence } },
           { appearanceId: "september", meetingId: september, date: "2026-09-01", beginTime: "19:00", documentRevision: { documentId: septemberWorkspace.documentId, activeSnapshotId: septemberWorkspace.activeSnapshotId, currentServerSequence: septemberWorkspace.currentServerSequence } },
         ], topic: { id: "topic", type, protected: null, updates: dates.map((date, i) => ({ id: `update-${i}`, topicId: "topic", type: "update", date, protected: null })) } }],
       });
@@ -750,12 +755,127 @@ describe("encrypted preparation history", () => {
     return fetch;
   }
 
+  it.each(["generic", "new_membership", "recurring"] as const)(
+    "copies postponed %s preparation through a new encrypted target fragment, preserving mentions and independence",
+    async (type) => {
+      const rich = '<p><strong>Discuss</strong> <span data-type="mention" data-id="00000000-0000-4000-8000-000000000399" data-label="Ada">@Ada</span></p>';
+      const fetch = await setup(rich, "<p>Source minutes</p>", { type });
+      await api.meeting(current);
+      const transport = fetch.getMockImplementation()!;
+      let addedId = "";
+      let storedUpdate: Uint8Array | undefined;
+      fetch.mockImplementation(async (url: string, init?: RequestInit) => {
+        if (url === `/api/meetings/${current}/topics`) {
+          const payload = new Decoder({ mapsAsObjects: false, useRecords: false }).decode(init!.body as Uint8Array);
+          addedId = payload[0];
+          storedUpdate = payload[4];
+          expect(payload[11]).toBeNull(); // Historical copy does not move a Recurrence appearance.
+          return response({ id: addedId });
+        }
+        return transport(url);
+      });
+      await api.addMeetingTopic(current, {
+        topicId: "topic", sectionId: "section", topic: { type, description: "Current Description" } as any,
+      });
+      const target = meetingDocumentSession.hydrateFragments(current, [{ id: addedId, person: false }]).appearances.get(addedId)!;
+      expect(target.preparationContext).toContain("<strong>Discuss</strong>");
+      expect(target.preparationContext).toContain('data-id="00000000-0000-4000-8000-000000000399"');
+      expect(target.meetingMinutes).toBe("");
+      expect(new TextDecoder().decode(storedUpdate)).not.toContain("Discuss");
+
+      // Replay the stored encrypted update after a fresh load, as a reload/reconnect does.
+      const structural = await (await transport(`/api/meetings/${current}`)).json();
+      const workspace = structural.workspace;
+      workspace.updates.push({ ...workspace.updates[0], authorClock: "3", envelope: bytesToBase64Url(storedUpdate!) });
+      workspace.currentServerSequence = "3";
+      await meetingDocumentSession.load(current, workspace);
+      expect(meetingDocumentSession.hydrateFragments(current, [{ id: addedId, person: false }]).appearances.get(addedId)?.preparationContext).toBe(target.preparationContext);
+      await meetingDocumentSession.createFragmentUpdate(current, meetingFragmentId("preparationContext", addedId), "<p>Independent edit</p>");
+      const source = await (await transport(`/api/meetings/${october}/workspace`)).json();
+      await meetingDocumentSession.load("verify-source", source);
+      expect(meetingDocumentSession.hydrateFragments("verify-source", [{ id: "october", person: false }]).appearances.get("october")?.preparationContext).toBe(target.preparationContext);
+      expect(meetingDocumentSession.hydrateFragments(current, [{ id: addedId, person: false }]).appearances.get(addedId)?.preparationContext).toBe("<p>Independent edit</p>");
+    },
+  );
+
+  it.each([
+    ["generic", true, "", ""],
+    ["new_membership", true, "<p><br></p>", "<p><br></p>"],
+    ["recurring", true, "", ""],
+    ["generic", false, "<p>Latest preparation</p>", ""],
+    ["recurring", false, "<p>Latest preparation</p>", "Description"],
+  ] as const)("initializes %s from the exact latest appearance (postponed: %s)", async (type, postponed, source, expected) => {
+    const fetch = await setup(source, "<p>Never copy Minutes</p>", { type, postponed });
+    await api.meeting(current);
+    const transport = fetch.getMockImplementation()!;
+    let addedId = "";
+    fetch.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url === `/api/meetings/${current}/topics`) {
+        const payload = new Decoder({ mapsAsObjects: false, useRecords: false }).decode(init!.body as Uint8Array);
+        addedId = payload[0];
+        return response({ id: addedId });
+      }
+      return transport(url);
+    });
+    await api.addMeetingTopic(current, { topicId: "topic", sectionId: "section", topic: { type, description: "Description" } as any });
+    const values = meetingDocumentSession.hydrateFragments(current, [{ id: addedId, person: false }]).appearances.get(addedId)!;
+    expect(values.preparationContext).toBe(expected);
+    expect(values.meetingMinutes).toBe("");
+  });
+
+  it("uses the same postponed initialization for bulk selection and automatic Recurrence addition", async () => {
+    const fetch = await setup("<p>Postponed context</p>");
+    await api.meeting(current);
+    const transport = fetch.getMockImplementation()!;
+    const ids: string[] = [];
+    fetch.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url.endsWith("/topics/batch")) {
+        const payload = new Decoder({ mapsAsObjects: false, useRecords: false }).decode(init!.body as Uint8Array);
+        ids.push(...payload[1].map((item: string[]) => item[0]));
+        return response(ids.map((id) => ({ id })));
+      }
+      if (url === `/api/meetings/${current}/topics`) {
+        const payload = new Decoder({ mapsAsObjects: false, useRecords: false }).decode(init!.body as Uint8Array);
+        ids.push(payload[0]);
+        return response({ id: payload[0] });
+      }
+      return transport(url);
+    });
+    const topic = { type: "generic", isNew: false, previousAppearance: {
+      id: "october", meetingId: october, topicStatusDecision: "deferred",
+    } } as any;
+    await api.addMeetingTopics(current, [
+      { topicId: "topic", sectionId: "section", topic },
+      { topicId: "other-topic", sectionId: "section", topic },
+    ]);
+    await api.addMeetingTopic(current, { topicId: "topic", sectionId: "section", source: "recurrence",
+      topic: { type: "recurring", description: "Description" } as any });
+    for (const id of ids) {
+      expect(meetingDocumentSession.hydrateFragments(current, [{ id, person: false }]).appearances.get(id)?.preparationContext).toBe("<p>Postponed context</p>");
+    }
+  });
+
+  it.each(["missing", "corrupt", "locked"] as const)("rejects a %s postponed source before adding or mutating the target", async (failure) => {
+    const fetch = await setup("<p>Protected source</p>", "", failure === "locked" ? {} : { unavailable: failure });
+    await api.meeting(current);
+    if (failure === "locked") meetingDocumentSession.lock();
+    const input = { topicId: "topic", sectionId: "section", topic: { type: "generic" } as any };
+    await expect(api.addMeetingTopic(current, input)).rejects.toThrow("Previous Meeting text could not be loaded securely");
+    await expect(api.addMeetingTopics(current, [input])).rejects.toThrow("Previous Meeting text could not be loaded securely");
+    expect(fetch.mock.calls.some(([url]) => url.endsWith("/topics") || url.endsWith("/topics/batch"))).toBe(false);
+    if (failure !== "locked") {
+      expect(meetingDocumentSession.hydrateFragments(current, [{ id: "current", person: false }]).appearances.get("current")?.preparationContext).toBe("Current preparation");
+    }
+  });
+
   it("skips formatting-only postponed notes and bounds updates by the selected scheduled meeting and historical cutoff", async () => {
     await setup("<p><strong> &nbsp; </strong><br></p>");
     const result = await api.meeting(current);
     expect(result.agenda?.[0].previousAppearance).toMatchObject({ appearanceId: "september", date: "2026-09-01", preparationContext: { text: "<p>September context</p>" } });
     expect(result.agenda?.[0].preparationUpdates?.map((update) => update.id)).toEqual(["update-2", "update-3"]);
     expect(result.agenda?.[0].preparationContext?.text).toBe("Current preparation");
+    expect(result.agenda?.[0].preparationHistory?.[0]).toMatchObject({ appearanceId: "october", deferredAt: "2026-10-01T20:00:00Z" });
+    expect(result.agenda?.[0].previousAppearance?.deferredAt).toBeUndefined();
   });
   it.each([
     ["<p>October preparation</p>", ""],

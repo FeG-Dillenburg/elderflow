@@ -12,6 +12,7 @@ import { TopicsService } from "./topics.service";
 describe("TopicsService encrypted contracts", () => {
   const manager = {
     findOne: jest.fn(),
+    findOneBy: jest.fn(),
     save: jest.fn(),
     create: jest.fn((_entity: unknown, value: unknown) => value),
     getRepository: jest.fn(),
@@ -21,7 +22,7 @@ describe("TopicsService encrypted contracts", () => {
     find: jest.fn(),
     create: jest.fn((value) => value),
     save: jest.fn(async (value) => value),
-    manager: { transaction: jest.fn(async (work) => work(manager)) },
+    manager: { findOneBy: manager.findOneBy, transaction: jest.fn(async (work) => work(manager)) },
   };
   const updates = {
     findOne: jest.fn(),
@@ -146,6 +147,30 @@ describe("TopicsService encrypted contracts", () => {
     expect(result).toEqual([expect.objectContaining({ id: "appearance", meetingId: "meeting" })]);
     expect(JSON.stringify(result)).not.toContain("agendaNote");
     expect(JSON.stringify(result)).not.toContain("SnapshotEnvelope");
+  });
+
+  it("excludes target and future appearances and orders earlier sources by date, time, and stable Meeting ID", async () => {
+    topics.findOne.mockResolvedValue(encryptedTopic());
+    const target = { id: "m", date: "2026-11-01", beginTime: "19:00" };
+    manager.findOneBy.mockResolvedValue(target);
+    const appearance = (id: string, date: string, beginTime: string) => ({
+      id: `appearance-${id}`, meetingId: id, deferredAt: null, topicStatusDecision: "deferred",
+      meeting: { id, date, beginTime },
+    });
+    appearances.find.mockResolvedValue([
+      appearance("future", "2026-11-02", "18:00"),
+      appearance("z", "2026-11-01", "19:00"),
+      appearance("m", "2026-11-01", "19:00"),
+      appearance("a", "2026-11-01", "19:00"),
+      appearance("earlier-time", "2026-11-01", "18:00"),
+      appearance("older", "2026-10-01", "20:00"),
+    ]);
+    const result = await service.getAppearances("topic", viewer, "m");
+    expect(result.map((item) => item.meetingId)).toEqual(["a", "earlier-time", "older"]);
+    expect(result[0]).toMatchObject({ deferredAt: null, topicStatusDecision: "deferred" });
+    expect(appearances.find).toHaveBeenCalledWith(expect.objectContaining({
+      order: { meeting: { date: "DESC", beginTime: "DESC", id: "DESC" } },
+    }));
   });
 
   it("persists four context-bound envelopes without accepting plaintext fields", async () => {

@@ -336,6 +336,10 @@ export class MeetingsService {
                 topicId: In(historyTopicIds),
                 meeting: { date: meeting.date, beginTime: LessThan(meeting.beginTime) },
               },
+              {
+                topicId: In(historyTopicIds),
+                meeting: { date: meeting.date, beginTime: meeting.beginTime, id: LessThan(meeting.id) },
+              },
             ],
             relations: { meeting: true },
             order: { meeting: { date: "DESC", beginTime: "DESC", id: "DESC" } },
@@ -359,6 +363,8 @@ export class MeetingsService {
       meetingId: string;
       date: string;
       beginTime: string;
+      deferredAt: Date | null;
+      topicStatusDecision: "done" | "deferred" | null;
       documentRevision: { documentId: string; activeSnapshotId: string | null; currentServerSequence: string } | null;
     }>>();
     for (const appearance of earlierAppearances) {
@@ -366,6 +372,8 @@ export class MeetingsService {
       const history = historyByTopic.get(appearance.topicId) ?? [];
       history.push({
         appearanceId: appearance.id,
+        deferredAt: appearance.deferredAt,
+        topicStatusDecision: appearance.topicStatusDecision,
         meetingId: appearance.meetingId,
         date: appearance.meeting.date,
         beginTime: appearance.meeting.beginTime,
@@ -847,17 +855,19 @@ export class MeetingsService {
           .filter((appearance) => appearance.topicId === topic.id);
         const previous = appearances.find((appearance) => Boolean(
           appearance.meeting
-          && [appearance.meeting.date, appearance.meeting.beginTime]
+          && [appearance.meeting.date, appearance.meeting.beginTime, appearance.meetingId]
             .join("|")
-            < [meeting.date, meeting.beginTime].join("|"),
+            < [meeting.date, meeting.beginTime, meeting.id].join("|"),
         ));
         return {
           ...topicResponse(topic, user),
-          isNew: appearances.length === 0,
+          isNew: !previous,
           previousSectionId: previous?.sectionId ?? null,
           previousAppearance: previous
             ? {
               id: previous.id,
+              deferredAt: previous.deferredAt,
+              topicStatusDecision: previous.topicStatusDecision,
               meetingId: previous.meetingId,
               position: previous.position,
               date: previous.meeting!.date,

@@ -2,7 +2,7 @@
 import { computed } from "vue";
 import { useI18n } from "vue-i18n";
 import type { MeetingTopic } from "../../api/domain";
-import { formatUser } from "../../api/domain";
+import { formatUser, isAppearancePostponed } from "../../api/domain";
 import { formatDate } from "../../i18n";
 import { hasMeaningfulRichText, sanitizeRichText } from "../../components/sanitize-rich-text";
 
@@ -11,6 +11,12 @@ const props = defineProps<{ item: MeetingTopic }>();
 const { t } = useI18n();
 const safe = sanitizeRichText;
 const previous = computed(() => props.item.previousAppearance);
+const latest = computed(() => props.item.preparationHistory?.[0]);
+const showLatestPostponement = computed(() => isAppearancePostponed(latest.value)
+  && latest.value?.appearanceId !== previous.value?.appearanceId);
+const latestDate = computed(() => latest.value
+  ? `${latest.value.date}T${latest.value.beginTime}`
+  : null);
 const updates = computed(() => props.item.preparationUpdates ?? props.item.topic?.updates ?? []);
 const eligible = computed(() => props.item.topic?.type !== "person");
 const hasPreviousContent = computed(() =>
@@ -24,16 +30,25 @@ const previousDate = computed(() => previous.value?.date
 
 <template>
   <div
-    v-if="eligible && (hasPreviousContent || updates.length || item.preparationHistoryUnavailable)"
+    v-if="eligible && (hasPreviousContent || showLatestPostponement || updates.length || item.preparationHistoryUnavailable)"
     class="meeting-preparation-context"
   >
-    <section v-if="hasPreviousContent" class="context-group">
+    <section v-if="hasPreviousContent || showLatestPostponement" class="context-group">
       <div class="context-heading">
         <h4>{{ t("meetingPreparation.previousMeeting") }}</h4>
+        <span v-if="isAppearancePostponed(previous)" class="postponed-badge">
+          {{ t("meetingPreparation.postponed") }}
+        </span>
         <small v-if="previousDate">
           {{ formatDate(previousDate, { dateStyle: "short", timeStyle: "short" }) }}
         </small>
       </div>
+      <small v-if="showLatestPostponement" class="latest-postponement">
+        {{ t("meetingPreparation.latestPostponed") }}
+        <template v-if="latestDate">
+          · {{ formatDate(latestDate, { dateStyle: "short", timeStyle: "short" }) }}
+        </template>
+      </small>
       <div
         v-if="hasMeaningfulRichText(previous?.preparationContext?.text)"
         class="context-entry previous-preparation"
@@ -89,6 +104,15 @@ h4 {
   font-weight: 800;
   letter-spacing: 0.06em;
   text-transform: uppercase;
+}
+
+.postponed-badge {
+  padding: 0.1rem 0.4rem;
+  border-radius: 0.3rem;
+  background: #fff3cd;
+  color: #785800;
+  font-size: 0.75rem;
+  font-weight: 600;
 }
 
 .context-entry {
