@@ -214,7 +214,7 @@ const date = (value: string | null) =>
           </template>
         </template>
       </Card>
-      <Card>
+      <Card v-if="data.myOpenTasks.length">
         <template #title>{{ t("dashboard.myTasks") }}</template>
         <template #content>
           <ul class="item-list">
@@ -232,13 +232,10 @@ const date = (value: string | null) =>
                 }}
               </small>
             </li>
-            <li v-if="!data.myOpenTasks.length" class="empty">
-              {{ t("dashboard.nothingAssigned") }}
-            </li>
           </ul>
         </template>
       </Card>
-      <Card>
+      <Card v-if="data.overdueTasks.length">
         <template #title>{{ t("dashboard.overdue") }}</template>
         <template #content>
           <ul class="item-list">
@@ -249,13 +246,26 @@ const date = (value: string | null) =>
                 {{ t("dashboard.dueBy", { date: date(task.dueDate) }) }}
               </small>
             </li>
-            <li v-if="!data.overdueTasks.length" class="empty">
-              {{ t("dashboard.noOverdue") }}
+          </ul>
+        </template>
+      </Card>
+      <Card class="recent-topics">
+        <template #title>{{ t("dashboard.recentTopics") }}</template>
+        <template #content>
+          <ul class="item-list">
+            <li v-for="topic in data.recentTopics" :key="topic.id">
+              <RouterLink :to="`/topics/${topic.id}`">
+                {{ topic.name }}
+              </RouterLink>
+              <Tag :value="t(`labels.${topic.status}`)" severity="secondary" />
+            </li>
+            <li v-if="!data.recentTopics.length" class="empty">
+              {{ t("dashboard.noTopics") }}
             </li>
           </ul>
         </template>
       </Card>
-      <Card>
+      <Card class="due-topics">
         <template #title>{{ t("dashboard.followUps") }}</template>
         <template #content>
           <ul class="item-list">
@@ -270,22 +280,6 @@ const date = (value: string | null) =>
             </li>
             <li v-if="!data.followUpTopics.length" class="empty">
               {{ t("dashboard.noFollowUps") }}
-            </li>
-          </ul>
-        </template>
-      </Card>
-      <Card>
-        <template #title>{{ t("dashboard.recentTopics") }}</template>
-        <template #content>
-          <ul class="item-list">
-            <li v-for="topic in data.recentTopics" :key="topic.id">
-              <RouterLink :to="`/topics/${topic.id}`">
-                {{ topic.name }}
-              </RouterLink>
-              <Tag :value="t(`labels.${topic.status}`)" severity="secondary" />
-            </li>
-            <li v-if="!data.recentTopics.length" class="empty">
-              {{ t("dashboard.noTopics") }}
             </li>
           </ul>
         </template>
@@ -342,6 +336,14 @@ h1 {
 .dashboard-grid :deep(.p-card) {
   border: 1px solid #e2e6ec;
   box-shadow: 0 8px 24px rgb(31 41 55 / 4%);
+}
+
+.recent-topics {
+  grid-column: 1;
+}
+
+.due-topics {
+  grid-column: 2;
 }
 
 .newest-mentions {
@@ -445,7 +447,9 @@ h1 {
   }
 
   .current-meeting,
-  .next-meeting {
+  .next-meeting,
+  .recent-topics,
+  .due-topics {
     grid-column: 1 / -1;
   }
 }

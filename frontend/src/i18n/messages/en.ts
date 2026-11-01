@@ -19,7 +19,7 @@ export default {
       bugfix: "Bug fix",
     },
     entries: {
-      "personal-dashboard": "Your dashboard now greets you personally, shows your newest mentions below the next Meeting, and highlights Topic updates made outside Meetings. Recent application updates are available from the dashboard header.",
+      "personal-dashboard": "Your dashboard now greets you personally, shows your newest mentions, and highlights Topic updates made outside Meetings.",
       "agenda-section-type-defaults": "Agenda sections now support drag-and-drop ordering, dialog editing, and default sections for Topic types.",
       "editor-right-arrow-shortcut": "The text editor now automatically converts --> to →.",
       "meeting-preparation-reordering-and-topic-picker": "Preparing meetings is easier: agenda topics temporarily become compact while dragging, and the topic list is denser and scrolls independently.",

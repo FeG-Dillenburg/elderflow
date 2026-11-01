@@ -19,7 +19,7 @@ const de = {
       bugfix: "Fehlerbehebung",
     },
     entries: {
-      "personal-dashboard": "Dein Dashboard begrüßt dich jetzt persönlich, zeigt deine neuesten Erwähnungen unter der nächsten Sitzung und hebt Themenaktualisierungen außerhalb von Sitzungen hervor. Neuigkeiten zur Anwendung findest du oben im Dashboard.",
+      "personal-dashboard": "Dein Dashboard begrüßt dich jetzt persönlich, zeigt deine neuesten Erwähnungen und hebt Themenaktualisierungen außerhalb von Sitzungen hervor.",
       "agenda-section-type-defaults": "Tagesordnungsabschnitte lassen sich jetzt per Drag-and-drop sortieren, im Dialog bearbeiten und als Standard für Themenarten festlegen.",
       "editor-right-arrow-shortcut": "Der Texteditor wandelt --> automatisch in → um.",
       "meeting-preparation-reordering-and-topic-picker": "Die Sitzungsvorbereitung wird übersichtlicher: Beim Ziehen werden die Tagesordnungsthemen vorübergehend kompakt dargestellt. Die Themenliste benötigt weniger Platz und lässt sich unabhängig scrollen.",

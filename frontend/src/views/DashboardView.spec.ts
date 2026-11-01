@@ -58,6 +58,11 @@ describe("DashboardView", () => {
     expect(wrapper.html()).toContain("/meetings/current");
     expect(wrapper.html()).toContain("/meetings/meeting/prepare");
     expect(wrapper.html()).toContain("/topics/topic");
+    expect(wrapper.text()).toContain("My open tasks");
+    expect(wrapper.text()).toContain("Overdue tasks");
+    const topicCards = wrapper.findAll(".recent-topics, .due-topics");
+    expect(topicCards[0].classes()).toContain("recent-topics");
+    expect(topicCards[1].classes()).toContain("due-topics");
     wrapper.unmount();
   });
   it("renders empty/error states", async () => {
@@ -72,6 +77,8 @@ describe("DashboardView", () => {
     const empty = mount(DashboardView, { shallow: true, global: { stubs } });
     await flushPromises();
     expect(empty.text()).toContain("No upcoming meeting");
+    expect(empty.text()).not.toContain("My open tasks");
+    expect(empty.text()).not.toContain("Overdue tasks");
     vi.spyOn(api, "dashboard").mockRejectedValueOnce(new Error("Unavailable"));
     const failed = mount(DashboardView, { shallow: true, global: { stubs } });
     await flushPromises();
@@ -185,7 +192,7 @@ describe("personal dashboard", () => {
     protectedText.state.status = "unlocked";
     await flushPromises();
     expect(wrapper.find(".newest-mentions [role=alert]").exists()).toBe(true);
-    expect(wrapper.text()).toContain("My open tasks");
+    expect(wrapper.text()).toContain("Follow-ups due");
     vi.mocked(currentMentions).mockResolvedValueOnce([{
       id: "fresh", topicName: "Secret fresh Topic", context: "Secret sentence", meetingTitle: "Council", date: "2026-10-12",
     }] as any);
