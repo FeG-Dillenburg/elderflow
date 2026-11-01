@@ -293,7 +293,7 @@ describe("MeetingsService encrypted transaction boundaries", () => {
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce([
-        { id: "october", topicId: "topic", meetingId: "october-meeting", meeting: { date: "2026-10-01", beginTime: "19:00" } },
+        { id: "october", deferredAt: "2026-10-01T20:00:00Z", topicId: "topic", meetingId: "october-meeting", meeting: { date: "2026-10-01", beginTime: "19:00" } },
         { id: "september", topicId: "topic", meetingId: "september-meeting", meeting: { date: "2026-09-01", beginTime: "19:00" } },
         { id: "person-prior", topicId: "person", meetingId: "september-meeting", meeting: { date: "2026-09-01", beginTime: "19:00" } },
       ]);
@@ -303,7 +303,7 @@ describe("MeetingsService encrypted transaction boundaries", () => {
     const result = await service.findOne("meeting", user);
 
     expect(result.agenda[0]).toMatchObject({ preparationHistory: [
-      { appearanceId: "october", meetingId: "october-meeting", date: "2026-10-01", beginTime: "19:00" },
+      { appearanceId: "october", deferredAt: "2026-10-01T20:00:00Z", meetingId: "october-meeting", date: "2026-10-01", beginTime: "19:00" },
       { appearanceId: "september", meetingId: "september-meeting", date: "2026-09-01", beginTime: "19:00" },
     ] });
     expect(result.agenda[1]).toMatchObject({ preparationHistory: [], previousAppearance: null });
@@ -312,6 +312,7 @@ describe("MeetingsService encrypted transaction boundaries", () => {
       where: [
         { topicId: In(["topic", "other-topic"]), meeting: { date: LessThan("2026-11-01") } },
         { topicId: In(["topic", "other-topic"]), meeting: { date: "2026-11-01", beginTime: LessThan("19:00") } },
+        { topicId: In(["topic", "other-topic"]), meeting: { date: "2026-11-01", beginTime: "19:00", id: LessThan("meeting") } },
       ],
       order: { meeting: { date: "DESC", beginTime: "DESC", id: "DESC" } },
     });
@@ -341,14 +342,16 @@ describe("MeetingsService encrypted transaction boundaries", () => {
       .mockResolvedValueOnce([
         {
           id: "same-time-appearance",
-          meetingId: "aaa",
+          meetingId: "zzz",
           topicId: "returning-topic",
           sectionId: "wrong-section",
           position: 1,
-          meeting: { id: "aaa", date: "2026-09-15", beginTime: "19:00" },
+          meeting: { id: "zzz", date: "2026-09-15", beginTime: "19:00" },
         },
         {
           id: "later-appearance",
+          deferredAt: null,
+          topicStatusDecision: "deferred",
           meetingId: "prior-meeting",
           topicId: "returning-topic",
           sectionId: "later-section",
@@ -377,6 +380,8 @@ describe("MeetingsService encrypted transaction boundaries", () => {
         previousSectionId: "later-section",
         previousAppearance: {
           id: "later-appearance",
+          deferredAt: null,
+          topicStatusDecision: "deferred",
           meetingId: "prior-meeting",
           position: 4,
           date: "2026-09-01",

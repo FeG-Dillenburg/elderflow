@@ -80,6 +80,38 @@ describe("MeetingPreparationContext", () => {
     expect(wrapper.text()).toContain("Second standalone update");
     expect(wrapper.html()).not.toContain("<script>");
   });
+  it.each(["deferredAt", "topicStatusDecision"] as const)("labels the displayed postponed appearance using %s after the Topic reopens", (field) => {
+    const wrapper = mount(MeetingPreparationContext, { props: { item: {
+      id: "current", topic: { type: "generic", status: "open" },
+      previousAppearance: { appearanceId: "prior", meetingId: "prior-meeting", date: "2026-10-01",
+        [field]: field === "deferredAt" ? "2026-10-01T20:00:00Z" : "deferred",
+        preparationContext: { text: "<p>Prior context</p>" } },
+    } as any } });
+    expect(wrapper.find(".context-heading").text()).toContain("Postponed");
+    expect(wrapper.find(".previous-preparation").text()).toBe("Prior context");
+    expect(wrapper.find("[contenteditable]").exists()).toBe(false);
+  });
+
+  it.each([true, false])("keeps the latest postponement visible when older content is displayed: %s", (olderContent) => {
+    const wrapper = mount(MeetingPreparationContext, { props: { item: {
+      id: "current", topic: { type: "generic", status: "open" },
+      preparationHistory: [{ appearanceId: "latest", meetingId: "latest-meeting", date: "2026-10-01", beginTime: "19:00", topicStatusDecision: "deferred" }],
+      previousAppearance: olderContent ? { appearanceId: "older", meetingId: "older-meeting", date: "2026-09-01", preparationContext: { text: "<p>Older context</p>" } } : null,
+    } as any } });
+    expect(wrapper.find(".latest-postponement").text()).toContain("Latest Meeting: Postponed");
+    expect(wrapper.find(".latest-postponement").text()).toContain("10/1/26");
+    expect(wrapper.find(".context-heading").text()).not.toContain("Postponed");
+  });
+
+  it("does not infer historical postponement from today's deferred Topic status", () => {
+    const wrapper = mount(MeetingPreparationContext, { props: { item: {
+      id: "current", topic: { type: "generic", status: "deferred" },
+      preparationHistory: [{ appearanceId: "latest", meetingId: "latest-meeting", date: "2026-10-01", beginTime: "19:00" }],
+      previousAppearance: { appearanceId: "latest", meetingId: "latest-meeting", preparationContext: { text: "<p>Context</p>" } },
+    } as any } });
+    expect(wrapper.text()).not.toContain("Postponed");
+  });
+
   it("never displays previous notes or standalone updates for a Person Topic", () => {
     const wrapper = mount(MeetingPreparationContext, {
       props: { item: {
