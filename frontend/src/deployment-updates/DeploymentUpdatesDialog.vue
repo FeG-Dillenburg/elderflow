@@ -19,7 +19,7 @@ const groups = computed(() => {
   void locale.value;
   const result = new Map<string, DeploymentAnnouncement[]>();
   const entries = [...state.entries].sort((a, b) =>
-    Date.parse(a.registeredAt) - Date.parse(b.registeredAt)
+    Date.parse(b.registeredAt) - Date.parse(a.registeredAt)
     || a.identifier.localeCompare(b.identifier));
   for (const entry of entries) {
     const date = formatDate(entry.registeredAt);

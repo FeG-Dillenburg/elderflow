@@ -204,7 +204,7 @@ describe('Deployment updates through login and dashboard UI', () => {
     expect(deploymentUpdates.state.visible).toBe(false);
   });
 
-  it('groups all unread entries by local date, orders them chronologically, translates live, and hides technical keys', async () => {
+  it('groups all unread entries by local date, orders them newest first, translates live, and hides technical keys', async () => {
     vi.mocked(request).mockResolvedValueOnce([
       { ...announcement, id: 'later', identifier: 'unknown-announcement', category: 'bugfix', registeredAt: '2026-10-21T12:00:00Z' },
       announcement,
@@ -214,7 +214,7 @@ describe('Deployment updates through login and dashboard UI', () => {
     await settle();
     const dialog = document.querySelector('[role="dialog"]')!;
     expect([...dialog.querySelectorAll('h2')].map((heading) => heading.textContent)).toEqual([
-      `${formatDate(announcement.registeredAt)}:`, `${formatDate('2026-10-21T12:00:00Z')}:`,
+      `${formatDate('2026-10-21T12:00:00Z')}:`, `${formatDate(announcement.registeredAt)}:`,
     ]);
     expect(dialog.querySelectorAll('ul li')).toHaveLength(3);
     expect(dialog.textContent).toContain('New feature');
