@@ -45,7 +45,7 @@ The positive number of weeks or calendar months between appearances of a Recurri
 _Avoid_: Day count, frequency text; Tagesanzahl, Freitextfrequenz
 
 **Recurring Topic (Wiederkehrendes Thema)**:
-A Topic that becomes due from an explicit first due date and then from the date of its latest Meeting appearance plus its Recurrence interval. Automatic scheduling targets Planned Meetings only, and each appearance receives its own Meeting topic note initialized from the Topic's current Description.
+A Topic that becomes due from an explicit first due date and then from the date of its latest Meeting appearance plus its Recurrence interval. Automatic scheduling targets Planned Meetings only, and each appearance receives independent Preparation context initialized from the Topic's current Description, or from the latest earlier appearance's Preparation context when that appearance was postponed.
 _Avoid_: Repeated agenda section, recurring flag; Wiederkehrender Tagesordnungsabschnitt, Wiederholungskennzeichen
 
 **Skipped recurrence (Übersprungene Wiederholung)**:
