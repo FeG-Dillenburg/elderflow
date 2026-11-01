@@ -37,7 +37,7 @@ export class DeploymentUpdatesService implements OnModuleInit {
       return manager.query(`SELECT ${projection} FROM deployment_announcements a
         WHERE NOT EXISTS (SELECT 1 FROM deployment_update_acknowledgements r
           WHERE r.user_id = $1 AND r.announcement_id = a.id)
-        ORDER BY a.registered_at, a.identifier`, [userId]);
+        ORDER BY a.registered_at DESC, a.identifier`, [userId]);
     });
   }
 

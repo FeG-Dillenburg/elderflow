@@ -9,6 +9,7 @@ import { AgendaSection } from '../src/agenda-sections/agenda-section.entity';
 import { DashboardModule } from '../src/dashboard/dashboard.module';
 import { Meeting } from '../src/meetings/meeting.entity';
 import { Task } from '../src/tasks/task.entity';
+import { TopicUpdate } from '../src/topics/topic-update.entity';
 import { Topic } from '../src/topics/topic.entity';
 import { User } from '../src/users/user.entity';
 
@@ -33,7 +34,7 @@ describeWithPostgres('Dashboard HTTP API with PostgreSQL (e2e)', () => {
           type: 'postgres',
           url: databaseUrl,
           schema,
-          entities: [User, AgendaSection, Topic, Meeting, Task],
+          entities: [User, AgendaSection, Topic, TopicUpdate, Meeting, Task],
           synchronize: true,
         }),
         DashboardModule,
@@ -65,38 +66,45 @@ describeWithPostgres('Dashboard HTTP API with PostgreSQL (e2e)', () => {
     }
   });
 
-  it('returns recent Topics ordered by their update time', async () => {
-    await database.getRepository(Topic).save({
-      nameEnvelope: Buffer.from([1]),
-      nameCommitRevision: '1',
-      descriptionEnvelope: Buffer.from([2]),
-      descriptionCommitRevision: '1',
-      membershipProcessStatusEnvelope: Buffer.from([3]),
-      membershipProcessStatusCommitRevision: '1',
-      godparentsEnvelope: Buffer.from([4]),
-      godparentsCommitRevision: '1',
-      type: 'generic',
-      status: 'open',
-      followUpDate: null,
-      responsibleUserId: viewer.id,
-      membershipStatusSignal: null,
-      defaultSectionId: null,
-      defaultPosition: null,
-      recurrenceFirstDueDate: null,
-      recurrenceInterval: null,
-      recurrenceUnit: null,
+  it('selects distinct open/deferred Topics by latest standalone Update, ignoring Meeting and metadata activity', async () => {
+    const topics = database.getRepository(Topic);
+    const updates = database.getRepository(TopicUpdate);
+    const createTopic = (status = 'open') => topics.save({
+      nameEnvelope: Buffer.from([1]), nameCommitRevision: '1',
+      descriptionEnvelope: Buffer.from([2]), descriptionCommitRevision: '1',
+      membershipProcessStatusEnvelope: Buffer.from([3]), membershipProcessStatusCommitRevision: '1',
+      godparentsEnvelope: Buffer.from([4]), godparentsCommitRevision: '1',
+      type: 'generic', status, responsibleUserId: viewer.id,
     });
+    const standalone = async (topicId: string, date: string, type = 'update') => updates.save({
+      topicId, date: new Date(date), type, textEnvelope: Buffer.from([3]), textCommitRevision: '1',
+    });
+    const meetingOnly = await createTopic();
+    await standalone(meetingOnly.id, '2030-01-01', 'minutes');
+    const metadataOnly = await createTopic();
+    const older = await createTopic();
+    await standalone(older.id, '2026-01-01');
+    await standalone(older.id, '2030-01-01', 'minutes');
+    const newer = await createTopic('deferred');
+    await standalone(newer.id, '2026-01-02');
+    await standalone(newer.id, '2026-01-03');
+    const done = await createTopic('done');
+    await standalone(done.id, '2030-01-01');
+    await topics.update(older.id, { updatedAt: new Date('2031-01-01') });
 
-    const response = await request(app.getHttpServer())
-      .get('/api/dashboard')
-      .expect(200)
-      .expect('Cache-Control', 'no-store');
+    const response = await request(app.getHttpServer()).get('/api/dashboard')
+      .expect(200).expect('Cache-Control', 'no-store');
+    expect(response.body.recentTopics.map((topic: Topic) => topic.id)).toEqual([newer.id, older.id]);
+    expect(response.body.recentTopics[0]).toMatchObject({
+      status: 'deferred', responsibleUserId: viewer.id,
+      protected: { nameEnvelope: 'AQ', nameCommitRevision: '1' },
+    });
+    expect(response.body.recentTopics[0].protected).not.toHaveProperty('descriptionEnvelope');
+    expect(response.body.recentTopics.map((topic: Topic) => topic.id)).not.toContain(metadataOnly.id);
 
-    expect(response.body.recentTopics).toEqual([
-      expect.objectContaining({
-        status: 'open',
-        responsibleUserId: viewer.id,
-      }),
-    ]);
+    const tied = await Promise.all(Array.from({ length: 10 }, () => createTopic()));
+    for (const topic of tied) await standalone(topic.id, '2027-01-01');
+    const limited = await request(app.getHttpServer()).get('/api/dashboard').expect(200);
+    expect(limited.body.recentTopics.map((topic: Topic) => topic.id)).toEqual(tied.map((topic) => topic.id).sort().slice(0, 8));
   });
 });

@@ -1,5 +1,5 @@
 <script lang="ts" setup>
-import { onMounted, ref } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import Button from "primevue/button";
 import Card from "primevue/card";
 import Message from "primevue/message";
@@ -13,17 +13,90 @@ import {
 } from "../api/domain";
 import { useI18n } from "vue-i18n";
 import { formatDate, formatTime } from "../i18n";
+import { auth } from "../auth/auth";
+import { protectedText } from "../e2ee/protected-text";
+import { isE2eeKeyOperator } from "../e2ee/roles";
+import { deploymentUpdates } from "../deployment-updates/deployment-updates";
+import { tours } from "../tours/tours";
+import { currentMentions, type CurrentMention } from "../mentions/current";
 
 const data = ref<DashboardData | null>(null);
 const error = ref("");
 const { t } = useI18n();
+const localHour = ref(new Date().getHours());
+const greeting = computed(() => {
+  const hour = localHour.value;
+  let period = "night";
+  if (hour >= 5 && hour < 11) period = "morning";
+  else if (hour >= 11 && hour < 14) period = "day";
+  else if (hour >= 14 && hour < 18) period = "afternoon";
+  else if (hour >= 18 && hour < 22) period = "evening";
+  const name = auth.state.user?.firstName?.trim();
+  return t(`dashboard.greetings.${period}.${name ? "named" : "anonymous"}`, { name });
+});
+let clock: ReturnType<typeof setTimeout> | undefined;
+function refreshClock(): void {
+  clearTimeout(clock);
+  const now = new Date();
+  localHour.value = now.getHours();
+  const nextHour = new Date(now);
+  nextHour.setHours(now.getHours() + 1, 0, 0, 0);
+  clock = setTimeout(refreshClock, nextHour.getTime() - now.getTime());
+}
+function onVisibilityChange(): void {
+  if (document.visibilityState === "visible") refreshClock();
+}
+const mentions = ref<CurrentMention[]>([]);
+const mentionsLoading = ref(false);
+const mentionsError = ref(false);
+const mentionsHasMore = ref(false);
+const mentionsEligible = computed(() =>
+  isE2eeKeyOperator(auth.state.user)
+  && auth.canView("topics")
+  && auth.canView("meetings"),
+);
+const unlocked = computed(() => protectedText.state.status === "unlocked");
+let mentionsController: AbortController | undefined;
+async function loadMentions(): Promise<void> {
+  mentionsController?.abort();
+  mentions.value = [];
+  mentionsHasMore.value = false;
+  mentionsError.value = false;
+  mentionsLoading.value = false;
+  if (!mentionsEligible.value || !unlocked.value) return;
+  const current = new AbortController();
+  mentionsController = current;
+  mentionsLoading.value = true;
+  try {
+    const rows = await currentMentions(current.signal, 9);
+    if (current.signal.aborted) return;
+    mentions.value = rows.slice(0, 8);
+    mentionsHasMore.value = rows.length > 8;
+  } catch {
+    if (!current.signal.aborted) mentionsError.value = true;
+  } finally {
+    if (!current.signal.aborted) mentionsLoading.value = false;
+  }
+}
+watch(
+  [unlocked, mentionsEligible, () => auth.state.user?.id],
+  loadMentions,
+  { immediate: true, flush: "sync" },
+);
 onMounted(async () => {
+  refreshClock();
+  document.addEventListener("visibilitychange", onVisibilityChange);
   try {
     data.value = await api.dashboard();
   } catch (value) {
     error.value =
       value instanceof Error ? value.message : t("dashboard.loadFailed");
   }
+});
+onBeforeUnmount(() => {
+  clearTimeout(clock);
+  document.removeEventListener("visibilitychange", onVisibilityChange);
+  mentionsController?.abort();
 });
 const date = (value: string | null) =>
   value ? formatDate(`${value}T12:00:00`) : t("dashboard.noDate");
@@ -34,9 +107,16 @@ const date = (value: string | null) =>
     <header class="page-header">
       <div>
         <p class="eyebrow">{{ t("dashboard.eyebrow") }}</p>
-        <h1 data-tour-id="dashboard-heading">{{ t("dashboard.title") }}</h1>
+        <h1 data-tour-id="dashboard-heading">{{ greeting }}</h1>
         <p>{{ t("dashboard.description") }}</p>
       </div>
+      <Button
+        class="updates-action"
+        :label="t('deploymentUpdates.historyAction')"
+        icon="pi pi-megaphone"
+        :disabled="deploymentUpdates.state.blocking || Boolean(tours.state.activeId) || protectedText.state.promptVisible"
+        @click="deploymentUpdates.history()"
+      />
     </header>
     <Message v-if="error" severity="error">{{ error }}</Message>
     <div v-if="data" class="dashboard-grid">
@@ -84,7 +164,57 @@ const date = (value: string | null) =>
           <p v-else class="muted">{{ t("dashboard.noMeeting") }}</p>
         </template>
       </Card>
-      <Card>
+      <Card v-if="mentionsEligible" class="newest-mentions">
+        <template #title>{{ t("dashboard.newestMentions") }}</template>
+        <template #content>
+          <div v-if="!unlocked" class="mentions-state" role="status">
+            <span>{{ t("mentions.locked") }}</span>
+            <Button
+              :label="t('mentions.unlock')"
+              icon="pi pi-lock-open"
+              size="small"
+              @click="protectedText.showUnlock()"
+            />
+          </div>
+          <p v-else-if="mentionsLoading" role="status">{{ t("mentions.loading") }}</p>
+          <div v-else-if="mentionsError" class="mentions-state" role="alert">
+            <span>{{ t("mentions.error") }}</span>
+            <Button
+              :label="t('dashboard.retryMentions')"
+              severity="secondary"
+              size="small"
+              @click="loadMentions()"
+            />
+          </div>
+          <template v-else>
+            <ul class="item-list mention-list">
+              <li v-for="mention in mentions" :key="mention.id">
+                <RouterLink
+                  to="/my-mentions"
+                  class="mention-link"
+                  :aria-label="t('dashboard.mentionLink', { topic: mention.topicName, meeting: mention.meetingTitle, date: date(mention.date) })"
+                >
+                  <strong>{{ mention.topicName }}</strong>
+                  <span class="mention-context">{{ mention.context }}</span>
+                  <small>{{ mention.meetingTitle }} · {{ date(mention.date) }}</small>
+                </RouterLink>
+              </li>
+              <li v-if="!mentions.length" class="empty" role="status">{{ t("mentions.empty") }}</li>
+            </ul>
+            <div v-if="mentionsHasMore" class="mentions-more">
+              <RouterLink to="/my-mentions">
+                <Button
+                  as="span"
+                  :label="t('dashboard.moreMentions')"
+                  severity="secondary"
+                  size="small"
+                />
+              </RouterLink>
+            </div>
+          </template>
+        </template>
+      </Card>
+      <Card v-if="data.myOpenTasks.length">
         <template #title>{{ t("dashboard.myTasks") }}</template>
         <template #content>
           <ul class="item-list">
@@ -102,13 +232,10 @@ const date = (value: string | null) =>
                 }}
               </small>
             </li>
-            <li v-if="!data.myOpenTasks.length" class="empty">
-              {{ t("dashboard.nothingAssigned") }}
-            </li>
           </ul>
         </template>
       </Card>
-      <Card>
+      <Card v-if="data.overdueTasks.length">
         <template #title>{{ t("dashboard.overdue") }}</template>
         <template #content>
           <ul class="item-list">
@@ -119,13 +246,26 @@ const date = (value: string | null) =>
                 {{ t("dashboard.dueBy", { date: date(task.dueDate) }) }}
               </small>
             </li>
-            <li v-if="!data.overdueTasks.length" class="empty">
-              {{ t("dashboard.noOverdue") }}
+          </ul>
+        </template>
+      </Card>
+      <Card class="recent-topics">
+        <template #title>{{ t("dashboard.recentTopics") }}</template>
+        <template #content>
+          <ul class="item-list">
+            <li v-for="topic in data.recentTopics" :key="topic.id">
+              <RouterLink :to="`/topics/${topic.id}`">
+                {{ topic.name }}
+              </RouterLink>
+              <Tag :value="t(`labels.${topic.status}`)" severity="secondary" />
+            </li>
+            <li v-if="!data.recentTopics.length" class="empty">
+              {{ t("dashboard.noTopics") }}
             </li>
           </ul>
         </template>
       </Card>
-      <Card>
+      <Card class="due-topics">
         <template #title>{{ t("dashboard.followUps") }}</template>
         <template #content>
           <ul class="item-list">
@@ -144,22 +284,6 @@ const date = (value: string | null) =>
           </ul>
         </template>
       </Card>
-      <Card>
-        <template #title>{{ t("dashboard.recentTopics") }}</template>
-        <template #content>
-          <ul class="item-list">
-            <li v-for="topic in data.recentTopics" :key="topic.id">
-              <RouterLink :to="`/topics/${topic.id}`">
-                {{ topic.name }}
-              </RouterLink>
-              <Tag :value="t(`labels.${topic.status}`)" severity="secondary" />
-            </li>
-            <li v-if="!data.recentTopics.length" class="empty">
-              {{ t("dashboard.noTopics") }}
-            </li>
-          </ul>
-        </template>
-      </Card>
     </div>
   </section>
 </template>
@@ -171,7 +295,16 @@ const date = (value: string | null) =>
 }
 
 .page-header {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 1rem;
   margin-bottom: 1.5rem;
+}
+
+.updates-action {
+  margin-top: 1.4rem;
 }
 
 .eyebrow {
@@ -203,6 +336,19 @@ h1 {
 .dashboard-grid :deep(.p-card) {
   border: 1px solid #e2e6ec;
   box-shadow: 0 8px 24px rgb(31 41 55 / 4%);
+}
+
+.recent-topics {
+  grid-column: 1;
+}
+
+.due-topics {
+  grid-column: 2;
+}
+
+.newest-mentions {
+  grid-column: 1 / -1;
+  min-width: 0;
 }
 
 .next-meeting {
@@ -261,13 +407,50 @@ h1 {
   color: #718096;
 }
 
+.mentions-state {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.mention-link {
+  display: grid;
+  gap: 0.35rem;
+  width: 100%;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.mention-context {
+  white-space: pre-wrap;
+  font-weight: 400;
+}
+
+.mention-list small {
+  text-align: left;
+}
+
+.mentions-more {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 0.75rem;
+}
+
 @media (max-width: 750px) {
   .dashboard-grid {
     grid-template-columns: 1fr;
   }
 
-  .next-meeting {
-    grid-column: auto;
+  .updates-action {
+    margin-top: 0;
+  }
+
+  .current-meeting,
+  .next-meeting,
+  .recent-topics,
+  .due-topics {
+    grid-column: 1 / -1;
   }
 }
 </style>

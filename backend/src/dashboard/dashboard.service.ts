@@ -9,6 +9,7 @@ import {
   assignedTaskSummarySelect,
 } from '../tasks/task-projection';
 import { Topic } from '../topics/topic.entity';
+import { TopicUpdate } from '../topics/topic-update.entity';
 import { accountResponse, topicLabelResponse } from '../topics/topic-response';
 import { User } from '../users/user.entity';
 import { isProtectedTextReader } from '../e2ee/e2ee-role-policy';
@@ -142,13 +143,29 @@ export class DashboardService {
         order: { followUpDate: 'ASC' },
         take: 8,
       }),
-      this.topics.find({
-        where: { status: In(['open', 'deferred']) },
-        relations: dashboardTopicRelations,
-        select: dashboardTopicSelect,
-        order: { updatedAt: 'DESC' },
-        take: 8,
-      }),
+      this.topics.createQueryBuilder('topic')
+        .innerJoin(
+          (query) => query.select('update.topic_id', 'topic_id')
+            .addSelect('MAX(update.date)', 'latest_update')
+            .from(TopicUpdate, 'update')
+            .where('update.type = :updateType', { updateType: 'update' })
+            .groupBy('update.topic_id'),
+          'standalone',
+          'standalone.topic_id = topic.id',
+        )
+        .leftJoinAndSelect('topic.responsibleUser', 'responsibleUser')
+        .select([
+          'topic.id', 'topic.nameEnvelope', 'topic.nameCommitRevision',
+          'topic.status', 'topic.followUpDate', 'topic.responsibleUserId',
+          'responsibleUser.id', 'responsibleUser.email', 'responsibleUser.firstName',
+          'responsibleUser.lastName', 'responsibleUser.role', 'responsibleUser.language',
+        ])
+        .addSelect('standalone.latest_update', 'latest_update')
+        .where('topic.status IN (:...statuses)', { statuses: ['open', 'deferred'] })
+        .orderBy('latest_update', 'DESC')
+        .addOrderBy('topic.id', 'ASC')
+        .limit(8)
+        .getMany(),
     ]);
     return {
       currentMeeting: nextMeetingResponse(currentMeeting, user),

@@ -10,6 +10,7 @@ import { protectedText } from '../e2ee/protected-text';
 import { formatDate, setLanguage } from '../i18n';
 import { tours } from '../tours/tours';
 import { tourApi } from '../tours/tour-api';
+import DashboardView from '../views/DashboardView.vue';
 import ProfileView from '../views/ProfileView.vue';
 import DeploymentUpdatesDialog from './DeploymentUpdatesDialog.vue';
 import { deploymentUpdates, type DeploymentAnnouncement } from './deployment-updates';
@@ -65,7 +66,7 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-describe('Deployment updates through login and profile UI', () => {
+describe('Deployment updates through login and dashboard UI', () => {
   it.each(['local', 'external', 'restore'])('holds unlock and tours until acknowledgement for %s sessions', async (kind) => {
     if (kind === 'local') await auth.login(user.email, 'password');
     else if (kind === 'external') await auth.completeExternal('code');
@@ -203,7 +204,7 @@ describe('Deployment updates through login and profile UI', () => {
     expect(deploymentUpdates.state.visible).toBe(false);
   });
 
-  it('groups all unread entries by local date, orders them chronologically, translates live, and hides technical keys', async () => {
+  it('groups all unread entries by local date, orders them newest first, translates live, and hides technical keys', async () => {
     vi.mocked(request).mockResolvedValueOnce([
       { ...announcement, id: 'later', identifier: 'unknown-announcement', category: 'bugfix', registeredAt: '2026-10-21T12:00:00Z' },
       announcement,
@@ -213,7 +214,7 @@ describe('Deployment updates through login and profile UI', () => {
     await settle();
     const dialog = document.querySelector('[role="dialog"]')!;
     expect([...dialog.querySelectorAll('h2')].map((heading) => heading.textContent)).toEqual([
-      `${formatDate(announcement.registeredAt)}:`, `${formatDate('2026-10-21T12:00:00Z')}:`,
+      `${formatDate('2026-10-21T12:00:00Z')}:`, `${formatDate(announcement.registeredAt)}:`,
     ]);
     expect(dialog.querySelectorAll('ul li')).toHaveLength(3);
     expect(dialog.textContent).toContain('New feature');
@@ -231,11 +232,15 @@ describe('Deployment updates through login and profile UI', () => {
     expect(request).toHaveBeenCalledTimes(1);
   });
 
-  it('opens profile history with loading, retry and empty states and closes without acknowledgement', async () => {
+  it('opens dashboard history with loading, retry and empty states and closes without acknowledgement', async () => {
     auth.completeInitialization(user);
     let finish!: (entries: DeploymentAnnouncement[]) => void;
     vi.mocked(request).mockReturnValueOnce(new Promise((resolve) => { finish = resolve; }));
-    mounted.push(mount(ProfileView, { attachTo: document.body, global: { plugins: [PrimeVue] } }));
+    vi.spyOn(api, 'dashboard').mockResolvedValue({ currentMeeting: null, nextMeeting: null, myOpenTasks: [], overdueTasks: [], followUpTopics: [], recentTopics: [] });
+    const profile = mount(ProfileView, { global: { plugins: [PrimeVue] } });
+    expect(profile.text()).not.toContain('Recent updates');
+    profile.unmount();
+    mounted.push(mount(DashboardView, { attachTo: document.body, global: { plugins: [PrimeVue] } }));
     button('Recent updates').click();
     await settle();
     expect(document.querySelector('[role="dialog"]')?.textContent).toContain('Loading updates');

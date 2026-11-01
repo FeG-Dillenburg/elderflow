@@ -10,6 +10,7 @@ import {
   Headers,
   Param,
   ParseBoolPipe,
+  ParseIntPipe,
   ParseUUIDPipe,
   Post,
   Put,
@@ -59,7 +60,15 @@ export class MeetingsController {
 
   @Get("my-mentions")
   @Header("Cache-Control", "no-store")
-  myMentions(@CurrentUser() user: User) { return this.service.currentMentions(user); }
+  myMentions(
+    @CurrentUser() user: User,
+    @Query("limit", new ParseIntPipe({ optional: true })) limit?: number,
+  ) {
+    if (limit !== undefined && (limit < 1 || limit > 9)) {
+      throw new BadRequestException("Mention limit must be between 1 and 9");
+    }
+    return this.service.currentMentions(user, limit);
+  }
 
   @Post(":id/completion/prepare")
   @Header("Cache-Control", "no-store")

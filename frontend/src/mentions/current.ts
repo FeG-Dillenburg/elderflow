@@ -18,10 +18,12 @@ interface EncryptedMention extends Omit<CurrentMention, "topicName" | "meetingTi
   topicNameEnvelope: string | null;
   meetingTitleEnvelope: string;
 }
-export async function currentMentions(signal?: AbortSignal): Promise<CurrentMention[]> {
+export async function currentMentions(signal?: AbortSignal, limit?: number): Promise<CurrentMention[]> {
   if (!scalarSession.isUnlocked()) throw new Error("E2EE_PROTECTED_TEXT_LOCKED");
-  const rows = await request<EncryptedMention[]>("/api/meetings/my-mentions", { signal });
-  return Promise.all(rows.map(async (row) => {
+  const rows = await request<EncryptedMention[]>(`/api/meetings/my-mentions${limit === undefined ? "" : `?limit=${limit}`}`, { signal });
+  signal?.throwIfAborted();
+  const decrypted = await Promise.all(rows.map(async (row) => {
+    signal?.throwIfAborted();
     const context = JSON.parse(await scalarSession.decrypt({
       aggregateType: SCALAR_AGGREGATES.mention, recordId: row.id, fieldId: 1,
     }, base64UrlToBytes(row.contextEnvelope)) ?? "null");
@@ -33,9 +35,12 @@ export async function currentMentions(signal?: AbortSignal): Promise<CurrentMent
     const meetingTitle = await scalarSession.decrypt({
       aggregateType: SCALAR_AGGREGATES.meeting, recordId: row.meetingId, fieldId: 1,
     }, base64UrlToBytes(row.meetingTitleEnvelope));
+    signal?.throwIfAborted();
     return {
       id: row.id, appearanceId: row.appearanceId, topicId: row.topicId, meetingId: row.meetingId, date: row.date,
       topicName: topicName ?? "", meetingTitle: meetingTitle ?? "", context: context.context,
     };
   }));
+  signal?.throwIfAborted();
+  return decrypted;
 }

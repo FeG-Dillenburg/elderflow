@@ -4,7 +4,13 @@ import { DashboardService } from "./dashboard.service";
 describe("DashboardService", () => {
   const meetings = { findOne: jest.fn() };
   const tasks = { find: jest.fn() };
-  const topics = { find: jest.fn() };
+  const recentQuery = {
+    innerJoin: jest.fn().mockReturnThis(), leftJoinAndSelect: jest.fn().mockReturnThis(),
+    select: jest.fn().mockReturnThis(), addSelect: jest.fn().mockReturnThis(),
+    where: jest.fn().mockReturnThis(), orderBy: jest.fn().mockReturnThis(),
+    addOrderBy: jest.fn().mockReturnThis(), limit: jest.fn().mockReturnThis(), getMany: jest.fn(),
+  };
+  const topics = { find: jest.fn(), createQueryBuilder: jest.fn(() => recentQuery) };
   const service = new DashboardService(
     meetings as any,
     tasks as any,
@@ -49,7 +55,8 @@ describe("DashboardService", () => {
     }];
     meetings.findOne.mockResolvedValueOnce({ ...next, id: "current", status: "in_progress" }).mockResolvedValueOnce(next);
     tasks.find.mockResolvedValueOnce(mine).mockResolvedValueOnce(overdue);
-    topics.find.mockResolvedValueOnce(followUps).mockResolvedValueOnce(recent);
+    topics.find.mockResolvedValueOnce(followUps);
+    recentQuery.getMany.mockResolvedValueOnce(recent);
     const result = await service.get({ id: "user", role: "user" } as any);
     expect(result).toMatchObject({
       currentMeeting: expect.objectContaining({ id: "current", status: "in_progress" }),
@@ -113,17 +120,15 @@ describe("DashboardService", () => {
       order: { followUpDate: "ASC" },
       take: 8,
     }));
-    expect(topics.find).toHaveBeenNthCalledWith(2, expect.objectContaining({
-      where: { status: In(["open", "deferred"]) },
-      relations: { responsibleUser: true },
-      order: { updatedAt: "DESC" },
-      take: 8,
-    }));
+    expect(recentQuery.limit).toHaveBeenCalledWith(8);
+    expect(recentQuery.where).toHaveBeenCalledWith('topic.status IN (:...statuses)', { statuses: ['open', 'deferred'] });
+
   });
   it("preserves null and empty query results", async () => {
     meetings.findOne.mockResolvedValue(null);
     tasks.find.mockResolvedValue([]);
     topics.find.mockResolvedValue([]);
+    recentQuery.getMany.mockResolvedValue([]);
     await expect(service.get({ id: "user", role: "user" } as any)).resolves.toEqual({
       currentMeeting: null,
       nextMeeting: null,
@@ -149,6 +154,7 @@ describe("DashboardService", () => {
       descriptionEnvelope: Buffer.from("task-description"),
     }]);
     topics.find.mockResolvedValue([topic]);
+    recentQuery.getMany.mockResolvedValue([topic]);
 
     const result = await service.get({ id: "guest", role: "guest" } as any);
     expect(result.followUpTopics[0]).toMatchObject({ id: "topic", protected: expect.objectContaining({ nameEnvelope: "AQ" }) });
