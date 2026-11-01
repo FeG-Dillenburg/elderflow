@@ -1,6 +1,6 @@
 import { Decoder, Encoder } from "cbor-x";
 import sodium from "libsodium-wrappers-sumo";
-import { hkdfSha256, uuidToBytes } from "./crypto";
+import { hkdfSha256, uuidToBytes } from "./crypto-primitives";
 import { ScalarFieldContext } from "./scalar-registry";
 
 const FORMAT = 1;

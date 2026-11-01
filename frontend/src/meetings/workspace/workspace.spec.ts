@@ -65,6 +65,49 @@ const setup = (result: Meeting = meeting(), unlocked = true) => {
 };
 
 describe("Meeting workspace contract", () => {
+  it("does not lose an invalidation as the previous refresh settles", async () => {
+    const load = vi.fn()
+      .mockResolvedValueOnce({ meeting: meeting(), unlocked: true })
+      .mockResolvedValueOnce({ meeting: meeting({ title: "Second" }), unlocked: true })
+      .mockResolvedValue({ meeting: meeting({ title: "Third" }), unlocked: true });
+    const workspace = createMeetingWorkspace("meeting-1", { load, complete: vi.fn() });
+    await workspace.open();
+    let scheduled = false;
+    workspace.subscribe((state) => {
+      if (state.meeting?.title !== "Second" || scheduled) return;
+      scheduled = true;
+      queueMicrotask(() => queueMicrotask(() => { void workspace.refresh(); }));
+    });
+    await workspace.refresh();
+    await vi.waitFor(() => expect(workspace.state.meeting?.title).toBe("Third"));
+    await workspace.close();
+  });
+
+  it("coalesces invalidations during a fetch and never publishes the superseded response", async () => {
+    let notify!: (change?: "structure") => void;
+    let finish!: (value: { meeting: Meeting; unlocked: boolean }) => void;
+    const load = vi.fn().mockResolvedValueOnce({ meeting: meeting(), unlocked: true })
+      .mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }))
+      .mockResolvedValue({ meeting: meeting({ title: "Newest" }), unlocked: true });
+    const workspace = createMeetingWorkspace("meeting-1", {
+      load, complete: vi.fn(),
+      connect: async () => ({ phase: "ready", pending: false, collaborators: [], close() {},
+        subscribe(listener) { notify = listener; return () => {}; } }),
+    });
+    await workspace.open();
+    const titles: Array<string | null | undefined> = [];
+    workspace.subscribe((state) => titles.push(state.meeting?.title));
+    notify("structure");
+    await Promise.resolve();
+    for (let i = 0; i < 30; i += 1) notify("structure");
+    finish({ meeting: meeting({ title: "Superseded" }), unlocked: true });
+    await workspace.refresh();
+    expect(workspace.state.meeting?.title).toBe("Newest");
+    expect(titles).not.toContain("Superseded");
+    expect(load).toHaveBeenCalledTimes(3);
+    await workspace.close();
+  });
+
   it("coordinates completion while syncing, blocks duplicates, and resumes on a retryable abort", async () => {
     const { backend, collaboration } = setup(meeting({ status: "in_progress" }));
     Object.assign(collaboration, { pending: true });

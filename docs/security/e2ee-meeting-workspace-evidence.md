@@ -61,3 +61,38 @@ rg -n 'EF51_MEETING_MARKER_7QX9' backend frontend \
 ```
 
 Both searches must return no match. Browser network inspection must show opaque base64url envelopes only, `Cache-Control: no-store` on protected responses, no marker in URLs or browser storage/cache, and no marker in routine backend output. Complete the Meeting and verify a subsequent workspace update returns `MEETING_COMPLETED_IMMUTABLE` while the stored snapshot/update bytes remain unchanged.
+
+
+## Saved Topic fields (#118)
+
+Committed Meeting field saves and ordinary Topic updates emit an identifier-only
+`topic-changed` invalidation. The existing collaboration relay batches nearby
+changes, resolves appearances in its open Planned/In-progress Meeting rooms,
+and checks each connection's current authorization before sending. No scalar
+plaintext or envelopes travel in notifications. This reuses the existing
+process-local EventEmitter and WebSocket rooms: cross-process delivery is not
+provided, so deployments must keep these writers and rooms in one backend process.
+Existing collaboration eligibility is unchanged: Guests do not join these live
+rooms. No broker, database migration, or encrypted-format change is introduced.
+
+The provider maps this invalidation onto the existing Agenda refresh seam.
+Workspace refreshes coalesce and serialize; a response superseded by a later
+invalidation is not published. Existing document synchronization retains the
+attached Yjs document, pending encrypted updates, awareness, and editors.
+Reauthentication also invalidates the Agenda to recover missed saves.
+Completed Meeting rooms are excluded and historical snapshots remain authoritative.
+
+Inline membership drafts and Topic edit dialogs retain dirty/in-flight input
+separately from incoming saved values. Encrypted Agenda edits send the revision
+captured with their draft; the locked Topic transaction rejects stale revisions
+with `TOPIC_FIELDS_CHANGED`. An explicit retry can adopt the latest baseline;
+there is no automatic last-write-wins retry. Revision preconditions are optional
+for compatibility with existing API callers and do not change the envelope format.
+
+The PostgreSQL workspace integration suite exercises two ticket-authenticated
+users, real client scalar encryption/decryption, committed persistence, WebSocket
+routing to shared Meetings, the workspace read model, stale drafts, rejected
+ciphertext, and foreign-key rollback. Component/provider suites cover draft
+retention, untouched fields, coalescing, reconnect invalidation, and existing
+completion/compaction/security lifecycle behavior. This is an integration harness,
+not a manual two-browser verification.

@@ -1,6 +1,6 @@
 import { HttpAdapterHost } from "@nestjs/core";
 import { Injectable, Logger, OnApplicationBootstrap, OnApplicationShutdown } from "@nestjs/common";
-import { DataSource } from "typeorm";
+import { DataSource, In } from "typeorm";
 import type { Server as HttpServer, IncomingMessage } from "node:http";
 import type { Duplex } from "node:stream";
 import { WebSocket, WebSocketServer, type RawData } from "ws";
@@ -12,6 +12,7 @@ import sodium from "libsodium-wrappers-sumo";
 import { isE2eeKeyOperator } from "../e2ee/e2ee-role-policy";
 import { User } from "../users/user.entity";
 import { Meeting } from "./meeting.entity";
+import { MeetingTopic } from "./meeting-topic.entity";
 import { MeetingDocument } from "./meeting-document.entity";
 import { MeetingDocumentSnapshot } from "./meeting-document-snapshot.entity";
 import { MeetingCompactionCoordinator } from "./meeting-compaction-coordinator";
@@ -40,6 +41,8 @@ export class MeetingCollaborationRelayService implements OnApplicationBootstrap,
   private readonly server = new WebSocketServer({ noServer: true, maxPayload: 1_500_000 });
   private readonly rooms = new Map<string, Set<Client>>();
   private readonly awarenessClocks = new Map<string, number>();
+  private readonly changedTopics = new Set<string>();
+  private topicChangeTimer?: ReturnType<typeof setTimeout>;
   private httpServer?: HttpServer;
 
   constructor(
@@ -56,6 +59,7 @@ export class MeetingCollaborationRelayService implements OnApplicationBootstrap,
     httpServer.on("upgrade", this.upgrade);
     this.server.on("connection", (socket: Client) => this.connected(socket));
     meetingCollaborationEvents.on("agenda-changed", this.agendaChanged);
+    meetingCollaborationEvents.on("topic-changed", this.topicChanged);
     meetingCollaborationEvents.on("completed", this.meetingCompleted);
     meetingCollaborationEvents.on("compaction-released", this.compactionReleased);
     meetingCollaborationEvents.on("completion-barrier", this.completionBarrier);
@@ -65,6 +69,9 @@ export class MeetingCollaborationRelayService implements OnApplicationBootstrap,
   onApplicationShutdown(): void {
     this.httpServer?.off("upgrade", this.upgrade);
     meetingCollaborationEvents.off("agenda-changed", this.agendaChanged);
+    meetingCollaborationEvents.off("topic-changed", this.topicChanged);
+    clearTimeout(this.topicChangeTimer);
+    this.changedTopics.clear();
     meetingCollaborationEvents.off("completed", this.meetingCompleted);
     meetingCollaborationEvents.off("compaction-released", this.compactionReleased);
     meetingCollaborationEvents.off("completion-barrier", this.completionBarrier);
@@ -265,6 +272,45 @@ export class MeetingCollaborationRelayService implements OnApplicationBootstrap,
       const code = this.code(error);
       socket.send(JSON.stringify({ type: "rejected", code }));
       socket.close(4403, code);
+    }
+  }
+
+  private readonly topicChanged = (event: { topicId: string }): void => {
+    this.changedTopics.add(event.topicId);
+    if (this.topicChangeTimer) return;
+    this.topicChangeTimer = setTimeout(() => {
+      this.topicChangeTimer = undefined;
+      const topicIds = [...this.changedTopics];
+      this.changedTopics.clear();
+      void this.relayTopicChanges(topicIds).catch(() => {
+        this.logger.warn({ outcome: "TOPIC_INVALIDATION_FAILED" });
+      });
+    }, 25);
+  };
+
+  private async relayTopicChanges(topicIds: string[]): Promise<void> {
+    const sockets = [...this.rooms.values()].flatMap((room) => [...room]);
+    const meetingIds = [...new Set(sockets.flatMap((socket) =>
+      socket.collaboration ? [socket.collaboration.meetingId] : []))];
+    if (!meetingIds.length) return;
+    const appearances = await this.dataSource.getRepository(MeetingTopic).find({
+      where: { topicId: In(topicIds), meetingId: In(meetingIds), meeting: { status: In(["planned", "in_progress"]) } },
+      select: { topicId: true, meetingId: true },
+    });
+    for (const socket of sockets) {
+      if (!socket.collaboration || socket.readyState !== WebSocket.OPEN) continue;
+      const affected = appearances.filter((item) => item.meetingId === socket.collaboration!.meetingId);
+      if (!affected.length) continue;
+      try {
+        await this.assertConnectionActive(socket.collaboration);
+        for (const topicId of new Set(affected.map((item) => item.topicId))) {
+          if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: "topic-changed", topicId }));
+        }
+      } catch (error) {
+        const code = this.code(error);
+        socket.send(JSON.stringify({ type: "rejected", code }));
+        socket.close(4403, code);
+      }
     }
   }
 

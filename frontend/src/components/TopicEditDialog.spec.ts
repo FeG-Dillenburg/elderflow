@@ -1,5 +1,5 @@
 import { flushPromises, mount } from "@vue/test-utils";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { api } from "../api/domain";
 import TopicTypeRadioGroup from "../topics/components/TopicTypeRadioGroup.vue";
 import TopicEditDialog from "./TopicEditDialog.vue";
@@ -27,6 +27,51 @@ const topic: any = {
   defaultPosition: 3,
 };
 describe("TopicEditDialog", () => {
+  afterEach(() => vi.restoreAllMocks());
+  it("fetches the conflict baseline for an explicit retry while retaining dirty fields", async () => {
+    const update = vi.spyOn(api, "updateTopic")
+      .mockRejectedValueOnce(Object.assign(new Error("Changed remotely"), { code: "TOPIC_FIELDS_CHANGED" }))
+      .mockResolvedValueOnce({} as any);
+    vi.spyOn(api, "topic").mockResolvedValue({ ...topic, name: "Remote name", description: "Remote description",
+      scalarRevisions: { name: "2", description: "2" } });
+    const wrapper = mount(TopicEditDialog, {
+      shallow: true,
+      props: { topic: { ...topic, scalarRevisions: { name: "1", description: "1" } }, users: [], sections: [], visible: true },
+      global: { stubs },
+    });
+    const vm: any = wrapper.vm;
+    vm.form.name = "Local draft";
+    await vm.save();
+    expect(update).toHaveBeenCalledTimes(1);
+    expect(vm.form.name).toBe("Local draft");
+    expect(vm.form.description).toBe("Remote description");
+    await vm.save();
+    expect(update).toHaveBeenLastCalledWith("topic", expect.objectContaining({ name: "Local draft",
+      description: "Remote description", expectedRevisions: { name: "2", description: "2" } }));
+    wrapper.unmount();
+  });
+
+  it("preserves a dirty name while refreshing untouched fields and retains its original revision", async () => {
+    const update = vi.spyOn(api, "updateTopic").mockRejectedValue(new Error("Changed remotely"));
+    const wrapper = mount(TopicEditDialog, {
+      shallow: true,
+      props: { topic: { ...topic, scalarRevisions: { name: "1", description: "1" } }, users: [], sections: [], visible: true },
+      global: { stubs },
+    });
+    const vm: any = wrapper.vm;
+    vm.form.name = "Local draft";
+    await wrapper.setProps({ topic: { ...topic, name: "Remote", description: "New description",
+      scalarRevisions: { name: "2", description: "2" } } });
+    expect(vm.form.name).toBe("Local draft");
+    expect(vm.form.description).toBe("New description");
+    await vm.save();
+    expect(update).toHaveBeenCalledWith("topic", expect.objectContaining({
+      name: "Local draft", expectedRevisions: { name: "1", description: "2" },
+    }));
+    expect(vm.form.name).toBe("Local draft");
+    wrapper.unmount();
+  });
+
   it("submits and closes from the dialog footer save button", async () => {
     vi.spyOn(api, "updateTopic").mockResolvedValue({} as any);
     const wrapper = mount(TopicEditDialog, {

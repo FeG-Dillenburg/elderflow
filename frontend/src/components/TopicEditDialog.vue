@@ -11,6 +11,7 @@ import {
   type AgendaSection,
   type Topic,
   type TopicInput,
+  type TopicScalarRevisions,
   type User,
 } from "../api/domain";
 import { creatableTopicTypes } from "../topics/topicTypeRegistry";
@@ -57,27 +58,48 @@ const statuses = computed(() =>
   })),
 );
 
+let persistedForm: typeof form | null = null;
+let draftTopicId: string | null = null;
+let expectedRevisions: TopicScalarRevisions = {};
+
+const syncTopicDraft = (topic: Topic, isVisible: boolean) => {
+  if (draftTopicId !== topic.id) {
+    persistedForm = null;
+    expectedRevisions = {};
+    draftTopicId = topic.id;
+  }
+  const next = {
+    name: topic.name,
+    description: topic.description,
+    type: topic.type,
+    status: topic.status,
+    followUpDate: topic.followUpDate
+      ? new Date(`${topic.followUpDate}T12:00:00`)
+      : null,
+    responsibleUserId: topic.responsibleUserId,
+    membershipProcessStatus: topic.membershipProcessStatus,
+    membershipStatusSignal: topic.membershipStatusSignal,
+    godparents: topic.godparents,
+    defaultSectionId: topic.defaultSectionId,
+    defaultPosition: topic.defaultPosition,
+    recurrenceFirstDueDate: topic.recurrenceFirstDueDate ?? null,
+    recurrenceInterval: topic.recurrenceInterval ?? null,
+    recurrenceUnit: topic.recurrenceUnit ?? null,
+  };
+  for (const field of Object.keys(next) as Array<keyof typeof form>) {
+    if (!isVisible || !persistedForm || JSON.stringify(form[field]) === JSON.stringify(persistedForm[field])) {
+      Object.assign(form, { [field]: next[field] });
+      if (field in (topic.scalarRevisions ?? {})) {
+        const scalar = field as keyof TopicScalarRevisions;
+        expectedRevisions[scalar] = topic.scalarRevisions?.[scalar];
+      }
+    }
+  }
+  persistedForm = next;
+};
 watch(
-  () => props.topic,
-  (topic) =>
-    Object.assign(form, {
-      name: topic.name,
-      description: topic.description,
-      type: topic.type,
-      status: topic.status,
-      followUpDate: topic.followUpDate
-        ? new Date(`${topic.followUpDate}T12:00:00`)
-        : null,
-      responsibleUserId: topic.responsibleUserId,
-      membershipProcessStatus: topic.membershipProcessStatus,
-      membershipStatusSignal: topic.membershipStatusSignal,
-      godparents: topic.godparents,
-      defaultSectionId: topic.defaultSectionId,
-      defaultPosition: topic.defaultPosition,
-      recurrenceFirstDueDate: topic.recurrenceFirstDueDate ?? null,
-      recurrenceInterval: topic.recurrenceInterval ?? null,
-      recurrenceUnit: topic.recurrenceUnit ?? null,
-    }),
+  () => [props.topic, visible.value] as const,
+  ([topic, isVisible]) => syncTopicDraft(topic, isVisible),
   { immediate: true },
 );
 
@@ -88,16 +110,29 @@ watch(visible, (isVisible) => {
 async function save(): Promise<void> {
   if (saving.value) return;
   saving.value = true;
+  const topicId = props.topic.id;
   saveError.value = "";
   try {
     const input = toTopicInput({
       ...form,
       followUpDate: toLocalDate(form.followUpDate),
     });
-    await api.updateTopic(props.topic.id, input);
+    await api.updateTopic(topicId, { ...input, expectedRevisions: { ...expectedRevisions } });
+    if (topicId !== props.topic.id) return;
     visible.value = false;
     emit("saved");
   } catch (error) {
+    if ((error as { code?: string }).code === "TOPIC_FIELDS_CHANGED") {
+      try {
+        const latest = await api.topic(topicId);
+        if (topicId !== props.topic.id) return;
+        // Merge untouched values, then let a later explicit save adopt this baseline.
+        syncTopicDraft(latest, visible.value);
+        expectedRevisions = { ...latest.scalarRevisions };
+      } catch {
+        // Keep the original conflict and draft if the latest baseline is unavailable.
+      }
+    }
     saveError.value = error instanceof Error
       ? error.message
       : t("topicEdit.saveFailed");

@@ -141,7 +141,8 @@ export const createMeetingWorkspace = (
   let localWrites = 0;
   let closing = false;
   let completing = false;
-  let refreshQueue = Promise.resolve();
+  let refreshTask: Promise<void> | null = null;
+  let refreshRequested = false;
   const pending = () => localWrites > 0 || Boolean(collaboration?.pending);
   const beforeUnload = (event: BeforeUnloadEvent) => {
     if (!pending()) return;
@@ -167,6 +168,8 @@ export const createMeetingWorkspace = (
 
   const dispose = () => {
     controller.abort();
+    refreshRequested = false;
+    refreshTask = null;
     unsubscribeCollaboration?.();
     unsubscribeCollaboration = null;
     const previous = collaboration;
@@ -212,7 +215,7 @@ export const createMeetingWorkspace = (
     }
   };
 
-  const load = async () => {
+  const load = async (current = () => true) => {
     const currentGeneration = generation;
     const loaded = await backend.load(meetingId, controller.signal);
     if (currentGeneration !== generation || state.phase === "closed") return;
@@ -263,6 +266,7 @@ export const createMeetingWorkspace = (
         return;
       }
     }
+    if (!current() || currentGeneration !== generation) return;
     publish({
       ...state,
       phase: completing ? "syncing" : loaded.unlocked ? (collaboration?.phase ?? "ready") : "locked",
@@ -308,17 +312,26 @@ export const createMeetingWorkspace = (
       }
     },
     refresh() {
+      refreshRequested = true;
+      if (refreshTask) return refreshTask;
       const currentGeneration = generation;
-      const refreshed = refreshQueue.then(async () => {
-        if (state.phase === "closed" || currentGeneration !== generation) return;
+      const refreshed = Promise.resolve().then(async () => {
         try {
-          await load();
-        } catch (error) {
-          if (currentGeneration === generation) fail(error);
-          throw error;
+          while (refreshRequested && state.phase !== "closed" && currentGeneration === generation) {
+            refreshRequested = false;
+            try {
+              await load(() => !refreshRequested);
+            } catch (error) {
+              if (currentGeneration === generation) fail(error);
+              throw error;
+            }
+          }
+        } finally {
+          // Clear ownership in the loop's final microtask, before its promise settles.
+          if (refreshTask === refreshed) refreshTask = null;
         }
       });
-      refreshQueue = refreshed.catch(() => undefined);
+      refreshTask = refreshed;
       return refreshed;
     },
     text(target) {

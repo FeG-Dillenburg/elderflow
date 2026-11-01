@@ -322,6 +322,9 @@ function projectedTopic(
   const { protected: _protected, ...structural } = response;
   return {
     ...structural,
+    scalarRevisions: response.protected ? Object.fromEntries(
+      Object.entries(TOPIC_SCALAR_FIELDS).map(([name, field]) => [name, response.protected?.[field.revisionProperty]]),
+    ) : undefined,
     name,
     description,
     membershipProcessStatus: response.type === "new_membership" ? membershipProcessStatus : null,

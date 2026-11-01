@@ -1,3 +1,4 @@
+/// <reference lib="es2022.error" />
 import 'dotenv/config';
 import { randomUUID } from 'node:crypto';
 import { INestApplication } from '@nestjs/common';
@@ -38,6 +39,9 @@ import { Task } from '../src/tasks/task.entity';
 import { TopicUpdate } from '../src/topics/topic-update.entity';
 import { Topic } from '../src/topics/topic.entity';
 import { User } from '../src/users/user.entity';
+import { TopicsService } from '../src/topics/topics.service';
+import { ScalarSession } from '../../frontend/src/e2ee/scalar-session';
+import { createMeetingWorkspace } from '../../frontend/src/meetings/workspace/core';
 
 const databaseUrl = process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL;
 const describeWithPostgres = databaseUrl ? describe : describe.skip;
@@ -439,15 +443,15 @@ describeWithPostgres('Encrypted Meeting workspaces with PostgreSQL', () => {
       await app?.close();
     });
 
-    async function connect() {
-      const ticket = await tickets.mint(meetingId, currentUser);
+    async function connect(id = meetingId, docId = documentId, identity = currentUser) {
+      const ticket = await tickets.mint(id, identity);
       const port = (app.getHttpServer().address() as AddressInfo).port;
       const socket = new WebSocket(`ws://127.0.0.1:${port}${ticket.websocketPath}`);
       clients.push(socket);
       const frames: Array<Record<string, string>> = [];
       socket.on('message', (data) => frames.push(JSON.parse(data.toString())));
       await once(socket, 'open');
-      socket.send(JSON.stringify({ type: 'authenticate', ticket: ticket.ticket, documentId }));
+      socket.send(JSON.stringify({ type: 'authenticate', ticket: ticket.ticket, documentId: docId }));
       const wait = async (type: string) => {
         const deadline = Date.now() + 7_000;
         while (!frames.some((frame) => frame.type === type)) {
@@ -457,8 +461,122 @@ describeWithPostgres('Encrypted Meeting workspaces with PostgreSQL', () => {
         return frames.splice(frames.findIndex((frame) => frame.type === type), 1)[0];
       };
       await wait('authenticated');
-      return { socket, wait, send: (frame: object) => socket.send(JSON.stringify(frame)) };
+      return { socket, wait, frames, send: (frame: object) => socket.send(JSON.stringify(frame)) };
     }
+
+    it('refreshes the second client workspace from committed Topic fields without reloading', async () => {
+      await database.getRepository(MeetingTopic).save({ id: appearanceId, meetingId, topicId, sectionId, position: 1, source: 'manual' });
+      const topics = new TopicsService(database.getRepository(Topic), database.getRepository(TopicUpdate),
+        database.getRepository(MeetingTopic), new RecurrenceService(), new E2eeScalarService());
+      const keys = { organizationId, ockId, clientEpochId: epochId, noncePrefix,
+        contentKey: new Uint8Array(32).fill(73), signingPrivateKey };
+      const writer = new ScalarSession();
+      const reader = new ScalarSession();
+      writer.unlock(keys);
+      const secondViewer = await database.getRepository(User).save({ id: randomUUID(), role: 'user',
+        email: 'topic-field-reader@example.com', firstName: 'Second', lastName: 'Reader', language: 'en' });
+      const readerEpochId = randomUUID();
+      const readerSigning = sodium.crypto_sign_seed_keypair(Buffer.alloc(32, 74), 'uint8array');
+      await database.getRepository(E2eeClientEpoch).save({ id: readerEpochId, organizationId,
+        userId: secondViewer.id, noncePrefix: Buffer.alloc(16, 74), signingPublicKey: Buffer.from(readerSigning.publicKey) });
+      reader.unlock({ ...keys, clientEpochId: readerEpochId, noncePrefix: new Uint8Array(16).fill(74),
+        signingPrivateKey: readerSigning.privateKey });
+      const context = { aggregateType: 256 as const, recordId: topicId, fieldId: 4 as const };
+      const encrypt = async (value: string) => Buffer.from(await writer.encrypt(context, value)).toString('base64url');
+      await database.getRepository(Topic).update(topicId, { type: 'new_membership', membershipStatusSignal: 'new' });
+      await topics.update(topicId, { protected: {
+        godparentsEnvelope: await encrypt('Initial godparents'),
+      } } as never, viewer);
+      // Drain the initial fixture invalidation before attaching the clients.
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      const a = await connect();
+      const b = await connect(meetingId, documentId, secondViewer);
+      const shared = await connect(targetMeetingId, targetDocumentId);
+      const unrelatedMeetingId = randomUUID();
+      const unrelatedDocumentId = randomUUID();
+      const unrelatedSnapshotId = randomUUID();
+      await database.getRepository(Meeting).save({ ...(await database.getRepository(Meeting).findOneByOrFail({ id: targetMeetingId })), id: unrelatedMeetingId });
+      await database.getRepository(MeetingDocumentSnapshot).save({
+        ...(await database.getRepository(MeetingDocumentSnapshot).findOneByOrFail({ id: targetSnapshotId })),
+        id: unrelatedSnapshotId, documentId: unrelatedDocumentId,
+      });
+      await database.getRepository(MeetingDocument).save({
+        ...(await database.getRepository(MeetingDocument).findOneByOrFail({ id: targetDocumentId })),
+        id: unrelatedDocumentId, meetingId: unrelatedMeetingId, activeSnapshotId: unrelatedSnapshotId,
+      });
+      const unrelated = await connect(unrelatedMeetingId, unrelatedDocumentId);
+
+      const workspace = createMeetingWorkspace(meetingId, {
+        load: async () => {
+          const loaded = await service.findOne(meetingId, secondViewer);
+          return { meeting: { ...loaded, agenda: await Promise.all(loaded.agenda.map(async (item) => ({
+            ...item,
+            topic: item.topic ? { ...item.topic, godparents: await reader.decrypt(context,
+              Buffer.from(item.topic.protected!.godparentsEnvelope, 'base64url')) } : null,
+          }))) } as never, unlocked: true };
+        },
+        connect: async () => ({
+          phase: 'ready', pending: false, collaborators: [], close() {},
+          subscribe(listener) {
+            const changed = (data: Buffer) => {
+              if (JSON.parse(data.toString()).type === 'topic-changed') listener('structure');
+            };
+            b.socket.on('message', changed);
+            return () => { b.socket.off('message', changed); };
+          },
+        }),
+        complete: async () => { throw new Error('Not used'); },
+      });
+      await workspace.open();
+      try {
+        await service.updateTopicFields(meetingId, appearanceId, { responsibleUserId: userId }, viewer);
+        await b.wait('topic-changed');
+        const deadline = Date.now() + 1_000;
+        while (workspace.state.meeting?.agenda?.find((item) => item.id === appearanceId)?.topic?.responsibleUserId !== userId && Date.now() < deadline) {
+          await new Promise((resolve) => setTimeout(resolve, 5));
+        }
+        expect(workspace.state.meeting?.agenda?.find((item) => item.id === appearanceId)?.topic?.responsibleUserId)
+          .toBe(userId);
+        expect(await a.wait('topic-changed')).toEqual({ type: 'topic-changed', topicId });
+        expect(await shared.wait('topic-changed')).toEqual({ type: 'topic-changed', topicId });
+        const current = await topics.findOne(topicId, viewer);
+        const revision = current.protected!.godparentsCommitRevision;
+        const envelope = await encrypt('Saved by A');
+        await topics.update(topicId, { protected: { godparentsEnvelope: envelope },
+          expectedRevisions: { godparents: revision } } as never, viewer);
+        await b.wait('topic-changed');
+        await a.wait('topic-changed');
+        await shared.wait('topic-changed');
+        const refreshed = Date.now() + 1_000;
+        while (workspace.state.meeting?.agenda?.find((item) => item.id === appearanceId)?.topic?.godparents !== 'Saved by A'
+          && Date.now() < refreshed) await new Promise((resolve) => setTimeout(resolve, 5));
+        expect(workspace.state.meeting?.agenda?.find((item) => item.id === appearanceId)?.topic?.godparents).toBe('Saved by A');
+        // Stale encrypted drafts, rejected ciphertext, and database rollback never announce a save.
+        await expect(topics.update(topicId, { protected: { godparentsEnvelope: Buffer.from(await reader.encrypt(context, 'Stale draft')).toString('base64url') },
+          expectedRevisions: { godparents: revision } } as never, secondViewer)).rejects.toMatchObject({
+          response: expect.objectContaining({ code: 'TOPIC_FIELDS_CHANGED' }),
+        });
+        await expect(topics.update(topicId, { protected: { godparentsEnvelope: 'invalid' } } as never, viewer)).rejects.toThrow();
+        await expect(service.updateTopicFields(meetingId, appearanceId, { responsibleUserId: randomUUID() }, viewer)).rejects.toThrow();
+        await new Promise((resolve) => setTimeout(resolve, 80));
+        expect(b.frames.filter((frame) => frame.type === 'topic-changed')).toEqual([]);
+        expect((await topics.findOne(topicId, viewer)).protected!.godparentsEnvelope).toBe(envelope);
+        expect(unrelated.frames.filter((frame) => frame.type === 'topic-changed')).toEqual([]);
+        await database.getRepository(Meeting).update(targetMeetingId, { status: 'completed' });
+        await topics.update(topicId, { responsibleUserId: null }, viewer);
+        await b.wait('topic-changed');
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        expect(shared.frames.filter((frame) => frame.type === 'topic-changed')).toEqual([]);
+
+
+      } finally {
+        await workspace.close({ discard: true });
+        writer.lock();
+        reader.lock();
+        await database.getRepository(Topic).update(topicId, { type: 'generic', membershipStatusSignal: null });
+        await database.getRepository(Meeting).update(targetMeetingId, { status: 'planned' });
+      }
+    }, 10_000);
 
     let proofCounter = 0;
     function signedProof(recordId: string, fieldId: number) {

@@ -7,6 +7,7 @@ import {
   IsString,
   IsUUID,
   Min,
+  Matches,
   registerDecorator,
   ValidateNested,
   ValidationArguments,
@@ -66,7 +67,16 @@ export class TopicDto {
   @IsOptional() @IsIn(RECURRENCE_UNITS) recurrenceUnit?: RecurrenceUnit | null;
 }
 
+export class TopicExpectedRevisionsDto {
+  @IsOptional() @Matches(/^[0-9]+$/) name?: string;
+  @IsOptional() @Matches(/^[0-9]+$/) description?: string;
+  @IsOptional() @Matches(/^[0-9]+$/) membershipProcessStatus?: string;
+  @IsOptional() @Matches(/^[0-9]+$/) godparents?: string;
+}
+
 export class TopicPatchDto {
+  @IsOptional() @ValidateNested() @Type(() => TopicExpectedRevisionsDto)
+  expectedRevisions?: TopicExpectedRevisionsDto;
   @IsOptional() @ValidateNested() @Type(() => TopicEncryptedScalarPatchDto)
   protected?: TopicEncryptedScalarPatchDto;
   @IsOptional() @IsString() type?: TopicType;
