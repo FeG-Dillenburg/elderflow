@@ -6,12 +6,28 @@
 - Keep changes production-oriented, small, readable, and consistent with the existing architecture.
 - A staging deployment with persistent PostgreSQL data is active. Treat every database migration and schema change as an in-place upgrade: preserve existing data, use forward-only migrations, and never reset, truncate, or replace the deployment volume unless the user explicitly authorizes it. Validate migrations against an existing-data upgrade path before release.
 - Preserve the readable, expanded formatting used by Vue single-file components in `frontend/src/components/` and `frontend/src/views/`. Keep scripts, templates, and styles clearly structured across multiple lines; do not collapse Vue markup or declarations into dense one-line blocks when editing these files.
-- Name issue branches `feature/<issue-number>-<short-description>` for features and `bug/<issue-number>-<short-description>` for bug fixes.
 - Development identity is selected by `DEV_USER_EMAIL` and must stay disabled in production. Preserve the explicit boundary for a future OAuth2 implementation; do not turn development impersonation into production authentication.
 - Admin, leadership, and read-only viewer permissions are enforced by the backend. Authorization must never rely only on hidden frontend controls.
 - Do not introduce new business domains unless explicitly requested.
 - Run the relevant tests and builds before finishing work. Prefer running the full root test suite when practical.
 - Run GitHub authentication checks and remote GitHub operations with elevated permissions outside the sandbox. A sandboxed `gh auth status` may falsely report that the user's valid host credentials are unavailable; retry it outside the sandbox before asking the user to authenticate again.
+
+## Required Git workflow
+
+Before modifying repository files to implement a GitHub issue:
+
+1. Read the issue and inspect the current branch and working-tree status.
+2. Create and switch to a dedicated issue branch from up-to-date `origin/main`, or continue the existing branch for that same issue.
+3. Use `feature/<issue-number>-<short-description>` for features, improvements, and refactors; use `bug/<issue-number>-<short-description>` for bug fixes.
+4. Verify the checked-out branch before making the first edit.
+
+Never implement an issue or commit implementation changes directly on `main`. An implementation request authorizes creating the required branch; do not ask separately for permission.
+
+If the checkout contains unrelated changes or belongs to another issue, preserve that work and use a separate worktree or another safe checkout. Do not carry unrelated changes into the issue branch.
+
+Keep implementation commits on the issue branch for pull-request review. Work directly on `main` only when Daniel explicitly requests that exception for the current task. Earlier exceptions do not apply to later tasks.
+
+In the final handoff, state the branch used.
 
 ## Deployment announcements
 
