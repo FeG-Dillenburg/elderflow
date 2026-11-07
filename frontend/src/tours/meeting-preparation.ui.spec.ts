@@ -27,6 +27,7 @@ const editor = defineComponent({
 });
 let wrapper: ReturnType<typeof mount>;
 let stop: () => void;
+let appRouter: ReturnType<typeof createRouter>;
 let meeting: Meeting;
 let topics: any[];
 let appearance = 0;
@@ -38,7 +39,11 @@ function next() {
   expect(button).toBeTruthy();
   button!.click();
 }
-async function at(step: string) { await settle(); expect(tours.state.stepId).toBe(step); }
+async function at(step: string) {
+  await settle();
+  expect(tours.state.stepId).toBe(step);
+  expect(document.querySelector('.tour-skip')).toBeNull();
+}
 function target(id: string) { return document.querySelector<HTMLElement>(`[data-tour-id="${id}"]`)!; }
 async function click(id: string) { expect(target(id)).toBeTruthy(); target(id).click(); await settle(); }
 
@@ -77,6 +82,7 @@ async function open(existing: 'generic' | 'person' | 'new_membership' | null = '
     { path: '/topics/:id', component: { template: '<div />' } },
     { path: '/', component: { template: '<div />' } },
   ] });
+  appRouter = router;
   await router.push('/meetings'); await router.isReady();
   stop = tours.mount(router);
   wrapper = mount({ render: () => h(RouterView) }, {
@@ -195,7 +201,7 @@ describe('Meeting preparation tour through real view interactions', () => {
     expect(api.createTopic).not.toHaveBeenCalled();
     expect(tourApi.record).not.toHaveBeenCalledWith(expect.objectContaining({ event: 'complete' }), expect.anything());
   });
-  it('keeps a failed removal active, ignores unrelated interactions, and skips without deleting saved data', async () => {
+  it('offers no Skip or Escape shortcut and preserves saved data when navigating away after a failed removal', async () => {
     await open(); await sidebar();
     await at('practice-duration'); next(); await at('practice-history-area'); next();
     await at('practice-context'); next(); await at('practice-drag'); next(); await at('practice-remove');
@@ -203,8 +209,10 @@ describe('Meeting preparation tour through real view interactions', () => {
     await click('preparation-practice-remove'); await at('practice-remove');
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
     await at('practice-remove');
-    const skip = document.querySelector<HTMLButtonElement>('.tour-skip')!;
-    expect(skip).toBeTruthy(); skip.click(); await settle();
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await at('practice-remove');
+    await appRouter.push('/meetings');
+    await settle();
     expect(tours.state.activeId).toBeNull();
     expect(meeting.agenda!.map((item) => item.topicId)).toEqual(['real-topic']);
     expect(topics).toHaveLength(1);

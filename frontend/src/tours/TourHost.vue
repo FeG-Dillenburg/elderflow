@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { onUnmounted } from "vue";
-import Button from "primevue/button";
 import Message from "primevue/message";
 import { useI18n } from "vue-i18n";
 import router from "../router";
@@ -13,7 +12,6 @@ onUnmounted(tours.mount(router));
 <template>
   <Message v-if="tours.state.transitioning" class="tour-error" role="status">
     {{ t('tours.meetingLoading') }}
-    <Button :label="t('tours.skip')" @click="tours.cancelMeeting()" />
   </Message>
   <Message
     v-if="tours.state.error"

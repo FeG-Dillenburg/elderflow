@@ -41,7 +41,7 @@ export default {
   tours: {
     meetingChanged: 'The practice Topic is no longer available for these actions. Refresh preparation and replay the tour when ready. Your saved data is kept.',
     retry: "Retry",
-    meetingLoading: 'Opening Meeting preparation… Your changes are real and remain saved if you skip.',
+    meetingLoading: 'Opening Meeting preparation… Your saved changes are preserved.',
     meetingPreparation: "Meeting creation and preparation (creates real data)",
     meetingPrerequisite: "Your Meeting remains saved. Create an Agenda section in Content settings before restarting this tour.",
     meetingPersonContext: "One note for preparation and the Meeting. This note is used during both preparation and the Meeting. Its previous content is carried forward automatically.",

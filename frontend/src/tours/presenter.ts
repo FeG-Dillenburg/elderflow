@@ -164,7 +164,7 @@ export class TourPresenter {
   };
 
   private keydown = (event: KeyboardEvent): void => {
-    if (this.interactive && (event.key !== 'Escape'
+    if (this.interactive && (!this.skip || event.key !== 'Escape'
       || document.querySelector('.p-select-overlay, .p-datepicker-panel, .p-popover'))) return;
     if (event.key === 'Escape') {
       event.preventDefault();

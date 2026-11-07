@@ -41,7 +41,7 @@ const de = {
   tours: {
     meetingChanged: 'Das Übungsthema ist für diese Aktionen nicht mehr verfügbar. Lade die Vorbereitung neu und starte die Tour erneut, sobald du bereit bist. Deine gespeicherten Daten bleiben erhalten.',
     retry: "Erneut versuchen",
-    meetingLoading: 'Die Sitzungsvorbereitung wird geöffnet … Deine Änderungen sind echt und bleiben beim Überspringen gespeichert.',
+    meetingLoading: 'Die Sitzungsvorbereitung wird geöffnet … Deine gespeicherten Änderungen bleiben erhalten.',
     meetingPreparation: "Sitzung erstellen und vorbereiten (erstellt echte Daten)",
     meetingPrerequisite: "Deine Sitzung bleibt gespeichert. Lege einen Tagesordnungsabschnitt in den Inhaltseinstellungen an, bevor du diese Tour neu startest.",
     meetingPersonContext: "Eine Notiz für Vorbereitung und Sitzung. Diese Notiz wird sowohl bei der Vorbereitung als auch während der Sitzung verwendet. Ihr bisheriger Inhalt wird automatisch übernommen.",
