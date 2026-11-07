@@ -43,6 +43,7 @@ async function at(step: string) {
   await settle();
   expect(tours.state.stepId).toBe(step);
   expect(document.querySelector('.tour-skip')).toBeNull();
+  expect(document.querySelector('.driver-popover-prev-btn')).toBeNull();
 }
 function target(id: string) { return document.querySelector<HTMLElement>(`[data-tour-id="${id}"]`)!; }
 async function click(id: string) { expect(target(id)).toBeTruthy(); target(id).click(); await settle(); }

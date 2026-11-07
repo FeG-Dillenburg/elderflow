@@ -69,7 +69,9 @@ export class TourPresenter {
           popover.wrapper.setAttribute('aria-label', translate('tours.help'));
           if (!step.titleKey) popover.wrapper.removeAttribute('aria-labelledby');
           popover.closeButton.setAttribute('aria-label', translate('tours.skip'));
-          popover.previousButton.textContent = translate('common.back');
+          // Steps use application state transitions, without a backward-navigation handler.
+          popover.previousButton.disabled = true;
+          popover.previousButton.remove();
           popover.description.setAttribute('aria-live', 'polite');
           if (step.skippable) {
             const button = document.createElement('button');

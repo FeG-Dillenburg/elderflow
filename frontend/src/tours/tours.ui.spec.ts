@@ -57,6 +57,16 @@ describe('Product tours through the visible UI', () => {
     vi.clearAllMocks();
   });
 
+  it('does not offer an inactive Back control on shared tour steps', async () => {
+    openForm();
+    await settle();
+    expect(document.querySelector('.driver-popover-prev-btn')).toBeNull();
+    click('Next');
+    await settle();
+    expect(document.querySelector('.driver-popover-title')?.textContent).toBe('Person Topics');
+    expect(document.querySelector('.driver-popover-prev-btn')).toBeNull();
+  });
+
   it('advances by Next and by the requested option, and highlights godparents, and finishes with Generic selected', async () => {
     const { draft, form } = openForm();
     await settle();
