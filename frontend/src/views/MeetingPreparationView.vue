@@ -9,7 +9,7 @@ import {
 } from "../meetings/usePreparationDrag";
 import Button from "primevue/button";
 import DatePicker from "primevue/datepicker";
-import { meetingPractice } from "../tours/meeting-preparation";
+import { chooseMeetingPractice, meetingPractice } from "../tours/meeting-preparation";
 import { hasMeaningfulRichText } from "../components/sanitize-rich-text";
 import { tours } from "../tours/tours";
 import Dialog from "primevue/dialog";
@@ -86,6 +86,8 @@ const selectedSections = reactive<Record<string, string>>({});
 const selectedTopicIds = ref<string[]>([]);
 const previewTopicId = ref<string | null>(null);
 const openTopicPreview = (topic: Topic) => {
+  if (tours.state.activeId === 'meeting-preparation'
+    && (tours.state.stepId !== 'practice-preview' || topic.id !== meetingPractice.topicId)) return;
   previewTopicId.value = topic.id;
 };
 const detailsReadOnly = computed(() => meeting.value?.status === "in_progress");
@@ -338,6 +340,9 @@ const selectedTopics = computed(() => visibleSuggestionLists.value
 const isSelected = (topic: Topic) => selectedTopicIds.value.includes(topic.id);
 
 const toggleSelected = (topic: Topic) => {
+  if (tours.state.activeId === 'meeting-preparation'
+    && (!['practice-select', 'practice-reselect'].includes(tours.state.stepId)
+      || topic.id !== meetingPractice.topicId)) return;
   selectedTopicIds.value = isSelected(topic)
     ? selectedTopicIds.value.filter((id) => id !== topic.id)
     : [...selectedTopicIds.value, topic.id];
@@ -350,6 +355,9 @@ const sectionFor = (topic: Topic & Partial<MeetingSuggestion>) => selectedSectio
 
 const addSelected = async () => {
   if (pending.value) return;
+  const addStep = tours.state.stepId;
+  if (tours.state.activeId === 'meeting-preparation'
+    && !['practice-add-selection', 'practice-readd'].includes(addStep)) return;
   const additions = selectedTopics.value.flatMap((topic) => {
     const sectionId = sectionFor(topic);
     return sectionId ? [{ topicId: topic.id, sectionId, topic }] : [];
@@ -363,13 +371,15 @@ const addSelected = async () => {
     const appearance = agendaItems.value.find((item) => item.topicId === meetingPractice.topicId);
     if (tourSignal && !tourSignal.aborted && appearance && appearance.source !== 'recurrence') {
       meetingPractice.appearanceId = appearance.id;
-      tours.meetingAction(tours.state.stepId);
+      tours.meetingAction(addStep);
     } else if (tourSignal && !tourSignal.aborted) stopPractice();
   }
   practiceMutation.value = false;
 };
 
 const remove = async (item: MeetingTopic) => {
+  if (tours.state.activeId === 'meeting-preparation'
+    && (tours.state.stepId !== 'practice-remove' || item.id !== meetingPractice.appearanceId)) return;
   if (item.id === meetingPractice.appearanceId && item.source === 'recurrence') { stopPractice(); return; }
   if (pending.value) return;
   const tourSignal = tours.meetingSignal();
@@ -428,7 +438,7 @@ const sectionDuration = (items: MeetingTopic[]) =>
     0,
   );
 
-let createdTopicDraft: Topic | null = null;
+const createdTopicDraft = ref<Topic | null>(null);
 const createAndAdd = async () => {
   if (pending.value) return;
   const tourSignal = tours.meetingSignal();
@@ -436,11 +446,14 @@ const createAndAdd = async () => {
   if (practicing && (tours.state.stepId !== 'practice-create-submit' || form.type !== 'generic'
     || !form.name.trim() || !sections.value.some((section) => section.id === form.defaultSectionId))) return;
   const succeeded = await withOperation(async () => {
-    const topic = createdTopicDraft ?? await api.createTopic(toTopicInput({
+    const input = toTopicInput({
       ...form,
       followUpDate: toLocalDate(form.followUpDate),
-    }));
-    createdTopicDraft = topic;
+    });
+    const topic = createdTopicDraft.value
+      ? await api.updateTopic(createdTopicDraft.value.id, input)
+      : await api.createTopic(input);
+    createdTopicDraft.value = topic;
     const sectionId = form.defaultSectionId || sections.value[0]?.id;
     if ((createsAgendaTopic.value || practicing) && sectionId) {
       const appearance = await operations.addTopic({ topicId: topic.id, sectionId, topic });
@@ -455,7 +468,7 @@ const createAndAdd = async () => {
   });
   if (succeeded) {
     newVisible.value = false;
-    createdTopicDraft = null;
+    createdTopicDraft.value = null;
     if (tourSignal && !tourSignal.aborted) tours.meetingAction('practice-create-submit');
   }
 };
@@ -523,6 +536,22 @@ const saveDetails = async () => {
   }
 };
 
+const openNewTopic = () => {
+  if (tours.state.activeId === 'meeting-preparation'
+    && tours.state.stepId !== 'practice-create-open') return;
+  newVisible.value = true;
+};
+const closeTopicDialog = () => {
+  tours.cancelMeeting();
+  newVisible.value = false;
+};
+const closeDetailsDialog = () => {
+  tours.cancelMeeting();
+  detailsVisible.value = false;
+};
+const onPracticeDialogVisibility = (visible: boolean) => {
+  if (!visible) tours.cancelMeeting();
+};
 const stopPractice = () => {
   error.value = t('tours.meetingChanged');
   tours.cancelMeeting();
@@ -530,12 +559,8 @@ const stopPractice = () => {
 const choosePractice = () => {
   // Recurrence reconciliation can turn these into automatic appearances. Keep the
   // exercise on Topics whose X always means ordinary Agenda removal.
-  const available = suggestions.value.filter((topic) => !agendaItems.value.some((item) => item.topicId === topic.id)
-    && topic.type !== 'recurring');
-  const topic = available.find((topic) => topic.type !== 'person') ?? available[0];
-  meetingPractice.topicId = topic?.id ?? null;
-  meetingPractice.person = topic?.type === 'person';
-  meetingPractice.path = topic ? 'existing' : 'new';
+  const topic = chooseMeetingPractice(suggestions.value, agendaItems.value);
+  meetingPractice.duration = topic ? topicUsesPlannedDuration(topic.type) : true;
 };
 let previewOpened = false;
 let detailsSaved = false;
@@ -551,7 +576,9 @@ const onGeneralNoteInput = () => {
   localGeneralNoteInput = true;
   const tourSignal = tours.meetingSignal();
   void nextTick(() => {
-    if (tourSignal && !tourSignal.aborted && localGeneralNoteInput && hasMeaningfulRichText(detailsForm.generalNotes)) {
+    if (tourSignal && !tourSignal.aborted
+      && localGeneralNoteInput
+      && hasMeaningfulRichText(detailsForm.generalNotes)) {
       tours.meetingAction('details-general-notes');
     }
   });
@@ -566,19 +593,26 @@ watch(previewTopicId, (topicId, previous) => {
     tours.meetingPreview(false);
   }
 }, { flush: 'post' });
-watch([newVisible, detailsVisible], ([topicOpen, detailsOpen], [wasTopicOpen, wasDetailsOpen]) => {
+watch([newVisible, detailsVisible], ([topicOpen, detailsOpen]) => {
   if (topicOpen) tours.meetingAction('practice-create-open');
   if (detailsOpen) {
     detailsSaved = false;
     localGeneralNoteInput = false;
     tours.meetingAction('details-open');
   }
-  if (wasTopicOpen && !topicOpen && !pending.value && tours.state.stepId.startsWith('practice-create-')) tours.cancelMeeting();
-  if (wasDetailsOpen && !detailsOpen && !pending.value && !detailsSaved) tours.cancelMeeting();
-  if (!topicOpen) createdTopicDraft = null;
+  if (!topicOpen) createdTopicDraft.value = null;
 }, { flush: 'post' });
-watch(() => [tours.state.stepId, form.type, form.name, selectedTopicIds.value.join(','),
-  workspace.state.phase, workspace.state.pendingChanges, detailsForm.generalNotes, suggestions.value, agendaItems.value], () => {
+watch(() => [
+  tours.state.stepId,
+  form.type,
+  form.name,
+  selectedTopicIds.value.join(','),
+  workspace.state.phase,
+  workspace.state.pendingChanges,
+  detailsForm.generalNotes,
+  suggestions.value,
+  agendaItems.value,
+], () => {
   if (tours.state.activeId !== 'meeting-preparation') return;
   const step = tours.state.stepId;
   if (step === 'agenda-overview' && !sections.value.length) {
@@ -587,14 +621,44 @@ watch(() => [tours.state.stepId, form.type, form.name, selectedTopicIds.value.jo
     return;
   }
   if (step === 'sidebar-overview') choosePractice();
-  if (['practice-preview', 'practice-select', 'practice-scroll-selection', 'practice-add-selection', 'practice-reselect', 'practice-readd'].includes(step)
-    && meetingPractice.topicId && !pending.value && !practiceMutation.value
-    && !suggestions.value.some((topic) => topic.id === meetingPractice.topicId)) stopPractice();
-  if (['practice-duration', 'practice-history-area', 'practice-context', 'practice-drag', 'practice-remove'].includes(step)
-    && !pending.value && !practiceMutation.value && !agendaItems.value.some((item) => item.id === meetingPractice.appearanceId && item.source !== 'recurrence')) stopPractice();
-  if (step === 'practice-create-name' && form.type === 'generic' && form.name.trim()) tours.meetingAction(step);
-  if ((step === 'practice-select' || step === 'practice-reselect') && meetingPractice.topicId
-    && selectedTopicIds.value.includes(meetingPractice.topicId)) tours.meetingAction(step);
+  const needsSuggestion = [
+    'practice-preview',
+    'practice-select',
+    'practice-scroll-selection',
+    'practice-add-selection',
+    'practice-reselect',
+    'practice-readd',
+  ].includes(step);
+  if (needsSuggestion
+    && meetingPractice.topicId
+    && !pending.value
+    && !practiceMutation.value
+    && !suggestions.value.some((topic) => topic.id === meetingPractice.topicId)) {
+    stopPractice();
+  }
+  const needsAppearance = [
+    'practice-duration',
+    'practice-history-area',
+    'practice-context',
+    'practice-drag',
+    'practice-remove',
+  ].includes(step);
+  if (needsAppearance
+    && !pending.value
+    && !practiceMutation.value
+    && !agendaItems.value.some((item) =>
+      item.id === meetingPractice.appearanceId && item.source !== 'recurrence',
+    )) {
+    stopPractice();
+  }
+  if (step === 'practice-create-name' && form.type === 'generic' && form.name.trim()) {
+    tours.meetingAction(step);
+  }
+  if ((step === 'practice-select' || step === 'practice-reselect')
+    && meetingPractice.topicId
+    && selectedTopicIds.value.includes(meetingPractice.topicId)) {
+    tours.meetingAction(step);
+  }
   if (step === 'practice-scroll-selection') void nextTick(checkSelectionVisibility);
   if (step === 'details-save') checkDetailsSaved();
 }, { flush: 'post', deep: true });
@@ -604,18 +668,22 @@ const checkSelectionVisibility = () => {
   if (!button || !topicPanel.value) return;
   const rect = button.getBoundingClientRect();
   const panel = topicPanel.value.getBoundingClientRect();
-  if (rect.height > 0 && rect.top >= Math.max(0, panel.top) && rect.bottom <= Math.min(window.innerHeight, panel.bottom)) {
+  if (rect.height > 0
+    && rect.top >= Math.max(0, panel.top)
+    && rect.bottom <= Math.min(window.innerHeight, panel.bottom)) {
     tours.meetingAction('practice-scroll-selection');
   }
 };
-onMounted(() => {
-  window.addEventListener('scroll', checkSelectionVisibility, true);
-  window.addEventListener('resize', checkSelectionVisibility);
-});
-onBeforeUnmount(() => {
-  window.removeEventListener('scroll', checkSelectionVisibility, true);
-  window.removeEventListener('resize', checkSelectionVisibility);
-});
+watch(() => tours.state.activeId, (tourId, _previous, onCleanup) => {
+  const signal = tours.meetingSignal();
+  if (tourId !== 'meeting-preparation' || !signal || signal.aborted) return;
+  window.addEventListener('scroll', checkSelectionVisibility, { capture: true, signal });
+  window.addEventListener('resize', checkSelectionVisibility, { signal });
+  onCleanup(() => {
+    window.removeEventListener('scroll', checkSelectionVisibility, true);
+    window.removeEventListener('resize', checkSelectionVisibility);
+  });
+}, { immediate: true });
 </script>
 
 <template>
@@ -728,7 +796,7 @@ onBeforeUnmount(() => {
               class="create-topic-button"
               icon="pi pi-plus"
               size="small"
-              @click="newVisible = true"
+              @click="openNewTopic"
             />
           </div>
           <div class="suggestions-list">
@@ -962,6 +1030,7 @@ onBeforeUnmount(() => {
     <Dialog
       v-if="!readOnly"
       v-model:visible="detailsVisible"
+      @update:visible="onPracticeDialogVisibility"
       :style="{ width: '48rem', maxWidth: 'calc(100vw - 2rem)' }"
       :header="t('meetingAgenda.editTitle')"
       :modal="tours.state.activeId !== 'meeting-preparation'"
@@ -1064,7 +1133,7 @@ onBeforeUnmount(() => {
           :label="t('common.cancel')"
           severity="secondary"
           text
-          @click="detailsVisible = false"
+          @click="closeDetailsDialog"
         />
         <Button
           data-tour-id="preparation-details-save"
@@ -1079,6 +1148,7 @@ onBeforeUnmount(() => {
     <Dialog
       v-if="!readOnly"
       v-model:visible="newVisible"
+      @update:visible="onPracticeDialogVisibility"
       :style="{ width: '46rem', maxWidth: 'calc(100vw - 2rem)' }"
       :header="createsAgendaTopic
         ? t('meetingPreparation.createAndAddTitle')
@@ -1091,6 +1161,7 @@ onBeforeUnmount(() => {
       <form id="new-topic" class="form" @submit.prevent="createAndAdd">
         <TopicFormFields
           id="new-topic"
+          :type-locked="Boolean(createdTopicDraft)"
           :model-value="form"
           :users="users"
           :sections="sections"
@@ -1108,7 +1179,7 @@ onBeforeUnmount(() => {
           :label="t('common.cancel')"
           severity="secondary"
           text
-          @click="newVisible = false"
+          @click="closeTopicDialog"
         />
         <Button
           data-tour-id="preparation-topic-create-submit"

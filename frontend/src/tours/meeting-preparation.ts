@@ -1,4 +1,5 @@
 import { reactive } from 'vue';
+import type { MeetingSuggestion, MeetingTopic } from '../api/domain';
 import type { TourStep } from './registry';
 
 export const meetingPractice = reactive({
@@ -6,10 +7,22 @@ export const meetingPractice = reactive({
   appearanceId: null as string | null,
   path: 'existing' as 'existing' | 'new',
   person: false,
+  duration: true,
 });
 
 export function resetMeetingPractice(): void {
-  Object.assign(meetingPractice, { topicId: null, appearanceId: null, path: 'existing', person: false });
+  Object.assign(meetingPractice, { topicId: null, appearanceId: null, path: 'existing', person: false, duration: true });
+}
+
+/** Select only normally available Topics with ordinary manual removal semantics. */
+export function chooseMeetingPractice(suggestions: MeetingSuggestion[], agenda: MeetingTopic[]): MeetingSuggestion | undefined {
+  const available = suggestions.filter((topic) => !agenda.some((item) => item.topicId === topic.id)
+    && topic.type !== 'recurring');
+  const topic = available.find((topic) => topic.type !== 'person') ?? available[0];
+  meetingPractice.topicId = topic?.id ?? null;
+  meetingPractice.person = topic?.type === 'person';
+  meetingPractice.path = topic ? 'existing' : 'new';
+  return topic;
 }
 
 export const meetingPreparationSteps: readonly TourStep[] = [
@@ -77,7 +90,8 @@ const following: Record<string, string> = {
 export function nextMeetingStep(id: string): string | undefined {
   if (id === 'sidebar-overview') return meetingPractice.path === 'existing' ? 'practice-preview' : 'practice-create-open';
   if (id === 'practice-add-selection') return meetingPractice.path === 'existing'
-    ? (meetingPractice.person ? 'practice-context' : 'practice-duration') : 'details-open';
+    ? (meetingPractice.person ? 'practice-context'
+      : meetingPractice.duration ? 'practice-duration' : 'practice-history-area') : 'details-open';
   if (id === 'practice-remove') return meetingPractice.path === 'existing' ? 'practice-reselect' : 'practice-preview';
   return following[id];
 }

@@ -78,7 +78,9 @@ const create = async () => {
       generalNotes: null,
       openingInput: null,
     };
-    const meeting = createdMeetingDraft ?? await api.createMeeting(input);
+    const meeting = createdMeetingDraft
+      ? await api.updateMeeting(createdMeetingDraft.id, input)
+      : await api.createMeeting(input);
     createdMeetingDraft = meeting;
     const [sections, dueSuggestions, futureSuggestions] = await Promise.all([
       api.sections(),
@@ -129,6 +131,13 @@ const create = async () => {
     saving.value = false;
   }
 };
+const closeCreationDialog = () => {
+  tours.cancelMeeting();
+  visible.value = false;
+};
+const onCreationDialogVisibility = (open: boolean) => {
+  if (!open) tours.cancelMeeting();
+};
 watch(visible, (open) => {
   if (open) {
     Object.assign(creationSelections, { date: false, leader: false, minuteTaker: false });
@@ -136,7 +145,6 @@ watch(visible, (open) => {
     carryOverComplete = false;
     tours.meetingOpened();
   }
-  else if (!saving.value) tours.cancelMeeting();
 }, { flush: 'post' });
 watch(() => tours.state.meetingReplay, (replay) => {
   if (replay) {
@@ -149,11 +157,30 @@ watch(() => tours.state.stepId, (step) => {
     Object.assign(creationSelections, { date: false, leader: false, minuteTaker: false });
   }
 });
-watch(() => [tours.state.stepId, form.date, form.meetingLeaderId, form.minuteTakerId, { ...creationSelections }], () => {
+watch(() => [
+  tours.state.stepId,
+  form.date,
+  form.meetingLeaderId,
+  form.minuteTakerId,
+  { ...creationSelections },
+], () => {
   const step = tours.state.stepId;
-  if (step === 'create-date' && creationSelections.date && form.date instanceof Date && !Number.isNaN(form.date.getTime())) tours.meetingAction(step);
-  if (step === 'create-leader' && creationSelections.leader && users.value.some((user) => user.id === form.meetingLeaderId)) tours.meetingAction(step);
-  if (step === 'create-minute-taker' && creationSelections.minuteTaker && users.value.some((user) => user.id === form.minuteTakerId)) tours.meetingAction(step);
+  if (step === 'create-date'
+    && creationSelections.date
+    && form.date instanceof Date
+    && !Number.isNaN(form.date.getTime())) {
+    tours.meetingAction(step);
+  }
+  if (step === 'create-leader'
+    && creationSelections.leader
+    && users.value.some((user) => user.id === form.meetingLeaderId)) {
+    tours.meetingAction(step);
+  }
+  if (step === 'create-minute-taker'
+    && creationSelections.minuteTaker
+    && users.value.some((user) => user.id === form.minuteTakerId)) {
+    tours.meetingAction(step);
+  }
 }, { flush: 'post' });
 onMounted(load);
 const date = (value: string) => formatDate(`${value}T12:00:00`);
@@ -218,11 +245,17 @@ const date = (value: string) => formatDate(`${value}T12:00:00`);
     </div>
     <Dialog
       v-model:visible="visible"
+      @update:visible="onCreationDialogVisibility"
       :style="{ width: '34rem', maxWidth: 'calc(100vw - 2rem)' }"
       :header="t('meetings.createTitle')"
       :modal="tours.state.activeId !== 'meeting-preparation'"
     >
-      <form data-tour-id="meeting-create-basics" id="meeting-form" class="form" @submit.prevent="create">
+      <form
+        id="meeting-form"
+        data-tour-id="meeting-create-basics"
+        class="form"
+        @submit.prevent="create"
+      >
         <label>
           <span>
             {{ t("meetings.specialTitle") }}
@@ -282,7 +315,7 @@ const date = (value: string) => formatDate(`${value}T12:00:00`);
           :label="t('common.cancel')"
           severity="secondary"
           text
-          @click="visible = false"
+          @click="closeCreationDialog"
         />
         <Button
           :loading="saving"

@@ -43,7 +43,7 @@ export default {
     retry: "Retry",
     meetingLoading: 'Opening Meeting preparation… Your changes are real and remain saved if you skip.',
     meetingPreparation: "Meeting creation and preparation (creates real data)",
-    meetingPrerequisite: "Create an Agenda section in Content settings before continuing this tour. No records have been created by the tour.",
+    meetingPrerequisite: "Your Meeting remains saved. Create an Agenda section in Content settings before restarting this tour.",
     meetingPersonContext: "One note for preparation and the Meeting. This note is used during both preparation and the Meeting. Its previous content is carried forward automatically.",
     meetingSteps: {
       "create-basics": "Plan your Meeting. Choose when it takes place. The special title is optional; leave it empty for a regular leadership Meeting. Check the start time as well.",

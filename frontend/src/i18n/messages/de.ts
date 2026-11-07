@@ -43,7 +43,7 @@ const de = {
     retry: "Erneut versuchen",
     meetingLoading: 'Die Sitzungsvorbereitung wird geöffnet … Deine Änderungen sind echt und bleiben beim Überspringen gespeichert.',
     meetingPreparation: "Sitzung erstellen und vorbereiten (erstellt echte Daten)",
-    meetingPrerequisite: "Lege vor dieser Tour einen Tagesordnungsabschnitt in den Inhaltseinstellungen an. Die Tour hat keine Datensätze erstellt.",
+    meetingPrerequisite: "Deine Sitzung bleibt gespeichert. Lege einen Tagesordnungsabschnitt in den Inhaltseinstellungen an, bevor du diese Tour neu startest.",
     meetingPersonContext: "Eine Notiz für Vorbereitung und Sitzung. Diese Notiz wird sowohl bei der Vorbereitung als auch während der Sitzung verwendet. Ihr bisheriger Inhalt wird automatisch übernommen.",
     meetingSteps: {
       "create-basics": "Plane deine Sitzung. Lege fest, wann sie stattfindet. Der besondere Titel ist optional; für eine reguläre Leitungssitzung kannst du ihn leer lassen. Prüfe auch die Anfangszeit.",

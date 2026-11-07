@@ -42,7 +42,7 @@ async function at(step: string) { await settle(); expect(tours.state.stepId).toB
 function target(id: string) { return document.querySelector<HTMLElement>(`[data-tour-id="${id}"]`)!; }
 async function click(id: string) { expect(target(id)).toBeTruthy(); target(id).click(); await settle(); }
 
-async function open(existing: 'generic' | 'person' | null = 'generic', sections = [section], automatic = true, beforeSubmit?: () => Promise<void>) {
+async function open(existing: 'generic' | 'person' | 'new_membership' | null = 'generic', sections = [section], automatic = true, beforeSubmit?: () => Promise<void>) {
   topics = existing ? [{ id: 'real-topic', name: 'Actual discussion', type: existing, status: 'open', updates: [] }] : [];
   meeting = { id: 'created-meeting', title: 'Planning', date: '2026-11-14', beginTime: '19:30', status: 'planned', meetingLeaderId: user.id, agenda: [], generalNotes: null } as unknown as Meeting;
   vi.spyOn(api, 'meetings').mockResolvedValue([]);
@@ -50,10 +50,13 @@ async function open(existing: 'generic' | 'person' | null = 'generic', sections 
   vi.spyOn(api, 'sections').mockResolvedValue(sections as any);
   let suggestionReads = 0;
   vi.spyOn(api, 'meetingSuggestions').mockImplementation(async () => {
-    if (existing === 'person' && ++suggestionReads <= 2) return [];
+    if ((existing === 'person' || existing === 'new_membership') && ++suggestionReads <= 2) return [];
     return topics.filter((topic) => !meeting.agenda!.some((item) => item.topicId === topic.id));
   });
   vi.spyOn(api, 'createMeeting').mockImplementation(async () => structuredClone(meeting));
+  vi.spyOn(api, 'updateTopic').mockImplementation(async (id, input) => {
+    const topic = topics.find((topic) => topic.id === id); Object.assign(topic, input); return topic;
+  });
   vi.spyOn(api, 'createTopic').mockImplementation(async (input) => {
     const topic = { ...input, id: 'new-real-topic', updates: [] }; topics.push(topic); return topic as any;
   });
@@ -135,14 +138,15 @@ async function agenda(person = false) {
   await at('practice-context'); next(); await at('practice-drag'); next(); await at('practice-remove');
   await click('preparation-practice-remove');
 }
-async function details(save?: () => Promise<void>) {
+async function details(save?: () => Promise<boolean | void>) {
   await at('details-open'); await click('preparation-edit-details'); await at('details-schedule');
   next(); await at('details-roles'); next(); await at('details-opening'); next(); await at('details-general-notes');
   const note = target('preparation-details-general-notes').querySelector('textarea')!;
   note.value = 'Please bring the annual report.'; note.dispatchEvent(new Event('input', { bubbles: true }));
   await at('details-save');
-  if (save) await save();
-  else await click('preparation-details-save');
+  if (save) {
+    if (await save() === false) return;
+  } else await click('preparation-details-save');
   await at('details-result');
   expect(target('preparation-general-notes-display').textContent).toContain('Please bring the annual report.');
   next(); await settle(); expect(tours.state.activeId).toBeNull();
@@ -248,6 +252,75 @@ describe('Meeting preparation tour through real view interactions', () => {
       expect(tourApi.record).not.toHaveBeenCalledWith(expect.objectContaining({ event: 'complete' }), expect.anything());
       release(); await settle();
     });
+  });
+
+  it('blocks unrelated sidebar actions and dialogs until their own action step', async () => {
+    await open('generic', [section], true, async () => {
+      topics.push({ id: 'other-topic', name: 'Another discussion', type: 'generic', status: 'open' });
+    });
+    await at('practice-preview');
+    await click('preparation-practice-select');
+    expect(target('preparation-practice-select').getAttribute('aria-pressed')).toBe('false');
+    await click('preparation-create-topic');
+    expect(document.querySelector('#new-topic')).toBeNull();
+    const otherPreview = Array.from(document.querySelectorAll<HTMLButtonElement>('.preview-trigger'))
+      .find((button) => button.textContent?.includes('Another discussion'))!;
+    otherPreview.click(); await settle();
+    expect(tours.state.suspended).toBe(false);
+    expect(document.querySelector('.p-dialog')).toBeNull();
+    await at('practice-preview');
+  });
+  it('cancels immediately when the details dialog closes during an in-flight save', async () => {
+    await open(); await sidebar(); await agenda();
+    await at('practice-reselect'); await click('preparation-practice-select'); await at('practice-readd');
+    await click('preparation-add-selected');
+    await details(async () => {
+      let release!: () => void;
+      delayTextWrite = new Promise<void>((resolve) => { release = resolve; });
+      await click('preparation-details-save'); await at('details-save');
+      const dialog = document.querySelector('#edit-meeting-details')!.closest('[role="dialog"]')!;
+      const cancel = Array.from(dialog.querySelectorAll<HTMLButtonElement>('button'))
+        .find((button) => button.textContent === 'Cancel')!;
+      cancel.click(); await settle();
+      expect(tours.state.activeId).toBeNull();
+      expect(document.querySelector('.driver-overlay')).toBeNull();
+      release(); await settle();
+      expect(tourApi.record).not.toHaveBeenCalledWith(expect.objectContaining({ event: 'complete' }), expect.anything());
+      expect(meeting.generalNotes).toContain('Please bring the annual report.');
+      return false;
+    });
+  });
+  it('applies edited Meeting values to the saved Meeting after reference loading fails', async () => {
+    await open('generic', [section], true, async () => {
+      vi.mocked(api.sections).mockRejectedValueOnce(new Error('Reference load failed'));
+      await click('meeting-create-submit'); await at('create-submit');
+      const title = target('meeting-create-basics').querySelector('input')!;
+      title.value = 'Updated planning'; title.dispatchEvent(new Event('input', { bubbles: true }));
+      await settle();
+    });
+    expect(api.createMeeting).toHaveBeenCalledTimes(1);
+    expect(meeting.title).toBe('Updated planning');
+    expect(api.updateMeeting).toHaveBeenCalledWith('created-meeting', expect.objectContaining({ title: 'Updated planning' }));
+  });
+
+  it('updates a saved Topic on insertion retry without creating another Topic', async () => {
+    await open(null); await at('practice-create-open'); await click('preparation-create-topic'); await at('practice-create-name');
+    const name = target('preparation-topic-name').querySelector('input')!;
+    name.value = 'Planning'; name.dispatchEvent(new Event('input', { bubbles: true }));
+    await at('practice-create-section'); next(); await at('practice-create-description'); next(); await at('practice-create-submit');
+    vi.mocked(api.addMeetingTopic).mockRejectedValueOnce(new Error('Insertion failed'));
+    await click('preparation-topic-create-submit'); await at('practice-create-submit');
+    name.value = 'Annual planning'; name.dispatchEvent(new Event('input', { bubbles: true })); await settle();
+    await click('preparation-topic-create-submit'); await at('practice-duration');
+    expect(api.createTopic).toHaveBeenCalledTimes(1);
+    expect(api.updateTopic).toHaveBeenCalledWith('new-real-topic', expect.objectContaining({ name: 'Annual planning' }));
+    expect(meeting.agenda!.map((item) => item.topicId)).toEqual(['new-real-topic']);
+  });
+  it('omits unsupported duration for New membership Topics while retaining the history explanation', async () => {
+    await open('new_membership'); await sidebar(); await at('practice-history-area');
+    expect(target('preparation-practice-history')).toBeTruthy();
+    expect(target('preparation-practice-duration')).toBeNull();
+    next(); await at('practice-context');
   });
 
 });

@@ -24,6 +24,9 @@ const hasPreviousContent = computed(() =>
   hasMeaningfulRichText(previous.value?.preparationContext?.text)
   || hasMeaningfulRichText(previous.value?.meetingMinutes?.text),
 );
+const practiceItem = computed(() => props.item.id === meetingPractice.appearanceId);
+const hasHistory = computed(() => hasPreviousContent.value || showLatestPostponement.value
+  || updates.value.length > 0 || props.item.preparationHistoryUnavailable);
 const previousDate = computed(() => previous.value?.date
   ? `${previous.value.date}T${previous.value.beginTime ?? "00:00"}`
   : null);
@@ -31,11 +34,11 @@ const previousDate = computed(() => previous.value?.date
 
 <template>
   <div
-    v-if="eligible && (item.id === meetingPractice.appearanceId || hasPreviousContent || showLatestPostponement || updates.length || item.preparationHistoryUnavailable)"
+    v-if="eligible && (practiceItem || hasHistory)"
     :data-tour-id="item.id === meetingPractice.appearanceId ? 'preparation-practice-history' : undefined"
     class="meeting-preparation-context"
   >
-    <p v-if="item.id === meetingPractice.appearanceId && !hasPreviousContent && !showLatestPostponement && !updates.length && !item.preparationHistoryUnavailable" class="context-entry">
+    <p v-if="practiceItem && !hasHistory" class="context-entry">
       {{ t('tours.meetingSteps.practice-history-area') }}
     </p>
     <section v-if="hasPreviousContent || showLatestPostponement" class="context-group">
