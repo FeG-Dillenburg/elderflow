@@ -20,7 +20,6 @@ export default {
       bugfix: "Bug fix",
     },
     entries: {
-      "preparation-notes-agenda-column": "Meeting notes now appear within the Agenda column during preparation, with the Topic sidebar alongside them.",
       "interactive-meeting-preparation-tour": "A new interactive tour guides you through creating a Meeting and preparing its Agenda, including Topic history, selection, and Meeting notes.",
       "preparation-topic-history-preview": "You can now inspect a Topic’s history in a dialog by clicking its title while preparing an Agenda.",
       "postponed-topic-preparation": "Agenda preparation now highlights postponed Topics and carries their previous Preparation context into the next Meeting.",
