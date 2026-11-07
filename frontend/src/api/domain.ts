@@ -917,7 +917,7 @@ const unprotectDashboardTopic = async (
 };
 
 export const api = {
-  installation: () => request<{ setupRequired: boolean; defaultLanguage: SupportedLanguage | null }>('/api/installation'),
+  installation: (options?: { signal?: AbortSignal }) => request<{ setupRequired: boolean; defaultLanguage: SupportedLanguage | null }>('/api/installation', options),
   verifySetupPassword: (setupPassword: string) => request<{ valid: true }>('/api/setup/verify', { method: 'POST', body: JSON.stringify({ setupPassword }) }),
   createInitialUser: (input: InitialUserInput) => requestWithBinaryBody<User>('/api/setup', encodeSetupRequest(input)),
   login: (input: { email: string; password: string }) => request<{ token: string; user: AuthUser }>('/api/auth/login', { method: 'POST', body: JSON.stringify(input) }),

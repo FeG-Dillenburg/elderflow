@@ -1,4 +1,5 @@
 export default {
+  startup: { title: "ElderFlow is starting…", waiting: "Please wait. We’ll continue automatically when everything is ready." },
   deploymentUpdates: {
     listLabel: "Deployed updates",
     moreUnread: "{count} more unread updates will follow after you select “Awesome!”.",
@@ -19,6 +20,7 @@ export default {
       bugfix: "Bug fix",
     },
     entries: {
+      "backend-startup-screen": "When ElderFlow is starting, a waiting screen now appears and continues automatically as soon as the server is ready.",
       "preparation-topic-history-preview": "You can now inspect a Topic’s history in a dialog by clicking its title while preparing an Agenda.",
       "postponed-topic-preparation": "Agenda preparation now highlights postponed Topics and carries their previous Preparation context into the next Meeting.",
       "saved-topic-fields-live-refresh": "Saved Topic fields now update automatically for other users during Meetings.",

@@ -24,6 +24,17 @@ describe('application localization initialization', () => {
     })).resolves.toEqual(expect.objectContaining({ language: 'en', installation: null, user: null }));
   });
 
+  it('does not request the saved identity until the installation endpoint is ready', async () => {
+    const currentUser = vi.fn();
+    await loadApplicationContext({
+      installation: vi.fn().mockRejectedValue(new Error('Backend starting')),
+      currentUser,
+      hasSession: true,
+      browserLanguages: ['en'],
+    });
+    expect(currentUser).not.toHaveBeenCalled();
+  });
+
   it('loads the development identity without requiring a stored session token', async () => {
     const currentUser = vi.fn().mockResolvedValue({ id: 'dev-user', language: 'en' });
 

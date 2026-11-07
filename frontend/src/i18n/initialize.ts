@@ -22,21 +22,22 @@ export const loadApplicationContext = async <TUser extends LanguageUser>({
   allowDevelopmentIdentity?: boolean;
   browserLanguages: readonly string[];
 }): Promise<{ installation: InstallationInformation | null; user: TUser | null; language: SupportedLanguage }> => {
-  const [installationResult, userResult] = await Promise.allSettled([
-    installation(),
-    hasSession || allowDevelopmentIdentity ? currentUser() : Promise.resolve(null),
-  ]);
-  if (installationResult.status === 'rejected') {
+  let installationInformation: InstallationInformation;
+  try {
+    installationInformation = await installation();
+  } catch {
     return { installation: null, user: null, language: 'en' };
   }
-  const user = userResult.status === 'fulfilled' ? userResult.value : null;
+  const user = hasSession || allowDevelopmentIdentity
+    ? await currentUser().catch(() => null)
+    : null;
   return {
-    installation: installationResult.value,
+    installation: installationInformation,
     user,
     language: resolveEffectiveLanguage({
       authenticated: Boolean(user),
       userLanguage: user?.language ?? null,
-      installationDefault: installationResult.value.defaultLanguage,
+      installationDefault: installationInformation.defaultLanguage,
       browserLanguages,
     }),
   };
