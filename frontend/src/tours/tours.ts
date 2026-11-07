@@ -370,7 +370,12 @@ export const tours = {
     if (id === 'first-login') { await firstLogin(true); return; }
     if (id === 'meeting-preparation') {
       if (protectedText.state.status !== 'unlocked') return;
+      const currentGeneration = generation;
+      state.meetingReplay = false;
       await router.push('/meetings');
+      if (currentGeneration !== generation || router.currentRoute.value.path !== '/meetings'
+        || protectedText.state.status !== 'unlocked' || state.activeId
+        || deploymentUpdates.state.blocking || deploymentUpdates.state.visible) return;
       state.meetingReplay = true;
       return;
     }

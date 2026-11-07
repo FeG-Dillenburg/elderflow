@@ -2,6 +2,7 @@ import { flushPromises, mount } from '@vue/test-utils';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import PrimeVue from 'primevue/config';
 import { reactive, nextTick } from 'vue';
+import { routerKey } from 'vue-router';
 import { api } from '../api/domain';
 import { externalAuthApi } from '../api/external-auth';
 import { installation } from '../installation';
@@ -45,7 +46,7 @@ describe('Product tours through the visible UI', () => {
     auth.completeInitialization(user);
     vi.mocked(tourApi.list).mockResolvedValue([]);
     vi.mocked(tourApi.record).mockResolvedValue({} as never);
-    mounted.push(mount(TourHost, { attachTo: document.body }));
+    mounted.push(mount(TourHost, { attachTo: document.body, global: { provide: { [routerKey as symbol]: router } } }));
   });
   afterEach(() => {
     mounted.reverse().forEach((wrapper) => wrapper.unmount());
