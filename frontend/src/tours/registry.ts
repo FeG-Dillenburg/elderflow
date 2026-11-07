@@ -34,12 +34,6 @@ const firstSteps = [
   ['sign-out', 'nav-sign-out', undefined, 'top', false],
 ] as const;
 export const tourRegistry: Record<TourId, TourDefinition> = {
-  'meeting-preparation': {
-    id: 'meeting-preparation', version: 1, nameKey: 'tours.meetingPreparation',
-    audience: (user) => isProtectedTextReader(user) && user.permissions.meetings === 'manage'
-      && user.permissions.topics === 'manage' && user.permissions.references !== 'hide',
-    steps: meetingPreparationSteps,
-  },
   'first-login': {
     id: 'first-login', version: 1, nameKey: 'tours.firstLogin',
     audience: (user) => isProtectedTextReader(user) && user.permissions.dashboard !== 'hide',
@@ -65,5 +59,11 @@ export const tourRegistry: Record<TourId, TourDefinition> = {
         side: 'top', skippable: true, topicType,
       }] : [typeStep];
     }),
+  },
+  'meeting-preparation': {
+    id: 'meeting-preparation', version: 1, nameKey: 'tours.meetingPreparation',
+    audience: (user) => isProtectedTextReader(user) && user.permissions.meetings === 'manage'
+      && user.permissions.topics === 'manage' && user.permissions.references !== 'hide',
+    steps: meetingPreparationSteps,
   },
 };
