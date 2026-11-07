@@ -20,7 +20,6 @@ const de = {
       bugfix: "Fehlerbehebung",
     },
     entries: {
-      "backend-startup-screen": "Während ElderFlow startet, erscheint jetzt eine Warteseite. Sobald der Server bereit ist, geht es automatisch weiter.",
       "preparation-topic-history-preview": "Bei der Tagesordnungsvorbereitung kannst du den Themenverlauf jetzt mit einem Klick auf den Thementitel in einem Dialog ansehen.",
       "postponed-topic-preparation": "In der Tagesordnungsvorbereitung werden vertagte Themen jetzt gekennzeichnet und ihr bisheriger Vorbereitungstext in die nächste Sitzung übernommen.",
       "saved-topic-fields-live-refresh": "Gespeicherte Themenfelder werden jetzt während Sitzungen automatisch bei anderen Personen aktualisiert.",
