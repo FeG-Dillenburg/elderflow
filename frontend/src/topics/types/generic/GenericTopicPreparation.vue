@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { RouterLink } from "vue-router";
+import TopicTitleLink from "../../components/TopicTitleLink.vue";
 import type { MeetingTopic, Topic } from "../../../api/domain";
 import { useI18n } from "vue-i18n";
 import { formatDate } from "../../../i18n";
@@ -9,6 +9,7 @@ import MeetingPreparationContext from "../../components/MeetingPreparationContex
 defineOptions({ inheritAttrs: false });
 defineProps<{
   topic: Topic;
+  openTopic?: (topic: Topic) => void;
   item?: MeetingTopic;
   showType?: boolean;
   readOnly?: boolean;
@@ -22,10 +23,14 @@ const { t } = useI18n();
 <template>
   <div>
     <div class="topic-heading">
-      <RouterLink :to="`/topics/${topic.id}`" class="topic-name">
+      <TopicTitleLink :topic="topic" :open-topic="openTopic" class="topic-name">
         <strong>{{ topic.name }}</strong>
-        <i class="pi pi-arrow-up-right topic-link-icon" aria-hidden="true" />
-      </RouterLink>
+        <i
+          v-if="!openTopic"
+          class="pi pi-arrow-up-right topic-link-icon"
+          aria-hidden="true"
+        />
+      </TopicTitleLink>
       <slot />
     </div>
     <small v-if="showType">

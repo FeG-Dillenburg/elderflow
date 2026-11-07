@@ -1,16 +1,19 @@
 <script setup lang="ts">
-import { RouterLink } from "vue-router";
+import TopicTitleLink from "../../components/TopicTitleLink.vue";
 import type { Topic } from "../../../api/domain";
 import MembershipSignal from "./MembershipSignal.vue";
 
-defineProps<{ topic: Topic }>();
+defineProps<{
+  topic: Topic;
+  openTopic?: (topic: Topic) => void;
+}>();
 </script>
 
 <template>
   <div class="membership-list">
-    <RouterLink class="primary-link" :to="`/topics/${topic.id}`">
+    <TopicTitleLink class="primary-link" :topic="topic" :open-topic="openTopic">
       {{ topic.name }}
-    </RouterLink>
+    </TopicTitleLink>
     <div class="summary">
       <MembershipSignal
         :signal="topic.membershipStatusSignal ?? 'new'"

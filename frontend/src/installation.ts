@@ -1,6 +1,9 @@
 import { reactive } from 'vue';
 import type { SupportedLanguage } from './i18n/language';
 
+// Startup requests may outlast several two-second polling ticks.
+export const INSTALLATION_REQUEST_TIMEOUT_MS = 30_000;
+
 export const installation = reactive<{
   ready: boolean;
   setupRequired: boolean;

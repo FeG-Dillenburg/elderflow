@@ -122,6 +122,73 @@ describe("MeetingPreparationView", () => {
     await flushPromises();
     return wrapper;
   };
+  it("keeps preparation state and workspace mounted while previewing ordinary and future suggestions", async () => {
+    vi.mocked(api.meetingSuggestions).mockImplementation(async (_id, options) => options?.future
+      ? [{ id: "future", name: "Future", type: "person" }] as any
+      : [{ id: "topic-3", name: "Suggested", type: "generic", defaultSectionId: "second" }] as any);
+    vi.spyOn(api, "topic").mockImplementation(async (id) => ({ id, name: `Preview ${id}`, type: "generic" }) as any);
+    vi.spyOn(api, "topicHistory").mockResolvedValue([]);
+    const add = vi.spyOn(api, "addMeetingTopics").mockResolvedValue([]);
+    const singleAdd = vi.spyOn(api, "addMeetingTopic");
+    const wrapper = mount(MeetingPreparationView, {
+      attachTo: document.body,
+      global: {
+        plugins: [PrimeVue],
+        provide: { [meetingRouteFactoryKey as symbol]: meetingRouteFactory },
+        stubs: {
+          ...stubs,
+          MeetingWorkspaceStatus: true,
+          Select: {
+            props: ["modelValue", "options"],
+            template: '<select :value="modelValue" @change="$emit(\'update:modelValue\', $event.target.value)"><option v-for="option in options" :value="option.id">{{ option.name }}</option></select>',
+          },
+          TopicTypeRenderer: false,
+          TopicPreviewDialog: false,
+          PairedMeetingTexts: { template: '<textarea aria-label="Draft note" />' },
+          Dialog: {
+            props: ["visible", "header"],
+            template: '<section v-if="visible" role="dialog"><h1>{{ header }}</h1><button aria-label="Close preview" @click="$emit(\'update:visible\', false)" /><slot /></section>',
+          },
+        },
+      },
+    });
+    await flushPromises();
+    await wrapper.get(".future-topics-toggle").trigger("click");
+    await flushPromises();
+    const toggles = wrapper.findAll(".select-topic-button");
+    for (const toggle of toggles) await toggle.trigger("click");
+    await wrapper.get('select[aria-label="Choose section"]').setValue("first");
+    await wrapper.get("textarea").setValue("Unsaved preparation");
+    const editor = wrapper.get("textarea").element as HTMLTextAreaElement;
+    const scroller = wrapper.element as HTMLElement;
+    scroller.scrollTop = 580;
+    const loadsBefore = workspaceLoad.mock.calls.length;
+    const agendaBefore = wrapper.findAll("[data-agenda-item]").map((item) => item.element);
+    for (const trigger of wrapper.findAll('button[aria-haspopup="dialog"]')) {
+      await trigger.trigger("click");
+      await flushPromises();
+      expect(wrapper.get('[role="dialog"] h1').text()).toMatch(/^Preview /);
+      await wrapper.get('[aria-label="Close preview"]').trigger("click");
+      expect(wrapper.get("textarea").element).toBe(editor);
+      expect(editor.value).toBe("Unsaved preparation");
+      expect(scroller.scrollTop).toBe(580);
+      expect(wrapper.findAll("[data-agenda-item]").map((item) => item.element)).toEqual(agendaBefore);
+      expect(wrapper.findAll(".select-topic-button").map((toggle) => toggle.attributes("aria-pressed")))
+        .toEqual(["true", "true"]);
+      expect(wrapper.get(".future-topics-toggle").attributes("label")).toBe("Hide future topics");
+    }
+    expect(workspaceLoad).toHaveBeenCalledTimes(loadsBefore);
+    expect(routerPush).not.toHaveBeenCalled();
+    expect(add).not.toHaveBeenCalled();
+    expect(singleAdd).not.toHaveBeenCalled();
+    await wrapper.get(".add-selected-topics").trigger("click");
+    await flushPromises();
+    expect(add).toHaveBeenCalledWith("meeting-1", [
+      expect.objectContaining({ topicId: "topic-3", sectionId: "first" }),
+      expect.objectContaining({ topicId: "future", sectionId: "first" }),
+    ]);
+  });
+
   it("compacts only after a deliberate handle drag and preserves editor DOM on Escape", async () => {
     const wrapper = await view();
     const reorder = vi.spyOn(api, "reorderMeetingTopics").mockResolvedValue([]);

@@ -11,5 +11,6 @@
   { "id": "personal-dashboard", "category": "improvement" },
   { "id": "resolve-mentions", "category": "feature" },
   { "id": "saved-topic-fields-live-refresh", "category": "improvement" },
-  { "id": "postponed-topic-preparation", "category": "improvement" }
+  { "id": "postponed-topic-preparation", "category": "improvement" },
+  { "id": "preparation-topic-history-preview", "category": "improvement" }
 ]
