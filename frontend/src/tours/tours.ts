@@ -6,6 +6,7 @@ import { protectedText } from '../e2ee/protected-text';
 import type { TopicType } from '../topics/topicTypes';
 import { tourRegistry, type TourDefinition, type TourId } from './registry';
 import { tourApi, type TourEvent } from './tour-api';
+import { meetingPractice, nextMeetingStep, resetMeetingPractice } from './meeting-preparation';
 import { TourPresenter } from './presenter';
 
 interface TopicContext {
@@ -24,9 +25,12 @@ interface Attempt {
   presenter: TourPresenter;
   writes: Promise<unknown>;
   advancing: boolean;
+  presenting?: boolean;
+  pendingAction?: string;
+  expectedPath?: string;
   stopUnlock?: WatchStopHandle;
 }
-const state = reactive({ activeId: null as TourId | null, error: false, suspended: false, topicReplay: false });
+const state = reactive({ stepId: '' as string, meetingReplay: false, transitioning: false, activeId: null as TourId | null, error: false, suspended: false, topicReplay: false });
 let router: Router;
 let active: Attempt | null = null;
 let queue: Attempt[] = [];
@@ -69,12 +73,19 @@ async function target(attempt: Attempt, id: string): Promise<HTMLElement | undef
 async function show(attempt: Attempt): Promise<void> {
   if (!live(attempt) || active !== attempt) return;
   const step = attempt.definition.steps[attempt.index];
+  attempt.presenting = true;
+  state.stepId = step?.id ?? '';
   if (!step) { await finish(attempt, false); return; }
   const marker = step.target ? await target(attempt, step.target) : undefined;
   const element = step.target?.startsWith('topic-type-')
     ? marker?.closest<HTMLButtonElement>('button') ?? marker : marker;
   if (!live(attempt) || active !== attempt) return;
   if (step.target && !element) {
+    if (attempt.definition.id === 'meeting-preparation') {
+      state.error = true;
+      await finish(attempt, false);
+      return;
+    }
     // Missing targets can never implicitly complete a tour.
     attempt.index += 1;
     await show(attempt);
@@ -90,9 +101,17 @@ async function show(attempt: Attempt): Promise<void> {
   const nextOption = next?.target
     ? attempt.context?.root.querySelector<HTMLElement>(`[data-tour-id="${next.target}"]`)?.closest<HTMLButtonElement>('button') ?? null : null;
   const advanceTarget = step.id === 'protected-text-passphrase' ? element ?? null : nextOption;
-  attempt.presenter.show(step, element, advanceTarget,
+  const displayedStep = step.id === 'practice-context' && meetingPractice.person
+    ? { ...step, descriptionKey: 'tours.meetingPersonContext' } : step;
+  attempt.presenter.show(displayedStep, element, advanceTarget,
     attempt.index === attempt.definition.steps.length - 1,
-    () => { void advance(attempt); }, () => { void finish(attempt, false); });
+    () => { if (step.mode !== 'action') void advance(attempt); }, () => { void finish(attempt, false); });
+  attempt.presenting = false;
+  if (attempt.pendingAction && !attempt.advancing) {
+    const pending = attempt.pendingAction;
+    attempt.pendingAction = undefined;
+    tours.meetingAction(pending);
+  }
 }
 
 async function advance(attempt: Attempt): Promise<void> {
@@ -105,7 +124,10 @@ async function advance(attempt: Attempt): Promise<void> {
       return;
     }
     attempt.presenter.hide();
-    attempt.index += 1;
+    if (attempt.definition.id === 'meeting-preparation') {
+      const nextId = nextMeetingStep(step.id);
+      attempt.index = attempt.definition.steps.findIndex((candidate) => candidate.id === nextId);
+    } else attempt.index += 1;
     if (step.id === 'welcome') protectedText.showUnlock();
     if (step.id === 'protected-text-passphrase' && protectedText.state.promptVisible) {
       state.suspended = true;
@@ -125,21 +147,27 @@ async function advance(attempt: Attempt): Promise<void> {
     await finish(attempt, false);
   } finally {
     attempt.advancing = false;
+    const pending = attempt.pendingAction;
+    attempt.pendingAction = undefined;
+    if (pending) tours.meetingAction(pending);
   }
 }
 
 async function finish(attempt: Attempt, completed: boolean, redirect = true): Promise<void> {
-  if (active !== attempt) return;
+  if (active !== attempt || attempt.abort.signal.aborted) return;
   attempt.abort.abort();
   attempt.stopUnlock?.();
   attempt.presenter.hide();
   state.suspended = false;
+  state.transitioning = false;
   // Keep the completion write ahead of the next trigger's eligibility read.
   await record(attempt, completed ? 'complete' : 'skip');
   if (active !== attempt) return;
   if (completed && attempt.context?.isOpen()) attempt.context.select('generic');
   active = null;
   state.activeId = null;
+  state.stepId = '';
+  resetMeetingPractice();
   await nextTick();
   const currentTarget = completed && attempt.context ? 'topic-type-generic' : attempt.definition.steps[attempt.index]?.target;
   const formFocus = currentTarget && attempt.context?.isOpen()
@@ -209,6 +237,10 @@ function reset(): void {
   state.suspended = false;
   state.error = false;
   state.topicReplay = false;
+  state.meetingReplay = false;
+  state.transitioning = false;
+  state.stepId = '';
+  resetMeetingPractice();
 }
 
 async function firstLogin(manual = false): Promise<void> {
@@ -256,7 +288,15 @@ export const tours = {
         });
       }, { flush: 'post', immediate: true },
     );
-    const stopRoute = router.afterEach(() => {
+    const stopAccess = watch(() => [protectedText.state.status, auth.state.user?.permissions], () => {
+      if (active?.definition.id === 'meeting-preparation'
+        && (protectedText.state.status !== 'unlocked' || !live(active))) void finish(active, false, false);
+    }, { deep: true });
+    const stopRoute = router.afterEach((to) => {
+      if (active?.definition.id === 'meeting-preparation' && active.expectedPath === to.path) {
+        active.expectedPath = undefined;
+        return;
+      }
       if (internalNavigation) return;
       queue.forEach((attempt) => attempt.abort.abort());
       queue = [];
@@ -271,13 +311,49 @@ export const tours = {
     };
     window.addEventListener('elderflow:before-logout', logout);
     return () => {
-      stopUser(); stopLogin(); stopRoute();
+      stopUser(); stopLogin(); stopRoute(); stopAccess();
       window.removeEventListener('elderflow:before-logout', logout);
       reset();
     };
   },
+  meetingOpened(): void {
+    if (state.activeId || protectedText.state.status !== 'unlocked'
+      || deploymentUpdates.state.blocking || deploymentUpdates.state.visible) return;
+    resetMeetingPractice();
+    const manual = state.meetingReplay;
+    state.meetingReplay = false;
+    enqueue('meeting-preparation', { manual });
+  },
+  meetingAction(stepId: string): void {
+    const attempt = active;
+    if (!attempt || attempt.definition.id !== 'meeting-preparation' || state.suspended
+      || attempt.definition.steps[attempt.index]?.id !== stepId
+      || attempt.definition.steps[attempt.index]?.mode !== 'action') return;
+    if (attempt.advancing || attempt.presenting) { attempt.pendingAction = stepId; return; }
+    if (stepId === 'create-submit') state.transitioning = false;
+    void advance(attempt);
+  },
+  meetingSignal(): AbortSignal | undefined {
+    return active?.definition.id === 'meeting-preparation' ? active.abort.signal : undefined;
+  },
+  meetingCreated(meetingId: string): void {
+    if (active?.definition.id === 'meeting-preparation' && state.stepId === 'create-submit') {
+      active.expectedPath = `/meetings/${meetingId}/prepare`;
+      state.transitioning = true;
+      active.presenter.hide();
+    }
+  },
+  meetingPreview(open: boolean): void {
+    if (active?.definition.id !== 'meeting-preparation' || state.stepId !== 'practice-preview') return;
+    state.suspended = open;
+    if (open) active.presenter.hide();
+    else { state.suspended = false; tours.meetingAction('practice-preview'); }
+  },
+  cancelMeeting(): void {
+    if (active?.definition.id === 'meeting-preparation') void finish(active, false, false);
+  },
   topicOpened(context: TopicContext): () => void {
-    if (deploymentUpdates.state.blocking || deploymentUpdates.state.visible) return () => undefined;
+    if (state.activeId === 'meeting-preparation' || deploymentUpdates.state.blocking || deploymentUpdates.state.visible) return () => undefined;
     const manual = manualTopic;
     manualTopic = false;
     enqueue('new-topic-dialog', { context, manual });
@@ -292,6 +368,12 @@ export const tours = {
   async replay(id: TourId): Promise<void> {
     if (state.activeId || deploymentUpdates.state.blocking || deploymentUpdates.state.visible) return;
     if (id === 'first-login') { await firstLogin(true); return; }
+    if (id === 'meeting-preparation') {
+      if (protectedText.state.status !== 'unlocked') return;
+      await router.push('/meetings');
+      state.meetingReplay = true;
+      return;
+    }
     await router.push('/topics');
     manualTopic = true;
     state.topicReplay = true;

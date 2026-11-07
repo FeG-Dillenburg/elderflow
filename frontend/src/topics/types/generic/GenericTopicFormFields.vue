@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { tours } from "../../../tours/tours";
 import { computed } from "vue";
 import RichTextEditor from "../../../components/RichTextEditor.vue";
 import type { TopicInput } from "../../../api/domain";
@@ -16,7 +17,7 @@ const description = computed({
 </script>
 
 <template>
-  <label>
+  <label :data-tour-id="tours.state.activeId === 'meeting-preparation' ? 'preparation-topic-description' : undefined">
     <span>{{ t("topics.background") }}</span>
     <RichTextEditor
       v-model="description"

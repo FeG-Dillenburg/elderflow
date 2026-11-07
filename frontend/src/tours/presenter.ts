@@ -8,6 +8,8 @@ import type { TourStep } from './registry';
 export class TourPresenter {
   private driver: Driver | null = null;
   private popover: HTMLElement | null = null;
+  private interactive = false;
+  private interactionRoot: HTMLElement | null = null;
   private allowed: HTMLElement | null = null;
   private skip: (() => void) | null = null;
   private advance: (() => void) | null = null;
@@ -17,8 +19,13 @@ export class TourPresenter {
   show(step: TourStep, target: HTMLElement | undefined, nextOption: HTMLElement | null,
     last: boolean, advance: () => void, skip: () => void): void {
     this.hide();
+    this.interactive = Boolean(step.interactive);
+    this.interactionRoot = this.interactive
+      ? target?.closest<HTMLElement>('form, [role="dialog"], aside, [data-agenda-item]') ?? target ?? null : null;
+    document.body.classList.toggle('tour-interactive', this.interactive);
+    this.interactionRoot?.classList.add('tour-interaction-root');
     this.allowed = nextOption;
-    this.advance = advance;
+    this.advance = step.mode === 'action' ? null : advance;
     this.skip = step.skippable ? skip : null;
     nextOption?.classList.add('tour-allowed-option');
     let previousLayout = '';
@@ -45,15 +52,20 @@ export class TourPresenter {
         title: step.titleKey ? this.escape(translate(step.titleKey)) : undefined,
         description: this.escape(translate(step.descriptionKey)),
         side: step.side,
-        showButtons: ['next'],
+        showButtons: step.mode === 'action' ? [] : ['next'],
         nextBtnText: translate(last ? 'tours.finish' : step.id === 'welcome' ? 'tours.start' : 'tours.next'),
-        onNextClick: advance,
+        onNextClick: () => this.advance?.(),
         onPopoverRender: (popover) => {
           this.popover = popover.wrapper;
+          if (step.mode === 'action') {
+            popover.nextButton.disabled = true;
+            popover.nextButton.remove();
+            popover.footer.style.display = 'flex';
+          }
           // Keep layout measurable without displaying an incorrectly anchored box.
           popover.wrapper.style.visibility = 'hidden';
           popover.wrapper.setAttribute('role', 'dialog');
-          popover.wrapper.setAttribute('aria-modal', 'true');
+          popover.wrapper.setAttribute('aria-modal', this.interactive ? 'false' : 'true');
           popover.wrapper.setAttribute('aria-label', translate('tours.help'));
           if (!step.titleKey) popover.wrapper.removeAttribute('aria-labelledby');
           popover.closeButton.setAttribute('aria-label', translate('tours.skip'));
@@ -80,7 +92,11 @@ export class TourPresenter {
         this.driver?.refresh();
       } else if (highlightReady && this.popover?.style.visibility === 'hidden') {
         this.popover.style.visibility = 'visible';
-        this.popover.querySelector<HTMLButtonElement>('.driver-popover-next-btn')?.focus();
+        const focus = step.mode === 'action'
+          ? target?.matches('button, input, textarea, [role="combobox"]') ? target
+            : target?.querySelector<HTMLElement>('input, textarea, [contenteditable="true"], [role="combobox"], button')
+          : this.popover.querySelector<HTMLButtonElement>('.driver-popover-next-btn');
+        (focus ?? this.popover.querySelector<HTMLButtonElement>('button'))?.focus({ preventScroll: true });
       }
       this.layoutFrame = requestAnimationFrame(trackLayout);
     };
@@ -100,6 +116,10 @@ export class TourPresenter {
     for (const event of ['pointerdown', 'mousedown', 'click', 'submit']) {
       window.removeEventListener(event, this.interaction, true);
     }
+    this.interactionRoot?.classList.remove('tour-interaction-root');
+    this.interactionRoot = null;
+    document.body.classList.remove('tour-interactive');
+    this.interactive = false;
     this.allowed?.classList.remove('tour-allowed-option');
     this.allowed = null;
     this.driver?.destroy();
@@ -120,21 +140,32 @@ export class TourPresenter {
     return element.innerHTML;
   }
 
+  private permits(target: EventTarget | null): boolean {
+    return this.interactive && target instanceof Element && Boolean(
+      this.interactionRoot?.contains(target)
+      || target.closest('.p-select-overlay, .p-datepicker-panel, .p-popover, .tiptap-bubble-menu')
+      // A form's footer and close controls belong to the same dialog.
+      || this.interactionRoot?.closest('[role="dialog"]')?.contains(target));
+  }
+
   private interaction = (event: Event): void => {
     const target = event.target as Node;
-    if (this.popover?.contains(target)) return;
+    if (this.popover?.contains(target) || this.permits(event.target)) return;
     event.preventDefault();
     event.stopImmediatePropagation();
     if (event.type === 'click' && this.allowed?.contains(target)) this.advance?.();
   };
 
   private focusin = (event: FocusEvent): void => {
+    if (this.permits(event.target)) return;
     if (!this.popover?.contains(event.target as Node) && !this.allowed?.contains(event.target as Node)) {
       this.popover?.querySelector<HTMLButtonElement>('button')?.focus();
     }
   };
 
   private keydown = (event: KeyboardEvent): void => {
+    if (this.interactive && (event.key !== 'Escape'
+      || document.querySelector('.p-select-overlay, .p-datepicker-panel, .p-popover'))) return;
     if (event.key === 'Escape') {
       event.preventDefault();
       event.stopImmediatePropagation();

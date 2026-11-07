@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { meetingPractice } from "../../../tours/meeting-preparation";
 import type { MeetingTopic } from "../../../api/domain";
 import { nextTick, onBeforeUnmount, onMounted, ref, useSlots, watch } from "vue";
 import { useI18n } from "vue-i18n";
@@ -66,7 +67,12 @@ onBeforeUnmount(() => {
     />
     <template v-else>{{ t("personTopic.noNote") }}</template>
   </div>
-  <span v-else class="note-editor" :aria-busy="saving">
+  <span
+    v-else
+    :data-tour-id="item.id === meetingPractice.appearanceId ? 'preparation-practice-context' : undefined"
+    class="note-editor"
+    :aria-busy="saving"
+  >
     <span class="note-input">
       <span v-if="$slots.label" ref="inlineLabel" class="inline-label">
         <slot name="label" />

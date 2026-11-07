@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { meetingPractice } from "../../tours/meeting-preparation";
 import { computed } from "vue";
 import { useI18n } from "vue-i18n";
 import type { MeetingTopic } from "../../api/domain";
@@ -30,9 +31,13 @@ const previousDate = computed(() => previous.value?.date
 
 <template>
   <div
-    v-if="eligible && (hasPreviousContent || showLatestPostponement || updates.length || item.preparationHistoryUnavailable)"
+    v-if="eligible && (item.id === meetingPractice.appearanceId || hasPreviousContent || showLatestPostponement || updates.length || item.preparationHistoryUnavailable)"
+    :data-tour-id="item.id === meetingPractice.appearanceId ? 'preparation-practice-history' : undefined"
     class="meeting-preparation-context"
   >
+    <p v-if="item.id === meetingPractice.appearanceId && !hasPreviousContent && !showLatestPostponement && !updates.length && !item.preparationHistoryUnavailable" class="context-entry">
+      {{ t('tours.meetingSteps.practice-history-area') }}
+    </p>
     <section v-if="hasPreviousContent || showLatestPostponement" class="context-group">
       <div class="context-heading">
         <h4>{{ t("meetingPreparation.previousMeeting") }}</h4>

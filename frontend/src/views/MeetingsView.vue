@@ -1,5 +1,5 @@
 <script lang="ts" setup>
-import { computed, onMounted, reactive, ref } from "vue";
+import { computed, onMounted, reactive, ref, watch } from "vue";
 import { useRouter, RouterLink } from "vue-router";
 import Button from "primevue/button";
 import Column from "primevue/column";
@@ -19,6 +19,7 @@ import {
   type MeetingInput,
   type User,
 } from "../api/domain";
+import { tours } from "../tours/tours";
 import { auth } from "../auth/auth";
 import { assignableUsers } from "../auth/roles";
 import { useI18n } from "vue-i18n";
@@ -35,6 +36,7 @@ const visible = ref(false);
 const saving = ref(false);
 const error = ref("");
 const { t } = useI18n();
+const creationSelections = reactive({ date: false, leader: false, minuteTaker: false });
 const form = reactive({
   title: "",
   date: null as Date | null,
@@ -58,8 +60,12 @@ const load = async () => {
     loading.value = false;
   }
 };
+let createdMeetingDraft: Meeting | null = null;
+let carryOverComplete = false;
 const create = async () => {
-  if (!form.date) return;
+  if (saving.value || !form.date) return;
+  if (tours.state.activeId === 'meeting-preparation' && tours.state.stepId !== 'create-submit') return;
+  const tourSignal = tours.meetingSignal();
   saving.value = true;
   try {
     const input: MeetingInput = {
@@ -72,7 +78,8 @@ const create = async () => {
       generalNotes: null,
       openingInput: null,
     };
-    const meeting = await api.createMeeting(input);
+    const meeting = createdMeetingDraft ?? await api.createMeeting(input);
+    createdMeetingDraft = meeting;
     const [sections, dueSuggestions, futureSuggestions] = await Promise.all([
       api.sections(),
       api.meetingSuggestions(meeting.id),
@@ -109,9 +116,11 @@ const create = async () => {
       sectionPositions.set(item.sectionId, position);
       return { ...item, position };
     });
-    if (additions.length) {
+    if (!carryOverComplete && additions.length) {
       await api.addMeetingTopics(meeting.id, additions);
     }
+    carryOverComplete = true;
+    if (tourSignal && !tourSignal.aborted) tours.meetingCreated(meeting.id);
     visible.value = false;
     await router.push(`/meetings/${meeting.id}/prepare`);
   } catch (e) {
@@ -120,6 +129,32 @@ const create = async () => {
     saving.value = false;
   }
 };
+watch(visible, (open) => {
+  if (open) {
+    Object.assign(creationSelections, { date: false, leader: false, minuteTaker: false });
+    createdMeetingDraft = null;
+    carryOverComplete = false;
+    tours.meetingOpened();
+  }
+  else if (!saving.value) tours.cancelMeeting();
+}, { flush: 'post' });
+watch(() => tours.state.meetingReplay, (replay) => {
+  if (replay) {
+    visible.value = true;
+    tours.meetingOpened();
+  }
+}, { flush: 'post', immediate: true });
+watch(() => tours.state.stepId, (step) => {
+  if (step === 'create-basics') {
+    Object.assign(creationSelections, { date: false, leader: false, minuteTaker: false });
+  }
+});
+watch(() => [tours.state.stepId, form.date, form.meetingLeaderId, form.minuteTakerId, { ...creationSelections }], () => {
+  const step = tours.state.stepId;
+  if (step === 'create-date' && creationSelections.date && form.date instanceof Date && !Number.isNaN(form.date.getTime())) tours.meetingAction(step);
+  if (step === 'create-leader' && creationSelections.leader && users.value.some((user) => user.id === form.meetingLeaderId)) tours.meetingAction(step);
+  if (step === 'create-minute-taker' && creationSelections.minuteTaker && users.value.some((user) => user.id === form.minuteTakerId)) tours.meetingAction(step);
+}, { flush: 'post' });
 onMounted(load);
 const date = (value: string) => formatDate(`${value}T12:00:00`);
 </script>
@@ -185,9 +220,9 @@ const date = (value: string) => formatDate(`${value}T12:00:00`);
       v-model:visible="visible"
       :style="{ width: '34rem', maxWidth: 'calc(100vw - 2rem)' }"
       :header="t('meetings.createTitle')"
-      modal
+      :modal="tours.state.activeId !== 'meeting-preparation'"
     >
-      <form id="meeting-form" class="form" @submit.prevent="create">
+      <form data-tour-id="meeting-create-basics" id="meeting-form" class="form" @submit.prevent="create">
         <label>
           <span>
             {{ t("meetings.specialTitle") }}
@@ -199,10 +234,11 @@ const date = (value: string) => formatDate(`${value}T12:00:00`);
           />
         </label>
         <div class="row">
-          <label>
+          <label data-tour-id="meeting-create-date">
             <span>{{ t("common.date") }}</span>
             <DatePicker
               v-model="form.date"
+              @update:model-value="creationSelections.date = true"
               :date-format="dateInputFormat()"
               required
             />
@@ -212,10 +248,11 @@ const date = (value: string) => formatDate(`${value}T12:00:00`);
             <InputText v-model="form.beginTime" required type="time" />
           </label>
         </div>
-        <label>
+        <label data-tour-id="meeting-create-leader">
           <span>{{ t("meetings.meetingLeader") }}</span>
           <Select
             v-model="form.meetingLeaderId"
+            @update:model-value="creationSelections.leader = true"
             :options="users"
             option-label="firstName"
             option-value="id"
@@ -225,10 +262,11 @@ const date = (value: string) => formatDate(`${value}T12:00:00`);
             <template #option="{ option }">{{ formatUser(option) }}</template>
           </Select>
         </label>
-        <label>
+        <label data-tour-id="meeting-create-minute-taker">
           <span>{{ t("meetings.minuteTaker") }}</span>
           <Select
             v-model="form.minuteTakerId"
+            @update:model-value="creationSelections.minuteTaker = true"
             :options="users"
             option-label="firstName"
             option-value="id"
@@ -248,6 +286,7 @@ const date = (value: string) => formatDate(`${value}T12:00:00`);
         />
         <Button
           :loading="saving"
+          data-tour-id="meeting-create-submit"
           form="meeting-form"
           :label="t('meetings.createAndPrepare')"
           type="submit"

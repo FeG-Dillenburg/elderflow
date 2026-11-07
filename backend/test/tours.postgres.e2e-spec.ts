@@ -123,6 +123,31 @@ postgres('Versioned tour progress through authenticated HTTP', () => {
     await send('user', 'start', 'welcome', { version: 2 }).expect(400);
     await send('user', 'start', 'welcome', { userId: 'another-user' }).expect(400);
   });
+  it('validates both preparation branches, isolates progress by user, and completes only at the common result', async () => {
+    const tourId = 'meeting-preparation';
+    await send('guest', 'start', 'create-basics', { tourId }).expect(403);
+    await send('it-admin', 'start', 'create-basics', { tourId }).expect(403);
+    await send('user', 'start', 'create-basics', { tourId }).expect(201);
+    for (const step of [
+      'create-basics', 'create-date', 'create-leader', 'create-minute-taker', 'create-submit',
+      'agenda-overview', 'sidebar-overview', 'practice-create-open', 'practice-create-name',
+      'practice-create-section', 'practice-create-description', 'practice-create-submit',
+      'practice-preview', 'practice-select', 'practice-scroll-selection', 'practice-add-selection',
+      'practice-duration', 'practice-history-area', 'practice-context', 'practice-drag', 'practice-remove',
+      'practice-reselect', 'practice-readd', 'details-open', 'details-schedule', 'details-roles',
+      'details-opening', 'details-general-notes', 'details-save',
+    ]) {
+      await send('user', 'step', step, { tourId }).expect(201);
+      await send('user', 'complete', step, { tourId }).expect(400);
+    }
+    await send('user', 'step', 'unknown', { tourId }).expect(400);
+    await send('user', 'start', 'create-basics', { tourId, version: 2 }).expect(400);
+    await send('user', 'step', 'details-save', { tourId, userId: 'someone-else' }).expect(400);
+    const completed = await send('user', 'complete', 'details-result', { tourId }).expect(201);
+    expect(completed.body).toMatchObject({ tourId, version: 1, state: 'completed', lastStepId: 'details-result' });
+    expect((await list('guest').expect(200)).body.some((row: { tourId: string }) => row.tourId === tourId)).toBe(false);
+  });
+
   it('lets Guests read unlock wrappers and own epochs, but denies recovery and epoch replacement', async () => {
     for (const path of ['key-state', 'key-state/shared-passphrase-slot', 'key-state/content-key-wrapper', 'key-state/content-key-wrappers']) {
       await request(app.getHttpServer()).get(`/api/e2ee/${path}`).auth(tokens.guest, { type: 'bearer' }).expect(200);

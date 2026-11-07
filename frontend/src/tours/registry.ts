@@ -1,10 +1,13 @@
+import { meetingPreparationSteps } from './meeting-preparation';
 import type { AuthUser } from '../api/domain';
 import type { TopicType } from '../topics/topicTypes';
 import { isProtectedTextReader } from '../e2ee/roles';
 
-export type TourId = 'first-login' | 'new-topic-dialog';
+export type TourId = 'first-login' | 'new-topic-dialog' | 'meeting-preparation';
 export interface TourStep {
   id: string;
+  mode?: 'explanation' | 'action';
+  interactive?: boolean;
   target?: string;
   titleKey?: string;
   descriptionKey: string;
@@ -31,6 +34,12 @@ const firstSteps = [
   ['sign-out', 'nav-sign-out', undefined, 'top', false],
 ] as const;
 export const tourRegistry: Record<TourId, TourDefinition> = {
+  'meeting-preparation': {
+    id: 'meeting-preparation', version: 1, nameKey: 'tours.meetingPreparation',
+    audience: (user) => isProtectedTextReader(user) && user.permissions.meetings === 'manage'
+      && user.permissions.topics === 'manage' && user.permissions.references !== 'hide',
+    steps: meetingPreparationSteps,
+  },
   'first-login': {
     id: 'first-login', version: 1, nameKey: 'tours.firstLogin',
     audience: (user) => isProtectedTextReader(user) && user.permissions.dashboard !== 'hide',

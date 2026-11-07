@@ -83,7 +83,7 @@ const hasFollowUp = computed(() =>
     <small v-if="typeLocked" :id="`${id}-type-lock-help`" class="field-help">
       {{ t("topicEdit.typeLocked") }}
     </small>
-    <label>
+    <label :data-tour-id="id === 'new-topic' && tours.state.activeId === 'meeting-preparation' ? 'preparation-topic-name' : undefined">
       <span>{{ t(topicNameTranslationKey(modelValue.type)) }}</span>
       <InputText
         :model-value="modelValue.name"
@@ -99,7 +99,7 @@ const hasFollowUp = computed(() =>
       @change="emit('change', $event)"
     >
       <div :class="{ 'settings-row': hasFollowUp }">
-        <label>
+        <label :data-tour-id="id === 'new-topic' && tours.state.activeId === 'meeting-preparation' ? 'preparation-topic-section' : undefined">
           <span>{{ t("topics.defaultSection") }}</span>
           <Select
             :model-value="modelValue.defaultSectionId"

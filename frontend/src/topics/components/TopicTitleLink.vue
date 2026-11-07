@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { meetingPractice } from "../../tours/meeting-preparation";
 import { RouterLink } from "vue-router";
 import { useI18n } from "vue-i18n";
 import type { Topic } from "../../api/domain";
@@ -14,6 +15,7 @@ const { t } = useI18n();
   <button
     v-if="openTopic"
     type="button"
+    :data-tour-id="topic.id === meetingPractice.topicId && !meetingPractice.appearanceId ? 'preparation-practice-preview' : undefined"
     class="preview-trigger"
     aria-haspopup="dialog"
     :aria-label="t('topicPreview.open', { name: topic.name })"

@@ -7,6 +7,7 @@ import { isProtectedTextReader } from '../e2ee/e2ee-role-policy';
 import { User } from '../users/user.entity';
 
 const definitions = {
+  'meeting-preparation': ["create-basics", "create-date", "create-leader", "create-minute-taker", "create-submit", "agenda-overview", "sidebar-overview", "practice-create-open", "practice-create-name", "practice-create-section", "practice-create-description", "practice-create-submit", "practice-preview", "practice-select", "practice-scroll-selection", "practice-add-selection", "practice-duration", "practice-history-area", "practice-context", "practice-drag", "practice-remove", "practice-reselect", "practice-readd", "details-open", "details-schedule", "details-roles", "details-opening", "details-general-notes", "details-save", "details-result"],
   'first-login': ['welcome', 'protected-text-encryption', 'protected-text-passphrase', 'dashboard-overview', 'meetings-navigation', 'topics-navigation', 'mentions-navigation', 'profile-settings', 'sign-out'],
   'new-topic-dialog': ['topic-type-generic', 'topic-type-person', 'topic-type-new-membership', 'topic-godparents', 'topic-type-recurring'],
 } as const;
@@ -42,6 +43,8 @@ export class ToursService {
 
   async record(user: User, input: TourEventDto) {
     if (!isProtectedTextReader(user.role)
+      || (input.tourId === 'meeting-preparation' && (permissionsByRole[user.role].meetings !== 'manage'
+        || permissionsByRole[user.role].topics !== 'manage' || permissionsByRole[user.role].references === 'hide'))
       || (input.tourId === 'new-topic-dialog' && permissionsByRole[user.role].topics !== 'manage')) {
       throw new ForbiddenException({ code: 'AUTH_FORBIDDEN' });
     }
