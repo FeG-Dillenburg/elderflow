@@ -419,7 +419,7 @@ describe("MeetingPreparationView", () => {
     expect(wrapper.find(".add-selected-topics").exists()).toBe(false);
   });
 
-  it.each(["planned", "in_progress", "completed"])("shows both meeting notes above agenda sections in a %s Meeting", async (status) => {
+  it.each(["planned", "in_progress", "completed"])("shows both meeting notes inside the agenda column before its sections in a %s Meeting", async (status) => {
     workspaceMeeting.status = status;
     workspaceMeeting.openingInput = '<p>Welcome <strong>everyone</strong></p>';
     workspaceMeeting.generalNotes = '<p>Bring your notes</p><img src="x" onerror="alert(1)">';
@@ -430,8 +430,10 @@ describe("MeetingPreparationView", () => {
     expect(notes.get("strong").text()).toBe("everyone");
     expect(notes.text()).toContain("Bring your notes");
     expect(notes.html()).not.toContain("onerror");
-    const agenda = wrapper.get("main").element;
-    expect(notes.element.compareDocumentPosition(agenda) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const agenda = wrapper.get("main");
+    expect(agenda.element.contains(notes.element)).toBe(true);
+    const firstSection = agenda.get(".section").element;
+    expect(notes.element.compareDocumentPosition(firstSection) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it.each([null, "<p>&nbsp;</p>", "<script>alert(1)</script>"])("omits empty or unsafe-only meeting notes (%s)", async (content) => {

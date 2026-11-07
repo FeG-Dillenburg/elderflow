@@ -737,17 +737,17 @@ watch(() => tours.state.activeId, (tourId, _previous, onCleanup) => {
           </RouterLink>
         </div>
       </header>
-      <MeetingNotes
-        class="preparation-meeting-notes"
-        :opening-input="meeting.openingInput"
-        :general-notes="meeting.generalNotes"
-      />
       <div :class="['layout', { 'layout-read-only': readOnly }]">
         <main
           data-tour-id="preparation-agenda"
           :class="{ 'agenda-compacting': draggedTopic }"
           :style="draggedTopic ? { minHeight: `${agendaHeight}px` } : undefined"
         >
+          <MeetingNotes
+            class="preparation-meeting-notes"
+            :opening-input="meeting.openingInput"
+            :general-notes="meeting.generalNotes"
+          />
           <section
             v-for="group in grouped"
             :key="group.section.id"

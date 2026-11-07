@@ -20,6 +20,7 @@ const de = {
       bugfix: "Fehlerbehebung",
     },
     entries: {
+      "preparation-notes-agenda-column": "Sitzungsnotizen stehen während der Vorbereitung jetzt in der Tagesordnungsspalte. Die Themen-Seitenleiste beginnt direkt daneben.",
       "interactive-meeting-preparation-tour": "Eine neue interaktive Tour führt dich durch das Erstellen einer Sitzung und das Vorbereiten ihrer Tagesordnung – einschließlich Themenverlauf, Themenauswahl und Sitzungsnotizen.",
       "preparation-topic-history-preview": "Bei der Tagesordnungsvorbereitung kannst du den Themenverlauf jetzt mit einem Klick auf den Thementitel in einem Dialog ansehen.",
       "postponed-topic-preparation": "In der Tagesordnungsvorbereitung werden vertagte Themen jetzt gekennzeichnet und ihr bisheriger Vorbereitungstext in die nächste Sitzung übernommen.",
