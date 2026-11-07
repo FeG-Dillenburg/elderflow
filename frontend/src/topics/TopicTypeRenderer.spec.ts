@@ -51,6 +51,41 @@ describe("TopicTypeRenderer", () => {
     },
   );
 
+  it.each(["generic", "person", "new_membership", "recurring"])(
+    "opens %s suggestions through the explicit preview intent without navigation or bubbling",
+    async (type) => {
+      const topic = { id: "candidate", name: "Candidate", type } as any;
+      const openTopic = vi.fn();
+      const wrapper = mount(TopicTypeRenderer, {
+        props: { type, context: "preparation", openTopic },
+        attrs: { topic, showType: true },
+      });
+      const bubble = vi.fn();
+      wrapper.element.addEventListener("click", bubble);
+      const trigger = wrapper.get('button[aria-haspopup="dialog"]');
+      expect(trigger.attributes("aria-label")).toBe("Preview history for Candidate");
+      await trigger.trigger("click");
+      expect(openTopic).toHaveBeenCalledWith(topic);
+      expect(wrapper.find("a").exists()).toBe(false);
+      expect(bubble).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(["generic", "person", "new_membership", "recurring"])(
+    "retains normal navigation for %s preparation titles without preview intent",
+    (type) => {
+      const wrapper = mount(TopicTypeRenderer, {
+        props: { type, context: "preparation" },
+        attrs: { topic: { id: "candidate", name: "Candidate", type } },
+        global: {
+          stubs: { RouterLink: { props: ["to"], template: '<a :href="to"><slot /></a>' } },
+        },
+      });
+      expect(wrapper.get("a").attributes("href")).toBe("/topics/candidate");
+      expect(wrapper.find('button[aria-haspopup="dialog"]').exists()).toBe(false);
+    },
+  );
+
   it("renders a localized visible error for an unknown discriminator", () => {
     const wrapper = mount(TopicTypeRenderer, {
       shallow: true,
@@ -92,7 +127,7 @@ describe("TopicTypeRenderer", () => {
         showType: true,
       },
       global: {
-        stubs: { RouterLink: { template: "<a><slot /></a>" } },
+        stubs: { TopicTitleLink: false, RouterLink: { template: "<a><slot /></a>" } },
       },
     });
 
@@ -114,7 +149,7 @@ describe("TopicTypeRenderer", () => {
         showType: true,
       },
       global: {
-        stubs: { RouterLink: { template: "<a><slot /></a>" } },
+        stubs: { TopicTitleLink: false, RouterLink: { template: "<a><slot /></a>" } },
       },
     });
 
@@ -134,7 +169,7 @@ describe("TopicTypeRenderer", () => {
         } as any,
       },
       global: {
-        stubs: { RouterLink: { template: "<a><slot /></a>" } },
+        stubs: { TopicTitleLink: false, RouterLink: { template: "<a><slot /></a>" } },
       },
     });
 
@@ -225,7 +260,7 @@ describe("TopicTypeRenderer", () => {
         showType: true,
       },
       global: {
-        stubs: { RouterLink: { template: "<a><slot /></a>" } },
+        stubs: { TopicTitleLink: false, RouterLink: { template: "<a><slot /></a>" } },
       },
     });
 

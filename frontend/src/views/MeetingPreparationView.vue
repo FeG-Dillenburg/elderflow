@@ -16,6 +16,7 @@ import InputText from "primevue/inputtext";
 import Message from "primevue/message";
 import Select from "primevue/select";
 import Tag from "primevue/tag";
+import TopicPreviewDialog from "../topics/TopicPreviewDialog.vue";
 import TopicTypeRenderer from "../topics/TopicTypeRenderer.vue";
 import TopicFormFields from "../components/TopicFormFields.vue";
 import MeetingNotes from "../components/MeetingNotes.vue";
@@ -78,6 +79,10 @@ const starting = ref(false);
 const newVisible = ref(false);
 const selectedSections = reactive<Record<string, string>>({});
 const selectedTopicIds = ref<string[]>([]);
+const previewTopicId = ref<string | null>(null);
+const openTopicPreview = (topic: Topic) => {
+  previewTopicId.value = topic.id;
+};
 const detailsReadOnly = computed(() => meeting.value?.status === "in_progress");
 const detailsForm = reactive({
   title: "",
@@ -584,6 +589,7 @@ const saveDetails = async () => {
                         :type="topic.type"
                         context="preparation"
                         :topic="topic"
+                        :open-topic="openTopicPreview"
                         show-type
                       />
                     </div>
@@ -773,6 +779,7 @@ const saveDetails = async () => {
         {{ draggedTopic.title }}
       </div>
     </Teleport>
+    <TopicPreviewDialog v-model:topic-id="previewTopicId" />
     <Dialog
       v-if="!readOnly"
       v-model:visible="detailsVisible"

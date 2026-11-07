@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { RouterLink } from "vue-router";
+import TopicTitleLink from "../../components/TopicTitleLink.vue";
 import type { MeetingTopic, Topic } from "../../../api/domain";
 import { useI18n } from "vue-i18n";
 import PersonTopicNote from "./PersonTopicNote.vue";
 
 defineProps<{
   topic: Topic;
+  openTopic?: (topic: Topic) => void;
   item?: MeetingTopic;
   readOnly?: boolean;
   showType?: boolean;
@@ -30,9 +32,9 @@ const { t } = useI18n();
       </template>
     </PersonTopicNote>
     <template v-else>
-      <RouterLink :to="`/topics/${topic.id}`" class="person-name">
+      <TopicTitleLink :topic="topic" :open-topic="openTopic" class="person-name">
         {{ topic.name }}
-      </RouterLink>
+      </TopicTitleLink>
       <small v-if="showType">{{ t("topicTypes.person") }}</small>
     </template>
   </div>

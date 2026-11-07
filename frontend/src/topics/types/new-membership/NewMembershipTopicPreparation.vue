@@ -7,6 +7,7 @@ import MeetingPreparationContext from "../../components/MeetingPreparationContex
 
 const props = defineProps<{
   topic: Topic;
+  openTopic?: (topic: Topic) => void;
   item?: MeetingTopic;
   readOnly?: boolean;
   meetingStatus?: string;
@@ -37,5 +38,5 @@ const preparationReadOnly = computed(() => Boolean(
       </template>
     </NewMembershipTopicAppearance>
   </div>
-  <NewMembershipTopicList v-else :topic="topic" />
+  <NewMembershipTopicList v-else :topic="topic" :open-topic="openTopic" />
 </template>
