@@ -2,6 +2,7 @@
 import { onBeforeUnmount, onMounted } from "vue";
 import { useI18n } from "vue-i18n";
 import { api } from "../api/domain";
+import { INSTALLATION_REQUEST_TIMEOUT_MS } from "../installation";
 
 const emit = defineEmits<{ ready: [] }>();
 const { t } = useI18n();
@@ -19,7 +20,7 @@ async function checkBackend() {
   if (pending || ready || disposed) return;
   const controller = new AbortController();
   pending = controller;
-  const timeout = setTimeout(() => controller.abort(), 1800);
+  const timeout = setTimeout(() => controller.abort(), INSTALLATION_REQUEST_TIMEOUT_MS);
   try {
     await api.installation({ signal: controller.signal });
     if (disposed || controller.signal.aborted) return;

@@ -27,6 +27,24 @@ describe("backend startup screen", () => {
     await vi.advanceTimersByTimeAsync(6000);
     expect(installation).toHaveBeenCalledTimes(2);
   });
+  it.each([2500, 7000])("accepts successful responses delayed by %i ms without overlapping probes", async (delay) => {
+    const installation = vi.spyOn(api, "installation").mockImplementation(({ signal } = {}) =>
+      new Promise((resolve, reject) => {
+        const response = setTimeout(() => resolve({ setupRequired: false, defaultLanguage: "en" }), delay);
+        signal?.addEventListener("abort", () => {
+          clearTimeout(response);
+          reject(new DOMException("Aborted", "AbortError"));
+        }, { once: true });
+      }));
+    const wrapper = mount(BackendStartingScreen);
+    await vi.advanceTimersByTimeAsync(2000 + delay);
+    expect(wrapper.emitted("ready")).toHaveLength(1);
+    expect(installation).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(10000);
+    expect(wrapper.emitted("ready")).toHaveLength(1);
+    expect(installation).toHaveBeenCalledTimes(1);
+  });
+
   it("times out an unresponsive check and retries on the next two-second tick", async () => {
     let requestSignal: AbortSignal | undefined;
     const installation = vi.spyOn(api, "installation")
@@ -37,11 +55,12 @@ describe("backend startup screen", () => {
       .mockResolvedValue({ setupRequired: true, defaultLanguage: null });
     const wrapper = mount(BackendStartingScreen);
     await vi.advanceTimersByTimeAsync(2000);
-    await vi.advanceTimersByTimeAsync(1799);
+    await vi.advanceTimersByTimeAsync(29999);
     expect(requestSignal?.aborted).toBe(false);
     await vi.advanceTimersByTimeAsync(1);
     expect(requestSignal?.aborted).toBe(true);
-    await vi.advanceTimersByTimeAsync(200);
+    expect(installation).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(2000);
     expect(installation).toHaveBeenCalledTimes(2);
     expect(wrapper.emitted("ready")).toHaveLength(1);
   });

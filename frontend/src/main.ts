@@ -11,12 +11,12 @@ import { clearSessionToken, getSessionToken } from './auth/session';
 import { bindPrimeVueLocale, i18n, primeVueLocale, setLanguage } from './i18n';
 import { loadApplicationContext } from './i18n/initialize';
 import { resolveEffectiveLanguage } from './i18n/language';
-import { installation } from './installation';
+import { installation, INSTALLATION_REQUEST_TIMEOUT_MS } from './installation';
 import { protectedText } from './e2ee/protected-text';
 import { isProviderTestReturn } from './auth/provider-test-return';
 
 const hadSession = Boolean(getSessionToken());
-const startupSignal = AbortSignal.timeout(2000);
+const startupSignal = AbortSignal.timeout(INSTALLATION_REQUEST_TIMEOUT_MS);
 const context = await loadApplicationContext({
   installation: () => api.installation({ signal: startupSignal }),
   currentUser: api.me,
