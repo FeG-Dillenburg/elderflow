@@ -88,7 +88,9 @@ onBeforeUnmount(() => {
 <template>
   <Dialog
     :visible="visible"
-    :header="topic?.name ?? t('topicPreview.title')"
+    :header="topic
+      ? t('topicPreview.titleWithTopic', { name: topic.name })
+      : t('topicPreview.title')"
     :style="{ width: '70rem', maxWidth: 'calc(100vw - 1rem)', height: '90dvh', maxHeight: '90dvh' }"
     :pt="{ mask: { class: 'topic-preview-mask' } }"
     class="topic-preview-dialog"

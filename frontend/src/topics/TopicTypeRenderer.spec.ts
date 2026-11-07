@@ -67,6 +67,7 @@ describe("TopicTypeRenderer", () => {
       await trigger.trigger("click");
       expect(openTopic).toHaveBeenCalledWith(topic);
       expect(wrapper.find("a").exists()).toBe(false);
+      expect(wrapper.find(".topic-link-icon").exists()).toBe(false);
       expect(bubble).not.toHaveBeenCalled();
     },
   );

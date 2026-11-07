@@ -25,7 +25,11 @@ const { t } = useI18n();
     <div class="topic-heading">
       <TopicTitleLink :topic="topic" :open-topic="openTopic" class="topic-name">
         <strong>{{ topic.name }}</strong>
-        <i class="pi pi-arrow-up-right topic-link-icon" aria-hidden="true" />
+        <i
+          v-if="!openTopic"
+          class="pi pi-arrow-up-right topic-link-icon"
+          aria-hidden="true"
+        />
       </TopicTitleLink>
       <slot />
     </div>

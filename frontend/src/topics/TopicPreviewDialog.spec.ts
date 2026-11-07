@@ -4,6 +4,7 @@ import PrimeVue from "primevue/config";
 import { api, type Topic, type TopicHistoryEntry } from "../api/domain";
 import { auth } from "../auth/auth";
 import { protectedText } from "../e2ee/protected-text";
+import { setLanguage } from "../i18n";
 import TopicPreviewDialog from "./TopicPreviewDialog.vue";
 
 enableAutoUnmount(afterEach);
@@ -45,7 +46,8 @@ afterEach(() => {
 });
 
 describe("Topic preview", () => {
-  it("loads on demand and displays only the title and existing readonly history", async () => {
+  it.each(["en", "de"] as const)("loads on demand and displays a localized %s history title with readonly content", async (language) => {
+    setLanguage(language);
     const tasks = vi.spyOn(api, "tasks");
     const directory = vi.spyOn(api, "userDirectory");
     const sections = vi.spyOn(api, "sections");
@@ -54,7 +56,7 @@ describe("Topic preview", () => {
     expect(api.topicHistory).not.toHaveBeenCalled();
     await wrapper.setProps({ topicId: "one" });
     await flushPromises();
-    expect(wrapper.get("h1").text()).toBe("Topic one");
+    expect(wrapper.get("h1").text()).toBe(language === "de" ? "Topic one - Historie" : "Topic one - History");
     expect(wrapper.get(".rich-content strong").text()).toBe("Historical text");
     expect(wrapper.findAll("button")).toHaveLength(1);
     expect(wrapper.find("input, textarea, aside, [contenteditable]").exists()).toBe(false);
