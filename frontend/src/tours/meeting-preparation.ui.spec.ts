@@ -22,7 +22,13 @@ const section = { id: 'discussion', name: 'Discussion', position: 1, defaultTopi
 const editor = defineComponent({
   props: ['modelValue'], emits: ['update:modelValue'],
   setup(props, { emit }) {
-    return () => h('textarea', { value: props.modelValue, onInput: (event: Event) => emit('update:modelValue', (event.target as HTMLTextAreaElement).value) });
+    return () => h('div', [
+      h('input', { type: 'color', 'aria-label': 'Text color' }),
+      h('textarea', {
+        value: props.modelValue,
+        onInput: (event: Event) => emit('update:modelValue', (event.target as HTMLTextAreaElement).value),
+      }),
+    ]);
   },
 });
 let wrapper: ReturnType<typeof mount>;
@@ -145,11 +151,16 @@ async function agenda(person = false) {
   await at('practice-context'); next(); await at('practice-drag'); next(); await at('practice-remove');
   await click('preparation-practice-remove');
 }
-async function details(save?: () => Promise<boolean | void>) {
+async function details(save?: () => Promise<boolean | void>, editNote?: (note: HTMLTextAreaElement) => Promise<void>) {
   await at('details-open'); await click('preparation-edit-details'); await at('details-schedule');
-  next(); await at('details-roles'); next(); await at('details-opening'); next(); await at('details-general-notes');
+  next(); await at('details-roles'); next(); await at('details-general-notes');
   const note = target('preparation-details-general-notes').querySelector('textarea')!;
+  expect(document.querySelector<HTMLButtonElement>('.driver-popover-next-btn')!.disabled).toBe(true);
+  await editNote?.(note);
   note.value = 'Please bring the annual report.'; note.dispatchEvent(new Event('input', { bubbles: true }));
+  await at('details-general-notes');
+  expect(document.querySelector<HTMLButtonElement>('.driver-popover-next-btn')!.disabled).toBe(false);
+  next();
   await at('details-save');
   if (save) {
     if (await save() === false) return;
@@ -331,5 +342,33 @@ describe('Meeting preparation tour through real view interactions', () => {
     expect(target('preparation-practice-duration')).toBeNull();
     next(); await at('practice-context');
   });
+
+  it('lets the user keep typing and requires Next after meaningful local note input', async () => {
+    await open(); await sidebar(); await agenda();
+    await at('practice-reselect'); await click('preparation-practice-select'); await at('practice-readd');
+    await click('preparation-add-selected');
+    await details(undefined, async (note) => {
+      await vi.waitFor(() => expect(document.activeElement).toBe(note));
+      const button = document.querySelector<HTMLButtonElement>('.driver-popover-next-btn')!;
+      button.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await at('details-general-notes');
+      for (const text of ['   ', '<p>&nbsp;</p>']) {
+        note.value = text;
+        note.dispatchEvent(new Event('input', { bubbles: true }));
+        await at('details-general-notes');
+        expect(button.disabled).toBe(true);
+      }
+      for (const text of ['A', 'A longer note that I can finish at my own pace.']) {
+        note.value = text;
+        note.dispatchEvent(new Event('input', { bubbles: true }));
+        await at('details-general-notes');
+        expect(button.disabled).toBe(false);
+      }
+      note.value = '';
+      note.dispatchEvent(new Event('input', { bubbles: true }));
+      await at('details-general-notes');
+      expect(button.disabled).toBe(true);
+    });
+  }, 10_000);
 
 });

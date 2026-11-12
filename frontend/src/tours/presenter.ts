@@ -12,6 +12,7 @@ export class TourPresenter {
   private interactionRoot: HTMLElement | null = null;
   private allowed: HTMLElement | null = null;
   private skip: (() => void) | null = null;
+  private nextEnabled = true;
   private advance: (() => void) | null = null;
   private layoutFrame: number | undefined;
   private returnFocus = document.activeElement as HTMLElement | null;
@@ -25,7 +26,10 @@ export class TourPresenter {
     document.body.classList.toggle('tour-interactive', this.interactive);
     this.interactionRoot?.classList.add('tour-interaction-root');
     this.allowed = nextOption;
-    this.advance = step.mode === 'action' ? null : advance;
+    this.nextEnabled = !step.requiresInput;
+    this.advance = step.mode === 'action' ? null : () => {
+      if (this.nextEnabled) advance();
+    };
     this.skip = step.skippable ? skip : null;
     nextOption?.classList.add('tour-allowed-option');
     let previousLayout = '';
@@ -84,6 +88,7 @@ export class TourPresenter {
         },
       },
     });
+    this.setNextEnabled(this.nextEnabled);
     // Dialog recentering, transitions and wrapped text can move targets without a resize.
     const trackLayout = () => {
       const rect = target?.getBoundingClientRect();
@@ -94,7 +99,9 @@ export class TourPresenter {
         this.driver?.refresh();
       } else if (highlightReady && this.popover?.style.visibility === 'hidden') {
         this.popover.style.visibility = 'visible';
-        const focus = step.mode === 'action'
+        const editable = target?.querySelector<HTMLElement>('[contenteditable="true"]')
+          ?? target?.querySelector<HTMLElement>('textarea, input:not([type="color"]):not([type="hidden"]):not(:disabled)');
+        const focus = step.requiresInput ? editable : step.mode === 'action'
           ? target?.matches('button, input, textarea, [role="combobox"]') ? target
             : target?.querySelector<HTMLElement>('input, textarea, [contenteditable="true"], [role="combobox"], button')
           : this.popover.querySelector<HTMLButtonElement>('.driver-popover-next-btn');
@@ -108,6 +115,14 @@ export class TourPresenter {
     for (const event of ['pointerdown', 'mousedown', 'click', 'submit']) {
       window.addEventListener(event, this.interaction, true);
     }
+  }
+
+  setNextEnabled(enabled: boolean): void {
+    this.nextEnabled = enabled;
+    const button = this.popover?.querySelector<HTMLButtonElement>('.driver-popover-next-btn');
+    if (!button) return;
+    button.disabled = !enabled;
+    button.classList.toggle('driver-popover-btn-disabled', !enabled);
   }
 
   hide(): void {

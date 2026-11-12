@@ -27,6 +27,7 @@ interface Attempt {
   advancing: boolean;
   presenting?: boolean;
   pendingAction?: string;
+  inputReady?: boolean;
   expectedPath?: string;
   stopUnlock?: WatchStopHandle;
 }
@@ -74,6 +75,7 @@ async function show(attempt: Attempt): Promise<void> {
   if (!live(attempt) || active !== attempt) return;
   const step = attempt.definition.steps[attempt.index];
   attempt.presenting = true;
+  attempt.inputReady = !step?.requiresInput;
   state.stepId = step?.id ?? '';
   if (!step) { await finish(attempt, false); return; }
   const marker = step.target ? await target(attempt, step.target) : undefined;
@@ -106,6 +108,7 @@ async function show(attempt: Attempt): Promise<void> {
   attempt.presenter.show(displayedStep, element, advanceTarget,
     attempt.index === attempt.definition.steps.length - 1,
     () => { if (step.mode !== 'action') void advance(attempt); }, () => { void finish(attempt, false); });
+  attempt.presenter.setNextEnabled(Boolean(attempt.inputReady));
   attempt.presenting = false;
   if (attempt.pendingAction && !attempt.advancing) {
     const pending = attempt.pendingAction;
@@ -119,6 +122,7 @@ async function advance(attempt: Attempt): Promise<void> {
   attempt.advancing = true;
   try {
     const step = attempt.definition.steps[attempt.index];
+    if (step.requiresInput && !attempt.inputReady) return;
     if (attempt.index === attempt.definition.steps.length - 1) {
       await finish(attempt, true);
       return;
@@ -332,6 +336,14 @@ export const tours = {
     if (attempt.advancing || attempt.presenting) { attempt.pendingAction = stepId; return; }
     if (stepId === 'create-submit') state.transitioning = false;
     void advance(attempt);
+  },
+  meetingInput(stepId: string, ready: boolean): void {
+    const attempt = active;
+    if (!attempt || !live(attempt) || attempt.definition.id !== 'meeting-preparation'
+      || attempt.definition.steps[attempt.index]?.id !== stepId
+      || !attempt.definition.steps[attempt.index]?.requiresInput) return;
+    attempt.inputReady = ready;
+    attempt.presenter.setNextEnabled(ready);
   },
   meetingSignal(): AbortSignal | undefined {
     return active?.definition.id === 'meeting-preparation' ? active.abort.signal : undefined;

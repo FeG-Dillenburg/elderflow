@@ -571,16 +571,20 @@ const checkDetailsSaved = () => {
     tours.meetingAction('details-save');
   }
 };
-const onGeneralNoteInput = () => {
+const updateGeneralNoteReadiness = () => {
+  tours.meetingInput(
+    'details-general-notes',
+    localGeneralNoteInput && hasMeaningfulRichText(detailsForm.generalNotes),
+  );
+};
+const onGeneralNoteInput = (event: Event) => {
+  if (!(event.target instanceof Element)
+    || !event.target.closest('textarea, [contenteditable="true"]')) return;
   if (tours.state.stepId !== 'details-general-notes') return;
   localGeneralNoteInput = true;
   const tourSignal = tours.meetingSignal();
   void nextTick(() => {
-    if (tourSignal && !tourSignal.aborted
-      && localGeneralNoteInput
-      && hasMeaningfulRichText(detailsForm.generalNotes)) {
-      tours.meetingAction('details-general-notes');
-    }
+    if (tourSignal && !tourSignal.aborted) updateGeneralNoteReadiness();
   });
 };
 watch(previewTopicId, (topicId, previous) => {
@@ -660,6 +664,7 @@ watch(() => [
     tours.meetingAction(step);
   }
   if (step === 'practice-scroll-selection') void nextTick(checkSelectionVisibility);
+  if (step === 'details-general-notes') updateGeneralNoteReadiness();
   if (step === 'details-save') checkDetailsSaved();
 }, { flush: 'post', deep: true });
 const checkSelectionVisibility = () => {
@@ -1107,7 +1112,7 @@ watch(() => tours.state.activeId, (tourId, _previous, onCleanup) => {
             </Select>
           </label>
         </div>
-        <label data-tour-id="preparation-details-opening">
+        <label>
           <span>{{ t('meetingAgenda.opening') }}</span>
           <MeetingCollaborativeTextEditor
             v-model="detailsForm.openingInput"

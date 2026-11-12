@@ -52,8 +52,7 @@ export const meetingPreparationSteps: readonly TourStep[] = [
   { id: 'details-open', target: 'preparation-edit-details', mode: 'action', descriptionKey: 'tours.meetingSteps.details-open', side: 'top', skippable: false, interactive: true },
   { id: 'details-schedule', target: 'preparation-details-schedule', mode: 'explanation', descriptionKey: 'tours.meetingSteps.details-schedule', side: 'top', skippable: false, interactive: true },
   { id: 'details-roles', target: 'preparation-details-roles', mode: 'explanation', descriptionKey: 'tours.meetingSteps.details-roles', side: 'top', skippable: false, interactive: true },
-  { id: 'details-opening', target: 'preparation-details-opening', mode: 'explanation', descriptionKey: 'tours.meetingSteps.details-opening', side: 'top', skippable: false, interactive: true },
-  { id: 'details-general-notes', target: 'preparation-details-general-notes', mode: 'action', descriptionKey: 'tours.meetingSteps.details-general-notes', side: 'top', skippable: false, interactive: true },
+  { id: 'details-general-notes', target: 'preparation-details-general-notes', mode: 'explanation', requiresInput: true, descriptionKey: 'tours.meetingSteps.details-general-notes', side: 'top', skippable: false, interactive: true },
   { id: 'details-save', target: 'preparation-details-save', mode: 'action', descriptionKey: 'tours.meetingSteps.details-save', side: 'top', skippable: false, interactive: true },
   { id: 'details-result', target: 'preparation-general-notes-display', mode: 'explanation', descriptionKey: 'tours.meetingSteps.details-result', side: 'top', skippable: false, interactive: true },
 ];
@@ -82,8 +81,7 @@ const following: Record<string, string> = {
   'practice-readd': 'details-open',
   'details-open': 'details-schedule',
   'details-schedule': 'details-roles',
-  'details-roles': 'details-opening',
-  'details-opening': 'details-general-notes',
+  'details-roles': 'details-general-notes',
   'details-general-notes': 'details-save',
   'details-save': 'details-result',
 };

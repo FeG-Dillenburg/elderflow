@@ -135,12 +135,13 @@ postgres('Versioned tour progress through authenticated HTTP', () => {
       'practice-preview', 'practice-select', 'practice-scroll-selection', 'practice-add-selection',
       'practice-duration', 'practice-history-area', 'practice-context', 'practice-drag', 'practice-remove',
       'practice-reselect', 'practice-readd', 'details-open', 'details-schedule', 'details-roles',
-      'details-opening', 'details-general-notes', 'details-save',
+      'details-general-notes', 'details-save',
     ]) {
       await send('user', 'step', step, { tourId }).expect(201);
       await send('user', 'complete', step, { tourId }).expect(400);
     }
     await send('user', 'step', 'unknown', { tourId }).expect(400);
+    await send('user', 'step', 'details-opening', { tourId }).expect(400);
     await send('user', 'start', 'create-basics', { tourId, version: 2 }).expect(400);
     await send('user', 'step', 'details-save', { tourId, userId: 'someone-else' }).expect(400);
     const completed = await send('user', 'complete', 'details-result', { tourId }).expect(201);

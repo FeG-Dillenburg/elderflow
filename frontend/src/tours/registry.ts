@@ -7,6 +7,7 @@ export type TourId = 'first-login' | 'new-topic-dialog' | 'meeting-preparation';
 export interface TourStep {
   id: string;
   mode?: 'explanation' | 'action';
+  requiresInput?: boolean;
   interactive?: boolean;
   target?: string;
   titleKey?: string;
