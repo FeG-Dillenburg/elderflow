@@ -13,6 +13,7 @@ import { createMeetingWorkspace, meetingRouteFactoryKey } from '../meetings/work
 import { createMeetingRouteOperations } from '../meetings/workspace/production-adapter';
 import { tourApi } from './tour-api';
 import { tours } from './tours';
+import { tourRegistry } from './registry';
 
 const user = {
   id: 'leader', email: 'leader@example.com', firstName: 'Lee', lastName: 'Leader', role: 'user', language: 'en',
@@ -38,7 +39,7 @@ let meeting: Meeting;
 let topics: any[];
 let appearance = 0;
 let delayTextWrite: Promise<void> | undefined;
-async function settle() { await flushPromises(); await new Promise((resolve) => setTimeout(resolve, 55)); await flushPromises(); }
+async function settle() { await flushPromises(); }
 function next() {
   const button = document.querySelector<HTMLButtonElement>('.driver-popover-next-btn');
   expect(button?.style.display).not.toBe('none');
@@ -46,8 +47,15 @@ function next() {
   button!.click();
 }
 async function at(step: string) {
-  await settle();
-  expect(tours.state.stepId).toBe(step);
+  const marker = tourRegistry['meeting-preparation'].steps.find((candidate) => candidate.id === step)?.target;
+  expect(marker).toBeDefined();
+  // The engine publishes the step before its target and popover finish mounting.
+  await vi.waitFor(async () => {
+    await settle();
+    expect(tours.state.stepId).toBe(step);
+    expect(document.querySelector(`[data-tour-id="${marker}"]`)).not.toBeNull();
+    expect(document.querySelector('.driver-popover')).not.toBeNull();
+  }, { interval: 10 });
   expect(document.querySelector('.tour-skip')).toBeNull();
   expect(document.querySelector('.driver-popover-prev-btn')).toBeNull();
 }
