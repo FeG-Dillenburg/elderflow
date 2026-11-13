@@ -178,7 +178,8 @@ async function details(save?: () => Promise<boolean | void>, editNote?: (note: H
   next(); await settle(); expect(tours.state.activeId).toBeNull();
 }
 
-describe('Meeting preparation tour through real view interactions', () => {
+// These full workflows mount real dialogs; CI coverage runs can exceed the unit-test budget.
+describe('Meeting preparation tour through real view interactions', { timeout: 10_000 }, () => {
   beforeEach(() => {
     delayTextWrite = undefined;
     vi.stubGlobal('matchMedia', vi.fn(() => ({ matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn() })));
@@ -377,6 +378,6 @@ describe('Meeting preparation tour through real view interactions', () => {
       await at('details-general-notes');
       expect(button.disabled).toBe(true);
     });
-  }, 10_000);
+  });
 
 });
