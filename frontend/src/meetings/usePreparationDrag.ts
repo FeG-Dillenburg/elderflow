@@ -143,17 +143,29 @@ export function usePreparationDrag(
     if (!floating.value) {
       if (Math.hypot(event.clientX - origin.x, event.clientY - origin.y) < 8) return;
       event.preventDefault();
+      const rows = [...(root.value?.querySelectorAll<HTMLElement>("[data-agenda-item]") ?? [])];
+      const sourceIndex = armed.kind === "agenda"
+        ? rows.findIndex((row) => row.dataset.agendaItem === armed!.id)
+        : -1;
+      const source = rows[sourceIndex];
+      const preceding = rows[sourceIndex - 1];
+      const scroller = scrollPositions.find(({ element }) => element.contains(source ?? null))?.element;
+      const viewport = scroller && scroller !== document.scrollingElement && scroller.clientHeight > 0
+        ? scroller.getBoundingClientRect()
+        : { top: 0, bottom: window.innerHeight };
+      const precedingTop = preceding?.getBoundingClientRect().top;
+      // A visible predecessor provides context; an offscreen one would hide the source.
+      const anchor = precedingTop !== undefined && precedingTop >= viewport.top && precedingTop < viewport.bottom
+        ? preceding
+        : source;
+      const anchorTop = anchor?.getBoundingClientRect().top;
       agendaHeight.value = root.value?.querySelector("main")?.getBoundingClientRect().height ?? 0;
       floating.value = armed;
       origin = { ...pointer.value };
       await nextTick();
       if (!armed) return;
-      if (armed.kind === "agenda") {
-        const row = [...root.value!.querySelectorAll<HTMLElement>("[data-agenda-item]")]
-          .find((row) => row.dataset.agendaItem === armed!.id);
-        // Keep a source far down a long agenda near its original pointer position.
-        const scroller = scrollPositions.find(({ element }) => element.contains(row ?? null));
-        if (row && scroller) scroller.element.scrollTop += row.getBoundingClientRect().top - pointer.value.y + 20;
+      if (anchor && scroller && anchorTop !== undefined) {
+        scroller.scrollTop += anchor.getBoundingClientRect().top - anchorTop;
       }
       ready = true;
       frame = requestAnimationFrame(autoScroll);
@@ -183,7 +195,7 @@ export function usePreparationDrag(
       else {
         const row = [...(root.value?.querySelectorAll<HTMLElement>("[data-topic-id]") ?? [])]
           .find((row) => row.dataset.topicId === source.id || row.dataset.agendaItem === source.id);
-        row?.scrollIntoView?.({ block: "nearest" });
+        row?.scrollIntoView?.({ block: "start", behavior: "instant" });
       }
     } catch {
       restoreScroll();

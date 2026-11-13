@@ -393,6 +393,74 @@ describe("MeetingPreparationView", () => {
     scroller.scrollTop = 0;
   });
 
+  it("keeps the preceding visible topic anchored when a long agenda condenses", async () => {
+    const wrapper = await view();
+    const scroller = wrapper.element as HTMLElement;
+    scroller.style.overflowY = "auto";
+    scroller.scrollTop = 1000;
+    const previous = wrapper.get('[data-agenda-item="item-1"]').element;
+    const source = wrapper.get('[data-agenda-item="item-2"]');
+    vi.spyOn(previous, "getBoundingClientRect").mockImplementation(() => ({
+      top: (wrapper.find(".agenda-compacting").exists() ? 300 : 1100) - scroller.scrollTop,
+    }) as DOMRect);
+    vi.spyOn(source.element, "getBoundingClientRect").mockImplementation(() => ({
+      top: (wrapper.find(".agenda-compacting").exists() ? 340 : 1400) - scroller.scrollTop,
+    }) as DOMRect);
+
+    pointer("pointerdown", 20, 400, source.get(".drag-handle").element);
+    pointer("pointermove", 40, 420);
+    await flushPromises();
+
+    expect(previous.getBoundingClientRect().top).toBe(100);
+    expect(source.element.getBoundingClientRect().top).toBe(140);
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+    await flushPromises();
+    expect(scroller.scrollTop).toBe(1000);
+  });
+
+  it.each(["item-1", "item-2"])("anchors %s itself when there is no visible preceding topic", async (sourceId) => {
+    const wrapper = await view();
+    const scroller = wrapper.element as HTMLElement;
+    scroller.style.overflowY = "auto";
+    scroller.scrollTop = 1000;
+    if (sourceId === "item-2") {
+      vi.spyOn(wrapper.get('[data-agenda-item="item-1"]').element, "getBoundingClientRect")
+        .mockReturnValue({ top: -200 } as DOMRect);
+    }
+    const source = wrapper.get(`[data-agenda-item="${sourceId}"]`);
+    vi.spyOn(source.element, "getBoundingClientRect").mockImplementation(() => ({
+      top: (wrapper.find(".agenda-compacting").exists() ? 600 : 1300) - scroller.scrollTop,
+    }) as DOMRect);
+
+    pointer("pointerdown", 20, 315, source.get(".drag-handle").element);
+    pointer("pointermove", 40, 350);
+    await flushPromises();
+
+    expect(source.element.getBoundingClientRect().top).toBe(300);
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+    await flushPromises();
+    expect(scroller.scrollTop).toBe(1000);
+  });
+
+  it("aligns the expanded dropped topic with the viewport top after a successful save", async () => {
+    const wrapper = await view();
+    vi.spyOn(api, "reorderMeetingTopics").mockResolvedValue([]);
+    emptyDestination(wrapper);
+    const source = wrapper.get('[data-agenda-item="item-1"]');
+    const scrollIntoView = vi.fn();
+    Object.defineProperty(source.element, "scrollIntoView", { configurable: true, value: scrollIntoView });
+
+    pointer("pointerdown", 20, 20, source.get(".drag-handle").element);
+    pointer("pointermove", 50, 60);
+    await wrapper.vm.$nextTick();
+    pointer("pointermove", 70, 80);
+    pointer("pointerup", 70, 80);
+    await flushPromises();
+
+    expect(scrollIntoView).toHaveBeenCalledWith({ block: "start", behavior: "instant" });
+    expect(wrapper.find(".agenda-compacting").exists()).toBe(false);
+  });
+
   it("collects several candidates with distinct destinations before one batch submission", async () => {
     vi.mocked(api.meetingSuggestions).mockResolvedValue([
       { id: "topic-3", name: "One", type: "generic", defaultSectionId: "first" },
