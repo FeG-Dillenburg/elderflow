@@ -9,6 +9,8 @@ import {
 } from "../meetings/usePreparationDrag";
 import Button from "primevue/button";
 import DatePicker from "primevue/datepicker";
+import { chooseMeetingPractice, meetingPractice } from "../tours/meeting-preparation";
+import { hasMeaningfulRichText } from "../components/sanitize-rich-text";
 import { tours } from "../tours/tours";
 import Dialog from "primevue/dialog";
 import InputNumber from "primevue/inputnumber";
@@ -64,6 +66,8 @@ const createsAgendaTopic = computed(() => Boolean(
 const readOnly = computed(() => meeting.value?.status === "completed");
 const sections = ref<AgendaSection[]>([]);
 const sectionDefaultsReady = ref(false);
+const referenceLoadFailed = ref(false);
+const referenceLoading = ref(false);
 const suggestions = ref<MeetingSuggestion[]>([]);
 const futureSuggestions = ref<MeetingSuggestion[]>([]);
 const showFutureTopics = ref(false);
@@ -73,6 +77,7 @@ const responsibleUserOptions = computed(() => assignableUsers(users.value));
 const grouped = ref<AgendaGroup[]>([]);
 const error = ref("");
 const pending = ref(false);
+const practiceMutation = ref(false);
 const detailsVisible = ref(false);
 const startVisible = ref(false);
 const starting = ref(false);
@@ -81,6 +86,8 @@ const selectedSections = reactive<Record<string, string>>({});
 const selectedTopicIds = ref<string[]>([]);
 const previewTopicId = ref<string | null>(null);
 const openTopicPreview = (topic: Topic) => {
+  if (tours.state.activeId === 'meeting-preparation'
+    && (tours.state.stepId !== 'practice-preview' || topic.id !== meetingPractice.topicId)) return;
   previewTopicId.value = topic.id;
 };
 const detailsReadOnly = computed(() => meeting.value?.status === "in_progress");
@@ -145,6 +152,9 @@ const initialiseGroups = () => {
 };
 
 const load = async (opening: Promise<void>) => {
+  const tourSignal = tours.meetingSignal();
+  referenceLoading.value = true;
+  referenceLoadFailed.value = false;
   error.value = "";
   try {
     const [
@@ -172,9 +182,13 @@ const load = async (opening: Promise<void>) => {
       initialiseSelectedSection(topic, loadedSections);
     }
     initialiseGroups();
+    if (tourSignal && !tourSignal.aborted) tours.meetingAction('create-submit');
   } catch (cause) {
     error.value =
       t("meetingPreparation.loadFailed");
+    referenceLoadFailed.value = true;
+  } finally {
+    referenceLoading.value = false;
   }
 };
 
@@ -326,6 +340,9 @@ const selectedTopics = computed(() => visibleSuggestionLists.value
 const isSelected = (topic: Topic) => selectedTopicIds.value.includes(topic.id);
 
 const toggleSelected = (topic: Topic) => {
+  if (tours.state.activeId === 'meeting-preparation'
+    && (!['practice-select', 'practice-reselect'].includes(tours.state.stepId)
+      || topic.id !== meetingPractice.topicId)) return;
   selectedTopicIds.value = isSelected(topic)
     ? selectedTopicIds.value.filter((id) => id !== topic.id)
     : [...selectedTopicIds.value, topic.id];
@@ -337,17 +354,44 @@ const sectionFor = (topic: Topic & Partial<MeetingSuggestion>) => selectedSectio
   || sections.value[0]?.id;
 
 const addSelected = async () => {
+  if (pending.value) return;
+  const addStep = tours.state.stepId;
+  if (tours.state.activeId === 'meeting-preparation'
+    && !['practice-add-selection', 'practice-readd'].includes(addStep)) return;
   const additions = selectedTopics.value.flatMap((topic) => {
     const sectionId = sectionFor(topic);
     return sectionId ? [{ topicId: topic.id, sectionId, topic }] : [];
   });
   if (!additions.length) return;
+  const tourSignal = tours.meetingSignal();
+  practiceMutation.value = true;
   const succeeded = await withOperation(() => operations.addTopics(additions));
-  if (succeeded) selectedTopicIds.value = [];
+  if (succeeded) {
+    selectedTopicIds.value = [];
+    const appearance = agendaItems.value.find((item) => item.topicId === meetingPractice.topicId);
+    if (tourSignal && !tourSignal.aborted && appearance && appearance.source !== 'recurrence') {
+      meetingPractice.appearanceId = appearance.id;
+      tours.meetingAction(addStep);
+    } else if (tourSignal && !tourSignal.aborted) stopPractice();
+  }
+  practiceMutation.value = false;
 };
 
 const remove = async (item: MeetingTopic) => {
-  await withOperation(() => operations.removeTopic(item.id));
+  if (tours.state.activeId === 'meeting-preparation'
+    && (tours.state.stepId !== 'practice-remove' || item.id !== meetingPractice.appearanceId)) return;
+  if (item.id === meetingPractice.appearanceId && item.source === 'recurrence') { stopPractice(); return; }
+  if (pending.value) return;
+  const tourSignal = tours.meetingSignal();
+  practiceMutation.value = true;
+  const succeeded = await withOperation(() => operations.removeTopic(item.id));
+  if (succeeded && tourSignal && !tourSignal.aborted && item.id === meetingPractice.appearanceId) {
+    if (suggestions.value.some((topic) => topic.id === item.topicId)) {
+      meetingPractice.appearanceId = null;
+      tours.meetingAction('practice-remove');
+    } else stopPractice();
+  }
+  practiceMutation.value = false;
 };
 
 const saveDuration = async (item: MeetingTopic, duration: number | null) => {
@@ -394,20 +438,39 @@ const sectionDuration = (items: MeetingTopic[]) =>
     0,
   );
 
+const createdTopicDraft = ref<Topic | null>(null);
 const createAndAdd = async () => {
+  if (pending.value) return;
+  const tourSignal = tours.meetingSignal();
+  const practicing = Boolean(tourSignal);
+  if (practicing && (tours.state.stepId !== 'practice-create-submit' || form.type !== 'generic'
+    || !form.name.trim() || !sections.value.some((section) => section.id === form.defaultSectionId))) return;
   const succeeded = await withOperation(async () => {
-    const topic = await api.createTopic(toTopicInput({
+    const input = toTopicInput({
       ...form,
       followUpDate: toLocalDate(form.followUpDate),
-    }));
+    });
+    const topic = createdTopicDraft.value
+      ? await api.updateTopic(createdTopicDraft.value.id, input)
+      : await api.createTopic(input);
+    createdTopicDraft.value = topic;
     const sectionId = form.defaultSectionId || sections.value[0]?.id;
-    if (createsAgendaTopic.value && sectionId) {
-      await operations.addTopic({ topicId: topic.id, sectionId, topic });
+    if ((createsAgendaTopic.value || practicing) && sectionId) {
+      const appearance = await operations.addTopic({ topicId: topic.id, sectionId, topic });
+      if (tourSignal && !tourSignal.aborted) {
+        meetingPractice.topicId = topic.id;
+        meetingPractice.appearanceId = appearance.id;
+        meetingPractice.person = false;
+      }
     } else if (topic.type === "recurring") {
       await workspace.refresh();
     }
   });
-  if (succeeded) newVisible.value = false;
+  if (succeeded) {
+    newVisible.value = false;
+    createdTopicDraft.value = null;
+    if (tourSignal && !tourSignal.aborted) tours.meetingAction('practice-create-submit');
+  }
 };
 
 const startMeeting = async () => {
@@ -449,10 +512,12 @@ const openDetails = () => {
   detailsVisible.value = true;
 };
 const saveDetails = async () => {
-  if (!meeting.value || !detailsForm.date || !detailsForm.beginTime) return;
+  if (pending.value || !meeting.value || !detailsForm.date || !detailsForm.beginTime) return;
+  if (tours.state.activeId === 'meeting-preparation' && tours.state.stepId !== 'details-save') return;
+  const tourSignal = tours.meetingSignal();
   const date = detailsForm.date;
   const beginTime = detailsForm.beginTime;
-  await withOperation(() => operations.updateMeeting({
+  const succeeded = await withOperation(() => operations.updateMeeting({
     date: toLocalDate(date)!,
     beginTime: toLocalTime(beginTime),
     status: detailsForm.status,
@@ -464,15 +529,186 @@ const saveDetails = async () => {
       openingInput: detailsForm.openingInput || null,
     } : {}),
   }));
-  detailsVisible.value = false;
+  if (succeeded) {
+    detailsVisible.value = false;
+    detailsSaved = Boolean(tourSignal && !tourSignal.aborted);
+    checkDetailsSaved();
+  }
 };
 
+const openNewTopic = () => {
+  if (tours.state.activeId === 'meeting-preparation'
+    && tours.state.stepId !== 'practice-create-open') return;
+  newVisible.value = true;
+};
+const closeTopicDialog = () => {
+  tours.cancelMeeting();
+  newVisible.value = false;
+};
+const closeDetailsDialog = () => {
+  tours.cancelMeeting();
+  detailsVisible.value = false;
+};
+const onPracticeDialogVisibility = (visible: boolean) => {
+  if (!visible) tours.cancelMeeting();
+};
+const stopPractice = () => {
+  error.value = t('tours.meetingChanged');
+  tours.cancelMeeting();
+};
+const choosePractice = () => {
+  // Recurrence reconciliation can turn these into automatic appearances. Keep the
+  // exercise on Topics whose X always means ordinary Agenda removal.
+  const topic = chooseMeetingPractice(suggestions.value, agendaItems.value);
+  meetingPractice.duration = topic ? topicUsesPlannedDuration(topic.type) : true;
+};
+let previewOpened = false;
+let detailsSaved = false;
+let localGeneralNoteInput = false;
+const checkDetailsSaved = () => {
+  if (detailsSaved && !detailsVisible.value && !workspace.state.pendingChanges
+    && workspace.state.phase === 'ready' && hasMeaningfulRichText(meeting.value?.generalNotes)) {
+    tours.meetingAction('details-save');
+  }
+};
+const updateGeneralNoteReadiness = () => {
+  tours.meetingInput(
+    'details-general-notes',
+    localGeneralNoteInput && hasMeaningfulRichText(detailsForm.generalNotes),
+  );
+};
+const onGeneralNoteInput = (event: Event) => {
+  if (!(event.target instanceof Element)
+    || !event.target.closest('textarea, [contenteditable="true"]')) return;
+  if (tours.state.stepId !== 'details-general-notes') return;
+  localGeneralNoteInput = true;
+  const tourSignal = tours.meetingSignal();
+  void nextTick(() => {
+    if (tourSignal && !tourSignal.aborted) updateGeneralNoteReadiness();
+  });
+};
+watch(previewTopicId, (topicId, previous) => {
+  if (tours.state.stepId !== 'practice-preview') return;
+  if (topicId === meetingPractice.topicId) {
+    previewOpened = true;
+    tours.meetingPreview(true);
+  } else if (previewOpened && previous === meetingPractice.topicId && !topicId) {
+    previewOpened = false;
+    tours.meetingPreview(false);
+  }
+}, { flush: 'post' });
+watch([newVisible, detailsVisible], ([topicOpen, detailsOpen]) => {
+  if (topicOpen) tours.meetingAction('practice-create-open');
+  if (detailsOpen) {
+    detailsSaved = false;
+    localGeneralNoteInput = false;
+    tours.meetingAction('details-open');
+  }
+  if (!topicOpen) createdTopicDraft.value = null;
+}, { flush: 'post' });
+watch(() => [
+  tours.state.stepId,
+  form.type,
+  form.name,
+  selectedTopicIds.value.join(','),
+  workspace.state.phase,
+  workspace.state.pendingChanges,
+  detailsForm.generalNotes,
+  suggestions.value,
+  agendaItems.value,
+], () => {
+  if (tours.state.activeId !== 'meeting-preparation') return;
+  const step = tours.state.stepId;
+  if (step === 'agenda-overview' && !sections.value.length) {
+    error.value = t('tours.meetingPrerequisite');
+    tours.cancelMeeting();
+    return;
+  }
+  if (step === 'sidebar-overview') choosePractice();
+  const needsSuggestion = [
+    'practice-preview',
+    'practice-select',
+    'practice-scroll-selection',
+    'practice-add-selection',
+    'practice-reselect',
+    'practice-readd',
+  ].includes(step);
+  if (needsSuggestion
+    && meetingPractice.topicId
+    && !pending.value
+    && !practiceMutation.value
+    && !suggestions.value.some((topic) => topic.id === meetingPractice.topicId)) {
+    stopPractice();
+  }
+  const needsAppearance = [
+    'practice-duration',
+    'practice-history-area',
+    'practice-context',
+    'practice-drag',
+    'practice-remove',
+  ].includes(step);
+  if (needsAppearance
+    && !pending.value
+    && !practiceMutation.value
+    && !agendaItems.value.some((item) =>
+      item.id === meetingPractice.appearanceId && item.source !== 'recurrence',
+    )) {
+    stopPractice();
+  }
+  if (step === 'practice-create-name' && form.type === 'generic' && form.name.trim()) {
+    tours.meetingAction(step);
+  }
+  if ((step === 'practice-select' || step === 'practice-reselect')
+    && meetingPractice.topicId
+    && selectedTopicIds.value.includes(meetingPractice.topicId)) {
+    tours.meetingAction(step);
+  }
+  if (step === 'practice-scroll-selection') void nextTick(checkSelectionVisibility);
+  if (step === 'details-general-notes') updateGeneralNoteReadiness();
+  if (step === 'details-save') checkDetailsSaved();
+}, { flush: 'post', deep: true });
+const checkSelectionVisibility = () => {
+  if (tours.state.stepId !== 'practice-scroll-selection') return;
+  const button = topicPanel.value?.querySelector('[data-tour-id="preparation-add-selected"]');
+  if (!button || !topicPanel.value) return;
+  const rect = button.getBoundingClientRect();
+  const panel = topicPanel.value.getBoundingClientRect();
+  if (rect.height > 0
+    && rect.top >= Math.max(0, panel.top)
+    && rect.bottom <= Math.min(window.innerHeight, panel.bottom)) {
+    tours.meetingAction('practice-scroll-selection');
+  }
+};
+watch(() => tours.state.activeId, (tourId, _previous, onCleanup) => {
+  const signal = tours.meetingSignal();
+  if (tourId !== 'meeting-preparation' || !signal || signal.aborted) return;
+  window.addEventListener('scroll', checkSelectionVisibility, { capture: true, signal });
+  window.addEventListener('resize', checkSelectionVisibility, { signal });
+  onCleanup(() => {
+    window.removeEventListener('scroll', checkSelectionVisibility, true);
+    window.removeEventListener('resize', checkSelectionVisibility);
+  });
+}, { immediate: true });
 </script>
 
 <template>
   <section ref="preparationRoot" class="page">
     <MeetingWorkspaceStatus />
-    <Message v-if="error" severity="error">{{ error }}</Message>
+    <Message v-if="error" severity="error">
+      {{ error }}
+      <Button
+        v-if="referenceLoadFailed"
+        :label="t('tours.retry')"
+        :loading="referenceLoading"
+        @click="load(workspace.refresh())"
+      />
+      <RouterLink
+        v-if="error === t('tours.meetingPrerequisite') && auth.state.user?.permissions.contentSettings === 'manage'"
+        to="/agenda-sections"
+      >
+        {{ t('nav.sections') }}
+      </RouterLink>
+    </Message>
     <template v-if="meeting">
       <header class="page-header">
         <div>
@@ -486,6 +722,7 @@ const saveDetails = async () => {
             :label="t('meetingAgenda.editDetails')"
             size="small"
             text
+            data-tour-id="preparation-edit-details"
             @click="openDetails"
           />
           <Button
@@ -505,16 +742,17 @@ const saveDetails = async () => {
           </RouterLink>
         </div>
       </header>
-      <MeetingNotes
-        class="preparation-meeting-notes"
-        :opening-input="meeting.openingInput"
-        :general-notes="meeting.generalNotes"
-      />
       <div :class="['layout', { 'layout-read-only': readOnly }]">
         <main
+          data-tour-id="preparation-agenda"
           :class="{ 'agenda-compacting': draggedTopic }"
           :style="draggedTopic ? { minHeight: `${agendaHeight}px` } : undefined"
         >
+          <MeetingNotes
+            class="preparation-meeting-notes"
+            :opening-input="meeting.openingInput"
+            :general-notes="meeting.generalNotes"
+          />
           <section
             v-for="group in grouped"
             :key="group.section.id"
@@ -545,7 +783,12 @@ const saveDetails = async () => {
             </div>
           </section>
         </main>
-        <aside v-if="!readOnly" ref="topicPanel" :style="{ maxHeight: availablePanelHeight }">
+        <aside
+          v-if="!readOnly"
+          ref="topicPanel"
+          data-tour-id="preparation-topic-sidebar"
+          :style="{ maxHeight: availablePanelHeight }"
+        >
           <div class="suggestions-heading">
             <div>
               <h2>{{ t("meetingPreparation.addTopics") }}</h2>
@@ -554,10 +797,11 @@ const saveDetails = async () => {
             <Button
               :aria-label="t('topics.createTitle')"
               :label="t('topics.createTitle')"
+              data-tour-id="preparation-create-topic"
               class="create-topic-button"
               icon="pi pi-plus"
               size="small"
-              @click="newVisible = true"
+              @click="openNewTopic"
             />
           </div>
           <div class="suggestions-list">
@@ -622,6 +866,7 @@ const saveDetails = async () => {
                       ? t('meetingPreparation.removeFromPreselection')
                       : t('meetingPreparation.markForAgenda')"
                     :aria-pressed="isSelected(topic)"
+                    :data-tour-id="topic.id === meetingPractice.topicId ? 'preparation-practice-select' : undefined"
                     class="select-topic-button"
                     size="small"
                     outlined
@@ -654,6 +899,7 @@ const saveDetails = async () => {
           </div>
           <Button
             v-if="selectedTopics.length"
+            data-tour-id="preparation-add-selected"
             class="add-selected-topics"
             icon="pi pi-check"
             :label="t('meetingPreparation.addSelectedToAgenda', {
@@ -679,6 +925,7 @@ const saveDetails = async () => {
         >
           <button
             v-if="!readOnly"
+            :data-tour-id="item.id === meetingPractice.appearanceId ? 'preparation-practice-drag' : undefined"
             class="drag-handle"
             type="button"
             :aria-label="t('meetingPreparation.drag')"
@@ -703,7 +950,10 @@ const saveDetails = async () => {
             >
               <template v-if="topicUsesPlannedDuration(item.topic.type)">
                 <div v-if="!readOnly" class="item-actions">
-                  <div class="duration-control">
+                  <div
+                    :data-tour-id="item.id === meetingPractice.appearanceId ? 'preparation-practice-duration' : undefined"
+                    class="duration-control"
+                  >
                     <InputNumber
                       :model-value="item.plannedDuration"
                       :aria-label="t('meetingPreparation.duration')"
@@ -729,6 +979,7 @@ const saveDetails = async () => {
                     rounded
                     severity="danger"
                     text
+                    :data-tour-id="item.id === meetingPractice.appearanceId ? 'preparation-practice-remove' : undefined"
                     @click="remove(item)"
                   />
                 </div>
@@ -763,6 +1014,7 @@ const saveDetails = async () => {
               rounded
               severity="danger"
               text
+              :data-tour-id="item.id === meetingPractice.appearanceId ? 'preparation-practice-remove' : undefined"
               @click="remove(item)"
             />
           </div>
@@ -783,12 +1035,13 @@ const saveDetails = async () => {
     <Dialog
       v-if="!readOnly"
       v-model:visible="detailsVisible"
+      @update:visible="onPracticeDialogVisibility"
       :style="{ width: '48rem', maxWidth: 'calc(100vw - 2rem)' }"
       :header="t('meetingAgenda.editTitle')"
-      modal
+      :modal="tours.state.activeId !== 'meeting-preparation'"
     >
       <form id="edit-meeting-details" class="form" @submit.prevent="saveDetails">
-        <div class="row">
+        <div data-tour-id="preparation-details-schedule" class="row">
           <label>
             <span>{{ t('meetings.specialTitle') }}</span>
             <InputText
@@ -831,7 +1084,7 @@ const saveDetails = async () => {
             />
           </label>
         </div>
-        <div class="row">
+        <div data-tour-id="preparation-details-roles" class="row">
           <label>
             <span>{{ t('meetingAgenda.leader') }}</span>
             <Select
@@ -869,7 +1122,7 @@ const saveDetails = async () => {
             :readonly="detailsReadOnly"
           />
         </label>
-        <label>
+        <label data-tour-id="preparation-details-general-notes" @input="onGeneralNoteInput">
           <span>{{ t('meetingAgenda.generalNotes') }}</span>
           <MeetingCollaborativeTextEditor
             v-model="detailsForm.generalNotes"
@@ -885,9 +1138,11 @@ const saveDetails = async () => {
           :label="t('common.cancel')"
           severity="secondary"
           text
-          @click="detailsVisible = false"
+          @click="closeDetailsDialog"
         />
         <Button
+          data-tour-id="preparation-details-save"
+          :loading="pending"
           form="edit-meeting-details"
           icon="pi pi-check"
           :label="t('meetingAgenda.saveDetails')"
@@ -898,11 +1153,12 @@ const saveDetails = async () => {
     <Dialog
       v-if="!readOnly"
       v-model:visible="newVisible"
+      @update:visible="onPracticeDialogVisibility"
       :style="{ width: '46rem', maxWidth: 'calc(100vw - 2rem)' }"
       :header="createsAgendaTopic
         ? t('meetingPreparation.createAndAddTitle')
         : t('topics.createTitle')"
-      :modal="tours.state.activeId !== 'new-topic-dialog'"
+      :modal="!tours.state.activeId"
     >
       <Message v-if="error" class="topic-create-error" severity="error" role="alert">
         {{ error }}
@@ -910,6 +1166,7 @@ const saveDetails = async () => {
       <form id="new-topic" class="form" @submit.prevent="createAndAdd">
         <TopicFormFields
           id="new-topic"
+          :type-locked="Boolean(createdTopicDraft)"
           :model-value="form"
           :users="users"
           :sections="sections"
@@ -927,11 +1184,12 @@ const saveDetails = async () => {
           :label="t('common.cancel')"
           severity="secondary"
           text
-          @click="newVisible = false"
+          @click="closeTopicDialog"
         />
         <Button
+          data-tour-id="preparation-topic-create-submit"
           form="new-topic"
-          :label="createsAgendaTopic
+          :label="(createsAgendaTopic || tours.state.activeId === 'meeting-preparation')
             ? t('meetingPreparation.createAndAdd')
             : t('topics.createTitle')"
           :loading="pending"

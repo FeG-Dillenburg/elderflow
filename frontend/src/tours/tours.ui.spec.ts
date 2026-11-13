@@ -2,6 +2,7 @@ import { flushPromises, mount } from '@vue/test-utils';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import PrimeVue from 'primevue/config';
 import { reactive, nextTick } from 'vue';
+import { routerKey } from 'vue-router';
 import { api } from '../api/domain';
 import { externalAuthApi } from '../api/external-auth';
 import { installation } from '../installation';
@@ -45,7 +46,7 @@ describe('Product tours through the visible UI', () => {
     auth.completeInitialization(user);
     vi.mocked(tourApi.list).mockResolvedValue([]);
     vi.mocked(tourApi.record).mockResolvedValue({} as never);
-    mounted.push(mount(TourHost, { attachTo: document.body }));
+    mounted.push(mount(TourHost, { attachTo: document.body, global: { provide: { [routerKey as symbol]: router } } }));
   });
   afterEach(() => {
     mounted.reverse().forEach((wrapper) => wrapper.unmount());
@@ -55,6 +56,16 @@ describe('Product tours through the visible UI', () => {
     protectedText.lock('explicit', false);
     vi.restoreAllMocks();
     vi.clearAllMocks();
+  });
+
+  it('does not offer an inactive Back control on shared tour steps', async () => {
+    openForm();
+    await settle();
+    expect(document.querySelector('.driver-popover-prev-btn')).toBeNull();
+    click('Next');
+    await settle();
+    expect(document.querySelector('.driver-popover-title')?.textContent).toBe('Person Topics');
+    expect(document.querySelector('.driver-popover-prev-btn')).toBeNull();
   });
 
   it('advances by Next and by the requested option, and highlights godparents, and finishes with Generic selected', async () => {

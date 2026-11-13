@@ -33,7 +33,7 @@ const hasRichText = (html: string | null | undefined) =>
         v-html="safe(openingInput)"
       />
     </div>
-    <div v-if="hasRichText(generalNotes)" class="meeting-note">
+    <div v-if="hasRichText(generalNotes)" data-tour-id="preparation-general-notes-display" class="meeting-note">
       <p class="meeting-note-label">
         <i class="pi pi-file-edit" />
         {{ t("meetingAgenda.generalNotes") }}

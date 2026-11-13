@@ -9,6 +9,7 @@ import { setLanguage } from './i18n';
 const stubs = {
   RouterLink: { props: ['to'], template: '<a :href="to"><slot /></a>' },
   RouterView: true,
+  TourHost: true,
   UnlockDialog: true,
 };
 const permissions = {

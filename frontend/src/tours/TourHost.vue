@@ -2,14 +2,17 @@
 import { onUnmounted } from "vue";
 import Message from "primevue/message";
 import { useI18n } from "vue-i18n";
-import router from "../router";
+import { useRouter } from "vue-router";
 import { tours } from "./tours";
 
 const { t } = useI18n();
-onUnmounted(tours.mount(router));
+onUnmounted(tours.mount(useRouter()));
 </script>
 
 <template>
+  <Message v-if="tours.state.transitioning" class="tour-error" role="status">
+    {{ t('tours.meetingLoading') }}
+  </Message>
   <Message
     v-if="tours.state.error"
     severity="warn"

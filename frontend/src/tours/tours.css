@@ -42,3 +42,22 @@
 @media (prefers-reduced-motion: reduce) {
   .driver-popover, .driver-overlay { animation: none !important; transition: none !important; }
 }
+
+.driver-active .tour-interaction-root,
+.driver-active .tour-interaction-root *,
+.driver-active.tour-interactive .p-dialog,
+.driver-active.tour-interactive .p-dialog *,
+.driver-active.tour-interactive .p-select-overlay,
+.driver-active.tour-interactive .p-select-overlay *,
+.driver-active.tour-interactive .p-datepicker-panel,
+.driver-active.tour-interactive .p-datepicker-panel *,
+.driver-active.tour-interactive .p-popover,
+.driver-active.tour-interactive .p-popover * {
+  pointer-events: auto !important;
+}
+
+.driver-active.tour-interactive .p-select-overlay,
+.driver-active.tour-interactive .p-datepicker-panel,
+.driver-active.tour-interactive .p-popover {
+  z-index: 1000000001 !important;
+}

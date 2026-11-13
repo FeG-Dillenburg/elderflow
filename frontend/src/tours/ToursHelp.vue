@@ -57,5 +57,10 @@ async function replay(id: TourId): Promise<void> {
   text-align: left;
 }
 .tours-help:hover { background: rgb(255 255 255 / 10%); }
-.tour-list { display: flex; flex-wrap: wrap; gap: 0.75rem; }
+.tour-list {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.75rem;
+}
 </style>

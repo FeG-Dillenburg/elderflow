@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { meetingPractice } from "../../tours/meeting-preparation";
 import DOMPurify from "dompurify";
 import { computed, watch } from "vue";
 import { useI18n } from "vue-i18n";
@@ -56,6 +57,7 @@ const hasPreparation = computed(() => Boolean(plainText(preparation.localNote.va
   <div class="paired-meeting-texts">
     <section
       v-if="mode === 'preparation' || hasPreparation"
+      :data-tour-id="mode === 'preparation' && item.id === meetingPractice.appearanceId ? 'preparation-practice-context' : undefined"
       class="meeting-text preparation-context"
       :aria-label="t('meetingTexts.preparationContext')"
       :aria-busy="mode === 'preparation' && preparation.saving.value"

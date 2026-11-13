@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { meetingPractice } from "../../tours/meeting-preparation";
 import { computed } from "vue";
 import { useI18n } from "vue-i18n";
 import type { MeetingTopic } from "../../api/domain";
@@ -23,6 +24,9 @@ const hasPreviousContent = computed(() =>
   hasMeaningfulRichText(previous.value?.preparationContext?.text)
   || hasMeaningfulRichText(previous.value?.meetingMinutes?.text),
 );
+const practiceItem = computed(() => props.item.id === meetingPractice.appearanceId);
+const hasHistory = computed(() => hasPreviousContent.value || showLatestPostponement.value
+  || updates.value.length > 0 || props.item.preparationHistoryUnavailable);
 const previousDate = computed(() => previous.value?.date
   ? `${previous.value.date}T${previous.value.beginTime ?? "00:00"}`
   : null);
@@ -30,9 +34,13 @@ const previousDate = computed(() => previous.value?.date
 
 <template>
   <div
-    v-if="eligible && (hasPreviousContent || showLatestPostponement || updates.length || item.preparationHistoryUnavailable)"
+    v-if="eligible && (practiceItem || hasHistory)"
+    :data-tour-id="item.id === meetingPractice.appearanceId ? 'preparation-practice-history' : undefined"
     class="meeting-preparation-context"
   >
+    <p v-if="practiceItem && !hasHistory" class="context-entry">
+      {{ t('tours.meetingSteps.practice-history-area') }}
+    </p>
     <section v-if="hasPreviousContent || showLatestPostponement" class="context-group">
       <div class="context-heading">
         <h4>{{ t("meetingPreparation.previousMeeting") }}</h4>

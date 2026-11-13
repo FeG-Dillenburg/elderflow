@@ -1,10 +1,14 @@
+import { meetingPreparationSteps } from './meeting-preparation';
 import type { AuthUser } from '../api/domain';
 import type { TopicType } from '../topics/topicTypes';
 import { isProtectedTextReader } from '../e2ee/roles';
 
-export type TourId = 'first-login' | 'new-topic-dialog';
+export type TourId = 'first-login' | 'new-topic-dialog' | 'meeting-preparation';
 export interface TourStep {
   id: string;
+  mode?: 'explanation' | 'action';
+  requiresInput?: boolean;
+  interactive?: boolean;
   target?: string;
   titleKey?: string;
   descriptionKey: string;
@@ -56,5 +60,11 @@ export const tourRegistry: Record<TourId, TourDefinition> = {
         side: 'top', skippable: true, topicType,
       }] : [typeStep];
     }),
+  },
+  'meeting-preparation': {
+    id: 'meeting-preparation', version: 1, nameKey: 'tours.meetingPreparation',
+    audience: (user) => isProtectedTextReader(user) && user.permissions.meetings === 'manage'
+      && user.permissions.topics === 'manage' && user.permissions.references !== 'hide',
+    steps: meetingPreparationSteps,
   },
 };
