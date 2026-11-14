@@ -1,13 +1,77 @@
-import { mount } from '@vue/test-utils';
-import { describe, expect, it, vi } from 'vitest';
+import { enableAutoUnmount, mount } from '@vue/test-utils';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { nextTick } from 'vue';
+import PrimeVue from 'primevue/config';
+import InputNumber from 'primevue/inputnumber';
 import SectionTimeEditor from './SectionTimeEditor.vue';
 
+enableAutoUnmount(afterEach);
+
 const setup = (minutes = 0, save = vi.fn().mockResolvedValue(undefined)) => mount(SectionTimeEditor, {
+  attachTo: document.body,
   props: { minutes, sectionName: 'People', save },
+  global: { plugins: [PrimeVue] },
 });
 
 describe('inline section time', () => {
+  it('uses the same PrimeVue numeric control settings as Topic duration', async () => {
+    const editor = setup(20);
+    await editor.get('button').trigger('click');
+    const control = editor.getComponent(InputNumber);
+    expect(control.props()).toMatchObject({
+      min: 0, step: 5, showButtons: true, size: 'small', suffix: ' min.',
+    });
+    expect(editor.get('input').classes()).toContain('p-inputnumber-input');
+    expect(editor.get('input').attributes('aria-label')).toBe('Section time in minutes for People');
+    expect(document.activeElement).toBe(editor.get('input').element);
+  });
+
+  it('steps by five through PrimeVue and saves the stepped value on blur', async () => {
+    const save = vi.fn().mockResolvedValue(undefined);
+    const editor = setup(20, save);
+    await editor.get('button').trigger('click');
+    await editor.get('input').trigger('keydown', { key: 'ArrowUp', code: 'ArrowUp' });
+    expect(editor.get('input').element.value).toBe('25 min.');
+    expect(save).not.toHaveBeenCalled();
+    await editor.get('input').trigger('blur');
+    expect(save).toHaveBeenCalledExactlyOnceWith(25);
+  });
+
+  it('accepts manual whole minutes through PrimeVue keyboard input', async () => {
+    const save = vi.fn().mockResolvedValue(undefined);
+    const editor = setup(0, save);
+    await editor.get('button').trigger('click');
+    await editor.get('input').trigger('keypress', { key: '1', code: 'Digit1' });
+    await editor.get('input').trigger('keypress', { key: '7', code: 'Digit7' });
+    expect(editor.get('input').element.value).toBe('17 min.');
+    await editor.get('input').trigger('keydown', { key: 'Enter', code: 'Enter' });
+    expect(save).toHaveBeenCalledExactlyOnceWith(17);
+  });
+
+  it.each([
+    ['Home', 0],
+    ['End', 2147483647],
+  ] as const)('saves the displayed value after PrimeVue %s', async (key, expected) => {
+    const save = vi.fn().mockResolvedValue(undefined);
+    const editor = setup(20, save);
+    await editor.get('button').trigger('click');
+    await editor.get('input').trigger('keydown', { key, code: key });
+    await editor.get('input').trigger('blur');
+    expect(save).toHaveBeenCalledExactlyOnceWith(expected);
+  });
+
+  it('does not save an invalid draft clamped by PrimeVue on Tab', async () => {
+    const save = vi.fn();
+    const editor = setup(20, save);
+    await editor.get('button').trigger('click');
+    await editor.get('input').setValue('2147483648');
+    await editor.get('input').trigger('keydown', { key: 'Tab', code: 'Tab' });
+    await editor.get('input').trigger('blur');
+    expect(save).not.toHaveBeenCalled();
+    expect(editor.get('[role="alert"]').text()).toContain('Enter whole minutes');
+    expect(editor.get('input').element.value).toBe('2147483648 min.');
+  });
+
   it('deduplicates Enter and blur and accepts manually entered whole minutes', async () => {
     let finish!: () => void;
     const save = vi.fn(() => new Promise<void>((resolve) => { finish = resolve; }));
@@ -28,7 +92,7 @@ describe('inline section time', () => {
     await editor.get('button').trigger('click');
     await editor.get('input').setValue('25');
     await editor.setProps({ minutes: 30 });
-    expect(editor.get('input').element.value).toBe('25');
+    expect(editor.get('input').element.value).toBe('25 min.');
     await editor.get('input').trigger('keydown', { key: 'Escape' });
     expect(save).not.toHaveBeenCalled();
     expect(editor.text()).toContain('30 min');
@@ -47,7 +111,7 @@ describe('inline section time', () => {
     await vi.waitFor(() => expect(editor.find('[role="alert"]').exists()).toBe(true));
     await editor.get('input').trigger('blur');
     expect(save).toHaveBeenCalledTimes(1);
-    expect(editor.get('input').element.value).toBe('35');
+    expect(editor.get('input').element.value).toBe('35 min.');
     await editor.get('[role="alert"] button').trigger('click');
     await vi.waitFor(() => expect(save).toHaveBeenCalledTimes(2));
   });

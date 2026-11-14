@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { nextTick, ref, useId } from 'vue';
+import { computed, nextTick, ref, useId } from 'vue';
+import InputNumber, { type InputNumberInputEvent } from 'primevue/inputnumber';
 import { useI18n } from 'vue-i18n';
 import { MAX_SECTION_MINUTES, validSectionMinutes } from '../utils/agenda-timing';
 
@@ -9,13 +10,24 @@ const props = defineProps<{
   disabled?: boolean;
   save: (minutes: number) => Promise<unknown>;
 }>();
-const { t } = useI18n();
+const { t, locale } = useI18n();
 const errorId = useId();
 const editing = ref(false);
 const draft = ref('');
 const pending = ref(false);
 const error = ref('');
-const input = ref<HTMLInputElement>();
+const normalizing = ref(false);
+const host = ref<HTMLElement>();
+const input = computed(() => host.value?.querySelector('input'));
+const controlValue = computed(() => {
+  const value = Number(draft.value);
+  return draft.value && Number.isFinite(value) ? value : null;
+});
+const suffix = computed(() => ` ${t('common.minuteShort')}`);
+const restoreDraft = async () => {
+  await nextTick();
+  if (input.value) input.value.value = draft.value ? `${draft.value}${suffix.value}` : '';
+};
 const open = async () => {
   if (props.disabled || pending.value) return;
   draft.value = String(props.minutes || '');
@@ -34,6 +46,7 @@ const save = async (retry = false) => {
   const minutes = draft.value === '' ? 0 : Number(draft.value);
   if (input.value?.validity.badInput || (draft.value !== '' && !/^\d+$/.test(draft.value)) || !validSectionMinutes(minutes)) {
     error.value = t('agendaTiming.invalid');
+    void restoreDraft();
     return;
   }
   if (minutes === props.minutes) {
@@ -51,14 +64,37 @@ const save = async (retry = false) => {
     pending.value = false;
   }
 };
-const change = (event: Event) => {
-  draft.value = (event.target as HTMLInputElement).value;
+// Keep the draft before InputNumber normalizes or clamps on blur.
+const captureInput = (event: Event) => {
+  normalizing.value = false;
+  const value = (event.target as HTMLInputElement).value;
+  draft.value = value.endsWith(suffix.value) ? value.slice(0, -suffix.value.length) : value;
+  error.value = '';
+};
+const change = (event: InputNumberInputEvent) => {
+  normalizing.value = false;
+  draft.value = event.value == null ? '' : String(event.value);
+  error.value = '';
+};
+// PrimeVue also emits model-only changes for Home/End. Accept those, but
+// keep normalization on Tab/blur from replacing an invalid draft before validation.
+const captureKeydown = (event: KeyboardEvent) => {
+  normalizing.value = event.key === 'Tab' || event.key === 'Enter';
+};
+const updateModel = (value: number | null) => {
+  if (normalizing.value || pending.value || props.disabled) return;
+  draft.value = value == null ? '' : String(value);
   error.value = '';
 };
 </script>
 
 <template>
-  <span class="section-time-editor" :aria-busy="pending">
+  <span
+    ref="host"
+    class="section-time-editor"
+    :aria-busy="pending"
+    @input.capture="captureInput"
+  >
     <button
       v-if="!editing"
       type="button"
@@ -70,20 +106,27 @@ const change = (event: Event) => {
       {{ minutes ? t('agendaTiming.sectionTime', { minutes }) : t('agendaTiming.add') }}
     </button>
     <template v-else>
-      <input
-        ref="input"
-        type="number"
-        :value="draft"
-        min="0"
+      <InputNumber
+        :model-value="controlValue"
+        :locale="locale"
+        :use-grouping="false"
+        :min="0"
         :max="MAX_SECTION_MINUTES"
-        step="5"
+        :step="5"
+        :suffix="suffix"
+        show-buttons
+        size="small"
         :disabled="pending || disabled"
+        :invalid="Boolean(error)"
         :aria-label="t('agendaTiming.editFor', { name: sectionName })"
-        :aria-invalid="Boolean(error)"
-        :aria-describedby="error ? errorId : undefined"
+        :pt="{ pcInputText: { 'aria-describedby': error ? errorId : undefined } }"
+        @keydown.capture="captureKeydown"
+        @keydown.enter.capture.prevent.stop="save()"
+        @keydown.esc.capture.prevent.stop="cancel"
+        @blur.capture="normalizing = true"
+        @focus="normalizing = false"
+        @update:model-value="updateModel"
         @input="change"
-        @keydown.enter.prevent="save()"
-        @keydown.esc.prevent.stop="cancel"
         @blur="save()"
       />
       <span v-if="pending" role="status">{{ t('agendaTiming.saving') }}</span>
@@ -116,12 +159,14 @@ const change = (event: Event) => {
   text-underline-offset: 0.15em;
   cursor: pointer;
 }
-input {
-  width: 5.5rem;
-  padding: 0.3rem;
-  font: inherit;
-  border: 1px solid var(--p-inputtext-border-color, #bbb);
-  border-radius: 0.3rem;
+.section-time-editor :deep(.p-inputnumber) {
+  width: 5.75rem;
+  min-width: 0;
+  --p-inputnumber-button-width: 1.35rem;
+}
+.section-time-editor :deep(.p-inputnumber-input) {
+  width: 0;
+  min-width: 0;
 }
 .save-error {
   color: var(--p-red-600, #b42318);
