@@ -142,6 +142,8 @@ const updateModel = (value: number | null) => {
 
 <style scoped>
 .section-time-editor {
+  --section-time-control-height: 1.875rem;
+  min-height: var(--section-time-control-height);
   display: inline-flex;
   flex-wrap: wrap;
   align-items: center;
@@ -161,11 +163,14 @@ const updateModel = (value: number | null) => {
 }
 .section-time-editor :deep(.p-inputnumber) {
   width: 5.75rem;
+  height: var(--section-time-control-height);
   min-width: 0;
+  --p-inputtext-sm-padding-y: 0.125rem;
   --p-inputnumber-button-width: 1.35rem;
 }
 .section-time-editor :deep(.p-inputnumber-input) {
   width: 0;
+  height: 100%;
   min-width: 0;
 }
 .save-error {
