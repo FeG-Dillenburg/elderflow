@@ -1,8 +1,11 @@
 <script setup lang="ts">
 import { ref, useId } from 'vue';
 import { useI18n } from 'vue-i18n';
+import type { SectionTiming } from '../utils/agenda-timing';
 
-const props = defineProps<{ timing: { allowance: number; topics: number; total: number } }>();
+const props = defineProps<{
+  timing: SectionTiming;
+}>();
 const { t } = useI18n();
 const expanded = ref(false);
 const helpId = useId();

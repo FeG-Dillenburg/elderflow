@@ -1,5 +1,5 @@
-import { MeetingSectionTime } from '../src/meetings/meeting-section-time.entity';
 /// <reference lib="es2022.error" />
+import { MeetingSectionTime } from '../src/meetings/meeting-section-time.entity';
 import 'dotenv/config';
 import { randomUUID } from 'node:crypto';
 import { INestApplication, ValidationPipe } from '@nestjs/common';

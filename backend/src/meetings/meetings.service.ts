@@ -730,7 +730,7 @@ export class MeetingsService {
 
   async updateSectionTime(meetingId: string, sectionId: string, minutes: number, user: User) {
     if (permissionsByRole[user.role]?.meetings !== "manage") {
-      throw codedHttpException(HttpStatus.FORBIDDEN, "FORBIDDEN", "Meeting management permission required");
+      throw codedHttpException(HttpStatus.FORBIDDEN, "AUTH_FORBIDDEN", "Meeting management permission required");
     }
     if (!Number.isInteger(minutes) || minutes < 0 || minutes > 2147483647) {
       throw codedHttpException(HttpStatus.BAD_REQUEST, "SECTION_TIME_INVALID", "Section time must be a nonnegative whole number of minutes");

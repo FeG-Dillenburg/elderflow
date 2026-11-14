@@ -17,6 +17,12 @@ describe('Meeting section allowances', () => {
     manager.findOneBy.mockImplementation(async (entity) => entity === AgendaSection ? { id: 'section' } : null);
     manager.query.mockResolvedValue([{ sectionId: 'section', minutes: 20 }]);
   });
+  it('rejects read-only callers before any write', async () => {
+    await expect(service.updateSectionTime('meeting', 'section', 20, { role: 'guest' } as never)).rejects.toMatchObject({
+      response: expect.objectContaining({ code: 'AUTH_FORBIDDEN' }),
+    });
+  });
+
   it('saves under the mutable Meeting lock and notifies only after commit', async () => {
     const emit = jest.spyOn(meetingCollaborationEvents, 'emit');
     expect(await service.updateSectionTime('meeting', 'section', 20, user)).toEqual({ sectionId: 'section', minutes: 20 });

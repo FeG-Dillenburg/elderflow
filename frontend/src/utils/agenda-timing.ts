@@ -5,6 +5,12 @@ export interface SectionTime {
   sectionId: string;
   minutes: number;
 }
+export interface SectionTiming {
+  allowance: number;
+  topics: number;
+  total: number;
+}
+
 export const MAX_SECTION_MINUTES = 2147483647;
 export const validSectionMinutes = (value: number) =>
   Number.isInteger(value) && value >= 0 && value <= MAX_SECTION_MINUTES;
@@ -12,7 +18,7 @@ export const validSectionMinutes = (value: number) =>
 const topicMinutes = (items: readonly MeetingTopic[]) => items.reduce((sum, item) =>
   sum + (topicUsesPlannedDuration(item.topic?.type ?? '') ? item.plannedDuration ?? 0 : 0), 0);
 
-export function sectionTiming(sectionId: string, items: readonly MeetingTopic[], times: readonly SectionTime[] = []) {
+export function sectionTiming(sectionId: string, items: readonly MeetingTopic[], times: readonly SectionTime[] = []): SectionTiming {
   const allowance = times.find((time) => time.sectionId === sectionId)?.minutes ?? 0;
   const topics = topicMinutes(items.filter((item) => item.sectionId === sectionId));
   return { allowance, topics, total: allowance + topics };
