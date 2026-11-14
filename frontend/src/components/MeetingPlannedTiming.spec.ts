@@ -21,13 +21,14 @@ describe('planned Meeting timing presentation', () => {
     wrapper.unmount();
   });
 
-  it('exposes the readonly total formula through a named, keyboard-activatable button', async () => {
+  it('shows the formula in a native tooltip with a keyboard-accessible description', () => {
     const wrapper = mount(SectionTimeTotal, { props: { timing: { allowance: 20, topics: 15, total: 35 } } });
-    expect(wrapper.get('button').attributes('aria-expanded')).toBe('false');
-    await wrapper.get('button').trigger('click');
-    expect(wrapper.get('button').attributes('aria-expanded')).toBe('true');
-    expect(wrapper.get('[role="status"]').text()).toBe('20 min section time + 15 min Topic time');
-    expect(wrapper.find('input').exists()).toBe(false);
+    const total = wrapper.get('.section-time-total');
+    expect(total.text()).toBe('35 min.');
+    expect(total.attributes('title')).toBe('20 min section time + 15 min Topic time');
+    expect(total.attributes('aria-description')).toBe(total.attributes('title'));
+    expect(total.attributes('tabindex')).toBe('0');
+    expect(wrapper.find('button, input, i').exists()).toBe(false);
     wrapper.unmount();
   });
 });

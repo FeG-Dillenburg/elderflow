@@ -715,7 +715,6 @@ watch(() => tours.state.activeId, (tourId, _previous, onCleanup) => {
           <p class="eyebrow">{{ t("meetingPreparation.eyebrow") }}</p>
           <h1>{{ meetingLabel(meeting) }}</h1>
           <p>
-            {{ formatDate(`${meeting.date}T12:00:00`) }} ·
             <MeetingPlannedTiming :meeting="meeting" /> ·
             <Tag :value="t(`labels.${meeting.status}`)" severity="secondary" />
           </p>
