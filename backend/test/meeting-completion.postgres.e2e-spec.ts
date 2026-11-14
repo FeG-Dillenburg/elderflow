@@ -1,3 +1,4 @@
+import { MeetingSectionTime } from '../src/meetings/meeting-section-time.entity';
 import { MentionWorkflowService } from "../src/meetings/mention-workflow.service";
 import { MentionState, MentionCommentOperation } from "../src/meetings/mention-state.entity";
 import { MentionWorkflow1720000026000 } from "../src/database/migrations/1720000026000-MentionWorkflow";
@@ -63,7 +64,7 @@ describeWithPostgres('Meeting completion with PostgreSQL (integration)', () => {
       schema,
       entities: [
         MentionSnapshot, MentionState, MentionCommentOperation, E2eeKeyState, E2eeClientEpoch, E2eeScalarWrite,
-        User, AgendaSection, Topic, TopicUpdate, Meeting, MeetingUser, MeetingTopic,
+        User, AgendaSection, Topic, TopicUpdate, Meeting, MeetingSectionTime, MeetingUser, MeetingTopic,
         Task, SkippedRecurrence, MeetingDocument, MeetingDocumentSnapshot,
         MeetingDocumentUpdate, MeetingDocumentMutation,
       ],

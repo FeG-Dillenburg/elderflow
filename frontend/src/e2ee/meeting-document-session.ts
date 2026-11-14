@@ -141,8 +141,13 @@ export class MeetingDocumentSession {
     return { documentId, snapshotId, snapshotEnvelope: bytesToBase64Url(envelope) };
   }
 
-  async load(meetingId: string, workspace: EncryptedWorkspace): Promise<void> {
+  async load(
+    meetingId: string,
+    workspace: EncryptedWorkspace,
+    options: { onlyIfMissing?: boolean } = {},
+  ): Promise<void> {
     const keys = this.requiredKeys();
+    if (options.onlyIfMissing && this.documents.has(meetingId)) return;
     const revision = this.revision;
     const snapshotOckId = workspace.snapshot.ockId ?? keys.ockId;
     const snapshotContentKey = this.contentKeyFor(snapshotOckId);
@@ -176,6 +181,11 @@ export class MeetingDocumentSession {
       throw new Error("E2EE_PROTECTED_TEXT_LOCKED");
     }
     const existing = this.documents.get(meetingId);
+    // A workspace may have opened and acquired local drafts during decryption.
+    if (options.onlyIfMissing && existing) {
+      document.destroy();
+      return;
+    }
     const awarenessClock = existing?.documentId === workspace.documentId
       ? existing.awarenessClock
       : 0;
@@ -423,6 +433,10 @@ export class MeetingDocumentSession {
           : sodium.crypto_sign_ed25519_sk_to_pk(keys.signingPrivateKey),
         envelope: base64UrlToBytes(pending.envelope),
       });
+  }
+
+  hasDocument(meetingId: string): boolean {
+    return this.documents.has(meetingId);
   }
 
   document(meetingId: string): Y.Doc {

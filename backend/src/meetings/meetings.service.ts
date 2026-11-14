@@ -1,3 +1,4 @@
+import { MeetingSectionTime } from './meeting-section-time.entity';
 import { currentMentionQuery } from "./current-mention-query";
 import { MentionState } from "./mention-state.entity";
 import { CompletionPrepareDto, CompletionSubmissionDto } from "./dto/completion.dto";
@@ -266,13 +267,19 @@ export class MeetingsService {
         titleEnvelope: title.envelope,
         titleCommitRevision: title.commitRevision,
       }));
+      const sections = await manager.find(AgendaSection);
+      await manager.save(MeetingSectionTime, sections.map((section) => manager.create(MeetingSectionTime, {
+        meetingId: meeting.id,
+        sectionId: section.id,
+        minutes: section.defaultMinutes,
+      })));
       await this.documents.createInitial(manager, user, meeting.id, document);
       return meetingResponse(meeting, user);
     });
   }
 
   async update(id: string, input: MeetingUpdateDto, user: User) {
-    return this.dataSource.transaction(async (manager) => {
+    const updated = await this.dataSource.transaction(async (manager) => {
       const meeting = await lockedMutableMeeting(manager, id);
       if (input.protected?.titleEnvelope) {
         const title = await this.scalars.validateWrite(
@@ -295,6 +302,8 @@ export class MeetingsService {
       Object.assign(meeting, structural);
       return meetingResponse(await manager.save(Meeting, meeting), user);
     });
+    meetingCollaborationEvents.emit("agenda-changed", { meetingId: id });
+    return updated;
   }
 
   async findOne(id: string, user: User) {
@@ -303,7 +312,7 @@ export class MeetingsService {
       relations: { meetingLeader: true, minuteTaker: true },
     });
     if (!meeting) throw codedHttpException(HttpStatus.NOT_FOUND, "MEETING_NOT_FOUND", "Meeting not found");
-    const [participants, agenda, workspace] = await Promise.all([
+    const [participants, agenda, workspace, sectionTimes] = await Promise.all([
       this.participants.find({ where: { meetingId: id }, relations: { user: true } }),
       this.meetingTopics.find({
         where: { meetingId: id },
@@ -313,6 +322,10 @@ export class MeetingsService {
       isProtectedTextReader(user.role)
         ? this.documents.bootstrap(this.meetings.manager, user, id)
         : Promise.resolve(null),
+      this.meetings.manager.find(MeetingSectionTime, {
+        where: { meetingId: id },
+        select: { sectionId: true, minutes: true },
+      }),
     ]);
     const topicIds = agenda.map((item) => item.topicId);
     const historyTopicIds = agenda.filter((item) => item.topic?.type !== "person").map((item) => item.topicId);
@@ -404,6 +417,7 @@ export class MeetingsService {
           : historyByTopic.get(item.topicId) ?? [],
       })),
       workspace,
+      sectionTimes,
       collaboration: { available: meeting.status !== "completed" },
     };
   }
@@ -510,8 +524,10 @@ export class MeetingsService {
     this.documents.assertContentUser(user);
     this.beginExternalDocumentWrite(meetingId);
     try {
-      return await this.dataSource.transaction(async (manager) =>
+      const added = await this.dataSource.transaction(async (manager) =>
         (await this.addTopicWithinTransaction(manager, meetingId, input, user)).appearance);
+      meetingCollaborationEvents.emit("agenda-changed", { meetingId });
+      return added;
     } finally {
       this.compactions.endExternalUpdate(meetingId);
     }
@@ -521,7 +537,7 @@ export class MeetingsService {
     this.documents.assertContentUser(user);
     this.beginExternalDocumentWrite(meetingId);
     try {
-      return await this.dataSource.transaction(async (manager) => {
+      const added = await this.dataSource.transaction(async (manager) => {
         const appearances: MeetingTopic[] = [];
         let documentUpdate: Awaited<ReturnType<MeetingDocumentService["appendUpdate"]>> | undefined;
         for (const item of input.items) {
@@ -537,6 +553,8 @@ export class MeetingsService {
         }
         return appearances;
       });
+      meetingCollaborationEvents.emit("agenda-changed", { meetingId });
+      return added;
     } finally {
       this.compactions.endExternalUpdate(meetingId);
     }
@@ -684,7 +702,7 @@ export class MeetingsService {
   }
 
   async reorderTopics(meetingId: string, input: MeetingTopicOrderItemDto[]): Promise<MeetingTopic[]> {
-    return this.dataSource.transaction(async (manager) => {
+    const updated = await this.dataSource.transaction(async (manager) => {
       await lockedMutableMeeting(manager, meetingId);
       const ids = input.map((item) => item.id);
       if (new Set(ids).size !== ids.length) throw codedHttpException(HttpStatus.BAD_REQUEST, "AGENDA_TOPIC_IDS_DUPLICATE", "Agenda topic IDs must be unique");
@@ -706,6 +724,29 @@ export class MeetingsService {
       const requested = new Map(input.map((item) => [item.id, item]));
       return manager.save(MeetingTopic, current.map((item) => Object.assign(item, requested.get(item.id)!)));
     });
+    meetingCollaborationEvents.emit("agenda-changed", { meetingId });
+    return updated;
+  }
+
+  async updateSectionTime(meetingId: string, sectionId: string, minutes: number, user: User) {
+    if (permissionsByRole[user.role]?.meetings !== "manage") {
+      throw codedHttpException(HttpStatus.FORBIDDEN, "AUTH_FORBIDDEN", "Meeting management permission required");
+    }
+    if (!Number.isInteger(minutes) || minutes < 0 || minutes > 2147483647) {
+      throw codedHttpException(HttpStatus.BAD_REQUEST, "SECTION_TIME_INVALID", "Section time must be a nonnegative whole number of minutes");
+    }
+    const saved = await this.dataSource.transaction(async (manager) => {
+      await lockedMutableMeeting(manager, meetingId);
+      const section = await manager.findOneBy(AgendaSection, { id: sectionId });
+      if (!section) throw codedHttpException(HttpStatus.NOT_FOUND, "AGENDA_SECTION_NOT_FOUND", "Agenda section not found");
+      const existing = await manager.findOneBy(MeetingSectionTime, { meetingId, sectionId });
+      await manager.save(MeetingSectionTime, manager.create(MeetingSectionTime, {
+        ...existing, meetingId, sectionId, minutes,
+      }));
+      return { sectionId, minutes };
+    });
+    meetingCollaborationEvents.emit("agenda-changed", { meetingId });
+    return saved;
   }
 
   async updateTopic(meetingId: string, id: string, input: UpdateMeetingTopicDto): Promise<MeetingTopic> {
@@ -721,7 +762,7 @@ export class MeetingsService {
       if (deferred === false) item.deferredAt = null;
       return manager.save(MeetingTopic, item);
     });
-    if (input.topicStatusDecision !== undefined) {
+    if (input.topicStatusDecision !== undefined || input.plannedDuration !== undefined) {
       meetingCollaborationEvents.emit("agenda-changed", { meetingId });
     }
     return updated;
@@ -764,6 +805,7 @@ export class MeetingsService {
       await manager.remove(MeetingTopic, appearance);
       await this.normalizeSectionPositions(manager, meetingId, appearance.sectionId);
     });
+    meetingCollaborationEvents.emit("agenda-changed", { meetingId });
   }
 
   async removeReconciledTopic(meetingId: string, id: string, user: User): Promise<void> {
@@ -791,6 +833,7 @@ export class MeetingsService {
       await manager.remove(MeetingTopic, appearance);
       await this.normalizeSectionPositions(manager, meetingId, appearance.sectionId);
     });
+    meetingCollaborationEvents.emit("agenda-changed", { meetingId });
   }
 
   private async normalizeSectionPositions(

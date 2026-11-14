@@ -71,7 +71,7 @@ describe("Agenda section configuration", () => {
     await wrapper.get('input[name="section-name"]').setValue("New section");
     await wrapper.get("form").trigger("submit");
     await flushPromises();
-    expect(api.createSection).toHaveBeenCalledWith({ name: "New section", defaultTopicType: null });
+    expect(api.createSection).toHaveBeenCalledWith({ name: "New section", defaultTopicType: null, defaultMinutes: 0 });
     wrapper.unmount();
   });
   it("offers keyboard ordering and restores server order on failure", async () => {

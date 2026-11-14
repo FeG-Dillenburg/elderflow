@@ -130,7 +130,7 @@ postgres('Versioned tour progress through authenticated HTTP', () => {
     await send('user', 'start', 'create-basics', { tourId }).expect(201);
     for (const step of [
       'create-basics', 'create-date', 'create-leader', 'create-minute-taker', 'create-submit',
-      'agenda-overview', 'sidebar-overview', 'practice-create-open', 'practice-create-name',
+      'agenda-overview', 'section-time', 'sidebar-overview', 'practice-create-open', 'practice-create-name',
       'practice-create-section', 'practice-create-description', 'practice-create-submit',
       'practice-preview', 'practice-select', 'practice-scroll-selection', 'practice-add-selection',
       'practice-duration', 'practice-history-area', 'practice-context', 'practice-drag', 'practice-remove',
@@ -144,6 +144,8 @@ postgres('Versioned tour progress through authenticated HTTP', () => {
     await send('user', 'step', 'details-opening', { tourId }).expect(400);
     await send('user', 'start', 'create-basics', { tourId, version: 2 }).expect(400);
     await send('user', 'step', 'details-save', { tourId, userId: 'someone-else' }).expect(400);
+    const timing = await send('user', 'step', 'section-time', { tourId }).expect(201);
+    expect(timing.body.lastStepId).toBe('section-time');
     const completed = await send('user', 'complete', 'details-result', { tourId }).expect(201);
     expect(completed.body).toMatchObject({ tourId, version: 1, state: 'completed', lastStepId: 'details-result' });
     expect((await list('guest').expect(200)).body.some((row: { tourId: string }) => row.tourId === tourId)).toBe(false);

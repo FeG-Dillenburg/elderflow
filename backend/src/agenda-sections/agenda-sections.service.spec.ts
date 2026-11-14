@@ -24,8 +24,8 @@ describe('AgendaSectionsService', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     rows = [
-      { id: 'a', name: 'Opening', position: 3, defaultTopicType: 'person' },
-      { id: 'b', name: 'Discussion', position: 9, defaultTopicType: null },
+      { id: 'a', name: 'Opening', position: 3, defaultMinutes: 0, defaultTopicType: 'person' },
+      { id: 'b', name: 'Discussion', position: 9, defaultMinutes: 0, defaultTopicType: null },
     ];
     repository.manager.transaction.mockImplementation(async (work) => work({
       query: async () => [], getRepository: () => repository,

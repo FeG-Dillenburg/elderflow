@@ -141,6 +141,7 @@ export interface MeetingRouteOperations {
   addTopics(inputs: MeetingTopicAddition[]): Promise<MeetingTopic[]>;
   removeTopic(appearanceId: string): Promise<void>;
   reorderAgenda(items: Array<{ id: string; sectionId: string; position: number }>): Promise<MeetingTopic[]>;
+  updateSectionTime(sectionId: string, minutes: number): Promise<{ sectionId: string; minutes: number }>;
   updateAppearance(appearanceId: string, patch: MeetingTopicPatch): Promise<MeetingTopic>;
   updateTopicFields(appearanceId: string, input: StructuralTopicFieldPatch): Promise<Topic>;
   updateTopic(topicId: string, input: Partial<import("../../api/domain").TopicInput>): Promise<Topic>;
@@ -173,6 +174,7 @@ export const createMeetingRouteOperations = (
     addTopics: (inputs) => mutate(() => api.addMeetingTopics(meetingId, inputs)),
     removeTopic: (appearanceId) => mutate(() => api.removeMeetingTopic(meetingId, appearanceId)),
     reorderAgenda: (items) => mutate(() => api.reorderMeetingTopics(meetingId, items)),
+    updateSectionTime: (sectionId, minutes) => mutate(() => api.updateSectionTime(meetingId, sectionId, minutes)),
     updateAppearance: (appearanceId, patch) => mutate(() =>
       api.updateMeetingTopic(meetingId, appearanceId, patch)),
     updateTopicFields: (appearanceId, input) => mutate(() =>

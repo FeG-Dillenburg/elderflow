@@ -2,6 +2,7 @@
 import { computed, onMounted, reactive, ref } from "vue";
 import Button from "primevue/button";
 import Dialog from "primevue/dialog";
+import { MAX_SECTION_MINUTES, validSectionMinutes } from "../utils/agenda-timing";
 import InputText from "primevue/inputtext";
 import Message from "primevue/message";
 import Select from "primevue/select";
@@ -20,7 +21,7 @@ const loading = ref(true);
 const orderReady = ref(false);
 const visible = ref(false);
 const editingId = ref<string | null>(null);
-const draft = reactive({ name: "", defaultTopicType: null as TopicType | null });
+const draft = reactive({ name: "", defaultTopicType: null as TopicType | null, defaultMinutes: 0 });
 const list = ref<HTMLElement | null>(null);
 const disabled = computed(() => !canManage.value || saving.value || loading.value || !orderReady.value);
 const typeOptions = computed(() => canonicalTopicTypes.map((value) => ({
@@ -44,16 +45,16 @@ const load = async () => {
 const open = (section?: AgendaSection) => {
   if (disabled.value) return;
   editingId.value = section?.id ?? null;
-  Object.assign(draft, { name: section?.name ?? "", defaultTopicType: section?.defaultTopicType ?? null });
+  Object.assign(draft, { name: section?.name ?? "", defaultTopicType: section?.defaultTopicType ?? null, defaultMinutes: section?.defaultMinutes ?? 0 });
   error.value = "";
   visible.value = true;
 };
 const save = async () => {
-  if (disabled.value || !draft.name.trim()) return;
+  if (disabled.value || !draft.name.trim() || !validSectionMinutes(Number(draft.defaultMinutes))) return;
   saving.value = true;
   error.value = "";
   try {
-    const input = { name: draft.name.trim(), defaultTopicType: draft.defaultTopicType };
+    const input = { name: draft.name.trim(), defaultTopicType: draft.defaultTopicType, defaultMinutes: Number(draft.defaultMinutes) };
     if (editingId.value) await api.updateSection(editingId.value, input);
     else await api.createSection(input);
     visible.value = false;
@@ -241,6 +242,18 @@ onMounted(load);
           :disabled="saving"
           :placeholder="t('agendaSections.noType')"
         />
+        <label for="section-minutes">{{ t("agendaTiming.default") }}</label>
+        <input
+          id="section-minutes"
+          v-model.number="draft.defaultMinutes"
+          type="number"
+          min="0"
+          :max="MAX_SECTION_MINUTES"
+          step="1"
+          :disabled="saving"
+          aria-describedby="section-minutes-help"
+        />
+        <small id="section-minutes-help">{{ t("agendaTiming.defaultHelp") }}</small>
         <div class="dialog-actions">
           <Button
             :label="t('common.cancel')"
@@ -253,7 +266,7 @@ onMounted(load);
             type="submit"
             :label="t('common.save')"
             :loading="saving"
-            :disabled="disabled || !draft.name.trim()"
+            :disabled="disabled || !draft.name.trim() || !validSectionMinutes(Number(draft.defaultMinutes))"
           />
         </div>
       </form>

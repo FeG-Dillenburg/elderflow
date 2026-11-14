@@ -1,3 +1,4 @@
+import { SectionTime1720000027000 } from './1720000027000-SectionTime';
 import { MentionWorkflow1720000026000 } from "./1720000026000-MentionWorkflow";
 import { AgendaSectionDefaults1720000025000 } from './1720000025000-AgendaSectionDefaults';
 import { DeploymentUpdates1720000024000 } from './1720000024000-DeploymentUpdates';
@@ -55,4 +56,5 @@ export const migrations = [
   DeploymentUpdates1720000024000,
   AgendaSectionDefaults1720000025000,
   MentionWorkflow1720000026000,
+  SectionTime1720000027000,
 ];

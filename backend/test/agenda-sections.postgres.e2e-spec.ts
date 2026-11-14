@@ -86,7 +86,7 @@ postgres('Agenda section API and existing-data upgrade', () => {
   it('runs historical migrations fresh and upgrades populated sections without changing references', async () => {
     const sections = (await call('get').expect(200)).body;
     expect(sections).toEqual(sectionsBefore.map(({ is_default, ...row }) => ({
-      id: row.id, name: row.name, position: row.position, defaultTopicType: null,
+      id: row.id, name: row.name, position: row.position, defaultTopicType: null, defaultMinutes: 0,
     })));
     expect(await database.query('SELECT * FROM topics')).toEqual(topicBefore);
     expect(await database.query('SELECT * FROM meeting_topics')).toEqual(appearanceBefore);
