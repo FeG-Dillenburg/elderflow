@@ -758,12 +758,12 @@ watch(() => tours.state.activeId, (tourId, _previous, onCleanup) => {
             :general-notes="meeting.generalNotes"
           />
           <section
-            v-for="group in grouped"
+            v-for="(group, sectionIndex) in grouped"
             :key="group.section.id"
             class="section"
             :class="{ 'drop-destination': dropTarget?.sectionId === group.section.id }"
           >
-            <h2>
+            <h2 :data-tour-id="sectionIndex === 0 ? 'preparation-section-time' : undefined">
               {{ group.section.name }}
               <SectionTimeEditor
                 v-if="!readOnly && auth.canManage('meetings')"

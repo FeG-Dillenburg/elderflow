@@ -134,6 +134,12 @@ async function open(existing: 'generic' | 'person' | 'new_membership' | null = '
   await click('meeting-create-submit');
   if (!sections.length) { await settle(); return; }
   await at('agenda-overview');
+  next(); await at('section-time');
+  const header = target('preparation-section-time');
+  expect(header.querySelector('.section-time-editor')).not.toBeNull();
+  expect(header.querySelector('.section-time-total')).not.toBeNull();
+  expect(document.querySelector('.driver-popover')!.textContent).toContain('Topic durations are added automatically');
+  expect(document.querySelector('.driver-popover')!.textContent).toContain('only if the section needs more time');
   next(); await at('sidebar-overview'); next(); await settle();
 }
 async function selectUser(id: string) {
