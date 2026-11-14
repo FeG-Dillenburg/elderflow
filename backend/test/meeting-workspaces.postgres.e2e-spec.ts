@@ -1,3 +1,4 @@
+import { MeetingSectionTime } from '../src/meetings/meeting-section-time.entity';
 /// <reference lib="es2022.error" />
 import 'dotenv/config';
 import { randomUUID } from 'node:crypto';
@@ -103,6 +104,7 @@ describeWithPostgres('Encrypted Meeting workspaces with PostgreSQL', () => {
         Topic,
         TopicUpdate,
         Meeting,
+        MeetingSectionTime,
         MeetingUser,
         MeetingTopic,
         Task,

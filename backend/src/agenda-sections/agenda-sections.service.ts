@@ -31,6 +31,9 @@ export class AgendaSectionsService {
       if (databaseError.code === '23505' && databaseError.constraint === 'agenda_sections_default_topic_type_unique') {
         throw mappingConflict();
       }
+      if (databaseError.code === '23503') {
+        throw codedHttpException(HttpStatus.CONFLICT, 'AGENDA_SECTION_IN_USE', 'This section is used by a Meeting');
+      }
       throw error;
     }
   }
@@ -47,6 +50,7 @@ export class AgendaSectionsService {
       return repository.save(repository.create({
         name: input.name.trim(),
         defaultTopicType: input.defaultTopicType ?? null,
+        defaultMinutes: input.defaultMinutes ?? 0,
         position: (sections[sections.length - 1]?.position ?? 0) + 1,
       }));
     });
@@ -57,6 +61,7 @@ export class AgendaSectionsService {
       const section = sections.find((section) => section.id === id);
       if (!section) throw missing();
       this.assertMapping(sections, input, id);
+      if (input.defaultMinutes !== undefined) section.defaultMinutes = input.defaultMinutes;
       section.name = input.name.trim();
       if (input.defaultTopicType !== undefined) section.defaultTopicType = input.defaultTopicType;
       return repository.save(section);

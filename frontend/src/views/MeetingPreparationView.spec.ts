@@ -20,6 +20,8 @@ vi.mock("vue-router", () => ({
   useRouter: () => ({ push: routerPush }),
 }));
 const stubs = {
+  SectionTimeTotal: false,
+  MeetingPlannedTiming: false,
   Teleport: false,
   MeetingNotes: false,
   Button: true,
@@ -748,7 +750,7 @@ describe("MeetingPreparationView", () => {
   });
   it("removes and creates an agenda topic safely", async () => {
     const previousUser = auth.state.user;
-    auth.state.user = { id: "leader", role: "user" } as any;
+    auth.state.user = { id: "leader", role: "user", permissions: { meetings: "manage" } } as any;
     workspaceMeeting.meetingLeaderId = "leader";
     onTestFinished(() => { auth.state.user = previousUser; });
     const wrapper = await view();

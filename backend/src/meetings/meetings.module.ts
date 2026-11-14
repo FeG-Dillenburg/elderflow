@@ -1,3 +1,4 @@
+import { MeetingSectionTime } from './meeting-section-time.entity';
 import { MentionWorkflowController } from "./mention-workflow.controller";
 import { MentionState, MentionCommentOperation } from "./mention-state.entity";
 import { MentionWorkflowService } from "./mention-workflow.service";
@@ -36,6 +37,7 @@ import { MeetingCompactionCoordinator } from './meeting-compaction-coordinator';
       MentionState,
       MentionCommentOperation,
       Meeting,
+      MeetingSectionTime,
       MeetingUser,
       MeetingTopic,
       MeetingDocument,

@@ -41,6 +41,28 @@ describe("Meeting structural operations", () => {
     await workspace.close();
   });
 
+  it("reconciles saved section time through the workspace without replacing collaborative text", async () => {
+    let meeting = { id: "timing", status: "planned", generalNotes: "Notes", agenda: [], sectionTimes: [] } as unknown as Meeting;
+    const workspace = createMeetingWorkspace(meeting.id, {
+      load: async () => ({ meeting, unlocked: true, collaborative: false }), complete: vi.fn(),
+    });
+    await workspace.open();
+    const binding = workspace.text({ kind: "general_notes" });
+    vi.spyOn(api, "updateSectionTime").mockImplementation(async (_id, sectionId, minutes) => {
+      meeting = { ...meeting, sectionTimes: [{ sectionId, minutes }] };
+      return { sectionId, minutes };
+    });
+    const operations = createMeetingRouteOperations(meeting.id, () => workspace.refresh());
+    await operations.updateSectionTime("people", 20);
+    expect(workspace.state.meeting?.sectionTimes).toEqual([{ sectionId: "people", minutes: 20 }]);
+    expect(binding.editable).toBe(true);
+    expect(binding.value).toBe("Notes");
+    vi.mocked(api.updateSectionTime).mockRejectedValueOnce(new Error("offline"));
+    await expect(operations.updateSectionTime("people", 30)).rejects.toThrow("offline");
+    expect(workspace.state.meeting?.sectionTimes).toEqual([{ sectionId: "people", minutes: 20 }]);
+    await workspace.close();
+  });
+
   it("keeps the authoritative read model intact when an operation fails", async () => {
     const meeting = { id: "structural-failure", status: "planned", title: "Original", agenda: [] } as unknown as Meeting;
     const workspace = createMeetingWorkspace(meeting.id, {

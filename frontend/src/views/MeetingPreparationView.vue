@@ -1,4 +1,8 @@
 <script lang="ts" setup>
+import MeetingPlannedTiming from "../components/MeetingPlannedTiming.vue";
+import SectionTimeEditor from "../components/SectionTimeEditor.vue";
+import SectionTimeTotal from "../components/SectionTimeTotal.vue";
+import { sectionTiming } from "../utils/agenda-timing";
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, shallowReactive, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { RouterLink, useRoute, useRouter } from "vue-router";
@@ -428,15 +432,11 @@ const saveDuration = async (item: MeetingTopic, duration: number | null) => {
   await currentSave;
 };
 
-const sectionDuration = (items: MeetingTopic[]) =>
-  items.reduce(
-    (total, item) =>
-      total +
-      (topicUsesPlannedDuration(item.topic?.type ?? "")
-        ? (item.plannedDuration ?? 0)
-        : 0),
-    0,
-  );
+const timingFor = (sectionId: string) => sectionTiming(
+  sectionId, grouped.value.flatMap((group) => group.items), meeting.value?.sectionTimes,
+);
+const timingReadOnly = computed(() => readOnly.value || !auth.canManage("meetings")
+  || !workspace.text({ kind: "general_notes" }).editable || pending.value);
 
 const createdTopicDraft = ref<Topic | null>(null);
 const createAndAdd = async () => {
@@ -714,6 +714,11 @@ watch(() => tours.state.activeId, (tourId, _previous, onCleanup) => {
         <div>
           <p class="eyebrow">{{ t("meetingPreparation.eyebrow") }}</p>
           <h1>{{ meetingLabel(meeting) }}</h1>
+          <p>
+            {{ formatDate(`${meeting.date}T12:00:00`) }} ·
+            <MeetingPlannedTiming :meeting="meeting" /> ·
+            <Tag :value="t(`labels.${meeting.status}`)" severity="secondary" />
+          </p>
           <p>{{ t("meetingPreparation.description") }}</p>
         </div>
         <div class="header-actions">
@@ -761,11 +766,15 @@ watch(() => tours.state.activeId, (tourId, _previous, onCleanup) => {
           >
             <h2>
               {{ group.section.name }}
+              <SectionTimeEditor
+                v-if="!readOnly && auth.canManage('meetings')"
+                :minutes="timingFor(group.section.id).allowance"
+                :section-name="group.section.name"
+                :disabled="timingReadOnly"
+                :save="(minutes) => operations.updateSectionTime(group.section.id, minutes)"
+              />
               <span class="section-meta">
-                <span>
-                  {{ sectionDuration(group.items) }}
-                  {{ t("common.minuteShort") }}
-                </span>
+                <SectionTimeTotal :timing="timingFor(group.section.id)" />
                 <Tag :value="String(group.items.length)" severity="secondary" />
               </span>
             </h2>
@@ -1273,11 +1282,13 @@ watch(() => tours.state.activeId, (tourId, _previous, onCleanup) => {
 .section h2 {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.4rem;
   padding-bottom: 0.65rem;
   border-bottom: 1px solid #e9edf2;
 }
 .section-meta {
+  margin-left: auto;
   display: flex;
   align-items: center;
   gap: 0.55rem;

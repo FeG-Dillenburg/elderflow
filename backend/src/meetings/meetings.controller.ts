@@ -1,3 +1,4 @@
+import { SectionTimeDto } from './dto/section-time.dto';
 import { CompletionPrepareDto, CompletionSubmissionDto } from "./dto/completion.dto";
 import {
   BadRequestException,
@@ -205,6 +206,14 @@ export class MeetingsController {
     @Param("id", ParseUUIDPipe) id: string,
     @Body() input: ReorderMeetingTopicsDto,
   ) { return this.service.reorderTopics(id, input.items); }
+
+  @Put(":id/section-times/:sectionId")
+  updateSectionTime(
+    @CurrentUser() user: User,
+    @Param("id", ParseUUIDPipe) id: string,
+    @Param("sectionId", ParseUUIDPipe) sectionId: string,
+    @Body() input: SectionTimeDto,
+  ) { return this.service.updateSectionTime(id, sectionId, input.minutes, user); }
 
   @Put(":id/topics/:itemId")
   updateTopic(

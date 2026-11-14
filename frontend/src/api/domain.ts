@@ -75,6 +75,7 @@ export interface AgendaSection {
   name: string;
   position: number;
   defaultTopicType: TopicType | null;
+  defaultMinutes?: number;
 }
 
 export type TopicScalarRevisions = Partial<Record<"name" | "description" | "membershipProcessStatus" | "godparents", string>>;
@@ -194,12 +195,13 @@ export interface Meeting {
   minuteTaker?: User | null;
   generalNotes: string | null;
   openingInput: string | null;
+  sectionTimes?: Array<{ sectionId: string; minutes: number }>;
   participants?: MeetingParticipant[];
   agenda?: MeetingTopic[];
   workspace?: EncryptedWorkspace | null;
 }
 
-export type MeetingInput = Omit<Meeting, 'id' | 'meetingLeader' | 'minuteTaker' | 'participants' | 'agenda'>;
+export type MeetingInput = Omit<Meeting, 'id' | 'meetingLeader' | 'minuteTaker' | 'participants' | 'agenda' | 'sectionTimes'>;
 
 export interface MeetingParticipant {
   id: string;
@@ -1045,9 +1047,9 @@ export const api = {
     };
   },
   sections: () => request<AgendaSection[]>('/api/agenda-sections'),
-  createSection: (input: Pick<AgendaSection, 'name' | 'defaultTopicType'>) => request<AgendaSection>('/api/agenda-sections', { method: 'POST', body: JSON.stringify(input) }),
+  createSection: (input: Pick<AgendaSection, 'name' | 'defaultTopicType' | 'defaultMinutes'>) => request<AgendaSection>('/api/agenda-sections', { method: 'POST', body: JSON.stringify(input) }),
   reorderSections: (ids: string[]) => request<AgendaSection[]>('/api/agenda-sections/order', { method: 'PUT', body: JSON.stringify({ ids }) }),
-  updateSection: (id: string, input: Pick<AgendaSection, 'name' | 'defaultTopicType'>) => request<AgendaSection>(`/api/agenda-sections/${id}`, { method: 'PUT', body: JSON.stringify(input) }),
+  updateSection: (id: string, input: Pick<AgendaSection, 'name' | 'defaultTopicType' | 'defaultMinutes'>) => request<AgendaSection>(`/api/agenda-sections/${id}`, { method: 'PUT', body: JSON.stringify(input) }),
   deleteSection: (id: string) => request<void>(`/api/agenda-sections/${id}`, { method: 'DELETE' }),
   topics: async (filters: Record<string, string | undefined> = {}) => Promise.all(
     (await request<EncryptedTopicResponse[]>(`/api/topics${query(filters)}`)).map((topic) => unprotectTopic(topic)),
@@ -1302,6 +1304,7 @@ export const api = {
     }
   },
   reorderMeetingTopics: (meetingId: string, items: Array<{ id: string; sectionId: string; position: number }>) => request<MeetingTopic[]>(`/api/meetings/${meetingId}/topics/order`, { method: 'PUT', body: JSON.stringify({ items }) }),
+  updateSectionTime: (meetingId: string, sectionId: string, minutes: number) => request<{ sectionId: string; minutes: number }>(`/api/meetings/${meetingId}/section-times/${sectionId}`, { method: 'PUT', body: JSON.stringify({ minutes }) }),
   updateMeetingTopic: (meetingId: string, appearanceId: string, patch: MeetingTopicPatch) => request<MeetingTopic>(`/api/meetings/${meetingId}/topics/${appearanceId}`, { method: 'PUT', body: JSON.stringify({ plannedDuration: patch.plannedDuration, status: patch.status, deferred: patch.deferred, topicStatusDecision: patch.topicStatusDecision }) }),
   updateMeetingTopicFields: async (
     meetingId: string,

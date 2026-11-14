@@ -13,5 +13,6 @@
   { "id": "saved-topic-fields-live-refresh", "category": "improvement" },
   { "id": "postponed-topic-preparation", "category": "improvement" },
   { "id": "preparation-topic-history-preview", "category": "improvement" },
-  { "id": "interactive-meeting-preparation-tour", "category": "feature" }
+  { "id": "interactive-meeting-preparation-tour", "category": "feature" },
+  { "id": "agenda-section-time-planning", "category": "feature" }
 ]

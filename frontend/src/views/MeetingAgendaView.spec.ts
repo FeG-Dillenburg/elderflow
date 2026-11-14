@@ -17,6 +17,8 @@ vi.mock("vue-router", () => ({
 }));
 
 const stubs = {
+  SectionTimeTotal: false,
+  MeetingPlannedTiming: false,
   Teleport: true,
   MeetingNotes: false,
   Button: {

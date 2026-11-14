@@ -1,4 +1,7 @@
 <script lang="ts" setup>
+import MeetingPlannedTiming from "../components/MeetingPlannedTiming.vue";
+import SectionTimeTotal from "../components/SectionTimeTotal.vue";
+import { sectionTiming } from "../utils/agenda-timing";
 import { computed, onMounted, reactive, ref } from "vue";
 import { RouterLink, useRoute } from "vue-router";
 import Button from "primevue/button";
@@ -12,7 +15,6 @@ import MeetingNotes from "../components/MeetingNotes.vue";
 import TopicTypeRenderer from "../topics/TopicTypeRenderer.vue";
 import {
   topicAgendaClass,
-  topicUsesPlannedDuration,
 } from "../topics/topicTypeRegistry";
 import {
   saveMeetingTopicField,
@@ -37,7 +39,7 @@ import {
   useMeetingRoute,
 } from "../meetings/workspace";
 import { useI18n } from "vue-i18n";
-import { dateInputFormat, formatDate, formatTime } from "../i18n";
+import { dateInputFormat, formatDate } from "../i18n";
 
 const canManage = computed(
   () => !auth.state.user || auth.canManage("meetings"),
@@ -125,15 +127,10 @@ const load = async (opening: Promise<void>) => {
 const grouped = computed(() =>
   buildNumberedAgenda(sections.value, meeting.value?.agenda ?? []),
 );
-const sectionDuration = (items: MeetingTopic[]) =>
-  items.reduce(
-    (total, item) =>
-      total +
-      (topicUsesPlannedDuration(item.topic?.type ?? "")
-        ? (item.plannedDuration ?? 0)
-        : 0),
-    0,
-  );
+const timingFor = (sectionId: string) => sectionTiming(
+  sectionId, meeting.value?.agenda ?? [], meeting.value?.sectionTimes,
+);
+
 const recent = (item: MeetingTopic) => {
   const cutoff = Date.now() - 14 * 86400000;
   const timestamp = (date: string) => new Date(date).getTime();
@@ -257,7 +254,7 @@ onMounted(async () => {
           <h1>{{ meetingLabel(meeting) }}</h1>
           <p>
             {{ formatDate(`${meeting.date}T12:00:00`) }} ·
-            {{ formatTime(meeting.beginTime) }} ·
+            <MeetingPlannedTiming :meeting="meeting" /> ·
             <Tag :value="t(`labels.${meeting.status}`)" severity="secondary" />
           </p>
         </div>
@@ -320,7 +317,7 @@ onMounted(async () => {
               {{ group.section.name }}
             </span>
             <span class="section-duration">
-              {{ sectionDuration(group.items) }} {{ t("common.minuteShort") }}
+              <SectionTimeTotal :timing="timingFor(group.section.id)" />
             </span>
           </h2>
           <p v-if="!group.items.length" class="empty">
