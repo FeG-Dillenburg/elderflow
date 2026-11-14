@@ -18,7 +18,7 @@ const pending = ref(false);
 const error = ref('');
 const normalizing = ref(false);
 const host = ref<HTMLElement>();
-const input = computed(() => host.value?.querySelector('input'));
+const inputElement = () => host.value?.querySelector('input');
 const controlValue = computed(() => {
   const value = Number(draft.value);
   return draft.value && Number.isFinite(value) ? value : null;
@@ -26,7 +26,8 @@ const controlValue = computed(() => {
 const suffix = computed(() => ` ${t('common.minuteShort')}`);
 const restoreDraft = async () => {
   await nextTick();
-  if (input.value) input.value.value = draft.value ? `${draft.value}${suffix.value}` : '';
+  const input = inputElement();
+  if (input) input.value = draft.value ? `${draft.value}${suffix.value}` : '';
 };
 const open = async () => {
   if (props.disabled || pending.value) return;
@@ -34,7 +35,7 @@ const open = async () => {
   error.value = '';
   editing.value = true;
   await nextTick();
-  input.value?.focus();
+  inputElement()?.focus();
 };
 const cancel = () => {
   if (pending.value) return;
@@ -44,7 +45,7 @@ const cancel = () => {
 const save = async (retry = false) => {
   if (!editing.value || props.disabled || pending.value || (error.value && !retry)) return;
   const minutes = draft.value === '' ? 0 : Number(draft.value);
-  if (input.value?.validity.badInput || (draft.value !== '' && !/^\d+$/.test(draft.value)) || !validSectionMinutes(minutes)) {
+  if (inputElement()?.validity.badInput || (draft.value !== '' && !/^\d+$/.test(draft.value)) || !validSectionMinutes(minutes)) {
     error.value = t('agendaTiming.invalid');
     void restoreDraft();
     return;
@@ -105,6 +106,9 @@ const updateModel = (value: number | null) => {
     >
       {{ minutes ? t('agendaTiming.sectionTime', { minutes }) : t('agendaTiming.add') }}
     </button>
+    <span v-else-if="pending" role="status">
+      {{ t('agendaTiming.saving') }}
+    </span>
     <template v-else>
       <InputNumber
         :model-value="controlValue"
@@ -116,7 +120,7 @@ const updateModel = (value: number | null) => {
         :suffix="suffix"
         show-buttons
         size="small"
-        :disabled="pending || disabled"
+        :disabled="disabled"
         :invalid="Boolean(error)"
         :aria-label="t('agendaTiming.editFor', { name: sectionName })"
         :pt="{ pcInputText: { 'aria-describedby': error ? errorId : undefined } }"
@@ -129,7 +133,6 @@ const updateModel = (value: number | null) => {
         @input="change"
         @blur="save()"
       />
-      <span v-if="pending" role="status">{{ t('agendaTiming.saving') }}</span>
       <span v-if="error" :id="errorId" class="save-error" role="alert">
         {{ error }}
         <button type="button" :disabled="disabled || pending" @click="save(true)">

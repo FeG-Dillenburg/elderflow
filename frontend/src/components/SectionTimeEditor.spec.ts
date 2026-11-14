@@ -79,11 +79,19 @@ describe('inline section time', () => {
     expect(editor.text()).toContain('Add section time');
     await editor.get('button').trigger('click');
     await editor.get('input').setValue('17');
-    await editor.get('input').trigger('keydown', { key: 'Enter' });
-    await editor.get('input').trigger('blur');
+    const input = editor.get('input');
+    await Promise.all([
+      input.trigger('keydown', { key: 'Enter' }),
+      input.trigger('blur'),
+    ]);
     expect(save).toHaveBeenCalledExactlyOnceWith(17);
+    expect(editor.find('input').exists()).toBe(false);
+    expect(editor.get('[role="status"]').text()).toBe('Saving…');
+    expect(editor.find('button').exists()).toBe(false);
+    await editor.setProps({ minutes: 17 });
     finish();
-    await vi.waitFor(() => expect(editor.find('input').exists()).toBe(false));
+    await vi.waitFor(() => expect(editor.find('[role="status"]').exists()).toBe(false));
+    expect(editor.get('button').text()).toBe('Section time: 17 min');
   });
 
   it('preserves a dirty draft on remote refresh, cancels without writing, and clears to zero', async () => {
@@ -97,6 +105,7 @@ describe('inline section time', () => {
     expect(save).not.toHaveBeenCalled();
     expect(editor.text()).toContain('30 min');
     await editor.get('button').trigger('click');
+    expect(document.activeElement).toBe(editor.get('input').element);
     await editor.get('input').setValue('');
     await editor.get('input').trigger('blur');
     expect(save).toHaveBeenCalledExactlyOnceWith(0);
@@ -114,6 +123,20 @@ describe('inline section time', () => {
     expect(editor.get('input').element.value).toBe('35 min.');
     await editor.get('[role="alert"] button').trigger('click');
     await vi.waitFor(() => expect(save).toHaveBeenCalledTimes(2));
+  });
+
+  it('retains invalid input after a failed save remounts the editor', async () => {
+    const save = vi.fn().mockRejectedValueOnce(new Error('offline'));
+    const editor = setup(20, save);
+    await editor.get('button').trigger('click');
+    await editor.get('input').setValue('35');
+    await editor.get('input').trigger('keydown', { key: 'Enter' });
+    await vi.waitFor(() => expect(editor.find('[role="alert"]').exists()).toBe(true));
+    await editor.get('input').setValue('-5');
+    await editor.get('input').trigger('blur');
+    expect(save).toHaveBeenCalledTimes(1);
+    expect(editor.get('[role="alert"]').text()).toContain('Enter whole minutes');
+    expect(editor.get('input').element.value).toBe('-5 min.');
   });
 
   it.each(['-5', '2.5', '2147483648'])('rejects invalid minutes %s and respects authorization loss', async (draft) => {
