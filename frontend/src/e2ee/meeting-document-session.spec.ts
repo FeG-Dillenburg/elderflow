@@ -1,7 +1,7 @@
 import { Decoder } from "cbor-x";
 import sodium from "libsodium-wrappers-sumo";
 import * as Y from "yjs";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { MeetingDocumentSession } from "./meeting-document-session";
 import { readMeetingFragment } from "./meeting-document-codec";
 import { base64UrlToBytes, bytesToBase64Url } from "./protocol";
@@ -508,6 +508,61 @@ describe("MeetingDocumentSession", () => {
     expect(restored.hydrateFragments(meetingId, [{ id: retainedId, person: false }])
       .appearances.has(orphanId)).toBe(false);
     restored.lock();
+  });
+
+  it("keeps a workspace opened and edited while a background load is decrypting", async () => {
+    await sodium.ready;
+    const signing = sodium.crypto_sign_seed_keypair(new Uint8Array(32).fill(39), "uint8array");
+    const meetingId = "00000000-0000-4000-8000-000000000391";
+    const clientEpochId = "00000000-0000-4000-8000-000000000392";
+    session.unlock({
+      organizationId: "00000000-0000-4000-8000-000000000393",
+      ockId: "00000000-0000-4000-8000-000000000394",
+      clientEpochId,
+      noncePrefix: new Uint8Array(16).fill(40),
+      contentKey: new Uint8Array(32).fill(41),
+      signingPrivateKey: signing.privateKey,
+    });
+    const initial = await session.createInitial(meetingId);
+    const workspace = {
+      documentId: initial.documentId,
+      activeSnapshotId: initial.snapshotId,
+      currentServerSequence: "0",
+      snapshot: {
+        id: initial.snapshotId,
+        clientEpochId,
+        snapshotClock: "1",
+        signingPublicKey: bytesToBase64Url(signing.publicKey),
+        envelope: initial.snapshotEnvelope,
+      },
+      updates: [],
+    };
+    session.discard(meetingId);
+    let release!: () => void;
+    let started!: () => void;
+    const paused = new Promise<void>((resolve) => { release = resolve; });
+    const decrypting = new Promise<void>((resolve) => { started = resolve; });
+    const derive = crypto.subtle.deriveBits.bind(crypto.subtle);
+    const spy = vi.spyOn(crypto.subtle, "deriveBits").mockImplementationOnce(async (...args) => {
+      started();
+      await paused;
+      return derive(...args);
+    });
+    const background = session.load(meetingId, workspace, { onlyIfMissing: true });
+    try {
+      await decrypting;
+      await session.load(meetingId, workspace);
+      session.updateFragment(meetingId, "meeting/general-notes", "Draft from the newly opened workspace");
+      const opened = session.document(meetingId);
+      release();
+      await background;
+      expect(session.document(meetingId)).toBe(opened);
+      expect(session.hydrateFragments(meetingId, []).generalNotes).toBe("Draft from the newly opened workspace");
+    } finally {
+      release();
+      await background.catch(() => undefined);
+      spy.mockRestore();
+    }
   });
 
   it("refuses document mutation while locked and discards unusable local state", async () => {

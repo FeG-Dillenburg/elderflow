@@ -1364,6 +1364,13 @@ async function reconcileRecurringTopic(topic: Topic): Promise<void> {
     `/api/topics/${topic.id}/recurrence-reconciliation`,
   );
   for (const move of plan.moves) {
+    // Reconciliation can target a Meeting that has never been opened in this client.
+    // Keep existing local documents intact so collaborative drafts are not replaced.
+    if (!meetingDocumentSession.hasDocument(move.meetingId)) {
+      const workspace = await request<EncryptedWorkspace | null>(`/api/meetings/${move.meetingId}/workspace`);
+      if (!workspace) throw new ApiRequestError({ code: 'MEETING_WORKSPACE_UNAVAILABLE' });
+      await meetingDocumentSession.load(move.meetingId, workspace, { onlyIfMissing: true });
+    }
     await api.addMeetingTopic(move.meetingId, {
       topicId: topic.id,
       sectionId: move.sectionId,
